@@ -27,11 +27,12 @@ function photoHarness(rows, initial = '[]') {
   const document = { getElementById(id) { if (id === 'etiq-video') videoLookups++; return nodes.get(id) || null; },
     createElement() { return { style: {}, append(...children) { this.children = children; } }; },
     body: { appendChild(node) { nodes.set(node.id, node); } } };
-  const context = vm.createContext({ localStorage, document, window: {}, etiqFila: rows, etiqStorageFailed: false, etiqPausado: false,
+  const context = vm.createContext({ localStorage, document, window: { addEventListener() {} }, setTimeout, clearTimeout, etiqFila: rows, etiqStorageReady: false, etiqStorageFailed: false, etiqPausado: false,
     etiqAuto: { stop() { stopped++; }, reset() { reset++; } } });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/scanner-photo-storage.js'), 'utf8') + '\nglobalThis.etiqPhotoStorage=window.ScannerPhotoStorage.create({localStorage,indexedDB:null});', context);
   const start = html.indexOf('  function etiqStorageNotice()'), end = html.indexOf('  function etiqBeep()', start);
   const captureStart = html.indexOf('  function capturarFrame('), captureEnd = html.indexOf('  async function enviarFila()', captureStart);
-  vm.runInContext(html.slice(start, end) + html.slice(captureStart, captureEnd) + '\nglobalThis.api={etiqSave,capturarFrame};', context);
+  vm.runInContext(html.slice(start, end) + html.slice(captureStart, captureEnd) + '\nglobalThis.api={etiqSave,capturarFrame,read:()=>etiqPhotoStorage.read(),ready:etiqRestorePromise};', context);
   return { api: context.api, context, localStorage, nodes, counters: () => ({ stopped, reset, videoLookups }) };
 }
 async function test(name, work) { await work(); console.log('PASS: ' + name); }
@@ -97,34 +98,34 @@ async function test(name, work) { await work(); console.log('PASS: ' + name); }
     a.reply(); await first; b.reply(503); await stale;
     assert.equal(retryHarness(local).api.loadRetryQueue().length, 0);
   });
-  await test('all unresolved photos survive persistence beyond the 30 completed-history limit', () => {
+  await test('all unresolved photos survive persistence beyond the 30 completed-history limit', async () => {
     const pending = Array.from({ length: 31 }, (_, i) => ({ clientScanId: 'pending-' + i, st: i % 2 ? 'fila' : 'revisao', b64: 'data:image/jpeg;base64,synthetic-' + i }));
     const complete = Array.from({ length: 35 }, (_, i) => ({ clientScanId: 'done-' + i, complete: true, capId: 'capture-' + i, b64: '' }));
-    const h = photoHarness([...pending, ...complete]); assert.equal(h.api.etiqSave(), true);
-    const saved = JSON.parse(h.localStorage.getItem('etiqFila'));
-    assert.equal(saved.length, 61); assert.deepEqual(saved.filter(row => !row.complete), pending); assert.equal(saved[31].clientScanId, 'done-5');
+    const h = photoHarness([...pending, ...complete]); assert.equal(await h.api.etiqSave(), true);
+    const saved = JSON.parse(JSON.stringify(await h.api.read()));
+    assert.equal(saved.length, 66); assert.deepEqual(saved.filter(row => !row.complete), pending); assert.equal(saved[31].clientScanId, 'done-0');
   });
-  await test('storage quota preserves the previous copy and blocks capture before creating a new piece', () => {
+  await test('storage quota preserves the previous copy and blocks capture before creating a new piece', async () => {
     const initial = JSON.stringify([{ clientScanId: 'old', b64: 'older-photo' }]);
     const rows = [{ clientScanId: 'old', b64: 'older-photo' }, { clientScanId: 'new', b64: 'new-photo' }];
     const h = photoHarness(rows, initial); h.localStorage.fail = true;
-    assert.equal(h.api.etiqSave(), false); assert.equal(h.localStorage.getItem('etiqFila'), initial);
+    assert.equal(await h.api.etiqSave(), false); assert.equal(h.localStorage.getItem('etiqFila'), initial);
     assert.equal(h.api.capturarFrame('7900373256192'), null); assert.equal(rows.length, 2); assert.equal(h.counters().videoLookups, 0);
     assert.equal(h.context.etiqStorageFailed, true); assert.equal(h.counters().stopped, 1); assert.equal(h.nodes.get('etiq-storage-warning').hidden, false);
   });
-  await test('successful persistence resumes the paused scanner with every pending photo intact', () => {
+  await test('successful persistence resumes the paused scanner with every pending photo intact', async () => {
     const rows = [{ clientScanId: 'one', b64: 'first-photo' }, { clientScanId: 'two', b64: 'second-photo' }];
-    const h = photoHarness(rows); h.localStorage.fail = true; h.api.etiqSave();
-    h.localStorage.fail = false; assert.equal(h.api.etiqSave(), true);
-    assert.deepEqual(JSON.parse(h.localStorage.getItem('etiqFila')), rows); assert.equal(h.context.etiqStorageFailed, false);
+    const h = photoHarness(rows); h.localStorage.fail = true; await h.api.etiqSave();
+    h.localStorage.fail = false; assert.equal(await h.api.etiqSave(), true);
+    assert.deepEqual(JSON.parse(JSON.stringify(await h.api.read())), rows); assert.equal(h.context.etiqStorageFailed, false);
     assert.equal(h.counters().reset, 1); assert.equal(h.nodes.get('etiq-storage-warning').hidden, true);
-    assert.match(html, /canRead: \(\) => !etiqStorageFailed && !etiqPausado/);
+    assert.match(html, /canRead: \(\) => etiqStorageReady && !etiqStorageFailed && !etiqPausado/);
   });
-  await test('a stale tab keeps another tab new photo and cannot restore its completed copy as pending', () => {
+  await test('a stale tab keeps another tab new photo and cannot restore its completed copy as pending', async () => {
     const old = { clientScanId: 'A', roundId: 'round-one', b64: 'photo-A', st: 'fila' };
     const newcomer = { clientScanId: 'B', roundId: 'round-one', b64: 'photo-B', st: 'fila' };
     const h = photoHarness([{ ...old }], JSON.stringify([{ ...old, complete: true, capId: 'saved-A', b64: '' }, newcomer]));
-    assert.equal(h.api.etiqSave(), true); const saved = JSON.parse(h.localStorage.getItem('etiqFila'));
+    assert.equal(await h.api.etiqSave(), true); const saved = JSON.parse(JSON.stringify(await h.api.read()));
     assert.equal(saved.length, 2); assert.equal(saved[0].complete, true); assert.equal(saved[0].capId, 'saved-A'); assert.deepEqual(saved[1], newcomer);
     assert.equal(h.context.etiqFila.length, 2);
   });

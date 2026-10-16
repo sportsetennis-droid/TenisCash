@@ -313,6 +313,7 @@
 
 <script src="/scanner-confirm.js?v=20260915-resume-2"></script><script src="/scanner-view.js?v=20260915-fullcamera-2"></script><script src="/scanner-round.js?v=20261002-actions-1"></script><script src="/bipar-transfer.js?v=20261002-actions-1"></script><script src="/bipar-actions.js?v=20261015-pending-safety-1"></script>
 <script src="/vendor/barcode/zxing-reader-3.1.4.js"></script><script src="/scanner-auto.js?v=20260915-resume-2"></script><script src="/scanner-regions.js?v=20260914-worker-1"></script><script src="/scanner-ocr.js?v=20260914-auto-3"></script>
+<script src="/scanner-photo-storage.js?v=20261016-photo-idb-1"></script>
 <script>
   const STORAGE_LOJA = 'sports_tennis_bipar_loja';
   const STORAGE_VEND = 'sports_tennis_bipar_vendedor';
@@ -808,7 +809,8 @@
   // Câmera contínua: lê o código de barras em tempo real (zxing), captura o frame sozinho,
   // SALVA em fila com confirmação (✅) e segue pro próximo — o reconhecimento (visão no servidor)
   // roda em background e o resultado aparece na listinha (poll). Nada trava o fluxo.
-  let etiqFila = []; try { etiqFila = etiqReadStored(); } catch (_) {}
+  let etiqFila = [], etiqStorageReady = false;
+  const etiqPhotoStorage = window.ScannerPhotoStorage?.create();
   let etiqStorageFailed = false;
   // A fila visual do modal vive em memória. Depois de recarregar a página,
   // libera a reentrada dos tamanhos ainda pendentes via /etiqueta-status.
@@ -821,79 +823,75 @@
       notice = document.createElement('div'); notice.id = 'etiq-storage-warning';
       notice.style.cssText = 'position:fixed;left:12px;right:12px;top:12px;z-index:100001;background:#fff3cd;color:#442900;border:2px solid #9a6700;border-radius:12px;padding:12px;font-weight:700';
       const text = document.createElement('div');
-      text.textContent = 'A última foto ainda não foi salva no navegador. As anteriores foram preservadas. Mantenha esta página aberta enquanto tentamos enviar e salvar; novas capturas estão pausadas.';
+      text.textContent = 'Não foi possível salvar a última foto neste aparelho. As anteriores estão preservadas. Mantenha esta página aberta e toque abaixo para tentar salvar e enviar; novas capturas estão pausadas.';
       const retry = document.createElement('button'); retry.type = 'button'; retry.textContent = 'Tentar salvar e enviar novamente';
-      retry.onclick = () => { etiqSave(); enviarFila(); };
+      retry.onclick = async () => { retry.disabled = true; try { await etiqSave(); await enviarFila(); } finally { retry.disabled = false; } };
       notice.append(text, retry); document.body.appendChild(notice);
     }
     if (notice) notice.hidden = !etiqStorageFailed;
   }
   function etiqIdentity(item) { return item.clientScanId ? 'id:' + (item.roundId || '') + ':' + item.clientScanId : item.lid ? 'lid:' + item.lid : 'legacy:' + JSON.stringify(item); }
-  function etiqCheckpoints() {
-    const rows = [];
-    for (let index = 0; index < localStorage.length; index++) {
-      const key = localStorage.key(index);
-      if (!key?.startsWith('tc_bipe_photo_checkpoint_v1:')) continue;
-      try { const data = JSON.parse(localStorage.getItem(key)); if (data?.identity && data.fields && typeof data.fields === 'object') rows.push({ key, ...data }); } catch (_) {}
+  function etiqCopy(item) { return JSON.parse(JSON.stringify(item)); }
+  function etiqMergeStored(rows) {
+    const known = new Map(etiqFila.map(item => [etiqIdentity(item), item]));
+    for (const row of rows) {
+      const identity = etiqIdentity(row), current = known.get(identity);
+      if (!current) {
+        etiqFila.push(row); known.set(identity, row);
+        etiqSave.baseline.set(identity, etiqCopy(row));
+        continue;
+      }
+      const base = etiqSave.baseline.get(identity) || {};
+      // OCR, network replies and a newer frame can change this object while
+      // IDB commits. Merge only fields which have not changed locally.
+      const dirtyPhoto = JSON.stringify(current.b64) !== JSON.stringify(base.b64);
+      for (const [key, value] of Object.entries(row)) {
+        if ((key === 'b64' || key === 'photoRef') && dirtyPhoto) continue;
+        if (JSON.stringify(current[key]) === JSON.stringify(base[key])) current[key] = value;
+      }
+      etiqSave.baseline.set(identity, etiqCopy(row));
     }
-    return rows.sort((a, b) => a.at - b.at || a.key.localeCompare(b.key));
-  }
-  function etiqReadStored() {
-    let saved = []; try { saved = JSON.parse(localStorage.getItem('etiqFila') || '[]'); } catch (_) {}
-    const rows = new Map((Array.isArray(saved) ? saved : []).map(item => [etiqIdentity(item), { ...item }]));
-    for (const checkpoint of etiqCheckpoints()) {
-      const row = rows.get(checkpoint.identity) || {};
-      // Confirmation by the server and an explicit cancelled repeat are terminal.
-      // Old pending snapshots must not restore an upload after either event.
-      if (row.complete && row.capId && !checkpoint.fields.complete) continue;
-      if (row.st === 'revisao' && row.msg === 'Repetição cancelada — não contada' && checkpoint.fields.st === 'fila') continue;
-      Object.assign(row, checkpoint.fields); rows.set(checkpoint.identity, row);
-    }
-    return [...rows.values()];
   }
   function etiqSave() {
-    // Independent, append-only updates survive another tab replacing the shared
-    // queue between getItem and setItem. Deltas only contain locally changed
-    // fields, so an old ACK cannot erase another tab's photo, OCR or capture ID.
-    const previous = etiqSave.baseline || new Map();
-    const checkpoints = etiqCheckpoints();
-    const checkpointIds = new Set(checkpoints.map(item => item.identity));
-    let stamp = checkpoints.reduce((latest, row) => Math.max(latest, Number(row.at) || 0), Date.now());
-    const wasBlocked = etiqStorageFailed;
-    try {
-      for (const item of etiqFila) {
-        const identity = etiqIdentity(item), base = previous.get(identity);
-        const fields = Object.fromEntries(Object.entries(item).filter(([key, value]) => !base || JSON.stringify(base[key]) !== JSON.stringify(value)));
-        if (!checkpointIds.has(identity)) Object.assign(fields, item);
-        if (!Object.keys(fields).length) continue;
-        const terminal = item.complete && item.capId;
-        const existing = terminal ? checkpoints.find(row => row.identity === identity) : null;
-        const unique = globalThis.crypto?.randomUUID?.() || Date.now().toString(36) + Math.random().toString(36).slice(2);
-        const key = existing?.key || 'tc_bipe_photo_checkpoint_v1:' + encodeURIComponent(identity) + ':' + unique;
-        localStorage.setItem(key, JSON.stringify({ identity, at: ++stamp, fields: terminal ? { ...item, b64: '' } : fields }));
-        // Completed captures already have their photograph on the server. Keep
-        // their terminal record while freeing older local image checkpoints.
-        if (terminal) for (const old of checkpoints) if (old.identity === identity && old.key !== key) localStorage.removeItem(old.key);
-      }
-      const known = new Map(etiqFila.map(item => [etiqIdentity(item), item]));
-      for (const row of etiqReadStored()) {
-        const current = known.get(etiqIdentity(row));
-        if (current) Object.assign(current, row); else { etiqFila.push(row); known.set(etiqIdentity(row), row); }
-      }
-    // Never trim an unsaved or unresolved physical piece. Only completed
-    // server-backed history may leave the browser's recent-history window.
-    const recentComplete = new Set(etiqFila.filter(item => item.complete && item.capId).slice(-30));
-    const retained = etiqFila.filter(item => !item.complete || !item.capId || recentComplete.has(item));
-      localStorage.setItem('etiqFila', JSON.stringify(retained)); etiqStorageFailed = false;
-      etiqSave.baseline = new Map(etiqFila.map(item => [etiqIdentity(item), JSON.parse(JSON.stringify(item))]));
-    }
-    catch (_) { etiqStorageFailed = true; etiqAuto?.stop(); }
-    etiqStorageNotice();
-    if (wasBlocked && !etiqStorageFailed && !etiqPausado) etiqAuto?.reset();
-    etiqFila.forEach(item => window.ScannerTransfer?.update(item, {saved:!!item.capId, bipeId:item.bipeId || null}));
-    return !etiqStorageFailed;
+    const run = etiqSave.queue.catch(() => {}).then(async () => {
+      const wasBlocked = etiqStorageFailed;
+      try {
+        await etiqRestorePromise;
+        if (!etiqPhotoStorage) throw new Error('Armazenamento de fotos não carregado');
+        if (!etiqStorageReady) { etiqMergeStored(await etiqPhotoStorage.read()); etiqStorageReady = true; }
+        await etiqPhotoStorage.migrateLegacy();
+        const snapshot = etiqFila.map(etiqCopy);
+        for (const item of snapshot) {
+          const identity = etiqIdentity(item), base = etiqSave.baseline.get(identity);
+          const fields = Object.fromEntries(Object.entries(item).filter(([key, value]) => !base || JSON.stringify(base[key]) !== JSON.stringify(value)));
+          if (!Object.keys(fields).length) continue;
+          const saved = await etiqPhotoStorage.append(identity, fields);
+          // Advance after each committed piece, even if the next piece fails.
+          // A retry cannot duplicate the already durable full photo.
+          etiqSave.baseline.set(identity, { ...(base || {}), ...etiqCopy(saved) });
+          const current = etiqFila.find(row => etiqIdentity(row) === identity);
+          if (saved.photoRef && current && current.b64 === item.b64) current.photoRef = saved.photoRef;
+        }
+        etiqMergeStored(await etiqPhotoStorage.read());
+        etiqStorageFailed = false;
+      } catch (_) { etiqStorageFailed = true; etiqAuto?.stop(); }
+      etiqStorageNotice();
+      if (wasBlocked && !etiqStorageFailed && !etiqPausado) etiqAuto?.reset();
+      etiqFila.forEach(item => window.ScannerTransfer?.update(item, { saved: !!item.capId, bipeId: item.bipeId || null }));
+      return !etiqStorageFailed;
+    });
+    etiqSave.queue = run; return run;
   }
-  etiqSave.baseline = new Map(etiqFila.map(item => [etiqIdentity(item), JSON.parse(JSON.stringify(item))]));
+  etiqSave.baseline = new Map(); etiqSave.queue = Promise.resolve();
+  const etiqRestorePromise = Promise.resolve().then(async () => {
+    if (!etiqPhotoStorage) throw new Error('Armazenamento de fotos não carregado');
+    etiqMergeStored(await etiqPhotoStorage.read());
+    etiqFila.forEach(item => { if (item.needsSize && !item.sizeDismissed) item.sizeQueued = false; });
+    etiqStorageReady = true;
+  }).catch(() => { etiqStorageFailed = true; etiqStorageNotice(); });
+  window.addEventListener('storage', event => {
+    if (event.key === 'etiqFila' || event.key?.startsWith('tc_bipe_photo_')) etiqSave();
+  });
   function etiqBeep() {
     try { const a = new (window.AudioContext || window.webkitAudioContext)(); const o = a.createOscillator(); const g = a.createGain(); o.connect(g); g.connect(a.destination); o.frequency.value = 1250; g.gain.value = 0.18; o.start(); setTimeout(() => { o.stop(); a.close(); }, 130); } catch (_) {}
     try { navigator.vibrate && navigator.vibrate(90); } catch (_) {}
@@ -902,6 +900,9 @@
   window.fotografarEtiqueta = async function () {
     if (window.BiparActions && !window.BiparActions.isInventory()) return window.BiparActions.openCamera();
     const captureMode = window.BiparActions?.version();
+    await etiqRestorePromise;
+    if (!etiqStorageReady || etiqStorageFailed) await etiqSave();
+    if (window.BiparActions && (!window.BiparActions.isInventory() || window.BiparActions.version() !== captureMode)) return;
     try{window.ScannerRound.requireRound(document.getElementById('loja').value)}catch(e){alert(e.message);return;}
     if (!document.getElementById('loja').value) { alert('Selecione loja e vendedor primeiro!'); return; }
     if (!window.ZXing) {
@@ -944,7 +945,7 @@
         },
         decode: frame => window.ScannerAuto.decodeInWorker(frame),
         recognize: frame => window.ScannerOCR.recognize(frame),
-        canRead: () => !etiqStorageFailed && !etiqPausado && !etiqBusy && !!document.getElementById('etiq-overlay'),
+        canRead: () => etiqStorageReady && !etiqStorageFailed && !etiqPausado && !etiqBusy && !!document.getElementById('etiq-overlay'),
         onHint: message => { const h=document.getElementById('etiq-hint');if(h)h.textContent=message; },
         onCapture: prepared => window.capturaManual(prepared)
       });
@@ -1039,7 +1040,7 @@
   };
 
   function capturarFrame(ean, prepared) {
-    if (etiqStorageFailed) { etiqStorageNotice(); return null; }
+    if (!etiqStorageReady || etiqStorageFailed) { etiqStorageNotice(); return null; }
     const video = document.getElementById('etiq-video');
     if (!video || !video.videoWidth) return null;
     const existing = etiqFila.find(x=>x.lid===etiqAtivo);
@@ -1061,7 +1062,7 @@
     c.getContext('2d').drawImage(source, 0, 0, c.width, c.height);
     c.toBlob((b) => {
       const fr = new FileReader();
-      fr.onload = () => { item.b64 = fr.result; etiqSave(); enviarFila(); };
+      fr.onload = async () => { item.b64 = fr.result; delete item.photoRef; await etiqSave(); await enviarFila(); };
       fr.readAsDataURL(b);
     }, 'image/jpeg', 0.85);
     return lid;
@@ -1073,6 +1074,11 @@
     if (etiqBusy) return; etiqBusy = true;
     let transferActivity = null;
     try {
+      await etiqRestorePromise;
+      // Retry storage recovery while paused, but never post a new photograph
+      // which exists only in memory and could be lost on reload.
+      if (!await etiqSave()) return;
+      if (window.BiparActions && (!window.BiparActions.isInventory() || window.BiparActions.version() !== captureMode)) return;
       const item = etiqFila.find((x) => x.st === 'fila' && x.b64);
       if (item) {
         transferActivity = 'camera:' + item.roundId + ':' + item.clientScanId;
@@ -1152,10 +1158,16 @@
     } finally { if (transferActivity) window.ScannerTransfer?.activity(transferActivity, null); etiqBusy = false; }
   }
 
+  let etiqStatusOffset = 0, etiqStatusBusy = false;
   async function consultarStatus() {
     if (window.BiparActions && !window.BiparActions.isInventory()) return;
-    const pend = etiqFila.filter((x) => x.capId && (!x.complete && x.st!=='revisao')).slice(-20);
-    if (!pend.length) return;
+    if (etiqStatusBusy) return;
+    const allPending = etiqFila.filter((x) => x.capId && (!x.complete && x.st !== 'revisao'));
+    if (!allPending.length) { etiqStatusOffset = 0; return; }
+    etiqStatusOffset %= allPending.length;
+    const pend = allPending.slice(etiqStatusOffset).concat(allPending.slice(0, etiqStatusOffset)).slice(0, 20);
+    etiqStatusOffset = (etiqStatusOffset + pend.length) % allPending.length;
+    etiqStatusBusy = true;
     try {
       const r = await fetch('/api/stocktake/etiqueta-status?ids=' + pend.map((x) => x.capId).join(','));
       const d = await r.json();
@@ -1163,7 +1175,7 @@
         const it = etiqFila.find((x) => x.capId === row.id);
         if (it && it.st!=='fila' && row.status !== 'processando') {
           it.complete = row.complete===true;
-          if(it.complete)it.b64='';
+          // Keep the original: capId may belong to an earlier recapture.
           if(row.barcode)it.ean=row.barcode;
           if(row.bipeId)it.bipeId=row.bipeId;
           it.st = row.status;
@@ -1178,8 +1190,8 @@
           }
         }
       }
-      etiqSave(); renderEtiqLista();
-    } catch (_) {}
+      await etiqSave(); renderEtiqLista();
+    } catch (_) {} finally { etiqStatusBusy = false; }
   }
 
   function renderEtiqLista() {

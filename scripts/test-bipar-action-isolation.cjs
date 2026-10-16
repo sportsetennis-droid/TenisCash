@@ -13,7 +13,7 @@ function setup(code, overrides = {}) {
     console, Promise, Map, Set, JSON, AbortController, FormData,
     window: { BiparActions: { isInventory: () => mode.inventory, version: () => mode.version, refresh() {}, storesReady() {} }, ScannerRound: { refresh: async () => {} }, ScannerTransfer: { activity() {} } },
     document: { getElementById: node }, localStorage: { getItem: () => null },
-    stores: [], sellers: [], atualizarStatus() {}, etiqSave() {}, renderEtiqLista() {},
+    stores: [], sellers: [], atualizarStatus() {}, etiqRestorePromise: Promise.resolve(), etiqSave: async () => true, renderEtiqLista() {},
     fetch: async path => { writes.push(path); return { json: async () => ({ stores: [], sellers: [] }) }; },
     ...overrides,
   });
@@ -47,11 +47,23 @@ function setup(code, overrides = {}) {
   const item = { st: 'fila', b64: 'data:image/jpeg;base64,AA==', roundId: 'round-a', storeId: 'store-a', sellerId: 'seller-a', sellerName: 'Operador', clientScanId: 'scan-a', ean: '7891234567890', ocrDone: true };
   const d = setup(queueCode, { etiqBusy: false, etiqFila: [item], fetch: async path => { calls.push(path); return { blob: () => photo.promise }; } });
   const sending = vm.runInContext('enviarFila()', d.context);
-  await Promise.resolve(); d.mode.inventory = false; d.mode.version++;
+  for (let turn = 0; !calls.length && turn < 10; turn++) await Promise.resolve();
+  assert.equal(calls.length, 1, 'photo must reach blob decoding before changing mode');
+  d.mode.inventory = false; d.mode.version++;
   photo.resolve(new Blob(['photo'])); await sending;
   assert.deepEqual(calls, [item.b64], 'switch during photo decode must prevent inventory POST');
   assert.equal(item.st, 'fila', 'original photograph stays queued for inventory');
   assert.equal(d.context.etiqBusy, false, 'busy must release after guarded return');
+
+  const cameraCode = section('  window.fotografarEtiqueta = async function', '  window.fecharScanner = function');
+  const restoring = deferred();
+  const g = setup(cameraCode, { etiqRestorePromise: restoring.promise, etiqStorageReady: true, etiqStorageFailed: false });
+  let roundChecks = 0;
+  g.context.window.ScannerRound.requireRound = () => { roundChecks++; };
+  const opening = g.context.window.fotografarEtiqueta();
+  g.mode.inventory = false; g.mode.version++;
+  restoring.resolve(); await opening;
+  assert.equal(roundChecks, 0, 'switch during durable-photo restoration must not open the legacy camera');
 
   const renderCode = section('  function renderEtiqLista()', '  function comprimirFoto');
   const e = setup(renderCode, { document: { getElementById: () => { throw Error('legacy camera must not access new camera elements'); } } });
