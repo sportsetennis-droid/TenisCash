@@ -27,29 +27,55 @@
     // fails/quota is exhausted, do not silently split newer data across backends.
     const fallback = !indexed;
 
+    function forgetConnection(connection) {
+      // A delayed close/versionchange from an old connection must not discard
+      // the replacement that another retry has already opened.
+      if (database !== connection) return;
+      database = null; opened = null;
+    }
+
     async function open() {
       if (fallback) return null;
       if (database) return database;
-      if (!opened) opened = new Promise((resolve, reject) => {
-        const op = indexed.open('teniscash-scanner-photos', 1);
-        let expired = false;
-        const timer = setTimeout(() => { expired = true; opened = null; reject(Error('O armazenamento de fotos não respondeu. Tente novamente.')); }, timeoutMs);
-        op.onupgradeneeded = () => {
-          const db = op.result;
-          if (!db.objectStoreNames.contains('photos')) db.createObjectStore('photos', { keyPath: 'ref' });
-          if (!db.objectStoreNames.contains('events')) db.createObjectStore('events', { keyPath: 'key' });
-        };
-        op.onsuccess = () => {
-          clearTimeout(timer);
-          if (expired) { op.result.close(); return; }
-          database = op.result;
-          database.onversionchange = () => { database.close(); database = null; opened = null; };
-          resolve(database);
-        };
-        op.onerror = () => { clearTimeout(timer); opened = null; reject(op.error || Error('Não foi possível abrir o armazenamento de fotos')); };
-        op.onblocked = () => { clearTimeout(timer); expired = true; opened = null; reject(Error('Armazenamento de fotos ocupado por outra versão da página')); };
-      });
+      if (!opened) {
+        const pending = new Promise((resolve, reject) => {
+          const op = indexed.open('teniscash-scanner-photos', 1);
+          let expired = false;
+          const timer = setTimeout(() => { expired = true; reject(Error('O armazenamento de fotos não respondeu. Tente novamente.')); }, timeoutMs);
+          op.onupgradeneeded = () => {
+            const db = op.result;
+            if (!db.objectStoreNames.contains('photos')) db.createObjectStore('photos', { keyPath: 'ref' });
+            if (!db.objectStoreNames.contains('events')) db.createObjectStore('events', { keyPath: 'key' });
+          };
+          op.onsuccess = () => {
+            clearTimeout(timer);
+            if (expired) { op.result.close(); return; }
+            const connection = op.result;
+            database = connection;
+            connection.onclose = () => forgetConnection(connection);
+            connection.onversionchange = () => { forgetConnection(connection); connection.close(); };
+            resolve(connection);
+          };
+          op.onerror = () => { clearTimeout(timer); expired = true; reject(op.error || Error('Não foi possível abrir o armazenamento de fotos')); };
+          op.onblocked = () => { clearTimeout(timer); expired = true; reject(Error('Armazenamento de fotos ocupado por outra versão da página')); };
+        });
+        opened = pending;
+        pending.catch(() => { if (opened === pending) opened = null; });
+      }
       return opened;
+    }
+
+    async function beginTransaction(stores, mode) {
+      const connection = await open();
+      try { return connection.transaction(stores, mode); }
+      catch (error) {
+        if (error?.name !== 'InvalidStateError') throw error;
+        // Some browsers expose a closed connection before dispatching close.
+        // Retry only transaction creation: no writes have started at this point.
+        forgetConnection(connection);
+        try { connection.close(); } catch (_) {}
+        return (await open()).transaction(stores, mode);
+      }
     }
 
     function isMirror(row) {
@@ -117,7 +143,7 @@
 
     async function migrateOnce() {
       if (fallback) return;
-      const db = await open();
+      await open();
       for (const source of legacySources()) {
         const prepared = [];
         if (!source.events.length) continue;
@@ -128,7 +154,7 @@
           prepared.push({ event: { ...event, key: 'migrated:' + source.key + ':' + sourceRef + ':' + (event.index || 0), fields: data.fields }, images: data.images });
         }
         if (!prepared.length) continue;
-        const tx = db.transaction(['events', 'photos'], 'readwrite'), done = completed(tx, timeoutMs);
+        const tx = await beginTransaction(['events', 'photos'], 'readwrite'), done = completed(tx, timeoutMs);
         for (const data of prepared) {
           for (const image of data.images) tx.objectStore('photos').put(image);
           const existing = tx.objectStore('events').get(data.event.key);
@@ -166,14 +192,14 @@
     async function read() {
       if (fallback) return merge(legacySources().flatMap(source => source.events.map(event => ({ ...event, key: source.key }))));
       await migrateLegacy();
-      const db = await open(), tx = db.transaction('events', 'readonly'), done = completed(tx, timeoutMs);
+      const tx = await beginTransaction('events', 'readonly'), done = completed(tx, timeoutMs);
       const [events] = await Promise.all([request(tx.objectStore('events').getAll()), done]);
       const merged = merge(events), needed = [...new Set(merged.map(row => row.photoRef).filter(Boolean))];
       // Retain every original on disk without loading superseded recaptures
       // into RAM on each queue poll. Only the current row images are hydrated.
       let images = [];
       if (needed.length) {
-        const photosTx = db.transaction('photos', 'readonly'), photosDone = completed(photosTx, timeoutMs);
+        const photosTx = await beginTransaction('photos', 'readonly'), photosDone = completed(photosTx, timeoutMs);
         [images] = await Promise.all([Promise.all(needed.map(ref => request(photosTx.objectStore('photos').get(ref)))), photosDone]);
       }
       images = images.filter(Boolean);
@@ -196,8 +222,8 @@
         const event = { key: FALLBACK + uuid(), identity: id, at, fields: copy(fields) };
         storage.setItem(event.key, JSON.stringify(event)); return copy(fields);
       }
-      const db = await open(), prepared = await prepare(fields);
-      const tx = db.transaction(['events', 'photos'], 'readwrite'), done = completed(tx, timeoutMs);
+      const prepared = await prepare(fields);
+      const tx = await beginTransaction(['events', 'photos'], 'readwrite'), done = completed(tx, timeoutMs);
       // All writers of this store serialize at the transaction boundary. Choose
       // a monotonic event clock inside that transaction, including other tabs.
       const op = tx.objectStore('events').getAll();
