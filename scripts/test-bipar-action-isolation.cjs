@@ -10,7 +10,7 @@ function setup(code, overrides = {}) {
   const writes = [], nodes = new Map();
   function node(id) { if (!nodes.has(id)) nodes.set(id, { value: id === 'loja' ? 'store-a' : '', innerHTML: 'original', textContent: 'original', style: {}, className: '' }); return nodes.get(id); }
   const context = vm.createContext({
-    console, Promise, Map, Set, JSON, AbortController, FormData,
+    console, Promise, Map, Set, JSON, AbortController, FormData, setTimeout, clearTimeout,
     window: { BiparActions: { isInventory: () => mode.inventory, version: () => mode.version, refresh() {}, storesReady() {} }, ScannerRound: { refresh: async () => {} }, ScannerTransfer: { activity() {} } },
     document: { getElementById: node }, localStorage: { getItem: () => null },
     stores: [], sellers: [], atualizarStatus() {}, etiqRestorePromise: Promise.resolve(), etiqSave: async () => true, renderEtiqLista() {},
@@ -55,6 +55,31 @@ function setup(code, overrides = {}) {
   assert.equal(item.st, 'fila', 'original photograph stays queued for inventory');
   assert.equal(d.context.etiqBusy, false, 'busy must release after guarded return');
 
+  const timers = new Map(); let timerId = 0, pendingPosts = 0, replyStale = false;
+  const retryItem = { ...item, photoRevision: 1 };
+  const outbox = setup(queueCode, {
+    etiqBusy: false, etiqFila: [retryItem], etiqStartOcr() {},
+    setTimeout(fn, delay) { const id = ++timerId; timers.set(id, { fn, delay }); return id; },
+    clearTimeout(id) { timers.delete(id); },
+    fetch: async url => {
+      if (url.startsWith('data:')) return { blob: async () => new Blob(['photo']) };
+      pendingPosts++; return { ok: true, status: 200, json: async () => replyStale ? ({ capId: 'saved-photo', photoRevision: 2, photoSaved: true, stale: true }) : ({ capId: 'saved-photo', photoRevision: 1, photoSaved: true, pending: true, error: 'Temporary registration failure' }) };
+    },
+  });
+  await vm.runInContext('enviarFila()', outbox.context);
+  assert.equal(retryItem.st, 'fila', 'saved photograph with pending barcode registration must stay in the outbox');
+  assert.equal(retryItem.capId, 'saved-photo'); assert.deepEqual([...timers.values()].map(t => t.delay), [2000], 'pending registration waits before retry');
+  await vm.runInContext('enviarFila()', outbox.context);
+  assert.equal(pendingPosts, 2); assert.deepEqual([...timers.values()].map(t => t.delay), [4000], 'persistent failure increases the backoff rather than looping');
+  replyStale = true; vm.runInContext('enviarFila.retryDelay=2000', outbox.context);
+  await vm.runInContext('enviarFila()', outbox.context);
+  assert.deepEqual([...timers.values()].map(t => t.delay), [2000], 'newer server revision is not progress and cannot create a 100ms retry loop');
+  await vm.runInContext('enviarFila()', outbox.context);
+  assert.deepEqual([...timers.values()].map(t => t.delay), [4000], 'stale server acknowledgements retain bounded backoff');
+  assert.equal(retryItem.photoRevision, 1); assert.equal(retryItem.b64, item.b64); assert.equal(retryItem.st, 'fila', 'local original remains recoverable');
+  const waiting = [...timers.values()][0]; outbox.mode.inventory = false; outbox.mode.version++; waiting.fn();
+  await Promise.resolve(); assert.equal(pendingPosts, 4, 'changing action prevents scheduled inventory delivery');
+
   const cameraCode = section('  window.fotografarEtiqueta = async function', '  window.fecharScanner = function');
   const restoring = deferred();
   const g = setup(cameraCode, { etiqRestorePromise: restoring.promise, etiqStorageReady: true, etiqStorageFailed: false });
@@ -71,5 +96,5 @@ function setup(code, overrides = {}) {
   const statusCode = section('  async function consultarStatus()', '  function renderEtiqLista');
   const f = setup(statusCode); f.mode.inventory = false; await vm.runInContext('consultarStatus()', f.context);
   assert.equal(f.writes.length, 0, 'action mode must not poll inventory captures');
-  console.log('PASS: late store/seller responses, switch during round/blob awaits, preserved inventory queue, legacy camera rendering/poll isolation');
+  console.log('PASS: late store/seller responses, mode isolation, pending registration outbox, bounded retry backoff, and stopped delivery after action change');
 })().catch(error => { console.error(error); process.exitCode = 1; });

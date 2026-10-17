@@ -24,6 +24,7 @@ const { isWebsiteBarcode, WEBSITE_BARCODE_ERROR, WEBSITE_BARCODE_ERROR_CODE } = 
 const router = express.Router();
 const rounds = require('../services/stocktakeRounds');
 const {captureComplete}=require('../services/scannerCompletion');
+const capturePhotos = require('../services/scannerCapturePhoto');
 router.use('/rounds', require('./stocktakeRounds'));
 
 
@@ -717,12 +718,18 @@ router.post('/capture',
 // O VÍNCULO TARDIO TAMBÉM É CONTAGEM (dono 2026-06-11: cada foto de etiqueta = 1 peça na mão).
 // Captura vinculada pela visão/cron SEM bipe síncrono (câmera não leu o código na hora) ganha o
 // StocktakeBipe aqui — senão a peça some do ranking e do físico. bipedAt = hora da foto (dia certo).
-async function garantirBipeDaCaptura(capId, pid, psId, barcodePref) {
+async function garantirBipeDaCaptura(capId, pid, psId, barcodePref, expectedPhoto) {
   try {
     return await prisma.$transaction(async tx => {
       await tx.$queryRaw`SELECT id FROM "ProductCapture" WHERE id = ${capId} FOR UPDATE`;
       const cap = await tx.productCapture.findUnique({ where: { id: capId } });
       if (!cap || cap.excludedAt || cap.status==='descartado') return null;
+      // New manual captures acquire their first bipe exclusively through the
+      // endpoint's duplicate-confirmation gate, never through OCR or the cron.
+      if (capturePhotos.revisionOf(cap.note) && !cap.bipeId) return null;
+      if (expectedPhoto && (cap.photo !== expectedPhoto.photo || capturePhotos.revisionOf(cap.note) !== expectedPhoto.photoRevision)) return null;
+      // A reference/size or a saved photograph is not an actually read barcode.
+      if (!cap.barcode || !barcodePref || !barcodeVariants(cap.barcode).includes(barcodePref)) return null;
       if (cap.roundId) {
         await tx.$queryRaw`SELECT id FROM "StocktakeRound" WHERE id = ${cap.roundId} FOR SHARE`;
         const round=await tx.stocktakeRound.findUnique({where:{id:cap.roundId}});
@@ -731,7 +738,7 @@ async function garantirBipeDaCaptura(capId, pid, psId, barcodePref) {
       const ps = await tx.productSize.findUnique({ where: { id: psId }, include: { product: true } });
       if (!ps || ps.productId !== pid) return null;
       let bipeId = cap.bipeId;
-      const data = { barcode: barcodePref || cap.barcode || ps.barcode || 'ETIQ',
+      const data = { barcode: barcodePref,
         productId: ps.productId, productSizeId: ps.id, productName: ps.product.name,
         productSize: ps.size, productBrand: ps.product.brand, found: true, duplicate: false };
       if (bipeId) {
@@ -771,41 +778,23 @@ function parseJsonSeguro(t) {
 }
 
 async function processarEtiqueta(capId, photo, eanLocal, meta) {
+  const capture = await prisma.productCapture.findUnique({ where: { id: capId } });
+  if (!capture || capture.excludedAt || capture.status === 'descartado') return;
+  if (capturePhotos.revisionOf(capture.note) && !capture.bipeId) return;
+  if (meta?.photoRevision && (capturePhotos.revisionOf(capture.note) !== meta.photoRevision || capture.photo !== photo)) return;
+  if (!capture.barcode) return { vinculado: false, mensagem: 'Foto salva. Aguardando código de barras.' };
   const lido = parseScannerText(meta?.ocrText) || meta?.previousRead || null;
-  let ean = eanLocal || null;
-
-  // ZXING-FIRST (grátis): se a câmera não trouxe o código, decodifica da própria foto (sem API paga).
-  if (!ean) {
-    try {
-      const { decodeBarcodesFromDataUri } = require('../services/barcodeDecoder');
-      const codes = await decodeBarcodesFromDataUri(photo);
-      if (codes && codes.length) {
-        let conhecido = null;
-        for (const c of codes) {
-          const v = [c, c.replace(/^0+/, ''), '0' + c];
-          if ((await prisma.productSize.count({ where: { barcode: { in: v } } })) || (await prisma.xmlFiscalItem.count({ where: { ean: { in: v } } }))) { conhecido = c; break; }
-        }
-        ean = conhecido || codes[0];
-      }
-    } catch (e) { console.warn('[etiqueta] zxing falhou:', e.message); }
-  }
-
-  // Text was read locally in the browser. Never call a paid vision provider.
-
-  let eanVisaoRejeitado = false;
-  if (!ean && lido?.ean) {
-    const candidate = String(lido.ean).replace(/\D/g, '');
-    if (validGtin(candidate)) ean = candidate;
-    else eanVisaoRejeitado = true;
-  }
-  const sku = lido?.sku ? String(lido.sku).trim().toUpperCase() : null;
-  const match = ean ? await learnScannerBarcode(prisma, { barcode: ean, read: lido,
-    size: normalizeScannedSize(lido?.tamanho) }) : await matchScannerReference(prisma,lido,normalizeScannedSize(lido?.tamanho));
+  const ean = eanLocal || capture.barcode;
+  // An unreadable photograph stays saved and pending. Never substitute SKU,
+  // catalogue barcode or OCR digits for the barcode actually decoded/received.
+  if (!ean || !capture.barcode) return { vinculado: false, mensagem: 'Foto salva. Aguardando código de barras.' };
+  const match = await learnScannerBarcode(prisma, { barcode: ean, read: lido,
+    size: normalizeScannedSize(lido?.tamanho) });
   let vinculado = match.reason === 'matched';
   let bipesCasados = 0;
   const cardNome = match.name, matchedProductId = match.productId, psId = match.productSizeId;
   if (vinculado && psId) {
-    const linked = await garantirBipeDaCaptura(capId, matchedProductId, psId, ean || sku || null);
+    const linked = await garantirBipeDaCaptura(capId, matchedProductId, psId, ean, meta?.photoRevision ? { photo, photoRevision: meta.photoRevision } : null);
     bipesCasados = linked ? 1 : 0;
     if (!linked) vinculado = false;
   }
@@ -814,44 +803,47 @@ async function processarEtiqueta(capId, photo, eanLocal, meta) {
     : scannerPendingMessage(meta?.ocrText, lido, match.reason);
   const savedRead = lido || { ocrStatus: meta?.ocrText ? 'validation_rejected' : 'no_text',
     preview: String(meta?.ocrText || '').slice(0, 120) };
-  await prisma.productCapture.update({ where: { id: capId }, data: {
+  const current = await prisma.productCapture.findUnique({ where: { id: capId } });
+  if (meta?.photoRevision && (capturePhotos.revisionOf(current?.note) !== meta.photoRevision || current?.photo !== photo)) return;
+  const data = {
     barcode: ean || null,
-    note: ('etiqueta ' + mensagem + ' ' + JSON.stringify(savedRead)).slice(0, 480),
+    note: capturePhotos.photoNote(current?.note, 'etiqueta ' + mensagem + ' ' + JSON.stringify(savedRead)),
     status: vinculado ? 'vinculado' : 'pendente',
     matchedProductId: matchedProductId || null,
     resolvedAt: new Date(),
-  } }).catch((e) => console.warn('[etiqueta] update captura:', e.message));
+  };
+  // Compare-and-set protects a newer frame accepted while this OCR ran.
+  if (meta?.photoRevision) await prisma.productCapture.updateMany({ where: { id: capId, photo, note: current.note }, data });
+  else await prisma.productCapture.update({ where: { id: capId }, data });
   return { vinculado, mensagem };
 }
 
 router.post('/etiqueta',
   (req, res, next) => captureUpload.single('file')(req, res, (err) => (err ? res.status(400).json({ error: err.message }) : next())),
   async (req, res) => {
+    let savedPhotoAck = null;
     try {
       if (!req.file) return res.status(400).json({ error: 'sem foto' });
-      const { storeId, sellerId, sellerName, eanLocal, clientScanId, ocrText, roundId, repeatConfirmedCount } = req.body || {};
+      const { storeId, sellerId, sellerName, eanLocal, clientScanId, ocrText, roundId, repeatConfirmedCount, photoRevision } = req.body || {};
       await rounds.roundForScan(prisma,storeId,roundId);
       const key=rounds.scanKey(roundId,clientScanId);
       const photo = await shrinkPhoto(req.file.buffer);
       let eanCam = eanLocal ? String(eanLocal).replace(/\D/g, '') : null;
-      if(!eanCam){const codes=await require('../services/barcodeDecoder').decodeBarcodesFromDataUri(photo);if(codes?.length===1)eanCam=codes[0];}
-      if(!eanCam)return res.status(422).json({barcodeRequired:true,error:'Falta ler o código de barras. Continue com a mesma etiqueta; ainda não foi contada.'});
-      // A retry belongs to the same physical piece: never create another capture/bipe.
-      const previousCapture = await prisma.productCapture.findUnique({where:{scanKey:key}});
-      if (previousCapture) {
-        if(previousCapture.storeId!==storeId || previousCapture.roundId!==roundId || previousCapture.excludedAt)
-          return res.status(409).json({error:'A captura não pertence a esta loja e rodada ativa.'});
-        if(eanCam && previousCapture.barcode && eanCam!==previousCapture.barcode && !barcodeVariants(eanCam).includes(previousCapture.barcode))
-          return res.status(409).json({error:'Código diferente da peça em leitura. Mantenha a mesma etiqueta ou feche o scanner para revisar.'});
-        if(previousCapture.status!=='processando') {
-          const claimed=await prisma.productCapture.updateMany({where:{id:previousCapture.id,status:previousCapture.status},data:{status:'processando'}});
-          if(claimed.count) {
-            try { await processarEtiqueta(previousCapture.id,photo,eanCam||previousCapture.barcode,{ocrText:typeof ocrText==='string'?ocrText.slice(0,4000):'',previousRead:parseJsonSeguro(previousCapture.note)}); }
-            catch(e) { await prisma.productCapture.update({where:{id:previousCapture.id},data:{status:'pendente'}}); throw e; }
-          }
-        }
-        return res.json({ok:true,salvo:true,capId:previousCapture.id});
-      }
+      // Persist first. Barcode/OCR work must never block the manual-photo ACK.
+      // Save the frame independently of barcode recognition. A pending photo
+      // belongs to this one physical piece, store and round; it is not a bipe.
+      const savedPhoto = await capturePhotos.savePhoto(prisma, { storeId, sellerId, sellerName,
+        roundId, scanKey: key, photo, barcode: eanCam, photoRevision });
+      const previousCapture = savedPhoto.capture;
+      const photoAck = { ok: true, salvo: true, photoSaved: true, capId: previousCapture.id,
+        photoRevision: savedPhoto.photoRevision, receivedPhotoRevision: savedPhoto.receivedPhotoRevision };
+      savedPhotoAck = photoAck;
+      if (savedPhoto.stale) return res.json({ ...photoAck, stale: true, barcodeRequired: !previousCapture.barcode });
+      // UPC/EAN aliases of the same read keep the barcode already tied to its
+      // scanKey, so a retry cannot conflict with its own existing bipe.
+      if (previousCapture.barcode) eanCam = previousCapture.barcode;
+      if (!eanCam) return res.json({ ...photoAck, barcodeRequired: true,
+        error: 'Foto salva. Continue com a mesma etiqueta para ler o código de barras.' });
 
       // O SCANNER TAMBÉM É CONTAGEM (dono 2026-06-11: equipe usa o scanner no lugar do bipe).
       // Código lido pela câmera => registra StocktakeBipe igual ao bipe normal: achou card -> conta no físico;
@@ -877,9 +869,10 @@ router.post('/etiqueta',
             if(!rows.length)rows.push(...await aliasRows(prisma,eanCam));
             resolution = chooseUniqueBarcodeCandidate(await resolveBarcodeRows(prisma,rows));
             ps = resolution.chosen;
-            bipe = await rounds.createRoundBipe(prisma, { requireRepeatConfirmation:true,repeatConfirmedCount,roundId,scanKey:key,
-              barcode: eanCam, storeId: storeId || null, sellerId: sellerId || null,
-              sellerName: sellerName ? String(sellerName).slice(0, 80) : null,
+            bipe = await rounds.createRoundBipe(prisma, { requireRepeatConfirmation:true,repeatConfirmedCount,captureId:previousCapture.id,roundId,scanKey:key,
+              barcode: eanCam, storeId: storeId || null, sellerId: previousCapture.sellerId || null,
+              sellerName: previousCapture.sellerName || null,
+              bipedAt: previousCapture.createdAt,
               productId: ps ? ps.productId : null, productSizeId: ps ? ps.id : null,
               productName: ps ? ps.product.name : null, productSize: ps ? ps.size : null, productBrand: ps ? ps.product.brand : null,
               found: resolution.found, duplicate: resolution.duplicate, applied: false,
@@ -910,19 +903,26 @@ router.post('/etiqueta',
             const jaBipados = await prisma.stocktakeBipe.count({ where: { barcode: eanCam,roundId,storeId,excludedAt:null } });
             if (jaBipados > ps.stock) alertaDup = '⚠ Este código já tem ' + jaBipados + ' bipes e o COMPRADO é ' + ps.stock + ' — possível DUPLICADO, confira na prateleira';
           }
-        } catch (e) { if(e.repeat)throw e;console.warn('[etiqueta] bipe do scanner falhou:', e.message); }
+        } catch (e) { if(e.status)throw e;console.warn('[etiqueta] bipe do scanner falhou:', e.message); }
       }
-      const cap = await rounds.createRoundCapture(prisma, { roundId,scanKey:key,
-        barcode: eanCam,
-        storeId: storeId || null, sellerId: sellerId || null,
-        sellerName: sellerName ? String(sellerName).slice(0, 80) : null,
-        note: 'etiqueta processando…', photo, status: 'processando', bipeId,
+      if (!bipeId) return res.json({ ...photoAck, barcodeRequired: false, pending: true,
+        error: 'Foto salva. Aguardando registrar o código; tentando novamente.' });
+      const cap = await prisma.$transaction(async tx => {
+        await tx.$queryRaw`SELECT id FROM "ProductCapture" WHERE id = ${previousCapture.id} FOR UPDATE`;
+        const current = await tx.productCapture.findUnique({ where: { id: previousCapture.id } });
+        if (current.excludedAt) return null;
+        if (current.barcode && !barcodeVariants(current.barcode).includes(eanCam)) rounds.fail('Código diferente da peça em leitura.');
+        if (current.photo !== photo || capturePhotos.revisionOf(current.note) !== savedPhoto.photoRevision) {
+          await tx.productCapture.update({ where: { id: current.id }, data: { barcode: eanCam, bipeId } });
+          return null;
+        }
+        return tx.productCapture.update({ where: { id: current.id }, data: { barcode: eanCam, bipeId,
+          note: capturePhotos.photoNote(current.note, 'etiqueta processando…'), status: 'processando' } });
       });
+      if (!cap) return res.json({ ...photoAck, stale: true });
       // responde JÁ — a pessoa segue pro próximo produto; reconhecimento roda em background
       res.json({
-        ok: true,
-        salvo: true,
-        capId: cap.id,
+        ...photoAck,
         bipou: Boolean(scanResult?.appliedToStock),
         bipeId,
         found: scanResult?.found,
@@ -934,11 +934,38 @@ router.post('/etiqueta',
         product: scanResult?.product || undefined,
         alerta: alertaDup || undefined,
       });
-      setImmediate(() => processarEtiqueta(cap.id, photo, eanCam, { ocrText: typeof ocrText === 'string' ? ocrText.slice(0, 4000) : '' })
-        .catch((e) => { console.error('[etiqueta] processar:', e.message); prisma.productCapture.update({ where: { id: cap.id }, data: { status: 'pendente', note: 'etiqueta erro-processamento' } }).catch(() => {}); }));
-    } catch (e) { console.error('[etiqueta] erro:', e.message); res.status(e.status || 500).json({ error: e.message, repeat:e.repeat }); }
+      setImmediate(() => processarEtiqueta(cap.id, photo, eanCam, { photoRevision: savedPhoto.photoRevision,
+        previousRead: parseJsonSeguro(previousCapture.note), ocrText: typeof ocrText === 'string' ? ocrText.slice(0, 4000) : '' })
+        .catch((e) => { console.error('[etiqueta] processar:', e.message); prisma.productCapture.updateMany({
+          where: { id: cap.id, photo, note: cap.note }, data: { status: 'pendente', note: capturePhotos.photoNote(cap.note, 'etiqueta erro-processamento') } }).catch(() => {}); }));
+    } catch (e) { console.error('[etiqueta] erro:', e.message); res.status(e.status || 500).json({ ...savedPhotoAck, ok: false, error: e.message, repeat:e.repeat }); }
   }
 );
+
+// An explicit cancellation of the duplicate warning keeps the evidence but
+// removes this uncounted attempt from the active round. It cannot cancel a bipe.
+router.post('/etiqueta/cancelar', async (req, res) => {
+  try {
+    const { storeId, roundId, clientScanId } = req.body || {};
+    const scanKey = rounds.scanKey(roundId, clientScanId);
+    const result = await prisma.$transaction(async tx => {
+      await rounds.roundForScan(tx, storeId, roundId, true);
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${scanKey}))::text`;
+      const capture = await tx.productCapture.findUnique({ where: { scanKey } });
+      if (!capture || capture.storeId !== storeId || capture.roundId !== roundId) rounds.fail('Captura não encontrada nesta loja e rodada.', 404);
+      if (capture.excludedAt) return capture;
+      const bipe = await tx.stocktakeBipe.findUnique({ where: { scanKey } });
+      if (capture.bipeId || bipe) rounds.fail('Esta leitura já foi registrada. Use a revisão da rodada para corrigi-la.');
+      if (!capture.barcode || !capturePhotos.revisionOf(capture.note)) rounds.fail('Esta foto permanece pendente de identificação.');
+      const previous = await tx.stocktakeBipe.count({ where: { storeId, roundId, excludedAt: null,
+        barcode: { in: barcodeVariants(capture.barcode) } } });
+      if (!previous) rounds.fail('Não há repetição anterior para cancelar nesta rodada.');
+      return tx.productCapture.update({ where: { id: capture.id }, data: { excludedAt: new Date(),
+        exclusionReason: 'Repetição cancelada pelo operador — tentativa não contada', status: 'descartado' } });
+    });
+    res.json({ ok: true, capId: result.id, excluded: true, photoSaved: !!result.photo });
+  } catch (error) { res.status(error.status || 500).json({ error: error.message }); }
+});
 
 // TRATADOR CONTÍNUO (dono 2026-06-11: "todos os scanner já vá automaticamente pro card e seja tratado").
 // A cada 10min re-tenta vincular as capturas pendentes: SKU lido ↔ linha do card ↔ cProd da NFe ↔ nome único.
@@ -948,17 +975,20 @@ async function tratarPendentesEtiqueta() {
   if(pendingEtiquetaRunning)return;pendingEtiquetaRunning=true;
   try {
     const caps = await prisma.productCapture.findMany({ where: { status: 'pendente', excludedAt:null },
-      select: { id: true, note: true, barcode: true }, take: 300 });
+      select: { id: true, note: true, barcode: true, photo: true, bipeId: true }, take: 300 });
     for (const cap of caps) {
+      if (!cap.barcode) continue; // A photo without a read barcode remains pending.
+      if (capturePhotos.revisionOf(cap.note) && !cap.bipeId) continue;
       const read = parseJsonSeguro(cap.note);
       const match = await learnScannerBarcode(prisma, { barcode: cap.barcode, read,
         size: normalizeScannedSize(read?.tamanho) });
       if (match.reason !== 'matched') continue;
-      const linked = await garantirBipeDaCaptura(cap.id, match.productId, match.productSizeId, cap.barcode);
+      const linked = await garantirBipeDaCaptura(cap.id, match.productId, match.productSizeId, cap.barcode,
+        { photo: cap.photo, photoRevision: capturePhotos.revisionOf(cap.note) });
       if (!linked) continue;
-      await prisma.productCapture.update({ where: { id: cap.id }, data: {
+      await prisma.productCapture.updateMany({ where: { id: cap.id, note: cap.note, photo: cap.photo }, data: {
         status: 'vinculado', matchedProductId: match.productId, resolvedAt: new Date(),
-        note: ('etiqueta ✓ ' + match.name + ' ' + JSON.stringify(read || {})).slice(0, 480),
+        note: capturePhotos.photoNote(cap.note, 'etiqueta ✓ ' + match.name + ' ' + JSON.stringify(read || {})),
       } });
     }
   } catch (e) { console.warn('[etiqueta-cron] erro:', e.message); } finally {pendingEtiquetaRunning=false;}
@@ -973,6 +1003,8 @@ router.get('/etiqueta-status', async (req, res) => {
     const ids = String(req.query.ids || '').split(',').filter(Boolean).slice(0, 40);
     if (!ids.length) return res.json({ rows: [] });
     const rows = await prisma.productCapture.findMany({ where: { id: { in: ids } }, select: { id: true, status: true, note: true, bipeId: true, barcode:true, excludedAt:true } });
+    const withPhotos = new Set((await prisma.productCapture.findMany({
+      where: { id: { in: ids }, AND: [{ photo: { not: null } }, { photo: { not: '' } }] }, select: { id: true } })).map(row => row.id));
     const bipeIds = rows.map((row) => row.bipeId).filter(Boolean);
     const bipeRows = bipeIds.length ? await prisma.stocktakeBipe.findMany({ where: { id: { in: bipeIds } } }) : [];
     const sizeIds = bipeRows.map((row) => row.productSizeId).filter(Boolean);
@@ -988,10 +1020,12 @@ router.get('/etiqueta-status', async (req, res) => {
       const needsSize = Boolean(bipe && ps && needsManualSize(ps.product.brand, ps));
       return {
         id: row.id,
+        photoSaved: withPhotos.has(row.id),
+        photoRevision: capturePhotos.revisionOf(row.note),
         complete: captureComplete(row,bipe,ps,needsSize),
         barcode:row.barcode,
         status: row.status,
-        mensagem: String(row.note || '').replace(/^etiqueta\s*/, '').replace(/\s*\{.*$/, '').trim(),
+        mensagem: capturePhotos.visibleNote(row.note).replace(/^etiqueta\s*/, '').replace(/\s*\{.*$/, '').trim(),
         bipeId: bipe?.id || null,
         appliedToStock: Boolean(bipe?.applied),
         needsSize,
@@ -1099,7 +1133,7 @@ router.post('/captures/:id/learn-barcode', async (req, res) => {
     if (!linked) return res.status(503).json({ error: 'Código salvo; contagem pendente. Tente novamente para concluir sem duplicar.' });
     await prisma.productCapture.update({ where: { id: cap.id }, data: { status: 'vinculado',
       matchedProductId: match.productId, resolvedAt: new Date(),
-      note: ('etiqueta ✓ confirmado pelo operador ' + JSON.stringify(read)).slice(0, 480),
+      note: capturePhotos.photoNote(cap.note, 'etiqueta ✓ confirmado pelo operador ' + JSON.stringify(read)),
     } });
     res.json({ ok: true, product: match, ...linked });
   } catch (e) { res.status(500).json({ error: 'Falha ao vincular captura; tente novamente' }); }
@@ -1122,7 +1156,7 @@ router.post('/captures/:id/resolve', async (req, res) => {
     if (status) { data.status = status; if (status !== 'pendente') data.resolvedAt = new Date(); }
     if (matchedProductId !== undefined) data.matchedProductId = matchedProductId || null;
     if (createdProductId !== undefined) data.createdProductId = createdProductId || null;
-    if (note !== undefined) data.note = note ? String(note).slice(0, 500) : null;
+    if (note !== undefined) data.note = capturePhotos.photoNote(original.note, note ? String(note) : '');
     const cap = await prisma.productCapture.update({ where: { id: req.params.id }, data });
     res.json({ ok: true, capture: { id: cap.id, status: cap.status } });
   } catch (e) { res.status(500).json({ error: e.message }); }

@@ -52,6 +52,7 @@ function routeFunctions(db){
   if(name==='../middleware')return{prisma:db,authMiddleware:'AUTH',adminMiddleware:'ADMIN'};
   if(name==='../services/stocktakeRounds')return require('../src/services/stocktakeRounds'); if(name==='./stocktakeRounds')return {};
   if(name==='../services/scannerCompletion')return require('../src/services/scannerCompletion');
+  if(name==='../services/scannerCapturePhoto')return require('../src/services/scannerCapturePhoto');
   if(name==='../services/scannerCatalog')return require('../src/services/scannerCatalog');
   if(name==='../services/barcodeInput')return require('../src/services/barcodeInput');
   if(name==='../services/scannerReference')return require('../src/services/scannerReference');
@@ -115,6 +116,18 @@ function routeFunctions(db){
  ({db,state}=database());state.captures.push({id:'unreadable',barcode:'196153346321',storeId:'LOJA04',createdAt:new Date(),bipeId:null});
  await routeFunctions(db).processarEtiqueta('unreadable','unused-image','196153346321',{ocrText:''});
  assert.equal(state.captures[0].status,'pendente');assert.equal(state.sizes.length,0);
+ // A saved manual frame cannot acquire a catalogue/OCR barcode or bypass the
+ // duplicate confirmation gate before the first actual bipe is registered.
+ ({db,state}=database({sizes:[{id:'known',productId:'nike',size:'L',barcode:'196153346321',stock:6}]}));
+ state.captures.push({id:'manual-unreadable',barcode:null,storeId:'LOJA04',createdAt:new Date(),bipeId:null,status:'pendente',note:'etiqueta Foto salva.\n[scanner-photo-revision:1]'});
+ const manualRoute=routeFunctions(db);
+ await manualRoute.processarEtiqueta('manual-unreadable','unused-image',null,{ocrText:'NIKE\n192974\nL\n196153346321'});
+ assert.equal(state.captures[0].barcode,null);assert.equal(state.bipes.length,0);assert.equal(state.stocks.length,0);
+ assert.equal(await manualRoute.garantirBipeDaCaptura('manual-unreadable','nike','known','196153346321'),null);
+ state.captures[0].barcode='196153346321';
+ await manualRoute.processarEtiqueta('manual-unreadable','unused-image','196153346321',{ocrText:'NIKE\n192974\nL'});
+ assert.equal(await manualRoute.garantirBipeDaCaptura('manual-unreadable','nike','known','196153346321'),null);
+ assert.equal(state.bipes.length,0,'A pending repeat warning must not become a bipe through OCR');
  const html=fs.readFileSync(require.resolve('../public/identificar.html'),'utf8');
  for(const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi))if(m[1].trim())new vm.Script(m[1]);
  ({db,state}=database({sizes:[{id:'s-existing',productId:'nike',size:'L',barcode:'196153346321',stock:6}]}));

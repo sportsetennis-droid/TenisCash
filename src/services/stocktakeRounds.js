@@ -14,10 +14,17 @@ async function roundForScan(db, storeId, roundId, lock = false) {
   return round;
 }
 async function createRoundBipe(db, input) {
-  const {requireRepeatConfirmation,repeatConfirmedCount,...data}=input;
+  const {requireRepeatConfirmation,repeatConfirmedCount,captureId,...data}=input;
   return db.$transaction(async tx => {
     await roundForScan(tx, data.storeId, data.roundId, true);
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${data.scanKey}))::text`;
+    if (captureId) {
+      const capture = await tx.productCapture.findUnique({ where: { id: captureId } });
+      if (!capture || capture.excludedAt || capture.status === 'descartado' || capture.scanKey !== data.scanKey ||
+          capture.roundId !== data.roundId || capture.storeId !== data.storeId ||
+          String(capture.barcode || '').replace(/^0+/, '') !== String(data.barcode || '').replace(/^0+/, ''))
+        fail('A foto desta leitura não está ativa nesta loja e rodada.');
+    }
     const existing = await tx.stocktakeBipe.findUnique({ where: { scanKey: data.scanKey } });
     if (existing) {
       if (existing.storeId !== data.storeId || existing.roundId !== data.roundId || existing.barcode !== data.barcode) fail('Conflito no identificador da leitura.');

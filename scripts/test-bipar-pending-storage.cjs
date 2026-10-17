@@ -27,7 +27,7 @@ function photoHarness(rows, initial = '[]') {
   const document = { getElementById(id) { if (id === 'etiq-video') videoLookups++; return nodes.get(id) || null; },
     createElement() { return { style: {}, append(...children) { this.children = children; } }; },
     body: { appendChild(node) { nodes.set(node.id, node); } } };
-  const context = vm.createContext({ localStorage, document, window: { addEventListener() {} }, setTimeout, clearTimeout, etiqFila: rows, etiqStorageReady: false, etiqStorageFailed: false, etiqPausado: false,
+  const context = vm.createContext({ localStorage, document, window: { addEventListener() {} }, setTimeout, clearTimeout, etiqFila: rows, etiqPendingFrames: [], renderEtiqCaptureState() {}, renderEtiqLista() {}, etiqStorageReady: false, etiqStorageFailed: false, etiqPausado: false,
     etiqAuto: { stop() { stopped++; }, reset() { reset++; } } });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/scanner-photo-storage.js'), 'utf8') + '\nglobalThis.etiqPhotoStorage=window.ScannerPhotoStorage.create({localStorage,indexedDB:null});', context);
   const start = html.indexOf('  function etiqStorageNotice()'), end = html.indexOf('  function etiqBeep()', start);

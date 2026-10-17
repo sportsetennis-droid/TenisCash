@@ -311,7 +311,7 @@
   </section>
   </details>
 
-<script src="/scanner-confirm.js?v=20260915-resume-2"></script><script src="/scanner-view.js?v=20260915-fullcamera-2"></script><script src="/scanner-round.js?v=20261002-actions-1"></script><script src="/bipar-transfer.js?v=20261002-actions-1"></script><script src="/bipar-actions.js?v=20261015-pending-safety-1"></script>
+<script src="/scanner-confirm.js?v=20260915-resume-2"></script><script src="/scanner-view.js?v=20261017-manual-photo-1"></script><script src="/scanner-round.js?v=20261002-actions-1"></script><script src="/bipar-transfer.js?v=20261002-actions-1"></script><script src="/bipar-actions.js?v=20261015-pending-safety-1"></script>
 <script src="/vendor/barcode/zxing-reader-3.1.4.js"></script><script src="/scanner-auto.js?v=20260915-resume-2"></script><script src="/scanner-regions.js?v=20260914-worker-1"></script><script src="/scanner-ocr.js?v=20260914-auto-3"></script>
 <script src="/scanner-photo-storage.js?v=20261016-photo-idb-2"></script>
 <script>
@@ -812,6 +812,7 @@
   let etiqFila = [], etiqStorageReady = false;
   const etiqPhotoStorage = window.ScannerPhotoStorage?.create();
   let etiqStorageFailed = false;
+  const etiqPendingFrames = [];
   // A fila visual do modal vive em memória. Depois de recarregar a página,
   // libera a reentrada dos tamanhos ainda pendentes via /etiqueta-status.
   etiqFila.forEach((item) => { if (item.needsSize && !item.sizeDismissed) item.sizeQueued = false; });
@@ -852,7 +853,10 @@
       etiqSave.baseline.set(identity, etiqCopy(row));
     }
   }
-  function etiqSave() {
+  function etiqSave(capturedFrame) {
+    // A tap freezes its own image before any asynchronous work. Keep every
+    // revision until its transaction commits, even if another tap arrives.
+    if (capturedFrame) etiqPendingFrames.push(etiqCopy(capturedFrame));
     const run = etiqSave.queue.catch(() => {}).then(async () => {
       const wasBlocked = etiqStorageFailed;
       try {
@@ -860,6 +864,14 @@
         if (!etiqPhotoStorage) throw new Error('Armazenamento de fotos não carregado');
         if (!etiqStorageReady) { etiqMergeStored(await etiqPhotoStorage.read()); etiqStorageReady = true; }
         await etiqPhotoStorage.migrateLegacy();
+        while (etiqPendingFrames.length) {
+          const frame = etiqPendingFrames[0], identity = etiqIdentity(frame);
+          const saved = await etiqPhotoStorage.append(identity, frame);
+          etiqSave.baseline.set(identity, etiqCopy(saved));
+          const current = etiqFila.find(row => etiqIdentity(row) === identity);
+          if (current?.photoRevision === frame.photoRevision && current.b64 === frame.b64 && saved.photoRef) current.photoRef = saved.photoRef;
+          etiqPendingFrames.shift();
+        }
         const snapshot = etiqFila.map(etiqCopy);
         for (const item of snapshot) {
           const identity = etiqIdentity(item), base = etiqSave.baseline.get(identity);
@@ -876,6 +888,8 @@
         etiqStorageFailed = false;
       } catch (_) { etiqStorageFailed = true; etiqAuto?.stop(); }
       etiqStorageNotice();
+      renderEtiqCaptureState();
+      renderEtiqLista();
       if (wasBlocked && !etiqStorageFailed && !etiqPausado) etiqAuto?.reset();
       etiqFila.forEach(item => window.ScannerTransfer?.update(item, { saved: !!item.capId, bipeId: item.bipeId || null }));
       return !etiqStorageFailed;
@@ -952,7 +966,8 @@
       etiqLoop = setInterval(() => etiqAuto?.tick(), 300);
     } catch (e) { alert('Câmera falhou: ' + e.message); window.fecharScanner(); return; }
     etiqPoll = setInterval(consultarStatus, 5000);
-    etiqSendTimer = setInterval(enviarFila, 2000);
+    // The durable outbox has its own retries; closing the camera must not
+    // cancel delivery of photographs that have already been taken.
     enviarFila();
   };
 
@@ -969,77 +984,82 @@
 
   // Mesma peça até o servidor confirmar código, produto e variante. Foto salva não libera Próxima.
   let etiqPausado = false, etiqWatch = null, etiqAtivo = null, etiqRetryAt = 0, etiqIgnoredCode = '', etiqIgnoreUntil=0;
+  function etiqPhotoDurable(item) {
+    const saved = item && etiqSave.baseline.get(etiqIdentity(item));
+    return !!(item?.b64 && saved && Number(saved.photoRevision || 0) === Number(item.photoRevision || 0) && saved.b64 === item.b64);
+  }
+  function renderEtiqCaptureState() {
+    const it = etiqFila.find(item => item.lid === etiqAtivo), panel = document.getElementById('etiq-confirm');
+    if (!it || !panel || (window.BiparActions && !window.BiparActions.isInventory())) return;
+    const status = document.getElementById('etiq-confirm-status'), detail = document.getElementById('etiq-confirm-det');
+    const next = document.getElementById('etiq-confirm-btn'), hint = document.getElementById('etiq-hint');
+    let preview = document.getElementById('etiq-photo-preview');
+    if (!preview) {
+      preview = document.createElement('img'); preview.id = 'etiq-photo-preview'; preview.alt = 'Foto capturada desta peça';
+      preview.style.cssText = 'display:block;max-width:100%;width:110px;height:86px;object-fit:contain;border:2px solid #fff;border-radius:8px;margin:0 auto 8px;background:#111';
+      panel.insertBefore(preview, panel.firstChild);
+    }
+    if (it.b64 && preview.src !== it.b64) preview.src = it.b64;
+    preview.hidden = !it.b64;
+    Object.assign(panel.style, { display: 'flex', inset: 'auto 8px 8px', padding: '12px', pointerEvents: 'none', background: 'rgba(0,0,0,.85)' });
+    next.style.pointerEvents = 'auto';
+    const saved = etiqPhotoDurable(it);
+    if (it.complete) {
+      etiqPausado = true; etiqAuto?.stop();
+      status.textContent = '✅ LEITURA COMPLETA'; detail.textContent = it.msg || 'Código, produto e tamanho confirmados.';
+      next.hidden = false; next.disabled = false; next.textContent = 'PRÓXIMO ➡'; next.style.background = '#25d366';
+      clearInterval(etiqWatch); return;
+    }
+    status.textContent = saved ? '✓ FOTO SALVA' : etiqStorageFailed ? 'FOTO AGUARDANDO SALVAMENTO' : '⏳ SALVANDO FOTO…';
+    const uploaded = it.capId && Number(it.capIdPhotoRevision || 0) === Number(it.photoRevision || 0);
+    const progress = !saved ? 'Mantenha esta página aberta. A imagem está preservada nesta sessão.' : !uploaded ? 'Imagem salva neste aparelho; envio ao sistema em andamento.' : 'Imagem salva no sistema.';
+    detail.textContent = progress + (it.ean ? ' Código: ' + it.ean + '. Conferindo produto e tamanho.' : ' Falta identificar o código. Você pode fotografar a mesma etiqueta novamente ou fechar mantendo a pendência.');
+    if (hint) hint.textContent = it.ean ? 'Código lido. Conferindo esta peça.' : 'Foto preservada. Aproxime o código da mesma etiqueta ou fotografe novamente.';
+    const queued = !!uploaded && !!it.ean && it.st !== 'revisao';
+    next.disabled = !queued; next.hidden = !queued;
+    next.textContent = 'PRÓXIMO — PENDENTE EM SEGUNDO PLANO'; next.style.background = '#a65b00';
+  }
   window.capturaManual = function (prepared) {
     if (window.BiparActions && !window.BiparActions.isInventory()) return;
     try{window.ScannerRound.requireRound(document.getElementById('loja').value)}catch(e){alert(e.message);window.fecharScanner();return;}
+    const manual = !prepared;
     if(prepared?.ean && prepared.ean===etiqIgnoredCode && Date.now()<etiqIgnoreUntil){etiqAuto?.reset();return;}
     if(prepared?.ean)etiqIgnoredCode='';
     const current=etiqFila.find(x=>x.lid===etiqAtivo);
-    if(current?.complete){etiqAuto?.stop();return;}
-    if(etiqPausado || etiqBusy || (current && !['pendente','vinculado'].includes(current.st)) || Date.now()<etiqRetryAt){etiqAuto?.reset();return;}
+    if(current?.complete){etiqAuto?.stop();renderEtiqCaptureState();return;}
+    // A manual tap always takes the frame now, including while the previous
+    // revision is uploading or OCR is busy. Automatic retries remain paced.
+    if(!manual && (etiqPausado || etiqBusy || (current && !['pendente','vinculado','salvo'].includes(current.st)) || Date.now()<etiqRetryAt)){etiqAuto?.reset();return;}
     if(current?.ean && prepared?.ean && current.ean!==prepared.ean){
       document.getElementById('etiq-hint').textContent='Código diferente. Continue com a mesma peça; feche para revisar se trocou de produto.';
       etiqAuto?.reset();return;
     }
+    if (!manual && current?.manualPhoto) {
+      // Decoding may enrich a manual picture, but must not replace it with a
+      // later automatic frame. Both results belong to the same physical piece.
+      if (prepared.ean) current.ean = prepared.ean;
+      if (prepared.ocrText) { current.ocrText = prepared.ocrText; current.ocrDone = true; }
+      current.st = 'fila'; etiqSave().then(() => enviarFila()); renderEtiqCaptureState(); etiqAuto?.reset(); return;
+    }
     etiqRetryAt=Date.now()+5000;
-    const lid=capturarFrame(prepared?.ean||current?.ean||'',prepared);
+    const lid=capturarFrame(prepared?.ean||current?.ean||'',prepared,manual);
     if(!lid){etiqAuto?.reset();return;}
     etiqAtivo=lid;
-    const panel=document.getElementById('etiq-confirm');
-    Object.assign(panel.style,{display:'flex',inset:'auto 8px 8px',padding:'12px',pointerEvents:'none',background:'rgba(0,0,0,.85)'});
-    let skip=document.getElementById('etiq-skip-unreadable');
-    if(!skip){skip=document.createElement('button');skip.id='etiq-skip-unreadable';skip.type='button';skip.textContent='PULAR ESTA PEÇA — NÃO CONTAR';skip.style.cssText='pointer-events:auto;min-height:44px;margin-top:8px;padding:8px 12px;border:1px solid #fff;border-radius:10px;background:#333;color:white;font-weight:800';skip.addEventListener('click',()=>window.pularEtiquetaIlegivel());panel.appendChild(skip);}
-    skip.style.display='none';
-    const next=document.getElementById('etiq-confirm-btn');next.disabled=true;next.textContent='PRÓXIMO — AGUARDE A LEITURA';next.style.background='#555';next.style.pointerEvents='auto';
-    document.getElementById('etiq-confirm-status').textContent='⏳ LENDO ESTA PEÇA';
-    document.getElementById('etiq-confirm-det').textContent='Mantenha a mesma etiqueta na câmera.';
+    renderEtiqCaptureState();
     etiqAuto?.reset();
     clearInterval(etiqWatch);
-    etiqWatch=setInterval(()=>{
-      const it=etiqFila.find(x=>x.lid===etiqAtivo);if(!it)return;
-      const h=document.getElementById('etiq-hint');if(!h)return;
-      if(!it.complete){
-        h.textContent=it.st==='revisao'?it.msg:it.needsSize?'Falta confirmar o tamanho. Continue com a mesma peça.':!it.ean?'Falta ler o código de barras. Aproxime a etiqueta; câmera continua ativa.':'Código lido. Confirmando produto e tamanho; mantenha a mesma etiqueta.';
-        const status=document.getElementById('etiq-confirm-status'),detail=document.getElementById('etiq-confirm-det');
-        status.textContent=it.msg&&!it.complete?'⚠ LEITURA AINDA INCOMPLETA':it.ean?'⏳ CÓDIGO LIDO — CONFERINDO':'⏳ LENDO ESTA PEÇA';
-        detail.textContent=(it.ean?'Código: '+it.ean+' · ':'')+(it.msg||h.textContent);
-        const next=document.getElementById('etiq-confirm-btn');
-        const skip=document.getElementById('etiq-skip-unreadable');
-        if(skip){skip.style.display=!it.ean&&!it.capId?'block':'none';skip.disabled=etiqBusy;skip.textContent=etiqBusy?'AGUARDE A TENTATIVA ATUAL…':'PULAR ESTA PEÇA — NÃO CONTAR';}
-        const queued=!!it.capId && !!it.ean && it.st!=='revisao';
-        next.disabled=!queued;next.textContent=queued?'PRÓXIMO — PENDENTE EM SEGUNDO PLANO':'PRÓXIMO — AGUARDE A LEITURA';next.style.background=queued?'#a65b00':'#555';
-        return;
-      }
-      etiqPausado=true;etiqAuto?.stop();etiqBeep();
-      Object.assign(document.getElementById('etiq-confirm').style,{display:'flex',inset:'0',padding:'24px',pointerEvents:'auto'});
-      document.getElementById('etiq-confirm-status').textContent='✅ LEITURA COMPLETA';
-      document.getElementById('etiq-confirm-det').textContent=it.msg||'Código, produto e tamanho confirmados.';
-      const btn=document.getElementById('etiq-confirm-btn');btn.disabled=false;btn.textContent='PRÓXIMO ➡';btn.style.background='#25d366';
-      clearInterval(etiqWatch);
-    },350);
-  };
-  window.pularEtiquetaIlegivel = function () {
-    const current=etiqFila.find(x=>x.lid===etiqAtivo);
-    if(!current || current.ean || current.capId || current.complete || etiqBusy)return;
-    current.st='revisao';current.msg='Código ilegível — peça pulada, NÃO CONTADA. Separe para conferir depois.';
-    window.ScannerTransfer?.discard(current);
-    etiqSave();clearInterval(etiqWatch);etiqAtivo=null;etiqRetryAt=Date.now()+1500;
-    document.getElementById('etiq-confirm').style.display='none';
-    etiqUltimo='';etiqUltimoTs=0;etiqPausado=false;window.ScannerAuto.stopDecoder();etiqAuto?.reset();
-    const video=document.getElementById('etiq-video');video?.play().catch(()=>{});
-    document.getElementById('etiq-hint').textContent='Peça pulada, NÃO CONTADA. Separe-a e aponte para outra etiqueta.';
-    renderEtiqLista();
+    etiqWatch=setInterval(renderEtiqCaptureState,350);
   };
   window.proximaEtiqueta = function () {
     const current=etiqFila.find(x=>x.lid===etiqAtivo);
-    if(!current?.complete && !(current?.capId && current?.ean && current.st!=='revisao'))return;
+    if(!current?.complete && !(current?.capId && Number(current.capIdPhotoRevision || 0) === Number(current.photoRevision || 0) && current?.ean && current.st!=='revisao'))return;
     clearInterval(etiqWatch);etiqAtivo=null;etiqRetryAt=0;
     const pane=document.getElementById('etiq-confirm');if(pane)pane.style.display='none';
     etiqUltimo='';etiqUltimoTs=0;etiqPausado=false;etiqAuto?.reset({afterCode:current?.ean});
     const hint=document.getElementById('etiq-hint');if(hint)hint.textContent='Afaste a etiqueta já lida e apresente o próximo par.';
   };
 
-  function capturarFrame(ean, prepared) {
+  function capturarFrame(ean, prepared, manual = !prepared) {
     if (!etiqStorageReady || etiqStorageFailed) { etiqStorageNotice(); return null; }
     const video = document.getElementById('etiq-video');
     if (!video || !video.videoWidth) return null;
@@ -1051,27 +1071,57 @@
       sellerId: selectedSeller === '__manual__' ? '' : (selectedSeller || ''),
       sellerName: localStorage.getItem(STORAGE_VENDNAME) || '' };
     if (!existing) window.ScannerTransfer?.start(item);
-    item.ean=ean;item.st='fila';item.complete=false;item.ocrDone=false;
-    if (prepared?.ocrText) { item.ocrText=prepared.ocrText; item.ocrDone=true; }
-    if(!existing)etiqFila.push(item); renderEtiqLista();
     const source = prepared?.frame || video;
     const width = source.width || video.videoWidth, height = source.height || video.videoHeight;
     const k = Math.min(1, 1800 / Math.max(width, height));
     const c = document.createElement('canvas');
     c.width = Math.round(width * k); c.height = Math.round(height * k);
-    c.getContext('2d').drawImage(source, 0, 0, c.width, c.height);
-    c.toBlob((b) => {
-      const fr = new FileReader();
-      fr.onload = async () => { item.b64 = fr.result; delete item.photoRef; await etiqSave(); await enviarFila(); };
-      fr.readAsDataURL(b);
-    }, 'image/jpeg', 0.85);
+    // Synchronous frame extraction guarantees the image is from the tap,
+    // before awaiting storage, network, OCR, or a previous upload.
+    try {
+      c.getContext('2d').drawImage(source, 0, 0, c.width, c.height);
+      item.b64 = c.toDataURL('image/jpeg', 0.85);
+    } catch (_) {
+      const hint = document.getElementById('etiq-hint');
+      if (hint) hint.textContent = 'Não foi possível fotografar este quadro. Mantenha a câmera aberta e toque novamente.';
+      return null;
+    }
+    delete item.photoRef;
+    item.photoRevision = Number(item.photoRevision || 0) + 1; item.photoTakenAt = new Date().toISOString();
+    item.ean = ean; item.st = 'fila'; item.complete = false; item.ocrDone = false; item.ocrStarted = false; item.ocrText = '';
+    item.manualPhoto = manual; item.msg = '';
+    if (prepared?.ocrText) { item.ocrText = prepared.ocrText; item.ocrDone = true; }
+    if (!existing) etiqFila.push(item);
+    renderEtiqLista();
+    const revision = item.photoRevision;
+    etiqSave(item).then(saved => {
+      if (saved && item.photoRevision === revision) { etiqBeep(); renderEtiqCaptureState(); }
+      enviarFila();
+    });
     return lid;
+  }
+
+  function etiqStartOcr(item, revision, image, barcode) {
+    if (item.ocrDone || item.ocrStarted || !window.ScannerOCR) return;
+    item.ocrStarted = true;
+    Promise.resolve().then(() => window.ScannerOCR.readForScan(image, barcode)).then(text => {
+      if (Number(item.photoRevision || 0) !== revision) return;
+      item.ocrText = text || ''; item.ocrDone = true; item.ocrStarted = false;
+      if (text && !item.complete && item.st !== 'revisao') item.st = 'fila';
+      etiqSave().then(() => enviarFila());
+    }).catch(() => {
+      if (Number(item.photoRevision || 0) !== revision) return;
+      item.ocrDone = true; item.ocrStarted = false; etiqSave();
+    });
   }
 
   async function enviarFila() {
     if (window.BiparActions && !window.BiparActions.isInventory()) return;
     const captureMode = window.BiparActions?.version();
-    if (etiqBusy) return; etiqBusy = true;
+    if (etiqBusy) { enviarFila.requested = true; return; }
+    clearTimeout(enviarFila.wakeTimer); enviarFila.wakeTimer = null;
+    enviarFila.requested = false; etiqBusy = true;
+    let progressed = false;
     let transferActivity = null;
     try {
       await etiqRestorePromise;
@@ -1089,28 +1139,16 @@
         const sellerValue = document.getElementById('vendedor').value;
         const sellerId = item.sellerId ?? (sellerValue === '__manual__' ? '' : (sellerValue || ''));
         const sellerName = item.sellerName ?? (localStorage.getItem(STORAGE_VENDNAME) || '');
-        if (!item.ocrDone && !item.ean) {
-          item.ocrText = window.ScannerOCR ? await window.ScannerOCR.readForScan(item.b64, item.ean, message => {
-            const detail = document.getElementById('etiq-confirm-det');
-            if (detail) detail.textContent = message;
-          }) : '';
-          item.ocrDone = true;
-        }
-        // Barcode upload and fiscal matching start without waiting up to 45s for local OCR.
-        if(item.ean && !item.ocrDone && !item.ocrStarted && window.ScannerOCR){
-          item.ocrStarted=true;
-          window.ScannerOCR.readForScan(item.b64,item.ean).then(text=>{
-            item.ocrText=text||'';item.ocrDone=true;
-            if(text && item.capId && !item.complete && item.st!=='revisao'){item.st='fila';etiqSave();enviarFila();}
-          }).catch(()=>{item.ocrDone=true;});
-        }
-        const blob = await (await fetch(item.b64)).blob();
+        const revision = Number(item.photoRevision || 0), image = item.b64, sentBarcode = item.ean || '', sentOcr = item.ocrText || '';
+        const blob = await (await fetch(image)).blob();
         if (window.BiparActions && (!window.BiparActions.isInventory() || window.BiparActions.version() !== captureMode)) return;
+        if (Number(item.photoRevision || 0) !== revision) return;
         const fd = new FormData();
         fd.append('file', blob, 'etiqueta.jpg');
-        fd.append('eanLocal', item.ean || '');
-        const sentOcr=item.ocrText||'';
+        fd.append('eanLocal', sentBarcode);
         fd.append('ocrText', sentOcr);
+        fd.append('photoRevision', String(revision));
+        if (item.photoTakenAt) fd.append('photoTakenAt', item.photoTakenAt);
         fd.append('storeId', storeId);
         fd.append('sellerId', sellerId);
         fd.append('sellerName', sellerName);
@@ -1120,18 +1158,51 @@
         const uploadController = new AbortController();
         const uploadTimeout = setTimeout(() => uploadController.abort(), 25000);
         let r;
-        try { r = await fetch('/api/stocktake/etiqueta', { method: 'POST', body: fd, signal: uploadController.signal }); }
+        try {
+          const upload = fetch('/api/stocktake/etiqueta', { method: 'POST', body: fd, signal: uploadController.signal });
+          // Saving the image on the server starts first. OCR runs independently
+          // and can enrich this same physical capture afterwards.
+          etiqStartOcr(item, revision, image, sentBarcode);
+          r = await upload;
+        }
         finally { clearTimeout(uploadTimeout); }
         const d = await r.json().catch(() => ({}));
-        if(d.barcodeRequired){item.st='pendente';item.msg=d.error;etiqSave();renderEtiqLista();return;}
+        progressed = r.ok && !d.pending;
+        if (Number(item.photoRevision || 0) !== revision) return;
+        if (d.photoRevision != null && Number(d.photoRevision) !== revision) {
+          // Another tab may already have uploaded a newer revision. This ACK
+          // did not advance our queued photograph, so never retry it at 100ms.
+          progressed = false; enviarFila.requested = false; return;
+        }
+        if ((r.ok || d.photoSaved === true) && d.capId && d.photoSaved !== false) {
+          item.capId = d.capId; item.capIdPhotoRevision = revision;
+        }
+        if (r.ok && d.photoSaved === true && d.pending && !d.barcodeRequired) {
+          // The photograph is durable, but registering its scanned code failed.
+          // Keep the same scan in the outbox and retry with bounded backoff.
+          item.st = 'fila'; item.msg = d.error || 'Foto salva. Tentando registrar o código novamente.';
+          await etiqSave(); renderEtiqLista(); return;
+        }
+        if(d.barcodeRequired){
+          item.st = item.ocrText && item.ocrText !== sentOcr ? 'fila' : 'pendente';
+          item.msg = d.error || 'Foto salva; código de barras ainda pendente.';
+          await etiqSave(); renderEtiqLista(); return;
+        }
         if(r.status===409 && d.repeat){
           const detail=d.repeat;
           const when=detail.lastAt?new Date(detail.lastAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'horário não disponível';
           const elapsed=Number.isFinite(detail.secondsSinceLast)?(detail.secondsSinceLast<60?detail.secondsSinceLast+' segundos':Math.floor(detail.secondsSinceLast/60)+' minutos'):'tempo não disponível';
           const yes=await window.ScannerConfirm.ask('⚠ '+(detail.consecutive?'REPETIDO EM SEGUIDA':'CÓDIGO JÁ CONTADO')+'\n\n'+(detail.name||'Produto ainda em identificação')+'\nTamanho: '+(detail.size||'pendente')+'\nCódigo: '+detail.barcode+'\n\nJá existem '+detail.count+' bipes deste código nesta loja e rodada (total, não só seguidos).\nÚltima leitura deste código: '+when+' — há '+elapsed+'.'+(detail.lastSeller?' Por: '+detail.lastSeller+'.':'')+'\n'+(detail.consecutive?'Seu último bipe registrado também foi deste código.':'Seu último bipe registrado foi de outro código, ou não há leitura anterior sua.')+'\n\nESTA TENTATIVA AINDA NÃO FOI CONTADA.\nÉ outro par físico?\nOK: acrescentar 1 (total '+(detail.count+1)+').\nCancelar: manter '+detail.count+'.');
-          if (!yes) window.ScannerTransfer?.discard(item);
+          if (Number(item.photoRevision || 0) !== revision) return;
+          if (!yes) {
+            const cancelled = await fetch('/api/stocktake/etiqueta/cancelar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId, roundId: item.roundId, clientScanId: item.clientScanId }) });
+            const result = await cancelled.json().catch(() => ({}));
+            if (!cancelled.ok) { item.st = 'revisao'; item.msg = result.error || 'Não foi possível cancelar esta repetição. Foto preservada para conferir.'; await etiqSave(); renderEtiqLista(); return; }
+            if (Number(item.photoRevision || 0) !== revision) return;
+            window.ScannerTransfer?.discard(item);
+          }
           if(yes){item.repeatConfirmedCount=detail.count;item.st='fila';}
-          else{item.st='revisao';item.msg='Repetição cancelada — não contada';item.b64='';etiqIgnoredCode=item.ean;etiqIgnoreUntil=Date.now()+3000;etiqRetryAt=0;etiqAtivo=null;clearInterval(etiqWatch);const pane=document.getElementById('etiq-confirm');if(pane)pane.style.display='none';etiqPausado=false;window.ScannerAuto.stopDecoder();etiqAuto?.reset();const video=document.getElementById('etiq-video');if(video)video.play().catch(()=>{});const hint=document.getElementById('etiq-hint');if(hint)hint.textContent='Cancelado sem contar. Câmera ativa: aponte para o próximo produto.';}
+          else{item.st='revisao';item.msg='Repetição cancelada — não contada';etiqIgnoredCode=item.ean;etiqIgnoreUntil=Date.now()+3000;etiqRetryAt=0;etiqAtivo=null;clearInterval(etiqWatch);const pane=document.getElementById('etiq-confirm');if(pane)pane.style.display='none';etiqPausado=false;window.ScannerAuto.stopDecoder();etiqAuto?.reset();const video=document.getElementById('etiq-video');if(video)video.play().catch(()=>{});const hint=document.getElementById('etiq-hint');if(hint)hint.textContent='Cancelado sem contar. Câmera ativa: aponte para o próximo produto.';}
           etiqSave();renderEtiqLista();return;
         }
         if(r.status>=400&&r.status<500){item.st='revisao';item.msg=d.error||'Rodada encerrada. Foto preservada para revisão.';etiqSave();renderEtiqLista();}
@@ -1155,25 +1226,43 @@
     } catch (_) {
       const detail=document.getElementById('etiq-confirm-det');
       if(detail && (!window.BiparActions || (window.BiparActions.isInventory() && window.BiparActions.version() === captureMode)))detail.textContent='Envio interrompido. Foto preservada; tentando novamente sem duplicar a leitura.';
-    } finally { if (transferActivity) window.ScannerTransfer?.activity(transferActivity, null); etiqBusy = false; }
+    } finally {
+      if (transferActivity) window.ScannerTransfer?.activity(transferActivity, null);
+      etiqBusy = false;
+      const sameAction = !window.BiparActions || (window.BiparActions.isInventory() && window.BiparActions.version() === captureMode);
+      if (sameAction && etiqFila.some(item => item.st === 'fila' && item.b64)) {
+        // A second frame can arrive while the first HTTP request is pending.
+        // Wake that queue after the request finishes even if the camera closed.
+        const requested = enviarFila.requested;
+        const delay = requested || progressed ? 100 : (enviarFila.retryDelay || 2000);
+        enviarFila.retryDelay = progressed ? 2000 : Math.min(Math.max(delay * 2, 2000), 30000);
+        clearTimeout(enviarFila.wakeTimer);
+        enviarFila.wakeTimer = setTimeout(() => {
+          enviarFila.wakeTimer = null;
+          if (!window.BiparActions || (window.BiparActions.isInventory() && window.BiparActions.version() === captureMode)) enviarFila();
+        }, delay);
+      } else enviarFila.retryDelay = 2000;
+      enviarFila.requested = false;
+    }
   }
 
   let etiqStatusOffset = 0, etiqStatusBusy = false;
   async function consultarStatus() {
     if (window.BiparActions && !window.BiparActions.isInventory()) return;
     if (etiqStatusBusy) return;
-    const allPending = etiqFila.filter((x) => x.capId && (!x.complete && x.st !== 'revisao'));
+    const allPending = etiqFila.filter((x) => x.capId && Number(x.capIdPhotoRevision || 0) === Number(x.photoRevision || 0) && (!x.complete && x.st !== 'revisao'));
     if (!allPending.length) { etiqStatusOffset = 0; return; }
     etiqStatusOffset %= allPending.length;
     const pend = allPending.slice(etiqStatusOffset).concat(allPending.slice(0, etiqStatusOffset)).slice(0, 20);
     etiqStatusOffset = (etiqStatusOffset + pend.length) % allPending.length;
+    const revisions = new Map(pend.map(item => [item.capId, Number(item.photoRevision || 0)]));
     etiqStatusBusy = true;
     try {
       const r = await fetch('/api/stocktake/etiqueta-status?ids=' + pend.map((x) => x.capId).join(','));
       const d = await r.json();
       for (const row of (d.rows || [])) {
         const it = etiqFila.find((x) => x.capId === row.id);
-        if (it && it.st!=='fila' && row.status !== 'processando') {
+        if (it && Number(it.photoRevision || 0) === revisions.get(row.id) && Number(row.photoRevision || 0) === Number(it.photoRevision || 0) && it.st!=='fila' && row.status !== 'processando') {
           it.complete = row.complete===true;
           // Keep the original: capId may belong to an earlier recapture.
           if(row.barcode)it.ean=row.barcode;
@@ -1200,14 +1289,13 @@
     const cont = document.getElementById('etiq-contador');
     const ul = document.getElementById('etiq-lista');
     if (!cont || !ul) return;
-    const nFila = currentItems.filter((x) => x.st === 'fila').length;
-    const nSalvo = currentItems.filter((x) => x.st === 'salvo').length;
-    const nVinc = currentItems.filter((x) => x.st === 'vinculado').length;
-    const nPend = currentItems.filter((x) => x.st === 'pendente').length;
-    cont.textContent = 'enviando ' + nFila + ' · salvas ' + nSalvo + ' · ✓ vinculadas ' + nVinc + (nPend ? ' · 📥 pra conferir ' + nPend : '');
+    const nSalvo = currentItems.filter(etiqPhotoDurable).length;
+    const nEnviado = currentItems.filter(x => x.capId && Number(x.capIdPhotoRevision || 0) === Number(x.photoRevision || 0)).length;
+    const nVinc = currentItems.filter(x => x.complete === true).length;
+    cont.textContent = 'fotos salvas ' + nSalvo + ' · enviadas ' + nEnviado + ' · peças identificadas ' + nVinc;
     ul.innerHTML = currentItems.slice(-6).reverse().map((x) => {
-      const ic = x.st === 'fila' ? '⏳' : x.st === 'salvo' ? '✅' : x.st === 'vinculado' ? '🔗' : '📥';
-      return '<div>' + ic + ' ' + (x.ean || '') + (x.msg ? ' — ' + x.msg.slice(0, 60) : (x.st === 'salvo' ? ' — SALVO, reconhecendo…' : x.st === 'fila' ? ' — enviando…' : '')) + '</div>';
+      const label = x.complete ? '✓ IDENTIFICADA' : etiqPhotoDurable(x) ? '✓ FOTO SALVA' : '⏳ SALVANDO FOTO';
+      return '<div>' + label + (x.ean ? ' · ' + x.ean : ' · código pendente') + '</div>';
     }).join('');
   }
 
