@@ -25,6 +25,7 @@ const router = express.Router();
 const rounds = require('../services/stocktakeRounds');
 const {captureComplete}=require('../services/scannerCompletion');
 const capturePhotos = require('../services/scannerCapturePhoto');
+const { createAutomaticRecognizer } = require('../services/scannerAutomaticRecognition');
 router.use('/rounds', require('./stocktakeRounds'));
 
 
@@ -817,6 +818,22 @@ async function processarEtiqueta(capId, photo, eanLocal, meta) {
   else await prisma.productCapture.update({ where: { id: capId }, data });
   return { vinculado, mensagem };
 }
+
+// Automatic recognition records the read code and OCR result, not a photograph.
+// Saving a camera frame is reserved for the explicit manual /etiqueta action.
+const recognizeAutomatic = createAutomaticRecognizer({ db: prisma, normalizeScannedSize,
+  needsManualSize, sizeOptionsForBipe });
+router.post('/recognize', async (req, res) => {
+  try {
+    const result = await recognizeAutomatic(req.body || {}, {
+      ip: (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').toString().split(',')[0].trim(),
+    });
+    res.json(result);
+  } catch (error) {
+    res.status(error.status || 500).json({ ok: false, error: error.message,
+      barcodeRequired: error.barcodeRequired || undefined, repeat: error.repeat || undefined });
+  }
+});
 
 router.post('/etiqueta',
   (req, res, next) => captureUpload.single('file')(req, res, (err) => (err ? res.status(400).json({ error: err.message }) : next())),

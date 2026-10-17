@@ -50,7 +50,7 @@ async function main() {
     await page.locator('#etiq-capturar').click();
     const first = await page.evaluate(async () => { await etiqSave.queue; return { item: { ...etiqFila[0] }, saved: etiqPhotoDurable(etiqFila[0]), text: document.getElementById('etiq-confirm-status').textContent, skip: !!document.getElementById('etiq-skip-unreadable'), preview: document.getElementById('etiq-photo-preview').src, counter: document.getElementById('etiq-contador').textContent }; });
     assert.equal(first.saved, true); assert.equal(first.item.ean, ''); assert.equal(first.item.photoRevision, 1); assert.equal(first.skip, false); assert.equal(first.preview, first.item.b64); assert.equal(first.text, '✓ FOTO SALVA');
-    assert.equal(first.counter, 'fotos salvas 1 · enviadas 0 · peças identificadas 0');
+    assert.equal(first.counter, 'enviando 1 · leituras registradas 0 · ✓ identificadas 0 · fotos manuais 1');
     results.push('manual tap during busy state immediately saves the exact image without EAN and shows its durable preview');
     await page.evaluate(() => { etiqBusy = false; window.__upload1 = enviarFila(); });
     await page.waitForFunction(() => window.__ocr.length === 1);
