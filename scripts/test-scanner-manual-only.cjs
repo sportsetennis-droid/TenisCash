@@ -40,7 +40,7 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Content-Type', file.endsWith('.html') ? 'text/html' : 'text/javascript'); res.end(fs.readFileSync(file));
 });
 async function main() {
-  assert(fs.readFileSync(path.join(root, 'bipar.html'), 'utf8').includes('onCapture: prepared => window.capturaAutomatica(prepared)'));
+  assert.match(fs.readFileSync(path.join(root, 'bipar.html'), 'utf8'), /onCapture: prepared => \{ if \(cameraCurrent\(\)\) window\.capturaAutomatica\(prepared\); \}/);
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const engine = process.env.SCANNER_TEST_BROWSER === 'webkit' ? 'webkit' : 'chromium';
   const browser = await playwright[engine].launch(engine === 'webkit' ? { headless: true } : { channel: 'chrome', headless: true });
@@ -53,6 +53,8 @@ async function main() {
       window.__version = 1; window.BiparActions.isInventory = () => true; window.BiparActions.version = () => window.__version;
       window.ScannerRound.requireRound = () => 'test-round'; window.ScannerRound.id = () => 'test-round';
       document.getElementById('loja').innerHTML = '<option value="test-store">Teste</option>';
+      document.getElementById('vendedor').innerHTML = '<option value="test-seller">Operador de teste</option>';
+      localStorage.setItem('sports_tennis_bipar_vendedor_nome', 'Operador de teste');
       const overlay = document.createElement('div'); overlay.id = 'etiq-overlay'; overlay.style.cssText = 'position:fixed;inset:0;display:flex;flex-direction:column;background:black;z-index:99998';
       overlay.innerHTML = window.ScannerView.markup(); document.body.appendChild(overlay);
       const video = document.getElementById('etiq-video'); Object.defineProperty(video, 'videoWidth', { value: 800 }); Object.defineProperty(video, 'videoHeight', { value: 1200 });
@@ -120,9 +122,22 @@ async function main() {
     results.push('temporary automatic network failure retries the same metadata-only scan without another photo or physical ID');
     await page.evaluate(() => { window.proximaEtiqueta(); window.__auto('7900000000005'); });
     await page.waitForFunction(() => window.__ocr.some(x => x.barcode === '7900000000005'));
-    await page.evaluate(() => { window.__version++; }); releaseContext(); await page.waitForFunction(() => !etiqBusy);
-    assert.equal(await page.evaluate(() => etiqFila[4].complete), false);
-    results.push('automatic response after an action-context change cannot update the newer screen state');
+    await page.evaluate(() => {
+      window.__version++;
+      document.getElementById('loja').innerHTML = '<option value="other-store">Outra loja</option>';
+      document.getElementById('vendedor').innerHTML = '<option value="other-seller">Outro operador</option>';
+      window.ScannerRound.id = () => 'other-round'; window.ScannerRound.requireRound = () => 'other-round';
+      const current = { lid:'new-active-piece', clientScanId:'new-active-piece', roundId:'other-round', storeId:'other-store', sellerId:'other-seller',
+        ean:'7900000000006', st:'pendente', autoRecognition:true, manualPhoto:false, complete:false, msg:'Nova peça em conferência' };
+      etiqFila.push(current); etiqAtivo = current.lid; renderEtiqCaptureState();
+    }); releaseContext(); await page.waitForFunction(() => !etiqBusy);
+    assert.equal(await page.evaluate(() => etiqFila[4].complete), true, 'ACK settles the immutable original scan');
+    assert.equal(await page.evaluate(() => etiqFila[5].complete), false, 'ACK must never confirm the newer active piece');
+    assert.equal(await page.evaluate(() => etiqFila[4].storeId), 'test-store');
+    assert.equal(await page.evaluate(() => etiqFila[4].roundId), 'test-round');
+    assert.match(await page.locator('#etiq-confirm-det').textContent(), /7900000000006/);
+    assert.equal(reads.find(row => row.body.barcode === '7900000000005').body.sellerId, 'test-seller');
+    results.push('automatic ACK settles its original store/round/operator after a real context change without confirming or replacing the newer active piece');
     assert.deepEqual(errors, []); results.forEach(name => console.log('PASS: ' + name));
   } finally { releaseFirst(); releaseSecond(); releaseContext(); await browser.close(); }
 }

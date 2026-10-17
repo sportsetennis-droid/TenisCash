@@ -312,7 +312,7 @@
   </details>
 
 <script src="/scanner-confirm.js?v=20260915-resume-2"></script><script src="/scanner-view.js?v=20261017-manual-only-2"></script><script src="/scanner-round.js?v=20261002-actions-1"></script><script src="/bipar-transfer.js?v=20261002-actions-1"></script><script src="/bipar-actions.js?v=20261015-pending-safety-1"></script>
-<script src="/vendor/barcode/zxing-reader-3.1.4.js"></script><script src="/scanner-auto.js?v=20260915-resume-2"></script><script src="/scanner-regions.js?v=20260914-worker-1"></script><script src="/scanner-ocr.js?v=20260914-auto-3"></script>
+<script src="/vendor/barcode/zxing-reader-3.1.4.js"></script><script src="/scanner-auto.js?v=20261017-auto-reader-3"></script><script src="/scanner-regions.js?v=20260914-worker-1"></script><script src="/scanner-ocr.js?v=20260914-auto-3"></script>
 <script src="/scanner-photo-storage.js?v=20261016-photo-idb-2"></script>
 <script>
   const STORAGE_LOJA = 'sports_tennis_bipar_loja';
@@ -817,6 +817,7 @@
   // libera a reentrada dos tamanhos ainda pendentes via /etiqueta-status.
   etiqFila.forEach((item) => { if (item.needsSize && !item.sizeDismissed) item.sizeQueued = false; });
   let etiqAuto = null;
+  let etiqCameraEpoch = 0, etiqCameraContext = null;
   let etiqReader = null, etiqStream = null, etiqLoop = null, etiqUltimo = '', etiqUltimoTs = 0, etiqPoll = null, etiqSendTimer = null, etiqBusy = false;
   function etiqStorageNotice() {
     let notice = document.getElementById('etiq-storage-warning');
@@ -911,17 +912,48 @@
     try { navigator.vibrate && navigator.vibrate(90); } catch (_) {}
   }
 
+  function etiqInventoryContext() {
+    if (window.BiparActions && !window.BiparActions.isInventory()) return null;
+    const storeId = document.getElementById('loja').value, seller = document.getElementById('vendedor').value;
+    try { return { storeId, roundId: window.ScannerRound.requireRound(storeId),
+      sellerId: seller === '__manual__' ? '' : (seller || ''),
+      // A refreshed display name is not a different identified operator.
+      sellerName: seller === '__manual__' ? (localStorage.getItem(STORAGE_VENDNAME) || '').trim() : '' }; }
+    catch (_) { return null; }
+  }
+  function etiqSameInventoryContext(expected) {
+    const current = etiqInventoryContext();
+    return !!expected && !!current && Object.keys(expected).every(key => expected[key] === current[key]);
+  }
+  function etiqContextChanged() {
+    window.fecharScanner();
+    const status = document.getElementById('setup-status');
+    if (status) status.textContent = 'O contexto mudou. Confira loja, vendedor e rodada e abra o scanner novamente.';
+  }
   window.fotografarEtiqueta = async function () {
     if (window.BiparActions && !window.BiparActions.isInventory()) return window.BiparActions.openCamera();
-    const captureMode = window.BiparActions?.version();
+    // Authentication refreshes may change BiparActions.version without changing
+    // inventory context. Only an actual context change invalidates this camera.
+    window.fecharScanner();
+    const cameraEpoch = ++etiqCameraEpoch;
     await etiqRestorePromise;
     if (!etiqStorageReady || etiqStorageFailed) await etiqSave();
-    if (window.BiparActions && (!window.BiparActions.isInventory() || window.BiparActions.version() !== captureMode)) return;
+    if (cameraEpoch !== etiqCameraEpoch || (window.BiparActions && !window.BiparActions.isInventory())) return;
     try{window.ScannerRound.requireRound(document.getElementById('loja').value)}catch(e){alert(e.message);return;}
     if (!document.getElementById('loja').value) { alert('Selecione loja e vendedor primeiro!'); return; }
+    const cameraContext = etiqInventoryContext();
+    if (!cameraContext || (!cameraContext.sellerId && cameraContext.sellerName.length < 2)) {
+      const status = document.getElementById('setup-status');
+      if (status) status.textContent = 'Selecione o vendedor ou salve o nome do operador antes de abrir o scanner.';
+      alert('Selecione o vendedor ou salve o nome do operador antes de abrir o scanner.');
+      return;
+    }
+    etiqCameraContext = cameraContext;
     if (!window.ZXing) {
       await new Promise((ok) => { const s = document.createElement('script'); s.src = '/vendor/zxing.min.js'; s.onload = ok; s.onerror = ok; document.head.appendChild(s); });
     }
+    if (cameraEpoch !== etiqCameraEpoch) return;
+    if (!etiqSameInventoryContext(cameraContext)) { etiqContextChanged(); return; }
     if (!window.ZXing) { alert('Falhou carregar o leitor — recarrega a página'); return; }
     const ov = document.createElement('div');
     ov.id = 'etiq-overlay';
@@ -929,19 +961,27 @@
     ov.innerHTML = window.ScannerView.markup();
     document.body.appendChild(ov);
     renderEtiqLista();
+    let opened = null;
+    const cameraCurrent = () => {
+      if (cameraEpoch !== etiqCameraEpoch || document.getElementById('etiq-overlay') !== ov) return false;
+      if (!etiqSameInventoryContext(cameraContext)) { etiqContextChanged(); return false; }
+      return true;
+    };
     try {
       // Decode centered labels automatically in portrait and landscape.
       const video = document.getElementById('etiq-video');
-      const opened = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
-      if (!document.getElementById('etiq-overlay') || (window.BiparActions && (!window.BiparActions.isInventory() || window.BiparActions.version() !== captureMode))) { opened.getTracks().forEach(track => track.stop()); return; }
+      opened = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+      if (!cameraCurrent()) { opened.getTracks().forEach(track => track.stop()); return; }
       etiqStream = opened;
       video.srcObject = etiqStream;
       await video.play();
+      if (!cameraCurrent()) { opened.getTracks().forEach(track => track.stop()); return; }
       try { // zoom 2x quando o aparelho suporta (ajuda MUITO em etiqueta pequena)
         const tr = etiqStream.getVideoTracks()[0];
         const cap = tr.getCapabilities && tr.getCapabilities();
         if (cap && cap.zoom && cap.zoom.max) { await tr.applyConstraints({ advanced: [{ zoom: Math.max(cap.zoom.min || 1, Math.min(1, cap.zoom.max)) }] }); }
       } catch (_) {}
+      if (!cameraCurrent()) { opened.getTracks().forEach(track => track.stop()); return; }
       const hints = new Map();
       hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.UPC_A, ZXing.BarcodeFormat.EAN_8, ZXing.BarcodeFormat.CODE_128, ZXing.BarcodeFormat.ITF]);
       hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
@@ -959,12 +999,18 @@
         },
         decode: frame => window.ScannerAuto.decodeInWorker(frame),
         recognize: frame => window.ScannerOCR.recognize(frame),
-        canRead: () => etiqStorageReady && !etiqStorageFailed && !etiqPausado && !etiqBusy && !!document.getElementById('etiq-overlay'),
+        // A pending network upload must not disable local barcode reading.
+        canRead: () => etiqStorageReady && !etiqStorageFailed && !etiqPausado && cameraCurrent(),
         onHint: message => { const h=document.getElementById('etiq-hint');if(h)h.textContent=message; },
-        onCapture: prepared => window.capturaAutomatica(prepared)
+        onCapture: prepared => { if (cameraCurrent()) window.capturaAutomatica(prepared); }
       });
       etiqLoop = setInterval(() => etiqAuto?.tick(), 300);
-    } catch (e) { alert('Câmera falhou: ' + e.message); window.fecharScanner(); return; }
+      void etiqAuto.tick();
+    } catch (e) {
+      if (opened) opened.getTracks().forEach(track => track.stop());
+      if (cameraEpoch === etiqCameraEpoch) { alert('Câmera falhou: ' + e.message); window.fecharScanner(); }
+      return;
+    }
     etiqPoll = setInterval(consultarStatus, 5000);
     // The durable outbox has its own retries; closing the camera must not
     // cancel delivery of photographs that have already been taken.
@@ -972,6 +1018,7 @@
   };
 
   window.fecharScanner = function () {
+    etiqCameraEpoch++; etiqCameraContext = null;
     window.ScannerConfirm?.cancel();etiqIgnoredCode='';etiqIgnoreUntil=0;
     etiqAtivo=null;etiqRetryAt=0;
     etiqAuto?.stop(); etiqAuto = null; window.ScannerAuto.stopDecoder(); clearInterval(etiqWatch);
@@ -1039,12 +1086,13 @@
   }
   window.capturaAutomatica = function (prepared) {
     if (window.BiparActions && !window.BiparActions.isInventory()) return;
+    if (etiqCameraContext && !etiqSameInventoryContext(etiqCameraContext)) { etiqContextChanged(); return; }
     try{window.ScannerRound.requireRound(document.getElementById('loja').value)}catch(e){alert(e.message);window.fecharScanner();return;}
     if(prepared?.ean && prepared.ean===etiqIgnoredCode && Date.now()<etiqIgnoreUntil){etiqAuto?.reset();return;}
     if(prepared?.ean)etiqIgnoredCode='';
     const current=etiqFila.find(x=>x.lid===etiqAtivo);
     if(current?.complete){etiqAuto?.stop();renderEtiqCaptureState();return;}
-    if(etiqPausado || etiqBusy || (current && !['pendente','vinculado'].includes(current.st)) || Date.now()<etiqRetryAt){etiqAuto?.reset();return;}
+    if(etiqPausado || (current && !['pendente','vinculado'].includes(current.st)) || Date.now()<etiqRetryAt){etiqAuto?.reset();return;}
     if(current?.ean && prepared?.ean && current.ean!==prepared.ean){
       document.getElementById('etiq-hint').textContent='Código diferente. Continue com a mesma peça; feche para revisar se trocou de produto.';
       etiqAuto?.reset();return;
@@ -1080,6 +1128,7 @@
   };
   window.capturaManual = function () {
     if (window.BiparActions && !window.BiparActions.isInventory()) return;
+    if (etiqCameraContext && !etiqSameInventoryContext(etiqCameraContext)) { etiqContextChanged(); return; }
     try{window.ScannerRound.requireRound(document.getElementById('loja').value)}catch(e){alert(e.message);window.fecharScanner();return;}
     const current = etiqFila.find(x => x.lid === etiqAtivo);
     // Manual capture is the only path that freezes and persists camera pixels.
@@ -1180,7 +1229,7 @@
   async function enviarReconhecimento(item, captureMode) {
     const revision = item.autoRevision, sentOcr = item.ocrText || '';
     const current = () => item.autoRecognition && !item.manualPhoto && item.autoRevision === revision &&
-      (!window.BiparActions || (window.BiparActions.isInventory() && window.BiparActions.version() === captureMode));
+      (!window.BiparActions || window.BiparActions.isInventory());
     const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 25000);
     let r;
     try {
@@ -1236,26 +1285,31 @@
     enviarFila.requested = false; etiqBusy = true;
     let progressed = false;
     let transferActivity = null;
+    let sendingItem = null;
     try {
       await etiqRestorePromise;
       // Retry storage recovery while paused, but never post a new photograph
       // which exists only in memory and could be lost on reload.
       if (!await etiqSave()) return;
-      if (window.BiparActions && (!window.BiparActions.isInventory() || window.BiparActions.version() !== captureMode)) return;
-      const item = etiqFila.find((x) => x.st === 'fila' && (x.b64 || (x.autoRecognition && x.ean)));
+      if (window.BiparActions && !window.BiparActions.isInventory()) return;
+      const queued = x => x.st === 'fila' && (x.b64 || (x.autoRecognition && x.ean));
+      const item = etiqFila.find(x => x.lid === etiqAtivo && queued(x)) || etiqFila.find(queued);
       if (item) {
+        sendingItem = item;
         transferActivity = 'camera:' + item.roundId + ':' + item.clientScanId;
         window.ScannerTransfer?.activity(transferActivity, item);
-        if(!item.roundId){item.st='revisao';item.msg='Foto antiga sem rodada. Não transferida para o inventário novo.';etiqSave();renderEtiqLista();return;}
+        if(!item.roundId || !item.storeId || (!item.sellerId && !item.sellerName)){
+          item.st='revisao';item.msg='Leitura antiga sem loja, rodada ou operador completos. Preservada para revisão; não foi atribuída ao contexto atual.';
+          etiqSave();renderEtiqLista();return;
+        }
         if (item.autoRecognition && !item.manualPhoto) { progressed = await enviarReconhecimento(item, captureMode); return; }
         // Store association belongs to this capture, even during a slow OCR pass.
-        const storeId = item.storeId ?? (document.getElementById('loja').value || '');
-        const sellerValue = document.getElementById('vendedor').value;
-        const sellerId = item.sellerId ?? (sellerValue === '__manual__' ? '' : (sellerValue || ''));
-        const sellerName = item.sellerName ?? (localStorage.getItem(STORAGE_VENDNAME) || '');
+        const storeId = item.storeId;
+        const sellerId = item.sellerId || '';
+        const sellerName = item.sellerName || '';
         const revision = Number(item.photoRevision || 0), image = item.b64, sentBarcode = item.ean || '', sentOcr = item.ocrText || '';
         const blob = await (await fetch(image)).blob();
-        if (window.BiparActions && (!window.BiparActions.isInventory() || window.BiparActions.version() !== captureMode)) return;
+        if (window.BiparActions && !window.BiparActions.isInventory()) return;
         if (Number(item.photoRevision || 0) !== revision) return;
         const fd = new FormData();
         fd.append('file', blob, 'etiqueta.jpg');
@@ -1339,11 +1393,11 @@
       }
     } catch (_) {
       const detail=document.getElementById('etiq-confirm-det');
-      if(detail && (!window.BiparActions || (window.BiparActions.isInventory() && window.BiparActions.version() === captureMode)))detail.textContent='Envio interrompido. Leitura preservada; tentando novamente sem duplicar.';
+      if(detail && sendingItem?.lid === etiqAtivo && (!window.BiparActions || window.BiparActions.isInventory()))detail.textContent='Envio interrompido. Leitura preservada; tentando novamente sem duplicar.';
     } finally {
       if (transferActivity) window.ScannerTransfer?.activity(transferActivity, null);
       etiqBusy = false;
-      const sameAction = !window.BiparActions || (window.BiparActions.isInventory() && window.BiparActions.version() === captureMode);
+      const sameAction = !window.BiparActions || window.BiparActions.isInventory();
       if (sameAction && etiqFila.some(item => item.st === 'fila' && (item.b64 || (item.autoRecognition && item.ean)))) {
         // A second frame can arrive while the first HTTP request is pending.
         // Wake that queue after the request finishes even if the camera closed.
@@ -1353,7 +1407,7 @@
         clearTimeout(enviarFila.wakeTimer);
         enviarFila.wakeTimer = setTimeout(() => {
           enviarFila.wakeTimer = null;
-          if (!window.BiparActions || (window.BiparActions.isInventory() && window.BiparActions.version() === captureMode)) enviarFila();
+          if (!window.BiparActions || window.BiparActions.isInventory()) enviarFila();
         }, delay);
       } else enviarFila.retryDelay = 2000;
       enviarFila.requested = false;

@@ -40,6 +40,8 @@ async function main() {
       window.BiparActions.isInventory = () => true; window.BiparActions.version = () => 1;
       window.ScannerRound.requireRound = () => 'test-round'; window.ScannerRound.id = () => 'test-round';
       const store = document.getElementById('loja'); store.innerHTML = '<option value="test-store">Teste</option>'; store.value = 'test-store';
+      document.getElementById('vendedor').innerHTML = '<option value="test-seller">Operador de teste</option>';
+      localStorage.setItem('sports_tennis_bipar_vendedor_nome', 'Operador de teste');
       const overlay = document.createElement('div'); overlay.id = 'etiq-overlay'; overlay.style.cssText = 'position:fixed;inset:0;display:flex;flex-direction:column;background:black;z-index:99998'; overlay.innerHTML = window.ScannerView.markup(); document.body.appendChild(overlay);
       const video = document.getElementById('etiq-video'); Object.defineProperty(video, 'videoWidth', { value: 800 }); Object.defineProperty(video, 'videoHeight', { value: 1200 }); video.play = () => Promise.resolve();
       window.__frame = '#c00'; const draw = CanvasRenderingContext2D.prototype.drawImage;

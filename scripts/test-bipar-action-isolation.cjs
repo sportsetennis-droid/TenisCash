@@ -13,10 +13,11 @@ function setup(code, overrides = {}) {
     console, Promise, Map, Set, JSON, AbortController, FormData, setTimeout, clearTimeout,
     window: { BiparActions: { isInventory: () => mode.inventory, version: () => mode.version, refresh() {}, storesReady() {} }, ScannerRound: { refresh: async () => {} }, ScannerTransfer: { activity() {} } },
     document: { getElementById: node }, localStorage: { getItem: () => null },
-    stores: [], sellers: [], atualizarStatus() {}, etiqRestorePromise: Promise.resolve(), etiqSave: async () => true, renderEtiqLista() {},
+    stores: [], sellers: [], etiqAtivo: null, etiqCameraEpoch: 0, atualizarStatus() {}, etiqRestorePromise: Promise.resolve(), etiqSave: async () => true, renderEtiqLista() {},
     fetch: async path => { writes.push(path); return { json: async () => ({ stores: [], sellers: [] }) }; },
     ...overrides,
   });
+  context.window.fecharScanner = () => { context.etiqCameraEpoch++; };
   vm.runInContext(code, context);
   return { context, mode, writes, node };
 }
@@ -54,6 +55,32 @@ function setup(code, overrides = {}) {
   assert.deepEqual(calls, [item.b64], 'switch during photo decode must prevent inventory POST');
   assert.equal(item.st, 'fila', 'original photograph stays queued for inventory');
   assert.equal(d.context.etiqBusy, false, 'busy must release after guarded return');
+
+  const frozen = deferred(), payloads = [];
+  const original = { ...item, lid: 'old-piece', photoRevision: 1, manualPhoto: true };
+  const newer = { lid: 'new-piece', st: 'pendente', storeId: 'store-b', roundId: 'round-b', sellerId: 'seller-b', complete: false };
+  const sameMode = setup(queueCode, { etiqBusy: false, etiqAtivo: original.lid, etiqFila: [original], etiqStartOcr() {}, renderLista() {},
+    setTimeout: () => 0, clearTimeout() {}, fetch: async (url, options) => {
+      if (url.startsWith('data:')) return { blob: () => frozen.promise };
+      payloads.push(Object.fromEntries(['storeId','roundId','sellerId','clientScanId'].map(key => [key, options.body.get(key)])));
+      return { ok: true, json: async () => ({ capId:'old-photo', photoSaved:true, photoRevision:1 }) };
+    } });
+  const oldUpload = vm.runInContext('enviarFila()', sameMode.context);
+  for (let turn = 0; turn < 8; turn++) await Promise.resolve();
+  sameMode.node('loja').value = 'store-b'; sameMode.node('vendedor').value = 'seller-b'; sameMode.mode.version++;
+  sameMode.context.etiqFila.push(newer); sameMode.context.etiqAtivo = newer.lid;
+  sameMode.node('etiq-confirm-det').textContent = 'Nova peça';
+  frozen.resolve(new Blob(['original photo'])); await oldUpload;
+  assert.deepEqual(payloads, [{ storeId:'store-a', roundId:'round-a', sellerId:'seller-a', clientScanId:'scan-a' }]);
+  assert.equal(original.capId, 'old-photo'); assert.equal(newer.complete, false);
+  assert.equal(sameMode.node('etiq-confirm-det').textContent, 'Nova peça');
+
+  for (const missing of ['storeId', 'roundId', 'sellerId']) {
+    const legacy = { ...original, st:'fila', sellerName:'' }; delete legacy[missing];
+    const legacyMode = setup(queueCode, { etiqBusy:false, etiqFila:[legacy], setTimeout:()=>0, clearTimeout(){} });
+    await vm.runInContext('enviarFila()', legacyMode.context);
+    assert.equal(legacy.st, 'revisao'); assert.equal(legacyMode.writes.length, 0, 'legacy context must never fall back to currently selected store/operator');
+  }
 
   const timers = new Map(); let timerId = 0, pendingPosts = 0, replyStale = false;
   const retryItem = { ...item, photoRevision: 1 };

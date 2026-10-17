@@ -63,7 +63,7 @@ for (const file of ['../public/bipar.html', '../public/identificar.html']) {
   let posted = false;
   const item = {roundId:'round-original',st:'fila',b64:'data:image/jpeg;base64,AA==',ean:'196153346321',storeId:'LOJA04',sellerId:'douglas',sellerName:'Douglas',clientScanId:'same-scan',
     manualPhoto:true,photoRevision:1,ocrDone:true,ocrText:'NIKE\nDQ5471-113\nL'};
-  const queue = {etiqBusy:false,etiqFila:[item],etiqRestorePromise:Promise.resolve(),STORAGE_VENDNAME:'name',FormData,AbortController,setTimeout:()=>0,clearTimeout:()=>{},
+  const queue = {etiqBusy:false,etiqAtivo:null,etiqFila:[item],etiqRestorePromise:Promise.resolve(),STORAGE_VENDNAME:'name',FormData,AbortController,setTimeout:()=>0,clearTimeout:()=>{},
     document:{getElementById:()=>({value:'LOJA05'})},localStorage:{getItem:()=> 'Someone else'},
     window:{ScannerOCR:{readForScan:async()=> 'NIKE\nDQ5471-113\nL'}},
     etiqSave:async()=>true,etiqStartOcr:()=>{},renderEtiqLista:()=>{},renderLista:()=>{},
