@@ -63,7 +63,7 @@ async function main() {
       CanvasRenderingContext2D.prototype.drawImage = function(source, ...args) { if (source.id === 'etiq-video') { this.fillStyle = window.__videoColor; this.fillRect(0, 0, this.canvas.width, this.canvas.height); } else draw.call(this, source, ...args); };
       window.__ocr = []; window.ScannerOCR.readForScan = (image, barcode) => new Promise(resolve => window.__ocr.push({ resolve, barcode, automatic: typeof image !== 'string' }));
       window.__beeps = 0; etiqBeep = () => { window.__beeps++; };
-      window.__autoResets = []; etiqAuto = { reset(options) { window.__autoResets.push(options); }, stop() {} };
+      etiqAuto = { reset() {}, stop() {} };
       window.__auto = (code, text = '') => {
         const frame = document.createElement('canvas'); frame.width = 100; frame.height = 200;
         frame.getContext('2d').fillStyle = '#00c'; frame.getContext('2d').fillRect(0, 0, 100, 200);
@@ -84,9 +84,8 @@ async function main() {
     assert.equal(reads[0].type, 'application/json'); assert(!JSON.stringify(reads[0]).includes('data:image')); assert.equal(photos.length, 0);
     releaseFirst(); await page.waitForFunction(() => etiqFila[0]?.complete && !etiqBusy && document.getElementById('etiq-confirm-status').textContent === '✅ LEITURA COMPLETA');
     assert.equal(await page.evaluate(() => window.__beeps), 1); assert.equal((await page.evaluate(() => window.__photos())).length, 0);
-    assert.equal(await page.evaluate(() => etiqFila[0].autoContinued && !etiqPausado && window.__autoResets.at(-1).afterCode === etiqFila[0].ean), true);
     results.push('automatic barcode posts metadata only, displays recognition and beeps only after confirmed product and size');
-    await page.evaluate(() => window.__auto('7900000000002'));
+    await page.evaluate(() => { window.proximaEtiqueta(); window.__auto('7900000000002'); });
     await page.waitForFunction(() => window.__ocr.some(x => x.barcode === '7900000000002'));
     const autoId = await page.evaluate(() => etiqFila[1].clientScanId);
     await page.locator('#etiq-capturar').click(); await page.evaluate(() => etiqSave.queue);

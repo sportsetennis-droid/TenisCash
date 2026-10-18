@@ -17,7 +17,6 @@ function harness({ slowPlay = false } = {}) {
   const window = { BiparActions: { isInventory: () => mode.inventory, version: () => mode.version, openCamera() {} },
     ScannerRound: { requireRound: store => { if (!mode.round || store !== node('loja').value) throw Error('no round'); return mode.round; } },
     ScannerView: { markup: () => '<video></video>' }, ScannerOCR: { recognize: async () => '' }, ScannerConfirm: { cancel() {} },
-    ScannerCamera: { constraints: { audio: false, video: true }, warmup() {}, tune: async () => {}, snapshot: () => ({ width: 1200, height: 800 }), start(video, engine) { engine.tick(); return { stop() {} }; } },
     ScannerAuto: { create(options) { const engine = { options, stopped: false, ticks: 0, stop() { this.stopped = true; },
       tick() { this.ticks++; if (!this.stopped && options.canRead()) options.onCapture({ ean:'4006381333931', frame:options.snapshot() }); } }; engines.push(engine); return engine; },
       stopDecoder() {}, decodeInWorker: async () => '4006381333931' }, capturaAutomatica: prepared => captures.push(prepared) };

@@ -648,10 +648,11 @@
     finally { if (request === historyRequest) $('action-history-copy').disabled = false; }
   }
   function closeCamera() {
-    cameraGeneration++; cameraTimer?.stop(); cameraTimer = null; scanner?.stop(); scanner = null; window.ScannerAuto?.stopDecoder(); stream?.getTracks().forEach(track => track.stop()); stream = null; cameraRead = null; cameraRetry = null; cameraPendingRead = null; cameraOcrReads.clear(); $('action-camera')?.remove();
+    cameraGeneration++; clearInterval(cameraTimer); scanner?.stop(); scanner = null; window.ScannerAuto?.stopDecoder(); stream?.getTracks().forEach(track => track.stop()); stream = null; cameraRead = null; cameraRetry = null; cameraPendingRead = null; cameraOcrReads.clear(); $('action-camera')?.remove();
   }
   function frame() {
-    return window.ScannerCamera.snapshot($('etiq-video'));
+    const video = $('etiq-video'); if (!video?.videoWidth) return null;
+    const canvas = document.createElement('canvas'), scale = Math.min(1, 1800 / Math.max(video.videoWidth, video.videoHeight)); canvas.width = Math.round(video.videoWidth * scale); canvas.height = Math.round(video.videoHeight * scale); canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height); return canvas;
   }
   async function capture(reading) {
     if (cameraRead || !stream || storageFailed) return;
@@ -662,7 +663,8 @@
     $('action-camera-size')?.remove(); $('action-camera-pending')?.remove();
     $('etiq-confirm').style.display = 'flex'; $('etiq-confirm-status').textContent = 'Identificando a peça…'; $('etiq-confirm-btn').disabled = true;
     $('etiq-confirm-det').textContent = 'Código lido: ' + reading.ean;
-    // Resolve exact barcodes first. Known variants need no expensive text OCR.
+    // Query the exact barcode immediately, while OCR reads this same captured frame.
+    const textPromise = reading.ocrText ? Promise.resolve(reading.ocrText) : reading.frame ? Promise.resolve().then(() => window.ScannerOCR.recognize(reading.frame)).catch(() => '') : Promise.resolve('');
     const item = retry ? await retryRead(draft, retry, reading.ean, reading.ocrText || '', cameraId) : await scan(reading.ean, reading.ocrText || '');
     if (cameraId !== cameraGeneration || !$('action-camera')) return;
     if (storageFailed) { pauseCameraStorage(); return; }
@@ -672,8 +674,6 @@
       return;
     }
     cameraRetry = null;
-    const needsOcr = !item.product || requiresSizeInput(item);
-    const textPromise = reading.ocrText ? Promise.resolve(reading.ocrText) : needsOcr && reading.frame ? Promise.resolve().then(() => window.ScannerOCR.recognize(reading.frame)).catch(() => '') : Promise.resolve('');
     const frameToken = {}, barcode = item.barcode, backgroundResolution = !item.product;
     cameraOcrReads.set(item.clientScanId, frameToken);
     showCameraRead(item);
@@ -759,11 +759,6 @@
   function showCameraRead(item) {
     $('action-camera-size')?.remove(); $('action-camera-pending')?.remove(); cameraRead = item;
     if (!item.product) { nextCameraRead('automatic'); return; }
-    if (!requiresSizeInput(item)) {
-      nextCameraRead();
-      if (!storageFailed && !cameraRead) window.ScannerCamera.feedback('✓ ' + item.product.name + ' · Tam. ' + item.product.size);
-      return;
-    }
     $('etiq-confirm').style.display = 'flex';
     cameraDetails(item);
     const needsSize = item.product && requiresSizeInput(item);
@@ -811,17 +806,15 @@
       nextCameraRead();
     });
     try {
-      window.ScannerCamera.warmup();
-      const opened = await navigator.mediaDevices.getUserMedia(window.ScannerCamera.constraints);
+      const opened = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
       if (cameraId !== cameraGeneration) { opened.getTracks().forEach(track => track.stop()); return; }
       stream = opened; $('etiq-video').srcObject = stream; await $('etiq-video').play();
       if (cameraId !== cameraGeneration || !$('action-camera')) { opened.getTracks().forEach(track => track.stop()); return; }
-      void window.ScannerCamera.tune(stream);
       $('etiq-contador').textContent = 'Lote desta ação · ' + activeReads().length + ' peça(s)'; $('etiq-lista').textContent = 'O estoque só muda depois da conferência e confirmação do lote.';
-      scanner = window.ScannerAuto.create({ snapshot: frame, decode: canvas => window.ScannerAuto.decodeInWorker(canvas), recognize: canvas => window.ScannerOCR.recognize(canvas), recognizeMissing: false, canRead: () => !!stream && !cameraRead && !storageFailed && cameraId === cameraGeneration, onHint: text => { if ($('action-camera')) $('etiq-hint').textContent = text; }, onCapture: capture });
+      scanner = window.ScannerAuto.create({ snapshot: frame, decode: canvas => window.ScannerAuto.decodeInWorker(canvas), recognize: canvas => window.ScannerOCR.recognize(canvas), canRead: () => !!stream && !cameraRead && !storageFailed && cameraId === cameraGeneration, onHint: text => { if ($('action-camera')) $('etiq-hint').textContent = text; }, onCapture: capture });
       if (retryItem) retryCameraRead(retryItem);
       updateCameraSummary();
-      cameraTimer = window.ScannerCamera.start($('etiq-video'), scanner);
+      cameraTimer = setInterval(() => scanner?.tick(), 350);
     } catch (error) { closeCamera(); message('Não foi possível abrir a câmera: ' + error.message, true); }
   }
   function storesReady() {
