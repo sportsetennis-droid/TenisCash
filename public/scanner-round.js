@@ -18,7 +18,18 @@
       document.getElementById('round-title').textContent=current ? 'RODADA #'+current.number+' — '+current.name : 'SEM RODADA ABERTA';
       document.getElementById('round-detail').textContent=current ? (current.status==='counting'?'EM CONTAGEM':'EM CONFERÊNCIA — coleta encerrada')+' · Início '+new Date(current.startedAt).toLocaleString('pt-BR')+' · '+(d.totals?.total||0)+' leituras nesta rodada · '+(d.totals?.pending||0)+' pendentes' : 'O administrador deve iniciar o inventário desta loja. Leituras antigas ficam no histórico.';
       document.getElementById('round-box').dataset.ready=id()?'true':'false';
-    }catch(e){if(n!==requestNumber)return;current=null;document.getElementById('round-title').textContent='RODADA NÃO VERIFICADA';document.getElementById('round-detail').textContent=e.message;}
+    }catch(e){
+      if(n!==requestNumber)return;
+      // A polling failure is not proof that an open round was closed. Keep
+      // the last server-confirmed round so one transient network error does
+      // not make the next camera read close the scanner.
+      if(!current||current.storeId!==storeId){
+        current=null;
+        document.getElementById('round-title').textContent='RODADA NÃO VERIFICADA';
+        document.getElementById('round-detail').textContent=e.message;
+        document.getElementById('round-box').dataset.ready='false';
+      }
+    }
     if(typeof atualizarStatus==='function')atualizarStatus();
     if(typeof renderLista==='function')renderLista();
     if(typeof renderStats==='function')renderStats();
