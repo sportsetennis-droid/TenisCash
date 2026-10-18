@@ -1467,8 +1467,11 @@
     if (!roundId || !bipeId || button.disabled) return;
     button.disabled = true;
     try {
+      const token = sessionStorage.getItem('tc_transfer_token') || localStorage.getItem('loja_token') ||
+        localStorage.getItem('tc_token') || localStorage.getItem('tc_admin_token') || '';
+      if (!token) throw new Error('Sua sessão não foi encontrada. Entre novamente e tente excluir o bipe.');
       const response = await fetch('/api/stocktake/rounds/' + encodeURIComponent(roundId) + '/exclude/' + encodeURIComponent(bipeId), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
         body: JSON.stringify({ reason: 'Excluído pelo operador na lista de bipes do scanner.' }),
       });
       const result = await response.json().catch(() => ({}));
