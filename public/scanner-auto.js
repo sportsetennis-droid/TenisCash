@@ -30,6 +30,7 @@
           if(normalized===afterCode){clearFrames=0;onHint('Afaste a etiqueta já lida antes de apresentar outro par.');return;}
           if(!normalized && ++clearFrames<2)return;
           afterCode='';clearFrames=0;
+          onHint('Leitura automática ativa — centralize a etiqueta e mantenha parada.');
         }
         if(code){hits=code===lastCode?hits+1:1;lastCode=code;
           onHint('Código reconhecido. Mantenha a etiqueta parada…');
@@ -86,12 +87,105 @@
     root.ScannerRegions?.normalizePixels(data);
     return {width,height,data};
   }
+  function barcodeRegions(image){
+    const w=image.width,h=image.height,block=8,cols=Math.ceil(w/block),rows=Math.ceil(h/block);
+    const gray=new Uint8Array(w*h),gx=new Float32Array(cols*rows),gy=new Float32Array(cols*rows);
+    for(let i=0;i<gray.length;i++)gray[i]=(image.data[i*4]+image.data[i*4+1]+image.data[i*4+2])/3;
+    for(let by=0;by<rows;by++)for(let bx=0;bx<cols;bx++){
+      let xEdges=0,yEdges=0,n=0;
+      for(let y=Math.max(1,by*block);y<Math.min(h-1,(by+1)*block);y+=2)for(let x=Math.max(1,bx*block);x<Math.min(w-1,(bx+1)*block);x+=2){
+        xEdges+=Math.abs(gray[y*w+x+1]-gray[y*w+x-1]);yEdges+=Math.abs(gray[(y+1)*w+x]-gray[(y-1)*w+x]);n++;
+      }
+      gx[by*cols+bx]=xEdges/(n||1);gy[by*cols+bx]=yEdges/(n||1);
+    }
+    const regions=[];
+    // Coherent parallel edges locate bars in either orientation. Text and
+    // package art usually have mixed gradients, so they are not enlarged.
+    for(const verticalBars of [true,false]){
+      const active=new Uint8Array(cols*rows),seen=new Uint8Array(cols*rows);
+      for(let i=0;i<active.length;i++){const a=verticalBars?gx[i]:gy[i],b=verticalBars?gy[i]:gx[i];active[i]=a>=10&&a>b*2?1:0;}
+      const components=[];
+      for(let start=0;start<active.length;start++){
+        if(!active[start]||seen[start])continue;
+        const queue=[start];seen[start]=1;let minX=cols,minY=rows,maxX=0,maxY=0;
+        for(let at=0;at<queue.length;at++){
+          const i=queue[at],x=i%cols,y=Math.floor(i/cols);minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);
+          for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+            const nx=x+dx,ny=y+dy,ni=ny*cols+nx;
+            if(nx>=0&&ny>=0&&nx<cols&&ny<rows&&active[ni]&&!seen[ni]){seen[ni]=1;queue.push(ni);}
+          }
+        }
+        const cw=(maxX-minX+1)*block,ch=(maxY-minY+1)*block,along=verticalBars?ch:cw;
+        if(along>=24&&queue.length>=4)components.push({minX,minY,maxX,maxY,cells:queue.length});
+      }
+      // White modules may separate bars into components. Join only adjacent
+      // components with matching height, without joining text above/below.
+      if(components.length>256)return [{},{},{},{}];
+      components.sort((a,b)=>verticalBars?a.minX-b.minX:a.minY-b.minY);
+      const merged=[];
+      for(const component of components){
+        const start=verticalBars?component.minY:component.minX,end=verticalBars?component.maxY:component.maxX;
+        const group=merged.find(item=>{
+          const a=verticalBars?item.minY:item.minX,b=verticalBars?item.maxY:item.maxX;
+          const gap=(verticalBars?component.minX-item.maxX:component.minY-item.maxY)-1;
+          return gap>=0&&gap<=2&&Math.abs((end-start)-(b-a))<=Math.min(end-start+1,b-a+1)*.25&&Math.min(end,b)-Math.max(start,a)+1>=Math.min(end-start+1,b-a+1)*.8;
+        });
+        if(group){group.minX=Math.min(group.minX,component.minX);group.minY=Math.min(group.minY,component.minY);group.maxX=Math.max(group.maxX,component.maxX);group.maxY=Math.max(group.maxY,component.maxY);group.cells+=component.cells;}
+        else merged.push({...component});
+      }
+      for(const {minX,minY,maxX,maxY,cells} of merged){
+        const cw=(maxX-minX+1)*block,ch=(maxY-minY+1)*block,across=verticalBars?cw:ch,along=verticalBars?ch:cw;
+        if(across<60||across<along*1.2||cells*block*block/(cw*ch)<.45)continue;
+        // Quiet zones remain inside the crop; never truncate the outer bars.
+        const px=Math.max(12,Math.round(cw*.12)),py=Math.max(12,Math.round(ch*.12));
+        const x=Math.max(0,minX*block-px),y=Math.max(0,minY*block-py);
+        regions.push({x,y,width:Math.min(w,(maxX+1)*block+px)-x,height:Math.min(h,(maxY+1)*block+py)-y});
+      }
+    }
+    return regions;
+  }
+  function enlargedRegionPixels(image,region){
+    const scale=Math.min(4,1600/Math.max(region.width,region.height),Math.sqrt(850000/(region.width*region.height)));
+    const width=Math.max(1,Math.round(region.width*scale)),height=Math.max(1,Math.round(region.height*scale)),data=new Uint8ClampedArray(width*height*4);
+    // Bilinear pixels, not a canvas: compatible with WebKit workers too.
+    for(let y=0;y<height;y++){
+      const sy=Math.max(0,Math.min(region.height-1,(y+.5)*region.height/height-.5)),y0=Math.floor(sy),fy=sy-y0,y1=Math.min(region.height-1,y0+1);
+      for(let x=0;x<width;x++){
+        const sx=Math.max(0,Math.min(region.width-1,(x+.5)*region.width/width-.5)),x0=Math.floor(sx),fx=sx-x0,x1=Math.min(region.width-1,x0+1);
+        const a=((region.y+y0)*image.width+region.x+x0)*4,b=((region.y+y0)*image.width+region.x+x1)*4,c=((region.y+y1)*image.width+region.x+x0)*4,d=((region.y+y1)*image.width+region.x+x1)*4,to=(y*width+x)*4;
+        for(let channel=0;channel<3;channel++)data[to+channel]=(image.data[a+channel]*(1-fx)+image.data[b+channel]*fx)*(1-fy)+(image.data[c+channel]*(1-fx)+image.data[d+channel]*fx)*fy;
+        data[to+3]=255;
+      }
+    }
+    return {width,height,data};
+  }
+  async function recoverBarcodeRegions(image,regions){
+    // Do not select the first label or silently skip candidates when a crowded
+    // frame exceeds budget. A null result means the frame cannot be accepted.
+    if(!regions.length)return [];if(regions.length>3)return null;
+    const enlarged=regions.map(region=>enlargedRegionPixels(image,region));
+    if(enlarged.reduce((sum,item)=>sum+item.width*item.height*2,0)>5100000)return null;
+    const results=[];
+    for(const candidate of enlarged){
+      results.push(...await root.ZXingWASM.readBarcodes(candidate,readerOptions));
+      root.ScannerRegions?.normalizePixels(candidate.data);
+      results.push(...await root.ZXingWASM.readBarcodes(candidate,readerOptions));
+    }
+    return results;
+  }
   async function decodePixels(image){
     if(!Number.isInteger(image?.width)||!Number.isInteger(image?.height)||image.width<1||image.height<1||image.width*image.height>16000000||image.data?.length!==image.width*image.height*4)throw new Error('Quadro de leitura inválido');
     await prepareReader();
     const centered=centeredPixels(image);
     let results=await root.ZXingWASM.readBarcodes(centered,readerOptions);
     if(!results.length)results=await root.ZXingWASM.readBarcodes(rotatedEnhancedPixels(centered),readerOptions);
+    const regions=barcodeRegions(centered);
+    if(regions.length>3)return '';
+    // A sharp label must not hide a second blurry label in the same frame.
+    if(!results.length||regions.length>1){
+      const recovered=await recoverBarcodeRegions(centered,regions);if(recovered===null)return '';
+      results.push(...recovered);
+    }
     const codes=[...new Set(results.map(r=>String(r.text||'')).filter(t=>/^\d{8}$|^\d{12,14}$/.test(t)))];
     return codes.length===1?codes[0]:'';
   }
@@ -139,7 +233,7 @@
       if(typeof Worker==='undefined'||Date.now()<workerRetryAt){void fallbackDecode(pending,'Worker indisponível');return;}
       try{
       if(!decoderWorker){
-        const worker=decoderWorker=new Worker('/scanner-barcode-worker.js?v=20261017-auto-reader-3');
+        const worker=decoderWorker=new Worker('/scanner-barcode-worker.js?v=20261017-auto-reader-4');
         worker.onmessage=({data})=>{
           if(decoderWorker!==worker)return;
           if(data?.ready){decoderState={method:'worker',ready:true,error:null};return;}

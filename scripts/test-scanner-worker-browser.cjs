@@ -57,6 +57,25 @@ async function main() {
       assert.equal(result.state.method,'worker'); assert.equal(result.state.ready,true);
       results.push('real WASM worker: ' + kind + ', OffscreenCanvas=' + result.offscreen);
     }
+    if(process.env.SCANNER_TEST_REAL_PHOTO){
+      const input=fs.readFileSync(process.env.SCANNER_TEST_REAL_PHOTO);
+      await page.evaluate(async src=>{window.realPhoto=new Image();realPhoto.src=src;await realPhoto.decode();},'data:image/jpeg;base64,'+input.toString('base64'));
+      for(const orientation of ['landscape','portrait']){
+        const result=await page.evaluate(async orientation=>{
+          const c=document.createElement('canvas');c.width=orientation==='portrait'?realPhoto.height:realPhoto.width;c.height=orientation==='portrait'?realPhoto.width:realPhoto.height;
+          const ctx=c.getContext('2d');if(orientation==='portrait'){ctx.translate(c.width/2,c.height/2);ctx.rotate(Math.PI/2);ctx.drawImage(realPhoto,-realPhoto.width/2,-realPhoto.height/2);}else ctx.drawImage(realPhoto,0,0);
+          const start=performance.now(),code=await ScannerAuto.decodeInWorker(c);return {code,elapsedMs:Math.round(performance.now()-start),state:ScannerAuto.decoderStatus()};
+        },orientation);
+        assert.equal(result.code,'7908891347842','Exact customer photo '+orientation);assert.equal(result.state.method,'worker');
+        results.push('exact original customer photo: '+orientation+' '+JSON.stringify(result));
+      }
+      const mixed=await page.evaluate(async()=>{
+        const c=document.createElement('canvas');c.width=1280;c.height=1100;const ctx=c.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,c.width,c.height);ctx.drawImage(realPhoto,0,0);ctx.drawImage(frame('landscape'),280,650);
+        return {code:await ScannerAuto.decodeInWorker(c),state:ScannerAuto.decoderStatus()};
+      });
+      assert.equal(mixed.code,'','A sharp second label cannot hide the blurry real label');
+      results.push('mixed sharp and blurry labels remain ambiguous');
+    }
     await open('no-canvas');
     const noCanvas = await page.evaluate(async () => ({ code: await ScannerAuto.decodeInWorker(frame('portrait')), state: ScannerAuto.decoderStatus() }));
     assert.equal(noCanvas.code,'2922791600581'); assert.equal(noCanvas.state.method,'worker');
