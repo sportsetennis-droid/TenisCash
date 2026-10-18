@@ -311,7 +311,7 @@
   </section>
   </details>
 
-<script src="/scanner-confirm.js?v=20260915-resume-2"></script><script src="/scanner-view.js?v=20261018-manual-next-1"></script><script src="/scanner-camera.js?v=20261018-live-fast-2"></script><script src="/scanner-round.js?v=20261002-actions-1"></script><script src="/bipar-transfer.js?v=20261002-actions-1"></script><script src="/bipar-actions.js?v=20261018-live-fast-3"></script>
+<script src="/scanner-confirm.js?v=20260915-resume-2"></script><script src="/scanner-view.js?v=20261018-recent-reads-1"></script><script src="/scanner-camera.js?v=20261018-live-fast-2"></script><script src="/scanner-round.js?v=20261002-actions-1"></script><script src="/bipar-transfer.js?v=20261002-actions-1"></script><script src="/bipar-actions.js?v=20261018-live-fast-3"></script>
 <script src="/vendor/barcode/zxing-reader-3.1.4.js"></script><script src="/scanner-auto.js?v=20261018-live-fast-2"></script><script src="/scanner-regions.js?v=20260914-worker-1"></script><script src="/scanner-ocr.js?v=20260914-auto-3"></script>
 <script src="/scanner-photo-storage.js?v=20261016-photo-idb-2"></script>
 <script>
@@ -1417,9 +1417,21 @@
     const nPendente = currentItems.filter(x => !x.complete && x.st !== 'revisao' && (x.bipeId || x.capId)).length;
     cont.textContent = 'enviando ' + nFila + ' · leituras registradas ' + nEnviado + ' · ✓ identificadas ' + nVinc +
       (nPendente ? ' · pra conferir ' + nPendente : '') + (nSalvo ? ' · fotos manuais ' + nSalvo : '');
-    ul.innerHTML = currentItems.slice(-6).reverse().map((x) => {
-      const label = x.complete ? '✓ IDENTIFICADA' : x.autoRecognition && !x.manualPhoto ? (x.bipeId ? '⏳ CONFERINDO' : '⏳ REGISTRANDO LEITURA') : etiqPhotoDurable(x) ? '✓ FOTO SALVA' : '⏳ SALVANDO FOTO';
-      return '<div>' + label + (x.ean ? ' · ' + x.ean : ' · código pendente') + '</div>';
+    const esc = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const recent = currentItems.slice(-8).reverse();
+    ul.innerHTML = '<div style="font-size:11px;font-weight:900;color:#aaa;margin-bottom:4px">ÚLTIMOS BIPES · ' + currentItems.length + '</div>' + recent.map(x => {
+      const p = x.product || {};
+      const name = p.name || x.productName || x.name || (x.ean ? 'Produto ainda não identificado' : 'Código pendente');
+      const brand = p.brand || x.productBrand || x.brand || '';
+      const size = p.size || x.productSize || x.size || '';
+      const reference = p.sku || p.reference || x.sku || x.reference || '';
+      const status = x.complete ? '✓ IDENTIFICADO' : x.needsSize ? '⚠ CONFERIR TAMANHO' : x.bipeId ? '⏳ PENDENTE' : etiqPhotoDurable(x) ? '📷 FOTO SALVA · AGUARDANDO CÓDIGO' : '⏳ LENDO';
+      const details = [brand, size ? 'Tam. ' + size : '', reference ? 'Ref. ' + reference : ''].filter(Boolean).join(' · ');
+      return '<div style="padding:5px 0;border-top:1px solid #444">' +
+        '<div style="font-weight:800;color:#fff;line-height:1.25">' + esc(name) + '</div>' +
+        (details ? '<div style="color:#c9c9c9;line-height:1.25">' + esc(details) + '</div>' : '') +
+        '<div style="color:#b8d8ff;line-height:1.25;overflow-wrap:anywhere">' + esc(x.ean ? 'Código ' + x.ean : 'Código pendente') + ' · ' + esc(status) + '</div>' +
+        '</div>';
     }).join('');
   }
 
