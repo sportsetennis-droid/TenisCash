@@ -66,6 +66,7 @@ function harness(shared, options = {}) {
     get: id => nodes.get(id), handler: null, historyHandler: null, contextHandler: null, contextUser: person, play: async () => {}, recognize: async () => '', decode: async () => '', confirmDuplicate: async () => true };
   const window = { events: {}, addEventListener(name, fn) { (this.events[name] ||= []).push(fn); }, ScannerTransfer: { refresh() {} }, ScannerConfirm: { ask: text => h.confirmDuplicate(text) },
     ScannerView: { markup: () => '__SCANNER__' }, ScannerOCR: { recognize: canvas => h.recognize(canvas) },
+    ScannerCamera: { constraints: { audio: false, video: true }, warmup() {}, tune: async () => {}, snapshot: () => document.createElement('canvas'), feedback(text) { h.lastFeedback = text; }, start(video, scanner) { const id = nextTimer++; intervals.set(id, () => scanner.tick()); return { stop() { intervals.delete(id); } }; } },
     ScannerAuto: { stopDecoder() {}, decodeInWorker: canvas => h.decode(canvas), create(options) { const scanner = { options, resets: [], stopped: false, tick() {}, reset(value) { this.resets.push(value); this.stopped = false; }, stop() { this.stopped = true; } }; scannerInstances.push(scanner); return scanner; } },
     fecharScanner() {} };
   const context = vm.createContext({ window, document, localStorage, sessionStorage, console, crypto: { randomUUID }, AbortController, URLSearchParams, atob,
@@ -122,17 +123,17 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
     assert.equal(h.api.state().cameraRead, null); h.api.closeCamera();
   });
   await test('resolved Lupo advances without a size prompt and never fabricates physical confirmation', async () => {
-    const h = harness(); await h.boot(); const ocr = deferred(); h.recognize = () => ocr.promise;
+    const h = harness(); await h.boot(); const ocr = deferred(); let ocrCalls = 0; h.recognize = () => { ocrCalls++; return ocr.promise; };
     h.handler = () => response({ product: lupo, requiresSizeConfirmation: false });
     await h.api.openCamera(); await h.api.capture({ ean: lupo.barcode, frame: {} });
     const item = h.api.activeReads()[0];
     assert.equal(h.get('action-camera-size'), undefined); assert.equal(h.get('action-camera-pending'), undefined);
-    assert.equal(h.get('etiq-confirm-status').textContent, 'Peça identificada');
-    assert.equal(h.get('etiq-confirm-btn').textContent, 'PRÓXIMA PEÇA'); assert.equal(h.get('etiq-confirm-btn').disabled, false);
+    assert.equal(h.get('etiq-confirm').style.display, 'none');
+    assert.equal(h.api.state().cameraRead, null); assert.match(h.lastFeedback, /Manguito Lupo/);
+    assert.equal(ocrCalls, 0, 'a catalog-resolved variant does not start costly OCR');
     assert.equal(h.get('action-readings').querySelectorAll('[data-scan-size]').length, 0);
     ocr.resolve('LUPO TAM P'); await flush();
-    assert.equal(h.get('action-camera-size'), undefined); assert.equal(h.get('etiq-confirm-status').textContent, 'Peça identificada');
-    await h.cameraClick('next');
+    assert.equal(h.get('action-camera-size'), undefined); assert.equal(h.get('etiq-confirm').style.display, 'none');
     assert.equal(item.confirmedSize, ''); assert.equal(h.api.scansPayload()[0].confirmedSize, '');
     assert.equal(h.api.scansPayload()[0].resolvedSize, 'P'); assert.equal(h.api.state().cameraRead, null);
     assert.equal(h.api.activeReads().length, 1); assert.equal(h.scannerInstances[0].resets.at(-1).afterCode, lupo.barcode);
@@ -253,10 +254,10 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
     const h = harness(); await h.boot(); const ocr = deferred(), canvas = { marker: 'same physical label' }; let frameSeen;
     h.recognize = frame => { frameSeen = frame; return ocr.promise; };
     h.handler = request => request.body?.ocrText ? response({ product }) : response({ error: 'Unknown code' }, 404);
-    await h.api.openCamera(); const capturing = h.api.capture({ ean: product.barcode, frame: canvas }); await flush();
+    await h.api.openCamera(); const capturing = h.api.capture({ ean: product.barcode, frame: canvas }); await capturing; await flush();
     assert.equal(h.requests.filter(r => r.url.endsWith('/lookup')).length, 1); assert.equal(frameSeen, canvas);
     assert.equal(h.api.activeReads().length, 1); const id = h.api.activeReads()[0].clientScanId;
-    ocr.resolve('ADIDAS IF1405 BR 40'); await capturing;
+    ocr.resolve('ADIDAS IF1405 BR 40'); await flush(); await flush();
     assert.equal(h.requests.filter(r => r.url.endsWith('/lookup')).at(-1).body.ocrText, 'ADIDAS IF1405 BR 40');
     assert.equal(h.api.activeReads().length, 1); assert.equal(h.api.activeReads()[0].clientScanId, id);
     assert.equal(h.api.activeReads()[0].confirmedSize, '', 'OCR must never certify the physical size by itself');

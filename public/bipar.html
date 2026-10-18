@@ -311,8 +311,8 @@
   </section>
   </details>
 
-<script src="/scanner-confirm.js?v=20260915-resume-2"></script><script src="/scanner-view.js?v=20261017-manual-only-2"></script><script src="/scanner-round.js?v=20261002-actions-1"></script><script src="/bipar-transfer.js?v=20261002-actions-1"></script><script src="/bipar-actions.js?v=20261015-pending-safety-1"></script>
-<script src="/vendor/barcode/zxing-reader-3.1.4.js"></script><script src="/scanner-auto.js?v=20261017-auto-reader-4"></script><script src="/scanner-regions.js?v=20260914-worker-1"></script><script src="/scanner-ocr.js?v=20260914-auto-3"></script>
+<script src="/scanner-confirm.js?v=20260915-resume-2"></script><script src="/scanner-view.js?v=20261018-live-fast-2"></script><script src="/scanner-camera.js?v=20261018-live-fast-2"></script><script src="/scanner-round.js?v=20261002-actions-1"></script><script src="/bipar-transfer.js?v=20261002-actions-1"></script><script src="/bipar-actions.js?v=20261018-live-fast-2"></script>
+<script src="/vendor/barcode/zxing-reader-3.1.4.js"></script><script src="/scanner-auto.js?v=20261018-live-fast-2"></script><script src="/scanner-regions.js?v=20260914-worker-1"></script><script src="/scanner-ocr.js?v=20260914-auto-3"></script>
 <script src="/scanner-photo-storage.js?v=20261016-photo-idb-2"></script>
 <script>
   const STORAGE_LOJA = 'sports_tennis_bipar_loja';
@@ -949,12 +949,9 @@
       return;
     }
     etiqCameraContext = cameraContext;
-    if (!window.ZXing) {
-      await new Promise((ok) => { const s = document.createElement('script'); s.src = '/vendor/zxing.min.js'; s.onload = ok; s.onerror = ok; document.head.appendChild(s); });
-    }
     if (cameraEpoch !== etiqCameraEpoch) return;
     if (!etiqSameInventoryContext(cameraContext)) { etiqContextChanged(); return; }
-    if (!window.ZXing) { alert('Falhou carregar o leitor — recarrega a página'); return; }
+    window.ScannerCamera.warmup();
     const ov = document.createElement('div');
     ov.id = 'etiq-overlay';
     ov.style.cssText = 'position:fixed;inset:0;background:#000;z-index:99998;display:flex;flex-direction:column';
@@ -970,42 +967,26 @@
     try {
       // Decode centered labels automatically in portrait and landscape.
       const video = document.getElementById('etiq-video');
-      opened = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+      opened = await navigator.mediaDevices.getUserMedia(window.ScannerCamera.constraints);
       if (!cameraCurrent()) { opened.getTracks().forEach(track => track.stop()); return; }
       etiqStream = opened;
       video.srcObject = etiqStream;
       await video.play();
       if (!cameraCurrent()) { opened.getTracks().forEach(track => track.stop()); return; }
-      try { // zoom 2x quando o aparelho suporta (ajuda MUITO em etiqueta pequena)
-        const tr = etiqStream.getVideoTracks()[0];
-        const cap = tr.getCapabilities && tr.getCapabilities();
-        if (cap && cap.zoom && cap.zoom.max) { await tr.applyConstraints({ advanced: [{ zoom: Math.max(cap.zoom.min || 1, Math.min(1, cap.zoom.max)) }] }); }
-      } catch (_) {}
+      void window.ScannerCamera.tune(etiqStream);
       if (!cameraCurrent()) { opened.getTracks().forEach(track => track.stop()); return; }
-      const hints = new Map();
-      hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.UPC_A, ZXing.BarcodeFormat.EAN_8, ZXing.BarcodeFormat.CODE_128, ZXing.BarcodeFormat.ITF]);
-      hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-      const core = new ZXing.MultiFormatReader();
-      core.setHints(hints);
       etiqPausado = false;
       etiqAuto = window.ScannerAuto.create({
-        snapshot: () => {
-          if (!video.videoWidth) return null;
-          const c = document.createElement('canvas');
-          const scale = Math.min(1, 1800 / Math.max(video.videoWidth, video.videoHeight));
-          c.width = Math.round(video.videoWidth * scale); c.height = Math.round(video.videoHeight * scale);
-          c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
-          return c;
-        },
+        snapshot: () => window.ScannerCamera.snapshot(video),
         decode: frame => window.ScannerAuto.decodeInWorker(frame),
         recognize: frame => window.ScannerOCR.recognize(frame),
+        recognizeMissing: false,
         // A pending network upload must not disable local barcode reading.
         canRead: () => etiqStorageReady && !etiqStorageFailed && !etiqPausado && cameraCurrent(),
         onHint: message => { const h=document.getElementById('etiq-hint');if(h)h.textContent=message; },
         onCapture: prepared => { if (cameraCurrent()) window.capturaAutomatica(prepared); }
       });
-      etiqLoop = setInterval(() => etiqAuto?.tick(), 300);
-      void etiqAuto.tick();
+      etiqLoop = window.ScannerCamera.start(video, etiqAuto);
     } catch (e) {
       if (opened) opened.getTracks().forEach(track => track.stop());
       if (cameraEpoch === etiqCameraEpoch) { alert('Câmera falhou: ' + e.message); window.fecharScanner(); }
@@ -1025,7 +1006,7 @@
     try { etiqReader && etiqReader.reset(); } catch (_) {}
     try { if (etiqStream) etiqStream.getTracks().forEach((t) => t.stop()); } catch (_) {}
     etiqStream = null;
-    clearInterval(etiqLoop); clearInterval(etiqPoll); clearInterval(etiqSendTimer);
+    etiqLoop?.stop(); etiqLoop = null; clearInterval(etiqPoll); clearInterval(etiqSendTimer);
     const ov = document.getElementById('etiq-overlay'); if (ov) ov.remove();
   };
 
@@ -1056,8 +1037,21 @@
     next.style.pointerEvents = 'auto';
     const saved = etiqPhotoDurable(it);
     if (it.complete) {
-      etiqPausado = true; etiqAuto?.stop();
       if (!it.completionAnnounced) { it.completionAnnounced = true; etiqBeep(); }
+      if (it.autoRecognition && !it.manualPhoto && !etiqStorageFailed) {
+        status.textContent = '✅ LEITURA COMPLETA';
+        panel.style.display = 'none';
+        if (!it.autoContinued) {
+          // Keep the last piece available for an optional manual photo. Only
+          // a fresh decoded piece releases that identity, avoiding a new count
+          // merely because the operator photographs the identified label.
+          it.autoContinued = true; etiqPausado = false; etiqRetryAt = 0;
+          etiqAuto?.reset({ afterCode: it.ean }); clearInterval(etiqWatch);
+          window.ScannerCamera.feedback('✓ ' + (it.product?.name || 'Peça identificada') + (it.product?.size ? ' · Tam. ' + it.product.size : ''));
+        }
+        return;
+      }
+      etiqPausado = true; etiqAuto?.stop();
       status.textContent = '✅ LEITURA COMPLETA';
       // A capture note can describe an earlier pending state. Completion is
       // determined by the current product/variant response, not that old note.
@@ -1090,7 +1084,8 @@
     try{window.ScannerRound.requireRound(document.getElementById('loja').value)}catch(e){alert(e.message);window.fecharScanner();return;}
     if(prepared?.ean && prepared.ean===etiqIgnoredCode && Date.now()<etiqIgnoreUntil){etiqAuto?.reset();return;}
     if(prepared?.ean)etiqIgnoredCode='';
-    const current=etiqFila.find(x=>x.lid===etiqAtivo);
+    let current=etiqFila.find(x=>x.lid===etiqAtivo);
+    if(current?.complete && current.autoRecognition && current.autoContinued && prepared?.ean){etiqAtivo=null;current=null;}
     if(current?.complete){etiqAuto?.stop();renderEtiqCaptureState();return;}
     if(etiqPausado || (current && !['pendente','vinculado'].includes(current.st)) || Date.now()<etiqRetryAt){etiqAuto?.reset();return;}
     if(current?.ean && prepared?.ean && current.ean!==prepared.ean){
@@ -1118,6 +1113,7 @@
       sellerName: localStorage.getItem(STORAGE_VENDNAME) || '' };
     item.ean = prepared.ean; item.st = 'fila'; item.complete = false;
     item.autoRecognition = true; item.manualPhoto = false; item.b64 = null;
+    delete item.autoContinued;
     item.ocrText = prepared.ocrText || ''; item.ocrDone = !!prepared.ocrText; item.ocrStarted = false;
     item.autoRevision = Number(item.autoRevision || 0) + 1;
     if (prepared.frame) etiqAutoFrames.set(item.clientScanId, prepared.frame);
@@ -1184,6 +1180,7 @@
     item.photoRevision = Number(item.photoRevision || 0) + 1; item.photoTakenAt = new Date().toISOString();
     item.ean = ean; item.st = 'fila'; item.complete = false; item.ocrDone = false; item.ocrStarted = false; item.ocrText = '';
     item.manualPhoto = true; item.autoRecognition = false; item.msg = '';
+    delete item.autoContinued;
     item.autoRevision = Number(item.autoRevision || 0) + 1;
     etiqAutoFrames.delete(item.clientScanId);
     if (!existing) etiqFila.push(item);
