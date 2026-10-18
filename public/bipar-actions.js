@@ -428,7 +428,7 @@
   }
   async function resolveRead(draft, item, ocrText = '') {
     if (!draft || currentDraft !== draft || item.removed || !activeReads(draft).includes(item) || !validContext() || read(pendingKey, null)) return false;
-    const authToken = token, owner = actor?.id, gen = generation, barcode = item.barcode, selected = JSON.stringify(context());
+    const authToken = token, owner = actor?.id, gen = generation, cameraAtRequest = cameraGeneration, barcode = item.barcode, selected = JSON.stringify(context());
     const current = () => currentDraft === draft && generation === gen && selected === JSON.stringify(context()) && owner === draft.context.actorId && token === authToken && actor?.id === owner && item.barcode === barcode && !item.removed && activeReads(draft).includes(item) && validContext() && !read(pendingKey, null);
     const existing = lookups.get(item.clientScanId);
     if (existing) {
@@ -451,7 +451,15 @@
       delete item.ocrSize;
       const br = String(item.ocrText || '').match(/\bBR\s*0*(\d{2}(?:[.,]5)?)\b/i);
       if (br && normalizedSize(br[1]) === normalizedSize(data.product.size)) item.ocrSize = br[1];
-      persist(draft); return true;
+      persist(draft);
+      // A fast lookup may finish after this piece was safely queued and the
+      // camera already advanced. Report its result without stealing focus from
+      // a newer piece or claiming a pending size has been confirmed.
+      if (item.pendingAutoContinuedAt && cameraAtRequest === cameraGeneration && $('action-camera') && !cameraRead) {
+        const detail = requiresSizeInput(item) ? ' · confira o tamanho na lista' : ' · Tam. ' + item.product.size;
+        window.ScannerCamera.feedback((requiresSizeInput(item) ? 'Confira: ' : '✓ ') + item.product.name + detail);
+      }
+      return true;
     } catch (error) {
       if (!current()) return false;
       delete item.product; delete item.requiresSizeConfirmation; delete item.ocrSize; item.error = error.message || 'Identificação interrompida. Tente novamente com esta mesma leitura.';
@@ -460,7 +468,7 @@
     lookups.set(item.clientScanId, job);
     return job.promise;
   }
-  async function scan(barcode, ocrText = '') {
+  async function scan(barcode, ocrText = '', options = {}) {
     if (isInventory() || !validContext() || busy || read(pendingKey, null)) { message('Escolha a ação, entre na sua conta e confira as lojas antes de bipar.', true); return null; }
     barcode = String(barcode || '').trim(); if (!/^\d{8}$|^\d{12,14}$/.test(barcode)) { message('Leia o código de barras numérico da etiqueta. A referência do modelo não substitui o código.', true); return null; }
     const draft = currentDraft;
@@ -470,7 +478,9 @@
     const duplicateConfirmed = true;
     const item = { clientScanId: crypto.randomUUID(), barcode, confirmedSize: '', duplicateConfirmed, ocrText: String(ocrText || '').trim().slice(0, 12000), createdAt: new Date().toISOString() };
     draft.scans.push(item); invalidate(); if (!persist(draft)) { renderReadings(); refresh(); return null; }
-    renderReadings(); refresh(); await resolveRead(draft, item, ocrText); return item;
+    renderReadings(); refresh();
+    if (options.background === true) { void resolveRead(draft, item, ocrText); return item; }
+    await resolveRead(draft, item, ocrText); return item;
   }
   function previewBody() {
     const c = context();
@@ -662,8 +672,10 @@
     $('action-camera-size')?.remove(); $('action-camera-pending')?.remove();
     $('etiq-confirm').style.display = 'flex'; $('etiq-confirm-status').textContent = 'Identificando a peça…'; $('etiq-confirm-btn').disabled = true;
     $('etiq-confirm-det').textContent = 'Código lido: ' + reading.ean;
-    // Resolve exact barcodes first. Known variants need no expensive text OCR.
-    const item = retry ? await retryRead(draft, retry, reading.ean, reading.ocrText || '', cameraId) : await scan(reading.ean, reading.ocrText || '');
+    // Start resolving the exact barcode immediately. Give very fast responses
+    // a brief chance to show size confirmation before advancing; slow lookups
+    // stay pending while the camera proceeds to the next physical piece.
+    const item = retry ? await retryRead(draft, retry, reading.ean, reading.ocrText || '', cameraId) : await scan(reading.ean, reading.ocrText || '', { background: true });
     if (cameraId !== cameraGeneration || !$('action-camera')) return;
     if (storageFailed) { pauseCameraStorage(); return; }
     if (!item) {
@@ -673,7 +685,20 @@
     }
     cameraRetry = null;
     const needsOcr = !item.product || requiresSizeInput(item);
-    const textPromise = reading.ocrText ? Promise.resolve(reading.ocrText) : needsOcr && reading.frame ? Promise.resolve().then(() => window.ScannerOCR.recognize(reading.frame)).catch(() => '') : Promise.resolve('');
+    // Let the exact EAN lookup decide whether OCR is needed. The scan is
+    // already persisted and the camera can continue, so waiting here only
+    // gates optional OCR work—not the next physical piece.
+    const exactLookup = lookups.get(item.clientScanId)?.promise || Promise.resolve();
+    if (!item.product) await new Promise(resolve => {
+      let settled = false;
+      const finish = () => { if (settled) return; settled = true; clearTimeout(timer); resolve(); };
+      const timer = setTimeout(finish, 100);
+      exactLookup.then(finish, finish);
+    });
+    if (cameraId !== cameraGeneration || !$('action-camera')) return;
+    const textPromise = reading.ocrText ? Promise.resolve(reading.ocrText) : needsOcr && reading.frame
+      ? Promise.resolve(exactLookup).then(() => item.product && !requiresSizeInput(item) ? '' : window.ScannerOCR.recognize(reading.frame)).catch(() => '')
+      : Promise.resolve('');
     const frameToken = {}, barcode = item.barcode, backgroundResolution = !item.product;
     cameraOcrReads.set(item.clientScanId, frameToken);
     showCameraRead(item);
@@ -743,7 +768,8 @@
   }
   function nextCameraRead(pending = false) {
     const item = cameraRead;
-    if (!item || item.working || !item.barcode || inflight.has(item.clientScanId)) return;
+    if (!item || item.working || !item.barcode || (inflight.has(item.clientScanId) && pending !== 'automatic')) return;
+    const previousAutoContinuedAt = item.pendingAutoContinuedAt;
     if (pending === true) {
       item.pendingAcknowledgedAt = new Date().toISOString();
       message('Leitura ' + item.barcode + ' mantida como pendente. O lote só poderá ser confirmado depois de identificar o produto e conferir o tamanho.', true);
@@ -751,7 +777,11 @@
       item.pendingAutoContinuedAt = new Date().toISOString();
       cameraPendingRead = item;
     }
-    if (!persist()) { pauseCameraStorage(); return; }
+    if (!persist()) {
+      item.pendingAutoContinuedAt = previousAutoContinuedAt;
+      if (cameraPendingRead === item) cameraPendingRead = null;
+      pauseCameraStorage(); return;
+    }
     invalidate(); cameraRead = null; cameraRetry = null; $('action-camera-size')?.remove(); $('action-camera-pending')?.remove(); $('etiq-confirm').style.display = 'none';
     renderReadings(); refresh(); updateCameraSummary();
     scanner?.reset({ afterCode: item.barcode });

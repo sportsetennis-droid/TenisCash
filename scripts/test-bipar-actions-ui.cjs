@@ -122,10 +122,41 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
     assert.match(h.get('etiq-hint').textContent, /Falta ler o código/); assert.equal(h.scannerInstances[0].resets.length, 1);
     assert.equal(h.api.state().cameraRead, null); h.api.closeCamera();
   });
+  await test('camera records each piece and advances while exact product lookup finishes in the background', async () => {
+    const h = harness(); await h.boot(); await h.api.openCamera();
+    const first = deferred(), second = deferred(); let lookups = 0;
+    h.handler = request => {
+      assert.ok(request.url.endsWith('/lookup'));
+      return lookups++ === 0 ? first.promise : second.promise;
+    };
+    const frame = {};
+    const firstCapture = h.api.capture({ ean: lupo.barcode, frame }); await flush();
+    const firstWait = [...h.timers].find(([, timer]) => timer.ms === 100);
+    if (firstWait) { h.timers.delete(firstWait[0]); firstWait[1].fn(); }
+    await firstCapture; await flush();
+    const firstItem = h.api.activeReads()[0], firstId = firstItem.clientScanId;
+    assert.ok(firstId); assert.equal(firstItem.product, undefined, 'pending lookup is not reported as identified');
+    assert.equal(h.api.state().cameraRead, null, 'camera is ready for another piece before the first lookup responds');
+    assert.equal(h.scannerInstances[0].resets.at(-1).afterCode, lupo.barcode);
+    const secondCapture = h.api.capture({ ean: lupo.barcode, frame }); await flush();
+    const secondWait = [...h.timers].find(([, timer]) => timer.ms === 100);
+    if (secondWait) { h.timers.delete(secondWait[0]); secondWait[1].fn(); }
+    await secondCapture; await flush();
+    const secondItem = h.api.activeReads()[1];
+    assert.ok(secondItem); assert.notEqual(secondItem.clientScanId, firstId, 'a second physical piece with the same barcode gets its own ID');
+    assert.equal(h.api.activeReads().length, 2);
+    second.resolve(response({ product: lupo, requiresSizeConfirmation: false })); await flush();
+    assert.equal(secondItem.product?.productSizeId, lupo.productSizeId, 'out-of-order response stays attached to its own scan');
+    assert.equal(firstItem.product, undefined);
+    first.resolve(response({ product: lupo, requiresSizeConfirmation: false })); await flush();
+    assert.equal(firstItem.product?.productSizeId, lupo.productSizeId);
+    assert.equal(h.api.activeReads().length, 2, 'lookup completion does not add or remove a scan');
+    h.api.closeCamera();
+  });
   await test('resolved Lupo advances without a size prompt and never fabricates physical confirmation', async () => {
     const h = harness(); await h.boot(); const ocr = deferred(); let ocrCalls = 0; h.recognize = () => { ocrCalls++; return ocr.promise; };
     h.handler = () => response({ product: lupo, requiresSizeConfirmation: false });
-    await h.api.openCamera(); await h.api.capture({ ean: lupo.barcode, frame: {} });
+    await h.api.openCamera(); await h.api.capture({ ean: lupo.barcode, frame: {} }); await flush();
     const item = h.api.activeReads()[0];
     assert.equal(h.get('action-camera-size'), undefined); assert.equal(h.get('action-camera-pending'), undefined);
     assert.equal(h.get('etiq-confirm').style.display, 'none');
@@ -152,7 +183,7 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
   await test('Adidas and a lookup without an explicit exemption retain physical size confirmation', async () => {
     for (const result of [{ product, requiresSizeConfirmation: false }, { product: lupo }, { product: lupo, requiresSizeConfirmation: true }]) {
       const h = harness(); await h.boot(); h.handler = () => response(result);
-      await h.api.openCamera(); await h.api.capture({ ean: result.product.barcode });
+      await h.api.openCamera(); await h.api.capture({ ean: result.product.barcode }); await flush();
       assert.ok(h.get('action-camera-size')); assert.equal(h.get('etiq-confirm-btn').disabled, true);
       assert.equal(h.get('etiq-confirm-status').textContent, 'Confira o tamanho na etiqueta');
       await h.cameraClick('next'); assert.ok(h.api.state().cameraRead); assert.equal(h.api.activeReads()[0].confirmedSize, '');
