@@ -14,7 +14,7 @@ assert.equal(captureComplete(cap, { ...bipe, barcode: 'other' }, size, false), f
 const html = fs.readFileSync('public/bipar.html', 'utf8');
 for (const script of html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)) new vm.Script(script[1]);
 assert(!html.includes('CÓDIGO JÁ CONTADO'), 'repeated barcodes no longer trigger a confirmation dialog');
-const section = html.slice(html.indexOf('  let etiqPausado = false'), html.indexOf('  async function enviarFila()'));
+const section = html.slice(html.indexOf('  let etiqPausado = true, etiqLeituraArmada = false'), html.indexOf('  async function enviarFila()'));
 let timer, clock = 10000, beeps = 0, ids = 0, autoRequests = 0;
 const elements = { loja: { value: 'store' }, vendedor: { value: 'seller' }, 'etiq-video': { videoWidth: 100, videoHeight: 200 } };
 function element() { return { style: {}, disabled: true, setAttribute() {}, insertBefore(node) { elements[node.id] = node; }, play: () => Promise.resolve() }; }
@@ -24,7 +24,8 @@ save.baseline = new Map();
 const ctx = {
   window: { ScannerRound: { requireRound: () => 'round' } }, document: doc, etiqFila: [], etiqCameraContext: null,
   etiqAutoFrames: new Map(), etiqStorageReady: true, etiqStorageFailed: false, etiqBusy: false,
-  etiqAuto: { reset() {}, stop() {} }, etiqUltimo: '', etiqUltimoTs: 0,
+  etiqAuto: { reset() {}, stop() {} }, etiqPausado: true, etiqLeituraArmada: false, etiqAtivo: null, etiqRetryAt: 0,
+  etiqUltimo: '', etiqUltimoTs: 0,
   localStorage: { getItem: () => 'seller' }, STORAGE_VENDNAME: 's', genClientScanId: () => 'client' + (++ids),
   renderEtiqLista() {}, etiqSave: save, etiqIdentity: item => 'id:' + item.clientScanId,
   enviarFila() { autoRequests++; return new Promise(() => {}); }, etiqBeep() { beeps++; }, alert() {},
@@ -43,32 +44,38 @@ vm.runInContext(section, ctx);
   assert.equal(ctx.etiqFila[0].complete, false, 'a saved photo is not a completed physical scan');
   // The automatic-flow checks below model a fresh camera session. The manual
   // photo remains active and must not be auto-advanced or discarded.
-  vm.runInContext('etiqAtivo = null; etiqPausado = false; etiqRetryAt = 0', ctx);
+  vm.runInContext('etiqAtivo = null; etiqPausado = true; etiqLeituraArmada = false; etiqRetryAt = 0', ctx);
   doc.getElementById('etiq-confirm').style.display = 'none';
   autoRequests = 0;
 
   const panel = doc.getElementById('etiq-confirm');
   ctx.window.capturaAutomatica({ ean: cap.barcode });
+  assert.equal(ctx.etiqFila.length, 1, 'a code cannot be registered before the operator clicks Próximo');
+  ctx.window.proximaEtiqueta();
+  assert.equal(vm.runInContext('etiqLeituraArmada', ctx), true, 'Próximo authorizes one barcode read');
+  ctx.window.capturaAutomatica({ ean: cap.barcode });
   await Promise.resolve();
   const firstAuto = ctx.etiqFila[1];
-  assert.equal(vm.runInContext('etiqAtivo', ctx), null, 'automatic scan releases the active camera slot immediately');
-  assert.equal(panel.style.display, 'none', 'background verification does not cover the camera');
-  assert.match(doc.getElementById('etiq-hint').textContent, /confirma em segundo plano/);
+  assert.equal(vm.runInContext('etiqAtivo', ctx), firstAuto.lid, 'the read remains selected until confirmed');
+  assert.notEqual(panel.style.display, 'none', 'the existing Próximo panel stays available after a read');
   assert.equal(firstAuto.complete, false, 'a queued read remains pending until the server confirms the product and size');
   assert.equal(autoRequests, 1, 'the first read begins server verification without awaiting its response');
 
-  // Simulate a second physical pair arriving while the first HTTP request is
-  // still unresolved. The server has not ACKed either read yet.
+  // Another code in view is ignored until the user explicitly clicks Próximo.
   ctx.window.capturaAutomatica({ ean: cap.barcode });
   await Promise.resolve();
-  assert.equal(ctx.etiqFila.length, 3, 'the next physical piece is accepted while the previous confirmation is pending');
+  assert.equal(ctx.etiqFila.length, 2, 'a second visible barcode is ignored without another click');
+  assert.equal(autoRequests, 1);
+  firstAuto.bipeId = 'bipe1'; firstAuto.st = 'vinculado';
+  ctx.window.proximaEtiqueta();
+  assert.equal(vm.runInContext('etiqLeituraArmada', ctx), true, 'the next click authorizes the next physical piece');
+  ctx.window.capturaAutomatica({ ean: cap.barcode });
+  await Promise.resolve();
   const secondAuto = ctx.etiqFila[2];
-  assert.notEqual(firstAuto.clientScanId, secondAuto.clientScanId, 'each physical piece has an idempotent client scan ID of its own');
-  assert.equal(autoRequests, 2, 'the queued second piece is also submitted without blocking the camera');
-  assert.equal(vm.runInContext('etiqAtivo', ctx), null);
-  assert.equal(firstAuto.complete, false);
-  assert.equal(secondAuto.complete, false);
-  assert.equal(vm.runInContext('etiqRetryAt', ctx), 0, 'automatic scans have no artificial five-second cooldown');
-  assert.equal(ctx.etiqFila.filter(item => item.ean === cap.barcode).length, 2, 'both physical pairs remain individually accounted for');
-  console.log('PASS: automatic camera advances while server confirmations are pending; reads remain separate and incomplete until confirmed');
+  assert(secondAuto, 'a second piece is accepted after the second explicit click');
+  assert.notEqual(firstAuto.clientScanId, secondAuto.clientScanId, 'each physical piece has its own idempotent scan ID');
+  assert.equal(autoRequests, 2);
+  assert.equal(vm.runInContext('etiqLeituraArmada', ctx), false, 'each click is consumed by one barcode read');
+  assert.equal(ctx.etiqFila.filter(item => item.ean === cap.barcode).length, 2);
+  console.log('PASS: Próximo explicitly authorizes one chosen barcode; further reads stay blocked until another click');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -975,18 +975,20 @@
       if (!cameraCurrent()) { opened.getTracks().forEach(track => track.stop()); return; }
       void window.ScannerCamera.tune(etiqStream);
       if (!cameraCurrent()) { opened.getTracks().forEach(track => track.stop()); return; }
-      etiqPausado = false;
+      etiqPausado = true;
+      etiqLeituraArmada = false;
       etiqAuto = window.ScannerAuto.create({
         snapshot: () => window.ScannerCamera.snapshot(video),
         decode: frame => window.ScannerAuto.decodeInWorker(frame),
         recognize: frame => window.ScannerOCR.recognize(frame),
         recognizeMissing: false,
         // A pending network upload must not disable local barcode reading.
-        canRead: () => etiqStorageReady && !etiqStorageFailed && !etiqPausado && cameraCurrent(),
+        canRead: () => etiqStorageReady && !etiqStorageFailed && etiqLeituraArmada && !etiqPausado && cameraCurrent(),
         onHint: message => { const h=document.getElementById('etiq-hint');if(h)h.textContent=message; },
         onCapture: prepared => { if (cameraCurrent()) window.capturaAutomatica(prepared); }
       });
       etiqLoop = window.ScannerCamera.start(video, etiqAuto);
+      renderEtiqCaptureState();
     } catch (e) {
       if (opened) opened.getTracks().forEach(track => track.stop());
       if (cameraEpoch === etiqCameraEpoch) { alert('Câmera falhou: ' + e.message); window.fecharScanner(); }
@@ -1011,16 +1013,26 @@
   };
 
   // Mesma peça até o servidor confirmar código, produto e variante. Foto salva não libera Próxima.
-  let etiqPausado = false, etiqWatch = null, etiqAtivo = null, etiqRetryAt = 0, etiqIgnoredCode = '', etiqIgnoreUntil=0;
+  let etiqPausado = true, etiqLeituraArmada = false, etiqWatch = null, etiqAtivo = null, etiqRetryAt = 0, etiqIgnoredCode = '', etiqIgnoreUntil=0;
   function etiqPhotoDurable(item) {
     const saved = item && etiqSave.baseline.get(etiqIdentity(item));
     return !!(item?.b64 && saved && Number(saved.photoRevision || 0) === Number(item.photoRevision || 0) && saved.b64 === item.b64);
   }
   function renderEtiqCaptureState() {
     const it = etiqFila.find(item => item.lid === etiqAtivo), panel = document.getElementById('etiq-confirm');
-    if (!it || !panel || (window.BiparActions && !window.BiparActions.isInventory())) return;
+    if (!panel || (window.BiparActions && !window.BiparActions.isInventory())) return;
     const status = document.getElementById('etiq-confirm-status'), detail = document.getElementById('etiq-confirm-det');
     const next = document.getElementById('etiq-confirm-btn'), hint = document.getElementById('etiq-hint');
+    if (!it) {
+      panel.setAttribute('data-manual-photo', 'false');
+      Object.assign(panel.style, { display: 'flex', inset: '0', padding: '24px', pointerEvents: 'none', background: 'rgba(0,0,0,.78)' });
+      next.style.pointerEvents = 'auto';
+      status.textContent = 'PRONTO PARA LER';
+      detail.textContent = 'Aponte para o código desejado e toque em Próximo para autorizar a leitura.';
+      if (hint) hint.textContent = 'Escolha o código, aponte a câmera e toque em Próximo para ler.';
+      next.hidden = false; next.disabled = false; next.textContent = 'PRÓXIMO — LER CÓDIGO'; next.style.background = '#25d366';
+      return;
+    }
     panel.setAttribute('data-manual-photo', it.manualPhoto ? 'true' : 'false');
     let preview = document.getElementById('etiq-photo-preview');
     if (!preview && it.manualPhoto) {
@@ -1038,7 +1050,7 @@
     const saved = etiqPhotoDurable(it);
     if (it.complete) {
       if (!it.completionAnnounced) { it.completionAnnounced = true; etiqBeep(); }
-      etiqPausado = true; etiqAuto?.stop();
+      etiqPausado = true; etiqLeituraArmada = false; etiqAuto?.stop();
       status.textContent = '✅ LEITURA COMPLETA';
       // A capture note can describe an earlier pending state. Completion is
       // determined by the current product/variant response, not that old note.
@@ -1069,6 +1081,7 @@
     if (window.BiparActions && !window.BiparActions.isInventory()) return;
     if (etiqCameraContext && !etiqSameInventoryContext(etiqCameraContext)) { etiqContextChanged(); return; }
     try{window.ScannerRound.requireRound(document.getElementById('loja').value)}catch(e){alert(e.message);window.fecharScanner();return;}
+    if (!etiqLeituraArmada || etiqPausado) { etiqAuto?.reset(); return; }
     if(prepared?.ean && prepared.ean===etiqIgnoredCode && Date.now()<etiqIgnoreUntil){etiqAuto?.reset();return;}
     if(prepared?.ean)etiqIgnoredCode='';
     let current=etiqFila.find(x=>x.lid===etiqAtivo);
@@ -1083,7 +1096,8 @@
       // later automatic frame. Both results belong to the same physical piece.
       if (prepared.ean) current.ean = prepared.ean;
       if (prepared.ocrText) { current.ocrText = prepared.ocrText; current.ocrDone = true; }
-      current.st = 'fila'; etiqSave().then(() => enviarFila()); renderEtiqCaptureState(); etiqAuto?.reset(); return;
+      current.st = 'fila'; etiqLeituraArmada = false; etiqPausado = true; etiqAuto?.stop();
+      etiqSave().then(() => enviarFila()); renderEtiqCaptureState(); return;
     }
     // A reference without a decoded barcode is not another piece or a saved
     // photo. Keep aiming and reading automatically, without a durable image.
@@ -1108,14 +1122,12 @@
     // release the camera immediately instead of waiting for the server ACK.
     // Keep the same-code guard tied to the captured frame so a stationary label
     // cannot be counted twice while the operator moves to the next pair.
-    etiqAtivo = null; etiqRetryAt = 0;
+    etiqAtivo = item.lid; etiqRetryAt = 0; etiqLeituraArmada = false; etiqPausado = true;
     clearInterval(etiqWatch); etiqWatch = null;
-    const panel = document.getElementById('etiq-confirm');
-    if (panel) panel.style.display = 'none';
+    etiqAuto?.stop();
     const hint = document.getElementById('etiq-hint');
-    if (hint) hint.textContent = 'Código lido. O sistema confirma em segundo plano — apresente a próxima etiqueta.';
-    etiqSave().then(() => enviarFila()); renderEtiqLista();
-    etiqAuto?.reset({ afterCode: item.ean });
+    if (hint) hint.textContent = 'Código lido. Toque em Próximo quando quiser autorizar outra leitura.';
+    etiqSave().then(() => enviarFila()); renderEtiqCaptureState(); renderEtiqLista();
   };
   window.capturaManual = function () {
     if (window.BiparActions && !window.BiparActions.isInventory()) return;
@@ -1124,7 +1136,7 @@
     const current = etiqFila.find(x => x.lid === etiqAtivo);
     // Manual capture is the only path that freezes and persists camera pixels.
     // It can promote an automatic read, including one still awaiting its ACK.
-    etiqPausado = false;
+    etiqLeituraArmada = false; etiqPausado = true; etiqAuto?.stop();
     etiqRetryAt=Date.now()+5000;
     const lid=capturarFrame(current?.ean||'');
     if(!lid){etiqAuto?.reset();return;}
@@ -1137,11 +1149,14 @@
   window.proximaEtiqueta = function () {
     const current=etiqFila.find(x=>x.lid===etiqAtivo);
     const queuedAuto = current?.autoRecognition && !current.manualPhoto && current.bipeId && current.ean && current.st !== 'revisao';
-    if(!current?.complete && !queuedAuto && !(current?.capId && Number(current.capIdPhotoRevision || 0) === Number(current.photoRevision || 0) && current?.ean && current.st!=='revisao'))return;
-    clearInterval(etiqWatch);etiqAtivo=null;etiqRetryAt=0;
+    const savedManualPhoto = current?.manualPhoto && current.b64 && current.st !== 'revisao';
+    if(current && !current.complete && !queuedAuto && !savedManualPhoto && !(current?.capId && Number(current.capIdPhotoRevision || 0) === Number(current.photoRevision || 0) && current?.ean && current.st!=='revisao'))return;
+    clearInterval(etiqWatch);etiqRetryAt=0;
+    if (!savedManualPhoto) etiqAtivo=null;
     const pane=document.getElementById('etiq-confirm');if(pane)pane.style.display='none';
-    etiqUltimo='';etiqUltimoTs=0;etiqPausado=false;etiqAuto?.reset({afterCode:current?.ean});
-    const hint=document.getElementById('etiq-hint');if(hint)hint.textContent='Afaste a etiqueta já lida e apresente o próximo par.';
+    etiqUltimo='';etiqUltimoTs=0;etiqPausado=false;etiqLeituraArmada=true;
+    etiqAuto?.reset({afterCode:savedManualPhoto ? '' : current?.ean});
+    const hint=document.getElementById('etiq-hint');if(hint)hint.textContent=savedManualPhoto&&!current?.ean?'Aponte para o código desta mesma peça.':'Leitura autorizada. Aponte para o código desejado.';
   };
 
   function capturarFrame(ean) {
