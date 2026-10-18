@@ -58,8 +58,8 @@ function createAutomaticRecognizer({ db, normalizeScannedSize, needsManualSize,
     const sellerId = original ? original.sellerId || null : input.sellerId ? String(input.sellerId) : null;
     const sellerName = original ? original.sellerName || null : input.sellerName ? String(input.sellerName).slice(0, 240) : null;
 
-    // Use the normal physical-repeat gate within the same scan lock as manual
-    // photo linking. A failed repeat confirmation rolls back the entire attempt.
+    // Each distinct scan ID is one physical piece. Retries of the same scan
+    // remain idempotent through scanKey; repeated product barcodes are valid.
     const guarded = {
       $transaction: run => db.$transaction(async tx => {
         await rounds.roundForScan(tx, input.storeId, input.roundId, true);
@@ -86,7 +86,6 @@ function createAutomaticRecognizer({ db, normalizeScannedSize, needsManualSize,
       ...(previousCapture?.createdAt ? { bipedAt: previousCapture.createdAt } : {}),
       ip: request.ip || null,
       userAgent: ('scanner-auto | cs:' + input.clientScanId).slice(0, 160),
-      requireRepeatConfirmation: true, repeatConfirmedCount: input.repeatConfirmedCount,
     });
     const text = typeof input.ocrText === 'string' ? input.ocrText.slice(0, 4000) : '';
     const read = parseScannerText(text);

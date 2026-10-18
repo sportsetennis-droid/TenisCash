@@ -84,8 +84,11 @@ async function main() {
     assert.equal(reads[0].type, 'application/json'); assert(!JSON.stringify(reads[0]).includes('data:image')); assert.equal(photos.length, 0);
     releaseFirst(); await page.waitForFunction(() => etiqFila[0]?.complete && !etiqBusy && document.getElementById('etiq-confirm-status').textContent === '✅ LEITURA COMPLETA');
     assert.equal(await page.evaluate(() => window.__beeps), 1); assert.equal((await page.evaluate(() => window.__photos())).length, 0);
-    assert.equal(await page.evaluate(() => etiqFila[0].autoContinued && !etiqPausado && window.__autoResets.at(-1).afterCode === etiqFila[0].ean), true);
-    results.push('automatic barcode posts metadata only, displays recognition and beeps only after confirmed product and size');
+    const completionState = await page.evaluate(() => ({ autoContinued: etiqFila[0].autoContinued, paused: etiqPausado, inset: document.getElementById('etiq-confirm').style.inset }));
+  assert.deepEqual(completionState, { autoContinued: undefined, paused: true, inset: '0px' });
+    assert.equal(await page.locator('#etiq-confirm-btn').textContent(), 'PRÓXIMA PEÇA ➡');
+    results.push('automatic barcode posts metadata only, then pauses on a centered next-piece button after confirming product and size');
+    await page.locator('#etiq-confirm-btn').click();
     await page.evaluate(() => window.__auto('7900000000002'));
     await page.waitForFunction(() => window.__ocr.some(x => x.barcode === '7900000000002'));
     const autoId = await page.evaluate(() => etiqFila[1].clientScanId);

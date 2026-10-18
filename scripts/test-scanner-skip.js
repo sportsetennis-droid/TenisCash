@@ -5,7 +5,7 @@ assert(!html.includes('etiq-skip-unreadable'), 'manual capture must not offer di
 const start = html.indexOf('  window.fecharScanner = function'), end = html.indexOf('  // Mesma peça', start);
 const item = { clientScanId: 'pending-piece', b64: 'saved-original', photoRevision: 2, st: 'pendente', complete: false };
 const rows = [item]; let removed = false;
-const ctx = { window: { ScannerConfirm: { cancel() {} }, ScannerAuto: { stopDecoder() {} } }, etiqFila: rows, etiqIgnoredCode: '', etiqIgnoreUntil: 0, etiqAtivo: 'pending-piece', etiqRetryAt: 10, etiqAuto: { stop() {} }, etiqReader: null, etiqStream: null, etiqWatch: 1, etiqLoop: 2, etiqPoll: 3, etiqSendTimer: 4, clearInterval() {}, document: { getElementById: () => ({ remove() { removed = true; } }) } };
+const ctx = { window: { ScannerConfirm: { cancel() {} }, ScannerAuto: { stopDecoder() {} } }, etiqCameraEpoch: 0, etiqCameraContext: null, etiqFila: rows, etiqIgnoredCode: '', etiqIgnoreUntil: 0, etiqAtivo: 'pending-piece', etiqRetryAt: 10, etiqAuto: { stop() {} }, etiqReader: null, etiqStream: null, etiqWatch: 1, etiqLoop: { stop() {} }, etiqPoll: 3, etiqSendTimer: 4, clearInterval() {}, document: { getElementById: () => ({ remove() { removed = true; } }) } };
 vm.createContext(ctx); vm.runInContext(html.slice(start, end), ctx); ctx.window.fecharScanner();
 assert(removed); assert.equal(rows.length, 1); assert.equal(rows[0], item); assert.equal(item.b64, 'saved-original'); assert.equal(item.st, 'pendente'); assert.equal(item.complete, false); assert.equal(ctx.etiqAtivo, null);
 console.log('PASS: closing releases the camera while preserving the exact unreadable photograph and pending identity; no skip/discard action');

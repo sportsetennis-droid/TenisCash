@@ -725,8 +725,8 @@ async function garantirBipeDaCaptura(capId, pid, psId, barcodePref, expectedPhot
       await tx.$queryRaw`SELECT id FROM "ProductCapture" WHERE id = ${capId} FOR UPDATE`;
       const cap = await tx.productCapture.findUnique({ where: { id: capId } });
       if (!cap || cap.excludedAt || cap.status==='descartado') return null;
-      // New manual captures acquire their first bipe exclusively through the
-      // endpoint's duplicate-confirmation gate, never through OCR or the cron.
+      // New manual captures acquire their first bipe through a camera request
+      // with a decoded barcode, never through OCR or the background status job.
       if (capturePhotos.revisionOf(cap.note) && !cap.bipeId) return null;
       if (expectedPhoto && (cap.photo !== expectedPhoto.photo || capturePhotos.revisionOf(cap.note) !== expectedPhoto.photoRevision)) return null;
       // A reference/size or a saved photograph is not an actually read barcode.
@@ -841,7 +841,7 @@ router.post('/etiqueta',
     let savedPhotoAck = null;
     try {
       if (!req.file) return res.status(400).json({ error: 'sem foto' });
-      const { storeId, sellerId, sellerName, eanLocal, clientScanId, ocrText, roundId, repeatConfirmedCount, photoRevision } = req.body || {};
+      const { storeId, sellerId, sellerName, eanLocal, clientScanId, ocrText, roundId, photoRevision } = req.body || {};
       await rounds.roundForScan(prisma,storeId,roundId);
       const key=rounds.scanKey(roundId,clientScanId);
       const photo = await shrinkPhoto(req.file.buffer);
@@ -886,7 +886,7 @@ router.post('/etiqueta',
             if(!rows.length)rows.push(...await aliasRows(prisma,eanCam));
             resolution = chooseUniqueBarcodeCandidate(await resolveBarcodeRows(prisma,rows));
             ps = resolution.chosen;
-            bipe = await rounds.createRoundBipe(prisma, { requireRepeatConfirmation:true,repeatConfirmedCount,captureId:previousCapture.id,roundId,scanKey:key,
+            bipe = await rounds.createRoundBipe(prisma, { captureId:previousCapture.id,roundId,scanKey:key,
               barcode: eanCam, storeId: storeId || null, sellerId: previousCapture.sellerId || null,
               sellerName: previousCapture.sellerName || null,
               bipedAt: previousCapture.createdAt,

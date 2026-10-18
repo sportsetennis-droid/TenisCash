@@ -95,13 +95,13 @@ async function rejection(promise, status, regex) {
     assert(retries.every(row => row.bipeId === first.bipeId && row.complete)); assert.equal(f.state.bipes.length, 1);
     assert.equal(f.state.bipes[0].sellerId, 'seller-original'); assert.equal(f.state.bipes[0].sellerName, 'Operador original');
   });
-  await test('another physical identical piece requires explicit repeat confirmation', async () => {
+  await test('another physical identical piece is counted without confirmation; same scan retry stays idempotent', async () => {
     const f = fixture(); await f.recognize(f.base);
     const another = { ...f.base, clientScanId: 'physical-scan-0002' };
-    await assert.rejects(f.recognize(another), error => error.status === 409 && error.repeat?.count === 1);
-    assert.equal(f.state.bipes.length, 1);
-    const second = await f.recognize({ ...another, repeatConfirmedCount: 1 });
+    const second = await f.recognize(another);
     assert.equal(second.complete, true); assert.equal(f.state.bipes.length, 2);
+    const retry = await f.recognize({ ...another, repeatConfirmedCount: 1 });
+    assert.equal(retry.bipeId, second.bipeId); assert.equal(f.state.bipes.length, 2);
     assert.equal(f.state.captures.length, 0);
   });
   await test('unknown code stays counted once and later OCR enriches that same scan', async () => {

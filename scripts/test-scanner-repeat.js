@@ -1,1 +1,32 @@
-const assert=require('assert/strict'),{createRoundBipe}=require('../src/services/stocktakeRounds');const rows=[];const db={$queryRaw:async()=>[],stocktakeRound:{findUnique:async()=>({id:'r',storeId:'s',status:'counting'})},stocktakeBipe:{findUnique:async({where})=>rows.find(x=>x.scanKey===where.scanKey),findFirst:async()=>rows.at(-1),findMany:async({where})=>rows.filter(x=>x.storeId===where.storeId&&x.roundId===where.roundId&&!x.excludedAt&&where.barcode.in.includes(x.barcode)),create:async({data})=>{assert(!('repeatConfirmedCount'in data));const x={id:String(rows.length),...data};x.bipedAt=new Date(Date.now()-5000);rows.push(x);return x;}}};db.$transaction=fn=>fn(db);const data={storeId:'s',roundId:'r',barcode:'7909434597410',scanKey:'a',requireRepeatConfirmation:true};(async()=>{await createRoundBipe(db,data);await assert.rejects(createRoundBipe(db,{...data,scanKey:'b'}),e=>e.status===409&&e.repeat.count===1&&e.repeat.consecutive===true&&e.repeat.secondsSinceLast>=5);assert.equal(rows.length,1);await createRoundBipe(db,{...data,scanKey:'b',repeatConfirmedCount:1});assert.equal(rows.length,2);await createRoundBipe(db,{...data,scanKey:'b',repeatConfirmedCount:1});assert.equal(rows.length,2,'Same scan retry does not count twice');await assert.rejects(createRoundBipe(db,{...data,scanKey:'c',repeatConfirmedCount:1}),e=>e.repeat.count===2);assert.equal(rows.length,2);console.log('PASS: repeat blocked before count, explicit confirmation adds one, retry idempotent, stale confirmation rejected');})().catch(e=>{console.error(e);process.exitCode=1});
+'use strict';
+const assert = require('node:assert/strict');
+const { createRoundBipe } = require('../src/services/stocktakeRounds');
+const rows = [];
+const db = {
+  $queryRaw: async () => [],
+  stocktakeRound: { findUnique: async () => ({ id: 'r', storeId: 's', status: 'counting' }) },
+  stocktakeBipe: {
+    findUnique: async ({ where }) => rows.find(row => row.scanKey === where.scanKey),
+    create: async ({ data }) => {
+      assert(!('repeatConfirmedCount' in data));
+      assert(!('requireRepeatConfirmation' in data));
+      const row = { id: String(rows.length), ...data };
+      rows.push(row);
+      return row;
+    },
+  },
+};
+db.$transaction = fn => fn(db);
+const data = { storeId: 's', roundId: 'r', barcode: '7909434597410', scanKey: 'scan-0001', requireRepeatConfirmation: true };
+(async () => {
+  const first = await createRoundBipe(db, data);
+  const second = await createRoundBipe(db, { ...data, scanKey: 'scan-0002' });
+  assert.equal(rows.length, 2, 'each distinct scan ID counts one physical unit with the same barcode');
+  assert.equal(first.barcode, second.barcode);
+  const retry = await createRoundBipe(db, { ...data, scanKey: 'scan-0002' });
+  assert.equal(retry.id, second.id);
+  assert.equal(rows.length, 2, 'retrying one scan ID stays idempotent');
+  await createRoundBipe(db, { ...data, scanKey: 'scan-0003', repeatConfirmedCount: 2 });
+  assert.equal(rows.length, 3, 'legacy confirmation fields do not restore the confirmation gate');
+  console.log('PASS: identical physical products count by scan ID; same-scan retries remain idempotent');
+})().catch(error => { console.error(error); process.exitCode = 1; });

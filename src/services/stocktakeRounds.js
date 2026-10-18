@@ -14,7 +14,7 @@ async function roundForScan(db, storeId, roundId, lock = false) {
   return round;
 }
 async function createRoundBipe(db, input) {
-  const {requireRepeatConfirmation,repeatConfirmedCount,captureId,...data}=input;
+  const {captureId,requireRepeatConfirmation,repeatConfirmedCount,...data}=input;
   return db.$transaction(async tx => {
     await roundForScan(tx, data.storeId, data.roundId, true);
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${data.scanKey}))::text`;
@@ -29,18 +29,6 @@ async function createRoundBipe(db, input) {
     if (existing) {
       if (existing.storeId !== data.storeId || existing.roundId !== data.roundId || existing.barcode !== data.barcode) fail('Conflito no identificador da leitura.');
       return existing;
-    }
-    if(requireRepeatConfirmation){
-      const code=String(data.barcode).replace(/^0+/,'');
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${data.roundId+'|'+data.storeId+'|'+code}))::text`;
-      const retry=await tx.stocktakeBipe.findUnique({where:{scanKey:data.scanKey}});
-      if(retry)return retry;
-      const previous=await tx.stocktakeBipe.findMany({where:{storeId:data.storeId,roundId:data.roundId,excludedAt:null,barcode:{in:[code,code.padStart(13,'0'),code.padStart(14,'0')]}},orderBy:{bipedAt:'desc'},select:{id:true,productName:true,productSize:true,bipedAt:true,sellerName:true}});
-      if(previous.length && Number(repeatConfirmedCount)!==previous.length){
-        const lastScan=await tx.stocktakeBipe.findFirst({where:{storeId:data.storeId,roundId:data.roundId,excludedAt:null,sellerId:data.sellerId||null,sellerName:data.sellerName||null},orderBy:{bipedAt:'desc'},select:{barcode:true,bipedAt:true}});
-        const consecutive=!!lastScan && String(lastScan.barcode).replace(/^0+/,'')===code;
-        const e=new Error('Este código já foi bipado nesta loja e rodada. Confirme se é outro par.');e.status=409;e.repeat={count:previous.length,name:previous[0].productName,size:previous[0].productSize,barcode:data.barcode,lastAt:previous[0].bipedAt,lastSeller:previous[0].sellerName,consecutive,secondsSinceLast:previous[0].bipedAt?Math.max(0,Math.floor((Date.now()-new Date(previous[0].bipedAt).getTime())/1000)):null};throw e;
-      }
     }
     return tx.stocktakeBipe.create({ data });
   });

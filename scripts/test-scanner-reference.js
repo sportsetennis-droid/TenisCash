@@ -117,8 +117,8 @@ function routeFunctions(db){
  ({db,state}=database());state.captures.push({id:'unreadable',barcode:'196153346321',storeId:'LOJA04',createdAt:new Date(),bipeId:null});
  await routeFunctions(db).processarEtiqueta('unreadable','unused-image','196153346321',{ocrText:''});
  assert.equal(state.captures[0].status,'pendente');assert.equal(state.sizes.length,0);
- // A saved manual frame cannot acquire a catalogue/OCR barcode or bypass the
- // duplicate confirmation gate before the first actual bipe is registered.
+ // A saved manual frame cannot acquire a catalogue/OCR barcode before the
+ // camera actually decodes a barcode for that same physical piece.
  ({db,state}=database({sizes:[{id:'known',productId:'nike',size:'L',barcode:'196153346321',stock:6}]}));
  state.captures.push({id:'manual-unreadable',barcode:null,storeId:'LOJA04',createdAt:new Date(),bipeId:null,status:'pendente',note:'etiqueta Foto salva.\n[scanner-photo-revision:1]'});
  const manualRoute=routeFunctions(db);
@@ -128,7 +128,7 @@ function routeFunctions(db){
  state.captures[0].barcode='196153346321';
  await manualRoute.processarEtiqueta('manual-unreadable','unused-image','196153346321',{ocrText:'NIKE\n192974\nL'});
  assert.equal(await manualRoute.garantirBipeDaCaptura('manual-unreadable','nike','known','196153346321'),null);
- assert.equal(state.bipes.length,0,'A pending repeat warning must not become a bipe through OCR');
+ assert.equal(state.bipes.length,0,'OCR without a decoded barcode must not create a bipe');
  const html=fs.readFileSync(require.resolve('../public/identificar.html'),'utf8');
  for(const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi))if(m[1].trim())new vm.Script(m[1]);
  ({db,state}=database({sizes:[{id:'s-existing',productId:'nike',size:'L',barcode:'196153346321',stock:6}]}));
