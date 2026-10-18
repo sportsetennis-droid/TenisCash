@@ -1104,9 +1104,18 @@
     item.autoRevision = Number(item.autoRevision || 0) + 1;
     if (prepared.frame) etiqAutoFrames.set(item.clientScanId, prepared.frame);
     if (!current) { etiqFila.push(item); window.ScannerTransfer?.start(item); }
-    etiqAtivo = item.lid; etiqRetryAt = Date.now() + 5000;
-    etiqSave().then(() => enviarFila()); renderEtiqCaptureState(); renderEtiqLista();
-    etiqAuto?.reset(); clearInterval(etiqWatch); etiqWatch = setInterval(renderEtiqCaptureState, 350);
+    // Recognition is asynchronous. Persist and queue this physical piece, then
+    // release the camera immediately instead of waiting for the server ACK.
+    // Keep the same-code guard tied to the captured frame so a stationary label
+    // cannot be counted twice while the operator moves to the next pair.
+    etiqAtivo = null; etiqRetryAt = 0;
+    clearInterval(etiqWatch); etiqWatch = null;
+    const panel = document.getElementById('etiq-confirm');
+    if (panel) panel.style.display = 'none';
+    const hint = document.getElementById('etiq-hint');
+    if (hint) hint.textContent = 'Código lido. O sistema confirma em segundo plano — apresente a próxima etiqueta.';
+    etiqSave().then(() => enviarFila()); renderEtiqLista();
+    etiqAuto?.reset({ afterCode: item.ean });
   };
   window.capturaManual = function () {
     if (window.BiparActions && !window.BiparActions.isInventory()) return;

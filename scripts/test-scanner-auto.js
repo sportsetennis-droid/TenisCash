@@ -35,6 +35,9 @@ global.document={createElement:()=>({getContext:()=>({drawImage(){},getImageData
  rearmed.reset({afterCode:code});await rearmed.tick();assert.match(rearmedHints.at(-1),/Afaste/);
  code='';shade=20;await rearmed.tick();assert.match(rearmedHints.at(-1),/Afaste/,'One blank frame retains the same-piece guard');await rearmed.tick();assert.match(rearmedHints.at(-1),/Leitura automática ativa/,'Clearing the guard must also clear its stale warning');assert.equal(rearmedCaptures.length,0,'Rearming is not a new counted piece');
  code='7900373256192';await rearmed.tick();assert.match(rearmedHints.at(-1),/Código reconhecido/);await rearmed.tick();assert.equal(rearmedCaptures.length,1,'Different barcode still needs two stable readings');
+ let advancing,advanceCaptures=[];code='196974865902';advancing=auto.create({...opts,onCapture:item=>{advanceCaptures.push(item);advancing.reset({afterCode:item.ean});}});
+ await advancing.tick();await advancing.tick();assert.equal(advanceCaptures.length,1,'An auto-advance callback runs immediately after a stable barcode read');
+ for(let i=0;i<5;i++)await advancing.tick();assert.equal(advanceCaptures.length,1,'Auto-advance keeps the just-read physical label locked while the server works');
  let oldDecode;let fresh=false;const resetCaptures=[];const resetting=auto.create({...opts,decode:()=>fresh?'196974865902':new Promise(r=>oldDecode=r),onCapture:x=>resetCaptures.push(x)});const oldTick=resetting.tick();await Promise.resolve();resetting.reset();fresh=true;await resetting.tick();await resetting.tick();assert.equal(resetCaptures.length,1,'Reset resumes even if previous decoder remains pending');oldDecode('196974865902');await oldTick;assert.equal(resetCaptures.length,1,'Old completion cannot add another capture');
  assert.equal(auto.labelText('random box'),false);assert.equal(auto.labelText('220509 / SLT'),false);
   assert.equal(auto.labelText('NIKE\nDD5860-690\nXL'),true);
