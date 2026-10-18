@@ -51,6 +51,13 @@ async function main() {
     const page = await browser.newPage();
     const open = async mode => { workerMode = mode; await page.goto('http://127.0.0.1:' + server.address().port + '/'); await installFixtures(page); };
     await open('normal');
+    const warmed=await page.evaluate(async()=>{
+      const first=ScannerAuto.warmupDecoder(),second=ScannerAuto.warmupDecoder();
+      const same=first===second,code=await ScannerAuto.decodeInWorker(frame('landscape'));
+      return {same,ready:await first,secondReady:await second,code,state:ScannerAuto.decoderStatus()};
+    });
+    assert.equal(warmed.same,true);assert.equal(warmed.ready,true);assert.equal(warmed.secondReady,true);assert.equal(warmed.code,'2922791600581');
+    results.push('shared WASM warmup does not consume or overwrite the first real frame');
     for (const kind of ['landscape','portrait','none','multiple']) {
       const result = await page.evaluate(async kind => ({ code: await ScannerAuto.decodeInWorker(frame(kind)), state: ScannerAuto.decoderStatus(), offscreen: typeof OffscreenCanvas }),kind);
       assert.equal(result.code,kind === 'none' || kind === 'multiple' ? '' : '2922791600581');
@@ -75,6 +82,39 @@ async function main() {
       });
       assert.equal(mixed.code,'','A sharp second label cannot hide the blurry real label');
       results.push('mixed sharp and blurry labels remain ambiguous');
+      for(const rotate of [false,true]){
+        const highResolutionMixed=await page.evaluate(async rotate=>{
+          const source=document.createElement('canvas');source.width=1280;source.height=1100;const src=source.getContext('2d');src.fillStyle='white';src.fillRect(0,0,1280,1100);src.drawImage(realPhoto,0,0);src.drawImage(frame('landscape'),280,650);
+          const c=document.createElement('canvas'),height=Math.round(1100*1800/1280);c.width=rotate?height:1800;c.height=rotate?1800:height;const ctx=c.getContext('2d');ctx.translate(c.width/2,c.height/2);if(rotate)ctx.rotate(Math.PI/2);ctx.drawImage(source,-900,-height/2,1800,height);
+          return ScannerAuto.decodeInWorker(c);
+        },rotate);
+        assert.equal(highResolutionMixed,'','1800px mixed labels, portrait='+rotate);
+        results.push('1800px sharp + blurry labels remain ambiguous, portrait='+rotate);
+      }
+    }
+    if(process.env.SCANNER_TEST_STREAM_FRAME){
+      await page.evaluate(async src=>{window.streamFrame=new Image();streamFrame.src=src;await streamFrame.decode();},'data:image/png;base64,'+fs.readFileSync(process.env.SCANNER_TEST_STREAM_FRAME).toString('base64'));
+      for(const rotate of [false,true]){
+        const result=await page.evaluate(async rotate=>{
+          const c=document.createElement('canvas');c.width=rotate?streamFrame.height:streamFrame.width;c.height=rotate?streamFrame.width:streamFrame.height;const ctx=c.getContext('2d');
+          if(rotate){ctx.translate(c.width/2,c.height/2);ctx.rotate(Math.PI/2);ctx.drawImage(streamFrame,-streamFrame.width/2,-streamFrame.height/2);}else ctx.drawImage(streamFrame,0,0);
+          const start=performance.now();return {code:await ScannerAuto.decodeInWorker(c),elapsedMs:Math.round(performance.now()-start)};
+        },rotate);
+        assert.equal(result.code,'7908891347842','Real 1080p video frame, portrait='+rotate);
+        results.push('1080p video snapshot '+(rotate?'portrait':'landscape')+': '+JSON.stringify(result));
+      }
+    }
+    for(const file of JSON.parse(process.env.SCANNER_TEST_EXTRA_FRAMES||'[]')){
+      await page.evaluate(async src=>{window.streamFrame=new Image();streamFrame.src=src;await streamFrame.decode();},'data:image/png;base64,'+fs.readFileSync(file).toString('base64'));
+      for(const rotate of [false,true]){
+        const result=await page.evaluate(async rotate=>{
+          const c=document.createElement('canvas');c.width=rotate?streamFrame.height:streamFrame.width;c.height=rotate?streamFrame.width:streamFrame.height;const ctx=c.getContext('2d');
+          if(rotate){ctx.translate(c.width/2,c.height/2);ctx.rotate(Math.PI/2);ctx.drawImage(streamFrame,-streamFrame.width/2,-streamFrame.height/2);}else ctx.drawImage(streamFrame,0,0);
+          const start=performance.now();return {code:await ScannerAuto.decodeInWorker(c),elapsedMs:Math.round(performance.now()-start)};
+        },rotate);
+        assert.equal(result.code,'7908891347842','Resampled video frame '+path.basename(file)+', rotated='+rotate);
+        results.push('resampled video '+path.basename(file)+', rotated='+rotate+': '+JSON.stringify(result));
+      }
     }
     await open('no-canvas');
     const noCanvas = await page.evaluate(async () => ({ code: await ScannerAuto.decodeInWorker(frame('portrait')), state: ScannerAuto.decoderStatus() }));
@@ -96,6 +136,14 @@ async function main() {
     const absent = await page.evaluate(async () => { window.Worker = undefined; return { code: await ScannerAuto.decodeInWorker(frame('landscape')), state: ScannerAuto.decoderStatus() }; });
     assert.equal(absent.code,'2922791600581'); assert.equal(absent.state.method,'fallback');
     results.push('browser without Worker retains automatic decoding through fallback');
+    await open('stall');
+    const warmupCancelled=await page.evaluate(async()=>{const pending=ScannerAuto.warmupDecoder();ScannerAuto.stopDecoder();return {ready:await pending,state:ScannerAuto.decoderStatus()};});
+    assert.equal(warmupCancelled.ready,false);assert.equal(warmupCancelled.state.ready,false);
+    results.push('closing during warmup resolves it false without leaving a pending frame');
+    await open('throw');
+    assert.equal(await page.evaluate(()=>ScannerAuto.warmupDecoder()),false);
+    assert.equal(await page.evaluate(()=>ScannerAuto.decodeInWorker(frame('landscape'))),'2922791600581');
+    results.push('warmup failure preserves the bounded fallback for the next real frame');
     await open('late');
     const cancellation = await page.evaluate(async () => {
       const decoding = ScannerAuto.decodeInWorker(frame('landscape'));

@@ -1,4 +1,4 @@
-/* Automatic capture, entirely on-device. One capture per explicit next-piece cycle. */
+/* Automatic capture, entirely on-device. One capture per physical piece cycle. */
 (function (root) {
   'use strict';
   function createCanvas(){return typeof document!=='undefined'?document.createElement('canvas'):new OffscreenCanvas(1,1);}
@@ -14,9 +14,10 @@
     return Array.from({length:576},(_,i)=>(pixels[i*4]+pixels[i*4+1]+pixels[i*4+2])/3);
   }
   function distance(a,b){return a.reduce((sum,v,i)=>sum+Math.abs(v-b[i]),0)/a.length;}
-  function create({snapshot,decode,recognize,canRead,onCapture,onHint,now=Date.now}) {
+  function create({snapshot,decode,recognize,canRead,onCapture,onHint,now=Date.now,recognizeMissing=true}) {
     let epoch=0,locked=false,busy=false,lastCode='',hits=0,lastOcr=0,previous=null,stableSince=0,afterCode='',clearFrames=0,ocrJob=null;
-    function reset(options={}){epoch++;busy=false;locked=false;lastCode='';hits=0;previous=null;stableSince=now();afterCode=String(options.afterCode||'').replace(/^0+/,'');clearFrames=0;}
+    let confirmedCode='',confirmedSignature=null,afterSignature=null;
+    function reset(options={}){epoch++;busy=false;locked=false;lastCode='';hits=0;previous=null;stableSince=now();afterCode=String(options.afterCode||'').replace(/^0+/,'');afterSignature=afterCode&&afterCode===confirmedCode?confirmedSignature:null;clearFrames=0;}
     function stop(){epoch++;locked=true;}
     async function tick(){
       if(locked||busy||!canRead())return;
@@ -27,16 +28,24 @@
         if(stamp!==epoch||locked||!canRead())return;
         if(afterCode){
           const normalized=String(code||'').replace(/^0+/,'');
-          if(normalized===afterCode){clearFrames=0;onHint('Afaste a etiqueta já lida antes de apresentar outro par.');return;}
-          if(!normalized && ++clearFrames<2)return;
-          afterCode='';clearFrames=0;
+          if(normalized===afterCode){clearFrames=0;afterSignature=signature(frame);onHint('Afaste a etiqueta já lida antes de apresentar outro par.');return;}
+          if(!normalized){
+            const currentSignature=signature(frame);
+            // Intermittent decode failures on a stationary label are not its
+            // physical removal. Require two changed, barcode-free frames.
+            if(!afterSignature){afterSignature=currentSignature;clearFrames=0;return;}
+            if(distance(afterSignature,currentSignature)<=8){clearFrames=0;return;}
+            if(++clearFrames<2)return;
+          }
+          afterCode='';clearFrames=0;afterSignature=null;
           onHint('Leitura automática ativa — centralize a etiqueta e mantenha parada.');
         }
         if(code){hits=code===lastCode?hits+1:1;lastCode=code;
           onHint('Código reconhecido. Mantenha a etiqueta parada…');
-          if(hits>=2&&stamp===epoch&&canRead()){locked=true;onCapture({ean:code,frame});}return;
+          if(hits>=2&&stamp===epoch&&canRead()){confirmedCode=String(code).replace(/^0+/,'');confirmedSignature=signature(frame);locked=true;onCapture({ean:code,frame});}return;
         }
         lastCode='';hits=0;
+        if(!recognizeMissing)return;
         const sig=signature(frame);
         if(!previous||distance(previous,sig)>8){stableSince=now();previous=sig;return;}
         previous=sig;
@@ -88,13 +97,18 @@
     return {width,height,data};
   }
   function barcodeRegions(image){
-    const w=image.width,h=image.height,block=8,cols=Math.ceil(w/block),rows=Math.ceil(h/block);
+    // Scale the edge sampling and minimum component size together. Fixed 8px
+    // cells split enlarged letters into false barcodes in 1080p camera frames.
+    const w=image.width,h=image.height,radius=Math.max(1,Math.round(Math.max(w,h)/900)),block=8*radius,cols=Math.max(1,Math.floor(w/block)),rows=Math.max(1,Math.floor(h/block));
+    // Center the grid and sample every pixel: rotating the same image must not
+    // change its cell phase or exclude alternating narrow bars.
+    const ox=Math.floor((w-cols*block)/2),oy=Math.floor((h-rows*block)/2);
     const gray=new Uint8Array(w*h),gx=new Float32Array(cols*rows),gy=new Float32Array(cols*rows);
     for(let i=0;i<gray.length;i++)gray[i]=(image.data[i*4]+image.data[i*4+1]+image.data[i*4+2])/3;
     for(let by=0;by<rows;by++)for(let bx=0;bx<cols;bx++){
       let xEdges=0,yEdges=0,n=0;
-      for(let y=Math.max(1,by*block);y<Math.min(h-1,(by+1)*block);y+=2)for(let x=Math.max(1,bx*block);x<Math.min(w-1,(bx+1)*block);x+=2){
-        xEdges+=Math.abs(gray[y*w+x+1]-gray[y*w+x-1]);yEdges+=Math.abs(gray[(y+1)*w+x]-gray[(y-1)*w+x]);n++;
+      for(let y=Math.max(radius,oy+by*block);y<Math.min(h-radius,oy+(by+1)*block);y++)for(let x=Math.max(radius,ox+bx*block);x<Math.min(w-radius,ox+(bx+1)*block);x++){
+        xEdges+=Math.abs(gray[y*w+x+radius]-gray[y*w+x-radius]);yEdges+=Math.abs(gray[(y+radius)*w+x]-gray[(y-radius)*w+x]);n++;
       }
       gx[by*cols+bx]=xEdges/(n||1);gy[by*cols+bx]=yEdges/(n||1);
     }
@@ -116,7 +130,7 @@
           }
         }
         const cw=(maxX-minX+1)*block,ch=(maxY-minY+1)*block,along=verticalBars?ch:cw;
-        if(along>=24&&queue.length>=4)components.push({minX,minY,maxX,maxY,cells:queue.length});
+        if(along>=24*radius&&queue.length>=4)components.push({minX,minY,maxX,maxY,cells:queue.length});
       }
       // White modules may separate bars into components. Join only adjacent
       // components with matching height, without joining text above/below.
@@ -135,40 +149,75 @@
       }
       for(const {minX,minY,maxX,maxY,cells} of merged){
         const cw=(maxX-minX+1)*block,ch=(maxY-minY+1)*block,across=verticalBars?cw:ch,along=verticalBars?ch:cw;
-        if(across<60||across<along*1.2||cells*block*block/(cw*ch)<.45)continue;
+        if(across<60*radius||across<along*1.2||cells*block*block/(cw*ch)<.45)continue;
         // Quiet zones remain inside the crop; never truncate the outer bars.
         const px=Math.max(12,Math.round(cw*.12)),py=Math.max(12,Math.round(ch*.12));
-        const x=Math.max(0,minX*block-px),y=Math.max(0,minY*block-py);
-        regions.push({x,y,width:Math.min(w,(maxX+1)*block+px)-x,height:Math.min(h,(maxY+1)*block+py)-y});
+        const x=Math.max(0,ox+minX*block-px),y=Math.max(0,oy+minY*block-py);
+        regions.push({x,y,width:Math.min(w,ox+(maxX+1)*block+px)-x,height:Math.min(h,oy+(maxY+1)*block+py)-y,verticalBars});
       }
     }
     return regions;
   }
-  function enlargedRegionPixels(image,region){
-    const scale=Math.min(4,1600/Math.max(region.width,region.height),Math.sqrt(850000/(region.width*region.height)));
-    const width=Math.max(1,Math.round(region.width*scale)),height=Math.max(1,Math.round(region.height*scale)),data=new Uint8ClampedArray(width*height*4);
+  function regionDimensions(region,requestedScale=4){
+    const scale=Math.min(requestedScale,1600/Math.max(region.width,region.height),Math.sqrt(850000/(region.width*region.height)));
+    return {width:Math.max(1,Math.round(region.width*scale)),height:Math.max(1,Math.round(region.height*scale))};
+  }
+  function enlargedRegionPixels(image,region,requestedScale=4){
+    const {width,height}=regionDimensions(region,requestedScale),data=new Uint8ClampedArray(width*height*4);
+    // Precompute horizontal positions once, instead of repeating divisions,
+    // clamps and floors for every pixel/channel on a phone.
+    const xOffsets=new Uint32Array(width),xNext=new Uint32Array(width),xWeights=new Float32Array(width);
+    for(let x=0;x<width;x++){
+      const sx=Math.max(0,Math.min(region.width-1,(x+.5)*region.width/width-.5)),x0=Math.floor(sx);
+      xOffsets[x]=(region.x+x0)*4;xNext[x]=(region.x+Math.min(region.width-1,x0+1))*4;xWeights[x]=sx-x0;
+    }
     // Bilinear pixels, not a canvas: compatible with WebKit workers too.
     for(let y=0;y<height;y++){
       const sy=Math.max(0,Math.min(region.height-1,(y+.5)*region.height/height-.5)),y0=Math.floor(sy),fy=sy-y0,y1=Math.min(region.height-1,y0+1);
+      const row0=(region.y+y0)*image.width*4,row1=(region.y+y1)*image.width*4;
       for(let x=0;x<width;x++){
-        const sx=Math.max(0,Math.min(region.width-1,(x+.5)*region.width/width-.5)),x0=Math.floor(sx),fx=sx-x0,x1=Math.min(region.width-1,x0+1);
-        const a=((region.y+y0)*image.width+region.x+x0)*4,b=((region.y+y0)*image.width+region.x+x1)*4,c=((region.y+y1)*image.width+region.x+x0)*4,d=((region.y+y1)*image.width+region.x+x1)*4,to=(y*width+x)*4;
+        const fx=xWeights[x],a=row0+xOffsets[x],b=row0+xNext[x],c=row1+xOffsets[x],d=row1+xNext[x],to=(y*width+x)*4;
         for(let channel=0;channel<3;channel++)data[to+channel]=(image.data[a+channel]*(1-fx)+image.data[b+channel]*fx)*(1-fy)+(image.data[c+channel]*(1-fx)+image.data[d+channel]*fx)*fy;
         data[to+3]=255;
       }
     }
     return {width,height,data};
   }
+  function sharpenBars(image,verticalBars,radius=1,amount=.5){
+    // Video resampling can merge narrow modules. A light local unsharp
+    // mask across the bars restores edge contrast without inventing a code.
+    const source=new Uint8ClampedArray(image.data),stride=verticalBars?4:image.width*4;
+    for(let y=radius;y<image.height-radius;y++)for(let x=radius;x<image.width-radius;x++){
+      const at=(y*image.width+x)*4;
+      for(let c=0;c<3;c++){
+        let blur=0;for(let d=-radius;d<=radius;d++)blur+=source[at+c+d*stride];
+        image.data[at+c]=source[at+c]*(1+amount)-blur*amount/(radius*2+1);
+      }
+    }
+  }
   async function recoverBarcodeRegions(image,regions){
     // Do not select the first label or silently skip candidates when a crowded
     // frame exceeds budget. A null result means the frame cannot be accepted.
     if(!regions.length)return [];if(regions.length>3)return null;
-    const enlarged=regions.map(region=>enlargedRegionPixels(image,region));
-    if(enlarged.reduce((sum,item)=>sum+item.width*item.height*2,0)>5100000)return null;
-    const results=[];
-    for(const candidate of enlarged){
-      results.push(...await root.ZXingWASM.readBarcodes(candidate,readerOptions));
+    if(regions.reduce((sum,region)=>{const item=regionDimensions(region);return sum+item.width*item.height*2;},0)>5100000)return null;
+    const results=[],unresolved=[];
+    for(const region of regions){
+      // Keep only one amplified image resident at a time on mobile devices.
+      const candidate=enlargedRegionPixels(image,region),first=await root.ZXingWASM.readBarcodes(candidate,readerOptions);
       root.ScannerRegions?.normalizePixels(candidate.data);
+      const second=await root.ZXingWASM.readBarcodes(candidate,readerOptions);
+      results.push(...first,...second);if(!first.length&&!second.length)unresolved.push(region);
+    }
+    // Only failed regions get the bounded multiscale video-recovery passes. Never
+    // accept a sharp label after silently skipping another candidate's budget.
+    const recovery=[];let recoveryPixels=0;
+    for(const region of unresolved)for(const [scale,radius,amount] of [[2,1,.5],[3,1,.5],[1.5,2,.5],[2,3,1.5]]){
+      const size=regionDimensions(region,scale);recoveryPixels+=size.width*size.height;
+      if(recoveryPixels>2550000)return null;
+      recovery.push({region,scale,radius,amount});
+    }
+    for(const {region,scale,radius,amount} of recovery){
+      const candidate=enlargedRegionPixels(image,region,scale);sharpenBars(candidate,region.verticalBars,radius,amount);
       results.push(...await root.ZXingWASM.readBarcodes(candidate,readerOptions));
     }
     return results;
@@ -178,7 +227,10 @@
     await prepareReader();
     const centered=centeredPixels(image);
     let results=await root.ZXingWASM.readBarcodes(centered,readerOptions);
-    if(!results.length)results=await root.ZXingWASM.readBarcodes(rotatedEnhancedPixels(centered),readerOptions);
+    const codesOf=items=>[...new Set(items.map(r=>String(r.text||'')).filter(t=>/^\d{8}$|^\d{12,14}$/.test(t)))];
+    // Ambiguity is already decisive; do not enlarge and decode the same labels
+    // another four times before refusing to choose between them.
+    if(codesOf(results).length>1)return '';
     const regions=barcodeRegions(centered);
     if(regions.length>3)return '';
     // A sharp label must not hide a second blurry label in the same frame.
@@ -186,12 +238,20 @@
       const recovered=await recoverBarcodeRegions(centered,regions);if(recovered===null)return '';
       results.push(...recovered);
     }
-    const codes=[...new Set(results.map(r=>String(r.text||'')).filter(t=>/^\d{8}$|^\d{12,14}$/.test(t)))];
+    if(!results.length){
+      // Region recovery is cheaper than doubling a whole camera frame. Only
+      // use the large rotated pass if it could still add useful information.
+      let min=255,max=0;
+      for(let i=0;i<centered.data.length;i+=16){const value=(centered.data[i]+centered.data[i+1]+centered.data[i+2])/3;min=Math.min(min,value);max=Math.max(max,value);if(max-min>=3)break;}
+      if(max-min>=3)results=await root.ZXingWASM.readBarcodes(rotatedEnhancedPixels(centered),readerOptions);
+    }
+    const codes=codesOf(results);
     return codes.length===1?codes[0]:'';
   }
-  let decoderWorker, decoderRequest=0, decoderPending, decoderEpoch=0, workerRetryAt=0;
+  let decoderWorker, decoderRequest=0, decoderPending, decoderEpoch=0, workerRetryAt=0,decoderWarmup;
   let decoderState={method:'worker',ready:false,error:null};
-  function destroyWorker(){decoderWorker?.terminate();decoderWorker=null;}
+  function finishWarmup(ready){if(decoderWarmup){const warmup=decoderWarmup;decoderWarmup=null;clearTimeout(warmup.timer);warmup.resolve(ready);}}
+  function destroyWorker(){decoderWorker?.terminate();decoderWorker=null;finishWarmup(false);}
   function stopDecoder(){
     decoderEpoch++;destroyWorker();
     if(decoderPending){clearTimeout(decoderPending.timer);decoderPending.resolve('');decoderPending=null;}
@@ -226,24 +286,40 @@
     if(error){decoderState={method:pending.fallback?'fallback':'worker',ready:false,error:String(error.message||error)};error.code='SCANNER_DECODER_UNAVAILABLE';pending.reject(error);}
     else{decoderState={method:pending.fallback?'fallback':'worker',ready:true,error:null};pending.resolve(code||'');}
   }
+  function ensureDecoderWorker(){
+    if(decoderWorker)return decoderWorker;
+    const worker=decoderWorker=new Worker('/scanner-barcode-worker.js?v=20261018-live-fast-1');
+    worker.onmessage=({data})=>{
+      if(decoderWorker!==worker)return;
+      if(data?.ready){decoderState={method:'worker',ready:true,error:null};finishWarmup(true);return;}
+      if(data?.type==='init-error'){workerFailed(worker,data.error);return;}
+      const current=decoderPending;if(!current||data?.id!==current.id)return;
+      if(data.error){void fallbackDecode(current,data.error);return;}
+      finishDecode(current,data.code);
+    };
+    worker.onerror=()=>workerFailed(worker,'Falha ao iniciar o leitor');
+    worker.onmessageerror=()=>workerFailed(worker,'Falha de comunicação com o leitor');
+    return worker;
+  }
+  function warmupDecoder(){
+    if(typeof Worker==='undefined'||Date.now()<workerRetryAt)return Promise.resolve(false);
+    if(decoderWarmup)return decoderWarmup.promise;
+    if(decoderWorker&&decoderState.method==='worker'&&decoderState.ready)return Promise.resolve(true);
+    // Initialization overlaps the camera permission/startup. It owns no frame,
+    // decode slot, photo or scan ID; stop invalidates it with the worker.
+    let resolve;const promise=new Promise(done=>{resolve=done;});
+    const warmup=decoderWarmup={promise,resolve};
+    warmup.timer=setTimeout(()=>{if(decoderWarmup===warmup)workerFailed(decoderWorker,'Preparação do leitor demorou demais');},10000);
+    try{ensureDecoderWorker();}catch(_){destroyWorker();}
+    return promise;
+  }
   function decodeInWorker(frame){
     if(decoderPending)return Promise.resolve('');
     return new Promise((resolve,reject)=>{
       const pending={id:++decoderRequest,epoch:decoderEpoch,frame,resolve,reject,fallback:false};decoderPending=pending;
       if(typeof Worker==='undefined'||Date.now()<workerRetryAt){void fallbackDecode(pending,'Worker indisponível');return;}
       try{
-      if(!decoderWorker){
-        const worker=decoderWorker=new Worker('/scanner-barcode-worker.js?v=20261017-auto-reader-4');
-        worker.onmessage=({data})=>{
-          if(decoderWorker!==worker)return;
-          if(data?.ready){decoderState={method:'worker',ready:true,error:null};return;}
-          const current=decoderPending;if(!current||data?.id!==current.id)return;
-          if(data.error){void fallbackDecode(current,data.error);return;}
-          finishDecode(current,data.code);
-        };
-        worker.onerror=()=>workerFailed(worker,'Falha ao iniciar o leitor');
-        worker.onmessageerror=()=>workerFailed(worker,'Falha de comunicação com o leitor');
-      }
+      ensureDecoderWorker();
       const pixels=frame.getContext('2d',{willReadFrequently:true}).getImageData(0,0,frame.width,frame.height);
       pending.timer=setTimeout(()=>fallbackDecode(pending,'O leitor não respondeu'),10000);
       decoderWorker.postMessage({id:pending.id,width:pixels.width,height:pixels.height,buffer:pixels.data.buffer},[pixels.data.buffer]);
@@ -268,6 +344,6 @@
     }
     return '';
   }
-  const api={create,decodeCanvas,decodePixels,decodeInWorker,stopDecoder,labelText,decoderStatus:()=>({...decoderState})};
+  const api={create,decodeCanvas,decodePixels,decodeInWorker,warmupDecoder,prepareReader,stopDecoder,labelText,decoderStatus:()=>({...decoderState})};
   if(typeof module==='object'&&module.exports)module.exports=api;else root.ScannerAuto=api;
 })(typeof window!=='undefined'?window:globalThis);
