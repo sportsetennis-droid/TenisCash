@@ -1401,6 +1401,7 @@
           if (row.product) it.product = row.product;
           it.bipou = !!row.appliedToStock;
           it.needsSize = !!row.needsSize;
+          it.excluded = !!row.excludedAt;
           if (!it.ean && row.needsSize && row.bipeId && !it.sizeQueued && !it.sizeDismissed) {
             it.sizeQueued = true;
             const localBipe = { roundId:it.roundId, code: it.ean, bipeId: row.bipeId, found: true, product: row.product, sizeOptions: row.sizeOptions, needsSize: true, _scannerItem: it };
@@ -1415,7 +1416,7 @@
 
   function renderEtiqLista() {
     if (window.BiparActions && !window.BiparActions.isInventory()) return;
-    const currentItems=etiqFila.filter(x=>x.roundId===window.ScannerRound.id());
+    const currentItems=etiqFila.filter(x=>x.roundId===window.ScannerRound.id() && !x.excluded);
     const cont = document.getElementById('etiq-contador');
     const ul = document.getElementById('etiq-lista');
     if (!cont || !ul) return;
@@ -1436,12 +1437,35 @@
       const reference = p.sku || p.reference || x.sku || x.reference || '';
       const status = x.complete ? '✓ IDENTIFICADO' : x.needsSize ? '⚠ CONFERIR TAMANHO' : x.bipeId ? '⏳ PENDENTE' : etiqPhotoDurable(x) ? '📷 FOTO SALVA · AGUARDANDO CÓDIGO' : '⏳ LENDO';
       const details = [brand, size ? 'Tam. ' + size : '', reference ? 'Ref. ' + reference : ''].filter(Boolean).join(' · ');
-      return '<div style="padding:5px 0;border-top:1px solid #444">' +
+      return '<div style="padding:5px 0;border-top:1px solid #444;display:flex;align-items:center;gap:8px">' +
+        '<div style="flex:1;min-width:0">' +
         '<div style="font-weight:800;color:#fff;line-height:1.25">' + esc(name) + '</div>' +
         (details ? '<div style="color:#c9c9c9;line-height:1.25">' + esc(details) + '</div>' : '') +
         '<div style="color:#b8d8ff;line-height:1.25;overflow-wrap:anywhere">' + esc(x.ean ? 'Código ' + x.ean : 'Código pendente') + ' · ' + esc(status) + '</div>' +
+        '</div>' + (x.bipeId ? '<button type="button" data-click="exclude-recent-bipe" data-round="' + esc(x.roundId) + '" data-bipe="' + esc(x.bipeId) + '" data-lid="' + esc(x.lid) + '" aria-label="Excluir este bipe" style="flex:none;min-height:36px;padding:6px 9px;border:1px solid #b42318;border-radius:8px;background:#351714;color:#ffb4ab;font-weight:800">Excluir bipe</button>' : '') +
         '</div>';
     }).join('');
+  }
+
+  async function excluirBipeRecente(button) {
+    const { round: roundId, bipe: bipeId, lid } = button.dataset;
+    if (!roundId || !bipeId || button.disabled) return;
+    button.disabled = true;
+    try {
+      const response = await fetch('/api/stocktake/rounds/' + encodeURIComponent(roundId) + '/exclude/' + encodeURIComponent(bipeId), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'Excluído pelo operador na lista de bipes do scanner.' }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Não foi possível excluir o bipe.');
+      const item = etiqFila.find(x => x.lid === lid && x.roundId === roundId && x.bipeId === bipeId);
+      if (item) { item.excluded = true; item.st = 'excluido'; }
+      await etiqSave();
+      renderEtiqLista();
+    } catch (error) {
+      button.disabled = false;
+      alert(error.message || 'Não foi possível excluir o bipe.');
+    }
   }
 
 
@@ -1881,6 +1905,7 @@
       next:()=>window.proximaEtiqueta(),capture:()=>window.capturaManual(),close:()=>window.fecharScanner(),
       'confirm-code':()=>window.confirmarSkuManual(),'other-size':()=>window.confirmarTamanhoOutro(),'skip-size':()=>window.pularTamanho(),
       photo:()=>window.fotoEtiqueta(b,b.dataset.bipe,b.dataset.code),size:()=>window.reabrirTamanho(Number(b.dataset.index)),
+      'exclude-recent-bipe':()=>excluirBipeRecente(b),
       hide:()=>removerBipe(Number(b.dataset.index)),'cancel-manual':()=>document.getElementById('manual-overlay')?.remove(),
       'confirm-size':()=>window.confirmarTamanho(b.dataset.size)};
     actions[b.dataset.click]?.();

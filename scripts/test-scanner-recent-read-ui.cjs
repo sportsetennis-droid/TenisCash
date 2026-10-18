@@ -25,6 +25,7 @@ vm.runInNewContext(code + '\nrenderEtiqLista();', context, { filename: 'public/b
 const list = nodes['etiq-lista'].innerHTML;
 assert.match(list, /ÚLTIMOS BIPES · 10/);
 assert.match(list, /Tênis teste 9[\s\S]*Marca 9[\s\S]*Tam\. 44[\s\S]*REF-9[\s\S]*7900000000009[\s\S]*IDENTIFICADO/);
+assert.match(list, /data-click="exclude-recent-bipe"[\s\S]*data-bipe="bipe-9"[\s\S]*aria-label="Excluir este bipe"/);
 assert.ok(list.indexOf('Tênis teste 9') < list.indexOf('Tênis teste 8'), 'latest scans appear first');
 assert.ok(!list.includes('Tênis teste 1'), 'list is limited to the eight most recent items');
 assert.ok(!list.includes('Não exibir'), 'other rounds remain isolated');
@@ -32,5 +33,9 @@ assert.match(nodes['etiq-contador'].textContent, /identificadas 10/);
 const xss = rows[9]; xss.product.name = '<img src=x onerror=alert(1)>';
 vm.runInNewContext(code + '\nrenderEtiqLista();', context, { filename: 'public/bipar.html#renderEtiqLista-xss' });
 assert.ok(!nodes['etiq-lista'].innerHTML.includes('<img src=x'), 'product data is HTML-escaped');
+rows[9].excluded = true;
+vm.runInNewContext(code + '\nrenderEtiqLista();', context, { filename: 'public/bipar.html#renderEtiqLista-excluded' });
+assert.ok(!nodes['etiq-lista'].innerHTML.includes('Tênis teste 9'), 'excluded scans leave the active recent list');
+assert.match(nodes['etiq-contador'].textContent, /identificadas 9/);
 console.log('PASS: recent scan list shows product, brand, size, reference, barcode, status; newest first; isolated by round; HTML escaped');
 
