@@ -19,7 +19,8 @@ async function renderDailyProduction(day) {
     const d=await api('/production-daily?day='+encodeURIComponent(selectedDay));
     if(current!=='producao'||dailyProductionDay!==selectedDay||!dailyProductionOpen)return;
     dailyProductionData=d;
-    document.getElementById('fab').classList.toggle('hide',!d.canRecord);
+    // O formulário já tem botão próprio; o botão flutuante das OS não cobre as quantidades.
+    document.getElementById('fab').classList.add('hide');
     const kinds={in:'Entrada',break_in:'Intervalo',break_out:'Retorno',out:'Saída'};
     const people=d.employees.map(e=>`<div class="card"><div class="nm">${H(e.name)}${e.active?'':' · inativo'}</div>
       <div class="mt">${mfAttendance(e.attendance)}</div>
