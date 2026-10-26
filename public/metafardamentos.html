@@ -106,6 +106,7 @@
   .bub.in{align-self:flex-start;background:#f0f0f3;color:#111;border-bottom-left-radius:4px}
   .bub.out{align-self:flex-end;background:#d9fdd3;color:#0b1f10;border-bottom-right-radius:4px}
   .bub .bt{display:block;font-size:10px;color:#7a7a7a;text-align:right;margin-top:3px}
+.pbtn:disabled{opacity:.45;cursor:not-allowed}
 </style>
 </head>
 <body>
@@ -197,7 +198,7 @@ async function api(path,opts={}){
   const r=await fetch(API+path,{...opts,headers:h});
   if(r.status===401){logout();throw new Error('Sessão expirada');}
   const data=await r.json().catch(()=>({}));
-  if(!r.ok)throw new Error(data.error||'Erro');
+  if(!r.ok){const error=new Error(data.error||'Erro');error.status=r.status;throw error;}
   return data;
 }
 
@@ -230,7 +231,7 @@ function tab(t){current=t;document.getElementById('top-title').textContent=TITLE
   document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
   document.getElementById('fab').classList.toggle('hide',!FAB[t]);
   ({home:renderHome,estoque:renderEstoque,crm:renderCRM,conversas:renderConversas,pedidos:renderPedidos,producao:renderProducao,ponto:renderPonto}[t])();}
-function fabAction(){ if(current==='estoque')formProduct(); else if(current==='crm'){crmTab==='leads'?formLead():formCustomer();} else if(current==='pedidos')formOrder(); else if(current==='producao')formProduction(); }
+function fabAction(){ if(current==='estoque')formProduct(); else if(current==='crm'){crmTab==='leads'?formLead():formCustomer();} else if(current==='pedidos')formOrder(); else if(current==='producao'){dailyProductionOpen?formDailyProduction():formProduction();} }
 
 /* ---------- SHEET ---------- */
 function sheet(html){closeSheet();const ov=document.createElement('div');ov.className='ov';ov.id='ov';
@@ -552,29 +553,26 @@ async function renderPonto(){
   const v=document.getElementById('view');v.innerHTML='<div class="empty">Carregando…</div>';
   try{
     const t=await api('/ponto/today');
+    if(pointRequest&&t.entries.some(e=>e.requestId===pointRequest.requestId))pointRequest=null;
     const earn=await api('/me/earnings').catch(()=>null);
     const kinds={in:'Entrada',break_in:'Saída almoço',break_out:'Volta almoço',out:'Saída'};
-    const done=t.entries.map(e=>e.kind);
+    const point=t.attendance;
     const reg=t.entries.length?t.entries.map(e=>`<div class="card" style="padding:10px 13px"><div class="row"><div class="nm" style="font-size:14px">${kinds[e.kind]}</div><b>${hhmm(e.at)}</b></div></div>`).join(''):'<div class="empty">Nenhuma batida hoje.</div>';
     let mgr='';
-    if(me.role==='admin'||me.role==='gerente'){mgr=`<button class="btn ghost" style="margin-top:12px" onclick="pontoBoard()">Ver quem bateu hoje (equipe)</button>`;}
+    if(me.canRecordProduction){mgr=`<button class="btn ghost" style="margin-top:12px" onclick="pontoBoard()">Ver quem bateu hoje (equipe)</button>`;}
     const earnHtml=earn?`<div class="card" style="background:linear-gradient(135deg,var(--azul),var(--azul-d));color:#fff;border:none"><div class="row"><div><div class="mt" style="color:#c9cbef">Você ganha</div><b style="font-size:18px">${money(earn.mes.ganhoEstimado)}${earn.payType==='mensal'?' /mês':(earn.payType==='peca'?' (por peça)':' /mês + peça')}</b></div><div class="right"><div class="mt" style="color:#c9cbef">Produção no mês</div><b>${earn.mes.pecas} peças</b></div></div>${earn.payType!=='mensal'?`<div class="mt" style="color:#c9cbef;margin-top:6px">R$ ${(earn.pieceRate||0).toFixed(2)}/peça · ${earn.mes.etapas} etapa(s) feitas no mês</div>`:''}</div>`:'';
     v.innerHTML=`<h3 class="sec">Olá, ${H(me.name)} · ${dt(new Date())}</h3>
     ${earnHtml}
+    ${point?'<div class="card"><div class="nm">Meu ponto de hoje</div><div class="mt">'+mfAttendance(point)+'</div></div>':''}
     <div class="ponto-grid">
-      <button class="pbtn" style="background:var(--ok)" onclick="punch('in')">Entrada<small>chegada</small></button>
-      <button class="pbtn" style="background:var(--warn)" onclick="punch('break_in')">Saída<small>almoço</small></button>
-      <button class="pbtn" style="background:var(--azul)" onclick="punch('break_out')">Volta<small>almoço</small></button>
-      <button class="pbtn" style="background:var(--danger)" onclick="punch('out')">Saída<small>fim do dia</small></button>
+      <button class="pbtn" style="background:var(--ok)" ${point&&!point.allowedKinds.includes('in')?'disabled':''} onclick="punch('in')">Entrada<small>chegada</small></button>
+      <button class="pbtn" style="background:var(--warn)" ${point&&!point.allowedKinds.includes('break_in')?'disabled':''} onclick="punch('break_in')">Saída<small>almoço</small></button>
+      <button class="pbtn" style="background:var(--azul)" ${point&&!point.allowedKinds.includes('break_out')?'disabled':''} onclick="punch('break_out')">Volta<small>almoço</small></button>
+      <button class="pbtn" style="background:var(--danger)" ${point&&!point.allowedKinds.includes('out')?'disabled':''} onclick="punch('out')">Saída<small>fim do dia</small></button>
     </div>
     <h3 class="sec">Hoje</h3>${reg}${mgr}
     <button class="btn ghost" style="margin-top:10px" onclick="pontoHist()">Meu histórico</button>`;
   }catch(e){v.innerHTML='<div class="empty">'+H(e.message)+'</div>';}
-}
-async function punch(kind){
-  const send=(lat,lng)=>api('/ponto',{method:'POST',body:JSON.stringify({kind,lat,lng})}).then(r=>{toast('Registrado '+hhmm(r.at));renderPonto();}).catch(e=>toast(e.message));
-  if(navigator.geolocation){navigator.geolocation.getCurrentPosition(p=>send(p.coords.latitude,p.coords.longitude),()=>send(),{timeout:4000});}
-  else send();
 }
 async function pontoHist(){try{const h=await api('/ponto/history');const kinds={in:'Entrada',break_in:'Saída almoço',break_out:'Volta',out:'Saída'};
   sheet('<h2>Meu histórico</h2>'+(h.length?h.map(e=>`<div class="card" style="padding:9px 12px"><div class="row"><div class="mt">${dt(e.at)} · ${kinds[e.kind]||e.kind}</div><b>${hhmm(e.at)}</b></div></div>`).join(''):'<div class="empty">Sem registros.</div>'));}catch(e){toast(e.message);}}
@@ -602,6 +600,7 @@ function formEmployee(e){e=e||{};const ed=!!e.id;
   ${ed?'':'<label>Usuário</label><input id="e-user" class="fld" placeholder="ex: joao">'}
   <label>${ed?'Novo PIN (deixe vazio p/ manter)':'PIN'}</label><input id="e-pin" class="fld" type="password" inputmode="numeric">
   <label>Função</label><select id="e-role" class="fld"><option value="funcionario" ${e.role==='funcionario'?'selected':''}>Funcionário</option><option value="gerente" ${e.role==='gerente'?'selected':''}>Gerente</option><option value="admin" ${e.role==='admin'?'selected':''}>Admin</option></select>
+  <label><input id="e-prod-recorder" type="checkbox" ${e.canRecordProduction?'checked':''}> Pode lançar a produção da equipe</label>
   <label>Telefone</label><input id="e-phone" class="fld" value="${H(e.phone||'')}">
   <label>Como recebe (pra calcular custo × resultado)</label>
   <select id="e-paytype" class="fld"><option value="mensal" ${(e.payType||'mensal')==='mensal'?'selected':''}>Salário fixo no mês</option><option value="peca" ${e.payType==='peca'?'selected':''}>Por peça (facção)</option><option value="misto" ${e.payType==='misto'?'selected':''}>Fixo + por peça</option></select>
@@ -609,7 +608,7 @@ function formEmployee(e){e=e||{};const ed=!!e.id;
   <div style="flex:1"><label>R$ por peça</label><input id="e-rate" class="fld" type="number" step="0.01" value="${e.pieceRate||''}"></div></div>
   ${ed?`<label>Ativo</label><select id="e-active" class="fld"><option value="1" ${e.active?'selected':''}>Sim</option><option value="0" ${!e.active?'selected':''}>Não</option></select>`:''}
   <button class="btn" style="margin-top:14px" onclick="saveEmployee('${e.id||''}')">${ed?'Salvar':'Cadastrar'}</button>`);}
-async function saveEmployee(id){const b={name:val('e-name'),role:document.getElementById('e-role').value,phone:val('e-phone'),
+async function saveEmployee(id){const b={name:val('e-name'),role:document.getElementById('e-role').value,phone:val('e-phone'),canRecordProduction:document.getElementById('e-prod-recorder').checked,
     payType:document.getElementById('e-paytype').value,baseSalary:document.getElementById('e-salary').value,pieceRate:document.getElementById('e-rate').value};
   const pin=val('e-pin'); if(pin)b.pin=pin;
   try{ if(id){b.active=document.getElementById('e-active').value==='1';await api('/employees/'+id,{method:'PUT',body:JSON.stringify(b)});}
@@ -657,10 +656,12 @@ async function uploadCert(){
 /* ---------- PRODUÇÃO (facção) ---------- */
 const STAGE_LABEL={modelagem:'Modelagem',corte:'Corte',costura:'Costura',estamparia:'Estamparia',embalagem:'Embalagem'};
 let prodStatus='', prodEmps=[];
-async function renderProducao(){
+async function renderProducao(){return renderDailyProduction();}
+async function renderOrdensProducao(){
+  dailyProductionOpen=false;document.getElementById('fab').classList.remove('hide');
   const v=document.getElementById('view');
   const stk=[['','Todas'],['aberta','Aberta'],['producao','Produção'],['concluida','Concluída']];
-  v.innerHTML='<div class="chips">'+stk.map(s=>`<span class="chip ${prodStatus===s[0]?'on':''}" onclick="prodStatus='${s[0]}';renderProducao()">${s[1]}</span>`).join('')+'</div><div id="prod-body"><div class="empty">Carregando…</div></div>';
+  v.innerHTML='<button class="btn ghost" style="margin-bottom:12px" onclick="renderDailyProduction()">Produção diária</button><div class="chips">'+stk.map(s=>`<span class="chip ${prodStatus===s[0]?'on':''}" onclick="prodStatus='${s[0]}';renderOrdensProducao()">${s[1]}</span>`).join('')+'</div><div id="prod-body"><div class="empty">Carregando…</div></div>';
   try{const list=await api('/production'+(prodStatus?('?status='+prodStatus):''));
     document.getElementById('prod-body').innerHTML=list.length?list.map(o=>{
       const st={aberta:'warn',producao:'',concluida:'ok',cancelada:'dng'}[o.status]||'gray';
@@ -781,5 +782,6 @@ async function loadReports(){
 
 boot();
 </script>
+<script src="/mf-daily.js?v=20261026"></script>
 </body>
 </html>

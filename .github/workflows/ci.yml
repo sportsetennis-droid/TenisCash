@@ -28,6 +28,9 @@ jobs:
       - name: Gera Prisma Client
         run: npx prisma generate
 
+      - name: Ponto e produção diária da Meta Fardamentos
+        run: npm run test:mf-daily
+
       - name: Sintaxe — node --check em todo src/
         run: find src -name '*.js' -print0 | xargs -0 -r -n1 node --check
 

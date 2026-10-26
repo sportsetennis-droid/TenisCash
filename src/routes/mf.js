@@ -8,10 +8,20 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { prisma } = require('../middleware');
+const { canRecord } = require('../services/mfDailyProduction');
+const ensureDailySchema = require('../services/mfDailySchema').createSchemaReadiness(prisma);
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'teniscash-dev-secret';
 const TZ = 'America/Fortaleza';
+
+router.use(async (_req, res, next) => {
+  try { await ensureDailySchema(); next(); }
+  catch (err) {
+    console.error('[mf/daily-schema]', err.code || 'unavailable');
+    res.status(503).json({ error: 'O módulo está temporariamente indisponível. Tente novamente.' });
+  }
+});
 
 // ---------------------------------------------------------------------
 // Helpers
@@ -78,7 +88,7 @@ router.post('/auth/setup', async (req, res) => {
     const emp = await prisma.mfEmployee.create({
       data: { name, username: String(username).toLowerCase().trim(), pinHash: bcrypt.hashSync(String(pin), 8), role: 'admin' },
     });
-    res.json({ token: signToken(emp), employee: { id: emp.id, name: emp.name, role: emp.role } });
+    res.json({ token: signToken(emp), employee: { id: emp.id, name: emp.name, role: emp.role, canRecordProduction: canRecord(emp) } });
   } catch (err) {
     if (err.code === 'P2002') return res.status(400).json({ error: 'Usuario ja existe' });
     console.error('[mf/setup]', err.message);
@@ -94,7 +104,7 @@ router.post('/auth/login', async (req, res) => {
     if (!emp || !emp.active || !bcrypt.compareSync(String(pin), emp.pinHash)) {
       return res.status(401).json({ error: 'Usuario ou PIN incorreto' });
     }
-    res.json({ token: signToken(emp), employee: { id: emp.id, name: emp.name, role: emp.role } });
+    res.json({ token: signToken(emp), employee: { id: emp.id, name: emp.name, role: emp.role, canRecordProduction: canRecord(emp) } });
   } catch (err) {
     console.error('[mf/login]', err.message);
     res.status(500).json({ error: 'Erro no login' });
@@ -102,7 +112,7 @@ router.post('/auth/login', async (req, res) => {
 });
 
 router.get('/me', mfAuth, async (req, res) => {
-  res.json({ id: req.emp.id, name: req.emp.name, username: req.emp.username, role: req.emp.role });
+  res.json({ id: req.emp.id, name: req.emp.name, username: req.emp.username, role: req.emp.role, canRecordProduction: canRecord(req.emp) });
 });
 
 // =====================================================================
@@ -126,14 +136,14 @@ router.put('/company', mfAuth, requireRole('admin', 'gerente'), async (req, res)
 router.get('/employees', mfAuth, async (_req, res) => {
   const list = await prisma.mfEmployee.findMany({
     orderBy: { name: 'asc' },
-    select: { id: true, name: true, username: true, role: true, phone: true, cpf: true, active: true, hireDate: true, baseSalary: true, payType: true, pieceRate: true },
+    select: { id: true, name: true, username: true, role: true, phone: true, cpf: true, active: true, hireDate: true, baseSalary: true, payType: true, pieceRate: true, canRecordProduction: true },
   });
   res.json(list);
 });
 
 router.post('/employees', mfAuth, requireRole('admin', 'gerente'), async (req, res) => {
   try {
-    const { name, username, pin, role, phone, cpf, baseSalary, hireDate, payType, pieceRate } = req.body || {};
+    const { name, username, pin, role, phone, cpf, baseSalary, hireDate, payType, pieceRate, canRecordProduction } = req.body || {};
     if (!name || !username || !pin) return res.status(400).json({ error: 'Nome, usuario e PIN obrigatorios' });
     const emp = await prisma.mfEmployee.create({
       data: {
@@ -141,6 +151,7 @@ router.post('/employees', mfAuth, requireRole('admin', 'gerente'), async (req, r
         username: String(username).toLowerCase().trim(),
         pinHash: bcrypt.hashSync(String(pin), 8),
         role: ['admin', 'gerente', 'funcionario'].includes(role) ? role : 'funcionario',
+        canRecordProduction: canRecordProduction === true,
         phone: phone || null,
         cpf: cpf || null,
         baseSalary: baseSalary ? Number(baseSalary) : null,
@@ -158,7 +169,7 @@ router.post('/employees', mfAuth, requireRole('admin', 'gerente'), async (req, r
 
 router.put('/employees/:id', mfAuth, requireRole('admin', 'gerente'), async (req, res) => {
   try {
-    const { name, role, phone, cpf, baseSalary, hireDate, active, pin, payType, pieceRate } = req.body || {};
+    const { name, role, phone, cpf, baseSalary, hireDate, active, pin, payType, pieceRate, canRecordProduction } = req.body || {};
     const data = {};
     if (name !== undefined) data.name = name;
     if (role && ['admin', 'gerente', 'funcionario'].includes(role)) data.role = role;
@@ -169,6 +180,7 @@ router.put('/employees/:id', mfAuth, requireRole('admin', 'gerente'), async (req
     if (pieceRate !== undefined) data.pieceRate = pieceRate ? Number(pieceRate) : null;
     if (hireDate !== undefined) data.hireDate = hireDate ? new Date(hireDate) : null;
     if (active !== undefined) data.active = !!active;
+    if (canRecordProduction !== undefined) data.canRecordProduction = canRecordProduction === true;
     if (pin) data.pinHash = bcrypt.hashSync(String(pin), 8);
     await prisma.mfEmployee.update({ where: { id: req.params.id }, data });
     res.json({ ok: true });
@@ -612,45 +624,13 @@ router.delete('/payments/:id', mfAuth, requireRole('admin', 'gerente'), async (r
 // =====================================================================
 // PONTO (bater ponto)
 // =====================================================================
-const PUNCH_KINDS = ['in', 'break_in', 'break_out', 'out'];
-
-router.post('/ponto', mfAuth, async (req, res) => {
-  try {
-    const { kind, lat, lng } = req.body || {};
-    if (!PUNCH_KINDS.includes(kind)) return res.status(400).json({ error: 'Tipo de batida invalido' });
-    const entry = await prisma.mfTimeEntry.create({
-      data: { employeeId: req.emp.id, kind, day: dayStr(), lat: lat ? Number(lat) : null, lng: lng ? Number(lng) : null },
-    });
-    res.json({ ok: true, at: entry.at, kind: entry.kind });
-  } catch (err) {
-    res.status(500).json({ error: 'Erro ao bater ponto' });
-  }
-});
-
-// Ponto de hoje do funcionario logado
-router.get('/ponto/today', mfAuth, async (req, res) => {
-  const list = await prisma.mfTimeEntry.findMany({ where: { employeeId: req.emp.id, day: dayStr() }, orderBy: { at: 'asc' } });
-  res.json({ day: dayStr(), entries: list });
-});
+router.use(require('./mfDaily')({ prisma, mfAuth }));
 
 // Historico (proprio funcionario; gerente/admin pode ver de todos via ?employeeId=)
 router.get('/ponto/history', mfAuth, async (req, res) => {
   const employeeId = (isManager(req) && req.query.employeeId) ? String(req.query.employeeId) : req.emp.id;
   const list = await prisma.mfTimeEntry.findMany({ where: { employeeId }, orderBy: { at: 'desc' }, take: 300, include: { employee: { select: { name: true } } } });
   res.json(list);
-});
-
-// Espelho do dia de TODOS (gerente/admin) — quem ja bateu hoje
-router.get('/ponto/board', mfAuth, requireRole('admin', 'gerente'), async (_req, res) => {
-  const day = dayStr();
-  const entries = await prisma.mfTimeEntry.findMany({ where: { day }, orderBy: { at: 'asc' }, include: { employee: { select: { name: true } } } });
-  const byEmp = {};
-  for (const e of entries) {
-    const k = e.employeeId;
-    if (!byEmp[k]) byEmp[k] = { name: e.employee?.name || '?', punches: [] };
-    byEmp[k].punches.push({ kind: e.kind, at: e.at });
-  }
-  res.json({ day, employees: Object.values(byEmp) });
 });
 
 // =====================================================================

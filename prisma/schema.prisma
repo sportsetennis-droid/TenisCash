@@ -5112,6 +5112,10 @@ model MfEmployee {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
+  canRecordProduction Boolean @default(false)
+  productionEntries MfProductionEntry[] @relation("MfDailyEmployee")
+  recordedProduction MfProductionEntry[] @relation("MfDailyRecorder")
+
   timeEntries MfTimeEntry[]
   movements   MfStockMovement[]
   orders      MfOrder[]
@@ -5265,6 +5269,7 @@ model MfTimeEntry {
   day        String // YYYY-MM-DD (America/Fortaleza) p/ agrupar o dia
   lat        Float?
   lng        Float?
+  requestId  String? @unique
   note       String?
 
   @@index([employeeId, day])
@@ -5724,4 +5729,24 @@ model StocktakeRound {
   bipes       StocktakeBipe[]
   captures    ProductCapture[]
   @@index([storeId, startedAt])
+}
+
+// Apontamentos diários. Não substituem o total das etapas da OS nem movimentam estoque.
+model MfProductionEntry {
+  id String @id @default(uuid())
+  requestId String @unique
+  day String
+  employeeId String
+  employee MfEmployee @relation("MfDailyEmployee", fields: [employeeId], references: [id])
+  recorderId String
+  recorder MfEmployee @relation("MfDailyRecorder", fields: [recorderId], references: [id])
+  product String
+  activity String
+  quantity Int
+  notes String?
+  createdAt DateTime @default(now())
+  voidedAt DateTime?
+  voidedById String?
+
+  @@index([day, employeeId])
 }
