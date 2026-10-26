@@ -26,7 +26,19 @@ const rounds = require('../services/stocktakeRounds');
 const {captureComplete}=require('../services/scannerCompletion');
 const capturePhotos = require('../services/scannerCapturePhoto');
 const { createAutomaticRecognizer } = require('../services/scannerAutomaticRecognition');
+const { createSchemaReadiness } = require('../services/stocktakeReconstructionSchema');
+const ensureReconstructionSchema = createSchemaReadiness(prisma);
+router.use(async (_req, res, next) => {
+  try {
+    await ensureReconstructionSchema();
+    return next();
+  } catch (error) {
+    console.error('[stocktake/reconstruction-schema]', error);
+    return res.status(503).json({ error: 'Estrutura de contagem indisponível; o estoque oficial não foi alterado. Tente novamente.' });
+  }
+});
 router.use('/rounds', require('./stocktakeRounds'));
+router.use('/reconstructions', require('./stocktakeReconstruction'));
 
 
 // Upload em memória pra foto de conferência (máx 12MB), comprimida com sharp -> webp base64.

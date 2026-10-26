@@ -33,8 +33,14 @@ router.post('/:id/seal',run(async(req,res)=>{
   });res.json({ok:true});
 }));
 router.post('/:id/cancel',run(async(req,res)=>{
-  const changed=await prisma.stocktakeRound.updateMany({where:{id:req.params.id,status:{in:['counting','review']}},data:{status:'cancelled',activeStoreId:null,endedAt:new Date()}});
-  if(!changed.count)service.fail('Rodada já encerrada.');res.json({ok:true});
+  const result=await prisma.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT id FROM "StocktakeRound" WHERE id=${req.params.id} FOR UPDATE`;
+    const round=await tx.stocktakeRound.findUnique({where:{id:req.params.id}});
+    if(!round||!['counting','review'].includes(round.status))service.fail('Rodada já encerrada.');
+    if(round.reconstructionId)service.fail('Esta rodada pertence a uma reconstrução de rede. Arquive o lote inteiro para manter todas as lojas juntas.');
+    return tx.stocktakeRound.update({where:{id:round.id},data:{status:'cancelled',activeStoreId:null,endedAt:new Date()}});
+  });
+  res.json({ok:true,round:result});
 }));
 router.post('/:id/exclude/:bipeId',run(async(req,res)=>{
   if(!String(req.body.reason||'').trim())service.fail('Informe o motivo da correção.',400);

@@ -171,10 +171,33 @@ async function applyStoreStockDelta(tx, {
       source,
       reason,
       metadata,
+      // Use statement-time application clock, not PostgreSQL transaction-start
+      // now(), so inventory reconstruction detects writes delayed on row locks.
+      createdAt: new Date(),
     },
   });
 
   return { row, movement, stockBefore, stockAfter };
+}
+
+async function setStoreStockBalance(tx, {storeId,productSizeId,stock,reason='Ajuste manual de estoque'}) {
+  const next=Number(stock);
+  if(!storeId||!productSizeId)throw new SaleStockError('Loja e variante são obrigatórias para ajustar estoque.');
+  if(!Number.isInteger(next)||next<0)throw new SaleStockError('O saldo informado precisa ser um inteiro maior ou igual a zero.');
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`manual-stock:${storeId}:${productSizeId}`}))::text`;
+  // Read the current value only after locking the row. A concurrent sale may
+  // otherwise commit between the read and this absolute balance update, making
+  // both the resulting stock and its movement incorrect.
+  await tx.$queryRaw`SELECT id FROM "StoreStock" WHERE "storeId"=${storeId} AND "productSizeId"=${productSizeId} FOR UPDATE`;
+  const existing=await tx.storeStock.findUnique({where:{storeId_productSizeId:{storeId,productSizeId}}});
+  const previous=existing?.stock||0;
+  const row=existing
+    ? await tx.storeStock.update({where:{id:existing.id},data:{stock:next}})
+    : await tx.storeStock.create({data:{storeId,productSizeId,stock:next}});
+  const delta=next-previous;
+  const movement=delta?await tx.storeStockMovement.create({data:{storeId,productSizeId,type:'manual_adjustment',quantity:delta,
+    stockBefore:previous,stockAfter:next,source:'inventory-adjust',reason:String(reason||'Ajuste manual de estoque').slice(0,200),createdAt:new Date()}}):null;
+  return {row,movement,stockBefore:previous,stockAfter:next,delta};
 }
 
 module.exports = {
@@ -182,5 +205,6 @@ module.exports = {
   resolveProductSize,
   planSaleProductSize,
   applyStoreStockDelta,
+  setStoreStockBalance,
   requiresPhysicalSizeConfirmation,
 };

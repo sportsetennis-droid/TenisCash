@@ -334,9 +334,12 @@
       const sel = document.getElementById('loja');
       sel.innerHTML = '<option value="">Selecione a loja</option>' + stores.map(s => `<option value="${s.id}">${s.name}${s.code ? ' (' + s.code + ')' : ''}</option>`).join('');
       // restaura seleção
-      const savedLoja = localStorage.getItem(STORAGE_LOJA);
+      const requestedStore = new URLSearchParams(window.location.search).get('storeId');
+      const savedLoja = requestedStore && stores.some(s => s.id === requestedStore)
+        ? requestedStore : localStorage.getItem(STORAGE_LOJA);
       if (savedLoja) {
         sel.value = savedLoja;
+        if (requestedStore && savedLoja === requestedStore) localStorage.setItem(STORAGE_LOJA, savedLoja);
         await carregarVendedores(savedLoja);
       }
       window.BiparActions?.storesReady();

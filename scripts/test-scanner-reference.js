@@ -50,7 +50,7 @@ function routeFunctions(db){
  const ctx={require:name=>{
   if(name==='express')return{Router:()=>router}; if(name==='multer')return upload;if(name==='sharp')return()=>{};
   if(name==='../middleware')return{prisma:db,authMiddleware:'AUTH',adminMiddleware:'ADMIN'};
-  if(name==='../services/stocktakeRounds')return require('../src/services/stocktakeRounds'); if(name==='./stocktakeRounds')return {};
+  if(name==='../services/stocktakeRounds')return require('../src/services/stocktakeRounds'); if(name==='./stocktakeRounds'||name==='./stocktakeReconstruction')return {};
   if(name==='../services/scannerCompletion')return require('../src/services/scannerCompletion');
   if(name==='../services/scannerCapturePhoto')return require('../src/services/scannerCapturePhoto');
   if(name==='../services/scannerAutomaticRecognition')return require('../src/services/scannerAutomaticRecognition');
@@ -58,6 +58,7 @@ function routeFunctions(db){
   if(name==='../services/barcodeInput')return require('../src/services/barcodeInput');
   if(name==='../services/scannerReference')return require('../src/services/scannerReference');
   if(name==='../services/scannerText')return require('../src/services/scannerText');
+  if(name==='../services/stocktakeReconstructionSchema')return {createSchemaReadiness:()=>async()=>{}};
   throw Error('Unexpected require '+name);
  },module:{exports:{}},console,setInterval:()=>0,setTimeout:()=>0,Buffer};
  vm.createContext(ctx);vm.runInContext(fs.readFileSync(require.resolve('../src/routes/stocktake'),'utf8')+'\nmodule.exports.test={garantirBipeDaCaptura,normalizeScannedSize,parseJsonSeguro,processarEtiqueta};',ctx);

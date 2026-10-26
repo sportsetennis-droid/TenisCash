@@ -24,7 +24,8 @@
     "test:seller-assistant": "node scripts/test-seller-assistant.js",
     "test:camera-security-ai": "node scripts/test-camera-security-ai.js",
     "test:qr-offers-images": "node scripts/test-qr-offers-images.js",
-    "test:nuvemshop-stock": "node scripts/test-nuvemshop-stock-safety.js"
+    "test:nuvemshop-stock": "node scripts/test-nuvemshop-stock-safety.js",
+    "test:stock-reconstruction-http": "node scripts/test-stocktake-reconstruction-http.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.0",

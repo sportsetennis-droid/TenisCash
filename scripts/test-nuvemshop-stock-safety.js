@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const { applyOrderStock, preservedPayload, remoteStockDiffers } = require('../src/services/nuvemshopStockSafety');
 
 function database(initialStock = 5, mapping = null) {
-  let data = { stock: initialStock, mapping };
+  let data = { stock: initialStock, mapping, movements: [] };
   let queue = Promise.resolve();
   return {
     get data() { return data; },
@@ -21,14 +21,15 @@ function database(initialStock = 5, mapping = null) {
           product: { findMany: async () => [{ sku: 'REF', sizes: [{ id: 'size', size: '41' }] }] },
           productSize: { findMany: async ({ where }) => where.barcode === 'EAN' ? [{ id: 'size' }] : [] },
           storeStock: {
-            findMany: async () => [{ id: 'stock', storeId: 'store', stock: draft.stock }],
+            findMany: async () => [{ id: 'stock', storeId: 'store', productSizeId: 'size', stock: draft.stock }],
             updateMany: async ({ where, data: change }) => {
               if (draft.stock < where.stock.gte) return { count: 0 };
               draft.stock -= change.stock.decrement;
               return { count: 1 };
             },
-            update: async ({ data: change }) => { draft.stock += change.stock.increment; },
+            update: async ({ data: change }) => { draft.stock += change.stock.increment; return { id:'stock',storeId:'store',productSizeId:'size',stock:draft.stock }; },
           },
+          storeStockMovement: { create: async ({data:movement}) => { draft.movements.push(movement); return movement; } },
         };
         const result = await run(tx);
         data = draft;
@@ -45,12 +46,17 @@ function database(initialStock = 5, mapping = null) {
   const db = database();
   await Promise.all([applyOrderStock(db, order), applyOrderStock(db, order)]);
   assert.equal(db.data.stock, 3, 'simultaneous deliveries deduct once');
+  assert.equal(db.data.movements.length,1,'a paid order records its physical stock movement');
+  assert.equal(db.data.movements[0].quantity,-2);
+  assert.ok(db.data.movements[0].createdAt instanceof Date);
   await applyOrderStock(db, { ...order, shipping_status: 'fulfilled' });
   await applyOrderStock(db, order);
   assert.equal(db.data.stock, 3, 'updated/paid/updated retains the receipt');
   await applyOrderStock(db, { ...order, status: 'cancelled' });
   await applyOrderStock(db, { ...order, status: 'cancelled' });
   assert.equal(db.data.stock, 5, 'cancellation returns only the recorded allocation, once');
+  assert.equal(db.data.movements.length,2,'order cancellation records the restoring movement once');
+  assert.equal(db.data.movements[1].quantity,2);
   const legacy = database(3, { payload: { _stockDecremented: true } });
   await applyOrderStock(legacy, order);
   assert.equal(legacy.data.stock, 3, 'honors legacy receipts');
@@ -77,5 +83,5 @@ function database(initialStock = 5, mapping = null) {
   assert.equal(remoteStockDiffers(product, remote), false);
   assert.equal(remoteStockDiffers(product, { variants: [{ ...remote.variants[0], stock: 8 }] }), true, 'remote drift detected without local change');
   assert.equal(remoteStockDiffers(product, { variants: [] }), true, 'missing size detected');
-  console.log('Nuvemshop stock safety: 15 assertions passed');
+  console.log('Nuvemshop stock safety: passed, including audited sale and cancellation movements');
 })().catch(error => { console.error(error); process.exitCode = 1; });
