@@ -60,6 +60,34 @@
     return draft;
   }
   function draftStorageKey(draft) { return draft.status === 'archived' || draft.status === 'confirmed' ? archivePrefix + draft.sessionId : draftKey(draft.key); }
+  function pruneSyncedClosedDraftCopy(protectedSessionIds = []) {
+    const protectedIds = new Set(protectedSessionIds.filter(Boolean));
+    const candidates = [];
+    for (let index = 0; index < localStorage.length; index++) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith('tc_bipar_action_draft_v1:') && !key?.startsWith(archivePrefix)) continue;
+      const snapshot = read(key, null), revision = Number(snapshot?.revision) || 1;
+      if (!snapshot?.sessionId || protectedIds.has(snapshot.sessionId) || snapshot.context?.actorId !== actor?.id ||
+          !['archived', 'confirmed'].includes(snapshot.status) || Number(snapshot.syncedRevision || 0) < revision || recoveryConflicts.has(snapshot.sessionId)) continue;
+      const firstScan = (snapshot.scans || []).map(item => Date.parse(item.createdAt)).filter(Number.isFinite).sort((a, b) => a - b)[0] || 0;
+      candidates.push({ key, firstScan });
+    }
+    candidates.sort((a, b) => a.firstScan - b.firstScan);
+    if (!candidates.length) return false;
+    // Only evict a closed local copy after its latest revision was acknowledged
+    // by the server. Open, unsynced, conflicting and other operators' lots stay.
+    localStorage.removeItem(candidates[0].key);
+    return true;
+  }
+  function setDraftSnapshot(key, value, protectedSessionIds = []) {
+    for (;;) {
+      try { localStorage.setItem(key, value); return true; }
+      catch (error) {
+        const quotaExceeded = error?.name === 'QuotaExceededError' || error?.name === 'NS_ERROR_DOM_QUOTA_REACHED' || error?.code === 22 || error?.code === 1014;
+        if (!quotaExceeded || !pruneSyncedClosedDraftCopy(protectedSessionIds)) throw error;
+      }
+    }
+  }
   function persist(draft = currentDraft) {
     if (!draft) return false;
     if (recoveryConflicts.get(draft.sessionId)?.backupFailed) { storageFailed = true; message('As cópias divergentes deste lote precisam ser preservadas antes de salvar novas leituras. Libere espaço e tente a recuperação novamente.', true); return false; }
@@ -68,7 +96,11 @@
       const saved = read(draftStorageKey(draft), null), base = draftBases.get(draft.sessionId) || new Map();
       if (saved?.sessionId && saved.sessionId !== draft.sessionId && saved.scans?.length) {
         const checkpoint = read(archivePrefix + saved.sessionId, null);
-        if (!checkpoint || Number(checkpoint.revision || 0) < Number(saved.revision || 0)) localStorage.setItem(archivePrefix + saved.sessionId, JSON.stringify(saved));
+        if (!checkpoint || Number(checkpoint.revision || 0) < Number(saved.revision || 0)) {
+          const savedRevision = Number(saved.revision) || 1;
+          const alreadySynced = Number(saved.syncedRevision || 0) >= savedRevision;
+          if (!alreadySynced) setDraftSnapshot(archivePrefix + saved.sessionId, JSON.stringify(saved), [saved.sessionId, draft.sessionId]);
+        }
       }
       if (saved?.sessionId === draft.sessionId) {
         const merged = new Map((saved.scans || []).map(item => [item.clientScanId, item]));
@@ -87,8 +119,14 @@
       draft.revision = Math.max(Number(draft.revision) || 0, Number(saved?.sessionId === draft.sessionId ? saved.revision : 0) || 0) + 1;
       // A session checkpoint survives another tab replacing the active context.
       // Its status stays open; saving a checkpoint is not archiving the lot.
-      localStorage.setItem(archivePrefix + draft.sessionId, JSON.stringify(draft));
-      localStorage.setItem(draftStorageKey(draft), JSON.stringify(draft));
+      const serialized = JSON.stringify(draft), primaryKey = draftStorageKey(draft), checkpointKey = archivePrefix + draft.sessionId;
+      // Save the active lot first. Its mirrored checkpoint is a recovery aid;
+      // failure to write that second copy must not block scanning or misreport
+      // an already saved lot as lost.
+      setDraftSnapshot(primaryKey, serialized, [draft.sessionId, saved?.sessionId]);
+      if (checkpointKey !== primaryKey) {
+        try { localStorage.setItem(checkpointKey, serialized); } catch (_) { /* active draft is already durable */ }
+      }
       draftBases.set(draft.sessionId, new Map(draft.scans.map(item => [item.clientScanId, JSON.stringify(item)])));
       storageFailed = false; queueSync(draft); return true;
     }
@@ -149,8 +187,11 @@
           const saved = read(draftStorageKey(draft), null);
           if (saved?.sessionId === draft.sessionId && Number(saved.revision) === revision && JSON.stringify(syncPayload(saved)) === JSON.stringify(body)) {
             saved.syncedRevision = Math.max(Number(saved.syncedRevision) || 0, revision);
-            localStorage.setItem(draftStorageKey(draft), JSON.stringify(saved));
-            localStorage.setItem(archivePrefix + draft.sessionId, JSON.stringify(saved));
+            const serialized = JSON.stringify(saved), primaryKey = draftStorageKey(draft), checkpointKey = archivePrefix + draft.sessionId;
+            setDraftSnapshot(primaryKey, serialized, [draft.sessionId]);
+            if (checkpointKey !== primaryKey) {
+              try { localStorage.setItem(checkpointKey, serialized); } catch (_) { /* server acknowledgement and active copy are preserved */ }
+            }
           }
           job.error = ''; job.needsReview = false; syncStatus();
           clearTimeout(historyRefreshTimer); historyRefreshTimer = setTimeout(() => { if (actor?.id === owner && token === authToken) void loadHistory(historyPage); }, 750);
@@ -228,7 +269,7 @@
         for (const copy of copies) {
           const snapshot = stable(copy);
           if (!savedConflictCopies.has(snapshot)) {
-            try { localStorage.setItem(archivePrefix + 'recovery:' + sessionId + ':' + crypto.randomUUID(), JSON.stringify(copy)); savedConflictCopies.add(snapshot); }
+            try { setDraftSnapshot(archivePrefix + 'recovery:' + sessionId + ':' + crypto.randomUUID(), JSON.stringify(copy), [sessionId]); savedConflictCopies.add(snapshot); }
             catch (_) { storageFailed = true; issue.backupFailed = true; }
           }
         }
