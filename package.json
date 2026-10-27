@@ -12,7 +12,7 @@
     "db:seed": "node src/seed.js",
     "agents:daily": "node scripts/run-daily-agents.js",
     "test:seller-stock": "node scripts/test-seller-stock-logic.js",
-    "test:mf-daily": "node scripts/test-mf-daily.cjs",
+    "test:mf-daily": "node scripts/test-mf-daily.cjs && node scripts/test-mf-registration.cjs",
     "test:sale-stock-ledger": "node scripts/test-sale-stock-ledger.js && node scripts/test-loja-sale-selection.js && node scripts/test-sale-manual-size-resolution.js && node scripts/test-loja-barcode-sale.js && node scripts/test-qr-barcode-ui.js && node scripts/test-qr-barcode-backend.js",
     "backfill:sale-stock-ledger": "node scripts/backfill-sale-stock-ledger.js",
     "test:financial": "node scripts/test-product-profit.js && node scripts/test-real-profit-tax.js && node scripts/test-xml-tax-parser.js",

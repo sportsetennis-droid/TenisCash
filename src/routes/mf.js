@@ -96,6 +96,8 @@ router.post('/auth/setup', async (req, res) => {
   }
 });
 
+router.use(require('./mfRegistration')({ prisma, signToken }));
+
 router.post('/auth/login', async (req, res) => {
   try {
     const { username, pin } = req.body || {};

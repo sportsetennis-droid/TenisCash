@@ -123,6 +123,18 @@
         <div class="err" id="lg-err"></div>
         <button class="btn" style="margin-top:14px" onclick="doLogin()">Entrar</button>
       </div>
+      <div id="auth-register" class="hide">
+        <h2>Cadastro de funcionário</h2><p class="sub">Crie seu acesso à Meta Fardamentos para bater seu ponto.</p>
+        <form onsubmit="doRegister(event)">
+          <label for="rg-name">Nome completo</label><input id="rg-name" class="fld" autocomplete="name" maxlength="120" required>
+          <label for="rg-user">Usuário</label><input id="rg-user" class="fld" autocomplete="username" autocapitalize="none" minlength="3" maxlength="50" pattern="[A-Za-z0-9._\-]{3,50}" placeholder="ex: maria.silva" required>
+          <label for="rg-pin">Crie seu PIN (4 a 12 números)</label><input id="rg-pin" class="fld" type="password" inputmode="numeric" autocomplete="new-password" pattern="[0-9]{4,12}" required>
+          <label for="rg-confirm">Confirme seu PIN</label><input id="rg-confirm" class="fld" type="password" inputmode="numeric" autocomplete="new-password" required>
+          <div class="err" id="rg-err" role="alert"></div>
+          <button id="rg-submit" class="btn" style="margin-top:14px" type="submit">Cadastrar e entrar</button>
+        </form>
+        <a href="/metafardamentos" style="display:block;margin-top:14px">Já tenho cadastro: entrar</a>
+      </div>
       <div id="auth-setup" class="hide">
         <h2>Primeiro acesso</h2><p class="sub">Crie o administrador do sistema da Meta Fardamentos.</p>
         <label>Seu nome</label><input id="su-name" class="fld" placeholder="Nome completo" />
@@ -204,6 +216,10 @@ async function api(path,opts={}){
 
 /* ---------- AUTH ---------- */
 async function boot(){
+  if(new URLSearchParams(location.search).get('cadastro')==='1'){
+    document.getElementById('auth-login').classList.add('hide');
+    document.getElementById('auth-register').classList.remove('hide');return;
+  }
   if(token){ try{ me=await api('/me'); enterApp(); return; }catch(e){ token=null; } }
   try{ const s=await api('/auth/status'); document.getElementById('auth-setup').classList.toggle('hide',!s.setup); document.getElementById('auth-login').classList.toggle('hide',s.setup);}catch(e){}
 }
@@ -217,6 +233,18 @@ async function doSetup(){
   const body={name:val('su-name'),username:val('su-user'),pin:val('su-pin')};
   if(!body.name||!body.username||!body.pin){e.textContent='Preencha tudo';return;}
   try{ const r=await api('/auth/setup',{method:'POST',body:JSON.stringify(body)}); setToken(r.token);}catch(err){e.textContent=err.message;}
+}
+async function doRegister(event){
+  event.preventDefault();
+  const e=document.getElementById('rg-err'),btn=document.getElementById('rg-submit');e.textContent='';
+  const body={name:val('rg-name'),username:val('rg-user'),pin:val('rg-pin')};
+  if(body.pin!==val('rg-confirm')){e.textContent='Os PINs não conferem.';return;}
+  btn.disabled=true;
+  try{
+    const r=await fetch(API+'/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const data=await r.json();if(!r.ok)throw new Error(data.error||'Não foi possível cadastrar.');
+    await setToken(data.token);history.replaceState(null,'','/metafardamentos');tab('ponto');
+  }catch(err){e.textContent=err.message;}finally{btn.disabled=false;}
 }
 async function setToken(t){token=t;localStorage.setItem('mf_token',t);me=await api('/me');enterApp();}
 function logout(){token=null;me=null;localStorage.removeItem('mf_token');location.reload();}
