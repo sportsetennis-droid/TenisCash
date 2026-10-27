@@ -12,7 +12,7 @@ function routeFunctions(){const router={use(){},get(){},post(){},delete(){}};con
  if(n.startsWith('../services/'))return require('../src/services/'+n.slice('../services/'.length));throw Error(n);
 },console,Buffer,setInterval(){},setTimeout(){},module:{exports:{}}};vm.createContext(ctx);vm.runInContext(fs.readFileSync(require.resolve('../src/routes/stocktake'),'utf8')+'\nmodule.exports.test={applyBipeIfReady,garantirBipeDaCaptura,processarEtiqueta};',ctx);return ctx.module.exports.test;}
 (async()=>{
- const suffix=Date.now().toString(36);await db.store.updateMany({where:{code:{startsWith:'UNKNOWN-'}},data:{active:false}});const store=await db.store.upsert({where:{code:'LOJA02'},create:{name:'Loja teste isolada',code:'LOJA02'},update:{name:'Loja teste isolada '+suffix,active:true}});const other=await db.store.upsert({where:{code:'LOJA03'},create:{name:'Outra loja teste',code:'LOJA03'},update:{name:'Outra loja teste '+suffix,active:true}});const loja07=await db.store.upsert({where:{code:'LOJA07'},create:{name:'Sports & Tennis Loja 07 teste',code:'LOJA07'},update:{name:'Sports & Tennis Loja 07 teste '+suffix,active:true}});const separateCompany=await db.store.upsert({where:{code:'LOJA01'},create:{name:'Baratão separado',code:'LOJA01'},update:{name:'Baratão separado '+suffix,active:true}});
+ const suffix=Date.now().toString(36);await db.stocktakeReconstruction.updateMany({where:{status:'counting'},data:{status:'cancelled',endedAt:new Date()}});await db.stocktakeRound.updateMany({where:{status:{in:['counting','review']}},data:{status:'cancelled',activeStoreId:null,endedAt:new Date()}});await db.product.updateMany({where:{sku:{startsWith:'INACTIVE-'}},data:{active:true}});await db.store.updateMany({where:{code:{startsWith:'UNKNOWN-'}},data:{active:false}});const store=await db.store.upsert({where:{code:'LOJA02'},create:{name:'Loja teste isolada',code:'LOJA02'},update:{name:'Loja teste isolada '+suffix,active:true}});const other=await db.store.upsert({where:{code:'LOJA03'},create:{name:'Outra loja teste',code:'LOJA03'},update:{name:'Outra loja teste '+suffix,active:true}});const loja07=await db.store.upsert({where:{code:'LOJA07'},create:{name:'Sports & Tennis Loja 07 teste',code:'LOJA07'},update:{name:'Sports & Tennis Loja 07 teste '+suffix,active:true}});const separateCompany=await db.store.upsert({where:{code:'LOJA01'},create:{name:'Baratão separado',code:'LOJA01'},update:{name:'Baratão separado '+suffix,active:true}});
  const product=await db.product.create({data:{sku:'TEST-'+suffix,name:'Conjunto teste',brand:'NIKE',category:'roupa',price:100}});
  const size=await db.productSize.create({data:{productId:product.id,size:'XL',barcode:'196974865902',stock:8,sizeConfirmedAt:new Date()}});
  const absent=await db.productSize.create({data:{productId:product.id,size:'M',stock:3}});
@@ -65,12 +65,20 @@ function routeFunctions(){const router={use(){},get(){},post(){},delete(){}};con
  assert.ok(batch.rounds.some(r=>r.storeId===loja07.id),'LOJA07 receives its own physical-count round');
  await assert.rejects(rounds.startReconstruction(db,'Segunda reconstrução'),/Já existe reconstrução/);
  const batchStoreRound=batch.rounds.find(r=>r.storeId===store.id),batchOtherRound=batch.rounds.find(r=>r.storeId===other.id);assert.ok(batchStoreRound&&batchOtherRound);
+ const inactiveProduct=await db.product.create({data:{sku:'INACTIVE-'+suffix,name:'Produto inativo do teste',brand:'TESTE',category:'tenis',price:100,active:false}});
+ const inactiveSize=await db.productSize.create({data:{productId:inactiveProduct.id,size:'42',barcode:'199999'+suffix.slice(-6),stock:2}});
+ const inactiveStock=await db.storeStock.create({data:{storeId:store.id,productSizeId:inactiveSize.id,stock:2}});
  assert.equal((await rounds.roundReport(db,batchStoreRound.id)).totals.total,0,'Old reads are not imported into a fresh batch round');
  const batchBipe={...data,roundId:batchStoreRound.id,scanKey:rounds.scanKey(batchStoreRound.id,'batch-client-0001')};
  await rounds.createRoundBipe(db,batchBipe);
  await db.stocktakeRound.updateMany({where:{reconstructionId:batch.batch.id},data:{status:'review',endedAt:new Date()}});
  const newSize=await db.productSize.create({data:{productId:product.id,size:'TEST-'+suffix,stock:1}});
- let batchReport=await rounds.reconstructionReport(db,batch.batch.id);assert.equal(batchReport.catalogChanged,true);
+ let batchReport=await rounds.reconstructionReport(db,batch.batch.id,{includeDetails:false});assert.equal(batchReport.catalogChanged,true);
+ const inactiveInBatch=batchReport.reports.find(r=>r.round.storeId===store.id).inactiveVariants.find(v=>v.productSizeId===inactiveSize.id);
+ assert.deepEqual({name:inactiveInBatch.name,sku:inactiveInBatch.sku,size:inactiveInBatch.size,current:inactiveInBatch.current},
+  {name:'Produto inativo do teste',sku:inactiveProduct.sku,size:'42',current:2},'batch summary identifies inactive variants and their current balance without exposing full detail payload');
+ await db.storeStock.delete({where:{id:inactiveStock.id}});await db.productSize.delete({where:{id:inactiveSize.id}});await db.product.delete({where:{id:inactiveProduct.id}});
+ batchReport=await rounds.reconstructionReport(db,batch.batch.id,{includeDetails:false});assert.ok(batchReport.reports.find(r=>r.round.storeId===store.id).inactiveVariants.every(v=>v.productSizeId!==inactiveSize.id),'removed test variant disappears from the summary');
  const reviews=batchReport.reports.map(r=>({roundId:r.round.id,reviewToken:r.reviewToken,fullStoreConfirmed:true}));
  await assert.rejects(rounds.applyReconstruction(db,batch.batch.id,reviews),/catálogo|não pode ser aplicada/);
  assert.equal((await db.storeStock.findUnique({where:{storeId_productSizeId:{storeId:store.id,productSizeId:size.id}}})).stock,2,'Catalog conflict preserves the official balance');

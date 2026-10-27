@@ -72,6 +72,7 @@ async function call(base,path,{role='admin',body,token=true}={}){
     assert.equal(active.status,200);
     assert.equal(active.payload.reconstruction.batch.id,batch.id);
     assert.ok(active.payload.reconstruction.reports.every(report=>report.totals.total===0),'new rounds do not import older scans');
+    assert.ok(active.payload.reconstruction.reports.every(report=>Array.isArray(report.inactiveVariants)),'the batch summary exposes inactive catalog variants for review');
 
     const cancelled=await call(base,`/${encodeURIComponent(batch.id)}/cancel`,{body:{}});
     assert.equal(cancelled.status,200,JSON.stringify(cancelled.payload));
