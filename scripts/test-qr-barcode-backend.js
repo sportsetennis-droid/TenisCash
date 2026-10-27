@@ -47,7 +47,9 @@ function loadRoute(file, db, method, routePath) {
       if (name === '../services/barcodeInput') return barcodeInput;
       if (name === '../services/storeStockLedger') return ledger;
       if (name === '../services/scannerCatalog') return require('../src/services/scannerCatalog');
-      if (name.startsWith('../services/') || name === './stocktakeRounds' || name === 'qrcode') return {};
+      if (name === '../services/scannerAutomaticRecognition') return require('../src/services/scannerAutomaticRecognition');
+      if (name === '../services/stocktakeReconstructionSchema') return { createSchemaReadiness: () => async () => {} };
+      if (name.startsWith('../services/') || name === './stocktakeRounds' || name === './stocktakeReconstruction' || name === 'qrcode') return {};
       throw new Error(`Unexpected import: ${name}`);
     },
     module: { exports: {} }, console, Buffer,

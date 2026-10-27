@@ -31,7 +31,10 @@ async function applyOrderStock(prisma, order, { saleId, allowLegacy = false } = 
     let allocations = payload._stockAllocations || [];
     if (cancelled && payload._stockDecremented && allocations.length && !payload._stockRestored) {
       for (const allocation of allocations) {
-        await tx.storeStock.update({ where: { id: allocation.id }, data: { stock: { increment: allocation.quantity } } });
+        const updated = await tx.storeStock.update({ where: { id: allocation.id }, data: { stock: { increment: allocation.quantity } } });
+        await tx.storeStockMovement.create({data:{storeId:updated.storeId,productSizeId:allocation.productSizeId,type:'nuvemshop_order_cancel',
+          quantity:allocation.quantity,stockBefore:updated.stock-allocation.quantity,stockAfter:updated.stock,source:'nuvemshop-order',
+          reason:`Restituição do pedido Nuvemshop ${order.number||id}`,metadata:{nuvemshopOrderId:id},createdAt:new Date()}});
       }
       payload._stockRestored = true;
     }
@@ -79,6 +82,9 @@ async function applyOrderStock(prisma, order, { saleId, allowLegacy = false } = 
             where: { id: row.id, stock: { gte: decrement } }, data: { stock: { decrement } },
           });
           if (updated.count !== 1) throw new Error(`Estoque alterado durante baixa do pedido ${id}; tentar novamente`);
+          await tx.storeStockMovement.create({data:{storeId:row.storeId,productSizeId:matches[0].id,type:'nuvemshop_order_sale',
+            quantity:-decrement,stockBefore:row.stock,stockAfter:row.stock-decrement,source:'nuvemshop-order',
+            reason:`Baixa do pedido Nuvemshop ${order.number||id}`,metadata:{nuvemshopOrderId:id},createdAt:new Date()}});
           allocations.push({ id: row.id, quantity: decrement, productSizeId: matches[0].id });
           remaining -= decrement;
         }

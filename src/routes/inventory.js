@@ -9,6 +9,7 @@ const {loadVerification,attachVerification,matchesVerification}=require('../serv
 const express = require('express');
 const { authMiddleware, productAdminMiddleware, prisma } = require('../middleware');
 const { designProductResponses } = require('../services/designProductData');
+const { setStoreStockBalance } = require('../services/storeStockLedger');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -281,12 +282,7 @@ router.post('/adjust', async (req, res) => {
 
       const newQty = Math.max(0, parseInt(newStock, 10) || 0);
       // Atualiza SÓ o StoreStock desta loja (localização). NÃO toca no total comprado.
-      const existing = await prisma.storeStock.findFirst({ where: { productSizeId: psId, storeId } });
-      if (existing) {
-        await prisma.storeStock.update({ where: { id: existing.id }, data: { stock: newQty } });
-      } else {
-        await prisma.storeStock.create({ data: { productSizeId: psId, storeId, stock: newQty } });
-      }
+      await prisma.$transaction(tx=>setStoreStockBalance(tx,{storeId,productSizeId:psId,stock:newQty,reason}));
       // ProductSize.stock (= COMPRADO) permanece intocado. Só devolvemos info de localização.
       const allStocks = await prisma.storeStock.findMany({ where: { productSizeId: psId } });
       const totalLocalizado = allStocks.reduce((s, x) => s + (x.stock || 0), 0);

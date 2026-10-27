@@ -5718,6 +5718,8 @@ model StocktakeRound {
   number      Int @unique @default(autoincrement())
   name        String
   storeId     String
+  reconstructionId String?
+  reconstruction StocktakeReconstruction? @relation(fields: [reconstructionId], references: [id], onDelete: Restrict)
   activeStoreId String? @unique
   status      String @default("counting")
   startedAt   DateTime @default(now())
@@ -5729,6 +5731,26 @@ model StocktakeRound {
   bipes       StocktakeBipe[]
   captures    ProductCapture[]
   @@index([storeId, startedAt])
+  @@index([reconstructionId])
+}
+
+// Reconstrução completa da rede: as contagens de todas as lojas ficam isoladas
+// até uma única aplicação atômica no StoreStock oficial.
+model StocktakeReconstruction {
+  id String @id @default(uuid())
+  number Int @unique @default(autoincrement())
+  name String
+  status String @default("counting") // counting | applied | cancelled
+  storeIds Json // snapshot imutável dos IDs de lojas ativas ao abrir o lote
+  catalogFingerprint String // impede aplicar uma contagem após mudança de variante/código
+  createdById String?
+  startedAt DateTime @default(now())
+  endedAt DateTime?
+  appliedAt DateTime?
+  result Json?
+  rounds StocktakeRound[]
+
+  @@index([status, startedAt])
 }
 
 // Apontamentos diários. Não substituem o total das etapas da OS nem movimentam estoque.
