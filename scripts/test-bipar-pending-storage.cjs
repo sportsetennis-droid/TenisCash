@@ -119,7 +119,7 @@ async function test(name, work) { await work(); console.log('PASS: ' + name); }
     h.localStorage.fail = false; assert.equal(await h.api.etiqSave(), true);
     assert.deepEqual(JSON.parse(JSON.stringify(await h.api.read())), rows); assert.equal(h.context.etiqStorageFailed, false);
     assert.equal(h.counters().reset, 1); assert.equal(h.nodes.get('etiq-storage-warning').hidden, true);
-    assert.match(html, /canRead: \(\) => etiqStorageReady && !etiqStorageFailed && !etiqPausado/);
+    assert.match(html, /canRead: \(\) => etiqStorageReady && !etiqStorageFailed && etiqLeituraArmada && !etiqPausado && cameraCurrent/);
   });
   await test('a stale tab keeps another tab new photo and cannot restore its completed copy as pending', async () => {
     const old = { clientScanId: 'A', roundId: 'round-one', b64: 'photo-A', st: 'fila' };
