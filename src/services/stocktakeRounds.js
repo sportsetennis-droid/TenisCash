@@ -1,6 +1,6 @@
 'use strict';
 const { createHash } = require('node:crypto');
-const RECONSTRUCTION_STORE_CODES = new Set(['LOJA02','LOJA03','LOJA04','LOJA05','LOJA06']);
+const RECONSTRUCTION_STORE_CODES = new Set(['LOJA02','LOJA03','LOJA04','LOJA05','LOJA06','LOJA07']);
 const SEPARATE_COMPANY_STORE_CODES = new Set(['LOJA01']);
 function fail(message, status = 409, details = null) { const e = new Error(message); e.status = status; if(details)e.details=details; throw e; }
 function scanKey(roundId, clientScanId) {
@@ -114,7 +114,7 @@ async function startReconstruction(db,name,userId) {
     const scope=await reconstructionStoreScope(tx);
     if(scope.unknownStores.length)fail('Há loja(s) ativa(s) sem grupo empresarial confirmado. A reconstrução foi interrompida para não misturar empresas.',409,{unknownStores:scope.unknownStores});
     const {stores}=scope;
-    if(!stores.length)fail('Não há lojas ativas da Sports & Tennis (LOJA02–LOJA06) para reconstruir.',400);
+    if(!stores.length)fail('Não há lojas ativas da Sports & Tennis (LOJA02–LOJA07) para reconstruir.',400);
     const storeIds=stores.map(s=>s.id);
     for(const storeId of storeIds)await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${String(storeId)}))::text`;
     const conflicts=await tx.stocktakeRound.findMany({where:{activeStoreId:{in:storeIds}},select:{id:true,number:true,name:true,storeId:true,status:true}});

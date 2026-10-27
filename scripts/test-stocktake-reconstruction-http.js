@@ -37,6 +37,7 @@ async function call(base,path,{role='admin',body,token=true}={}){
   await prisma.user.upsert({where:{id:'isolated-http-test-seller'},create:{id:'isolated-http-test-seller',name:'Vendedor HTTP isolado',phone:'test-stock-reconstruction-seller',pin:'test-only',role:'seller'},update:{active:true,role:'seller'}});
   const store=await prisma.store.upsert({where:{code:'LOJA02'},create:{name:'Loja HTTP isolada',code:'LOJA02'},update:{name:'Loja HTTP isolada '+suffix,active:true}});
   await prisma.store.upsert({where:{code:'LOJA03'},create:{name:'Outra loja HTTP isolada',code:'LOJA03'},update:{name:'Outra loja HTTP isolada '+suffix,active:true}});
+  const loja07=await prisma.store.upsert({where:{code:'LOJA07'},create:{name:'Sports & Tennis Loja 07 HTTP isolada',code:'LOJA07'},update:{name:'Sports & Tennis Loja 07 HTTP isolada '+suffix,active:true}});
   const separateCompany=await prisma.store.upsert({where:{code:'LOJA01'},create:{name:'Baratão separado HTTP',code:'LOJA01'},update:{name:'Baratão separado HTTP '+suffix,active:true}});
   const unknownStore=await prisma.store.upsert({where:{code:'UNKNOWN-'+suffix},create:{name:'Loja HTTP sem grupo',code:'UNKNOWN-'+suffix},update:{name:'Loja HTTP sem grupo '+suffix,active:true}});
   const product=await prisma.product.create({data:{sku:'HTTP-'+suffix,name:'Produto HTTP teste',brand:'PUMA',category:'calcado',price:100}});
@@ -62,6 +63,8 @@ async function call(base,path,{role='admin',body,token=true}={}){
     assert.equal((await prisma.stocktakeReconstruction.findUnique({where:{id:batch.id}})).createdById,'isolated-http-test','the authenticated admin is recorded as the batch creator');
     assert.equal(created.payload.rounds.length,created.payload.stores.length,'one fresh round is created for each active store');
     assert.ok(created.payload.rounds.some(round=>round.storeId===store.id));
+    assert.ok(created.payload.stores.some(item=>item.id===loja07.id&&item.code==='LOJA07'),'verified Sports & Tennis LOJA07 is included in the batch');
+    assert.ok(created.payload.rounds.some(round=>round.storeId===loja07.id),'LOJA07 receives its own fresh physical-count round');
     assert.ok(!created.payload.rounds.some(round=>round.storeId===separateCompany.id),'LOJA01 remains outside the Sports & Tennis batch');
     assert.ok(created.payload.excludedStores.some(item=>item.code==='LOJA01'));
 
@@ -96,7 +99,7 @@ async function call(base,path,{role='admin',body,token=true}={}){
     assert.equal((await prisma.storeStock.findUnique({where:{storeId_productSizeId:{storeId:store.id,productSizeId:size.id}}})).stock,0,'the explicit zero count replaces the store balance');
     assert.equal((await prisma.storeStock.findUnique({where:{storeId_productSizeId:{storeId:separateCompany.id,productSizeId:size.id}}})).stock,11,'applying the reconstruction never touches Baratão');
     assert.equal((await prisma.productSize.findUnique({where:{id:size.id}})).stock,7,'the purchased total is preserved');
-    console.log('PASS HTTP isolado: autenticação/admin; empresa desconhecida bloqueia; LOJA01 separado; rodada nova por loja; leituras antigas não entram; arquivamento preserva saldos; sem confirmação não aplica; confirmação completa substitui todas as lojas em conjunto e preserva o comprado.');
+    console.log('PASS HTTP isolado: autenticação/admin; empresa desconhecida bloqueia; LOJA01 separado; LOJA07 incluída com rodada própria; leituras antigas não entram; arquivamento preserva saldos; sem confirmação não aplica; confirmação completa substitui todas as lojas em conjunto e preserva o comprado.');
   }finally{
     await new Promise(resolve=>server.close(resolve));
   }
