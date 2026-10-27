@@ -105,7 +105,7 @@
   }
   function persist(draft = currentDraft) {
     if (!draft) return false;
-    if (recoveryConflicts.get(draft.sessionId)?.backupFailed) { storageFailed = true; message('As cópias divergentes deste lote precisam ser preservadas antes de salvar novas leituras. Libere espaço e tente a recuperação novamente.', true); return false; }
+    if (recoveryConflicts.has(draft.sessionId)) { storageFailed = true; message('Este lote está sendo recuperado com segurança. Aguarde a conferência das cópias antes de continuar bipando.', true); return false; }
     draft.status ||= 'open';
     try {
       const saved = read(draftStorageKey(draft), null), base = draftBases.get(draft.sessionId) || new Map();
@@ -239,7 +239,7 @@
   function recoverDrafts() {
     if (!actor) return;
     // Preserve the original operator, context, IDs and timestamps of older lots.
-    const recovered = new Map(), savedConflictCopies = new Set(); legacyRecoveryInventory = []; recoveryConflicts.clear();
+    const recovered = new Map(); legacyRecoveryInventory = []; recoveryConflicts.clear();
     for (let index = 0; index < localStorage.length; index++) {
       const key = localStorage.key(index);
       if (canRecoverOthers() && (['tc_bipar_transfer_sequence_v1', 'tc_bipar_transfer_pending_v1', pendingKey, 'tc_bipe_retry_queue', 'etiqFila'].includes(key) || key?.startsWith('tc_transfer_pending_'))) {
@@ -261,7 +261,6 @@
       if (!draft?.context?.actorId && canRecoverOthers()) { legacyRecoveryInventory.push({ key, type: 'unidentified_draft', recordCount: Array.isArray(draft?.scans) ? draft.scans.length : null, needsReview: true }); continue; }
       if (!canRecoverDraft(draft) || !Array.isArray(draft.scans) || !draft.scans.length || draft.status === 'confirmed') continue;
       draft.revision = Number(draft.revision) || 1; draft.status ||= 'open';
-      if (key.startsWith(archivePrefix + 'recovery:')) savedConflictCopies.add(stable(draft));
       if (!recovered.has(draft.sessionId)) recovered.set(draft.sessionId, []);
       recovered.get(draft.sessionId).push(draft);
     }
@@ -284,21 +283,90 @@
       if (conflicting || !target) {
         const issue = { sessionId, operatorId: first.context.actorId, type: 'conflicting_action_copies', recordCount: evidence.size, copyCount: copies.length, needsReview: true };
         recoveryConflicts.set(sessionId, issue); legacyRecoveryInventory.push(issue);
-        // Keep independent evidence before the active operator can save another
-        // lookup or scan. The normal checkpoint for this session may be replaced.
-        for (const copy of copies) {
-          const snapshot = stable(copy);
-          if (!savedConflictCopies.has(snapshot)) {
-            try { setDraftSnapshot(archivePrefix + 'recovery:' + sessionId + ':' + crypto.randomUUID(), JSON.stringify(copy), [sessionId]); savedConflictCopies.add(snapshot); }
-            catch (_) { storageFailed = true; issue.backupFailed = true; }
-          }
-        }
+        // The original copies are already intact in local storage. Do not add
+        // another full copy here: it consumes quota and can falsely block the
+        // scanner. Reconcile only against the server-acknowledged lot below.
         const job = syncJobs.get(sessionId); if (job) { clearTimeout(job.timer); job.error = 'Há cópias divergentes deste lote. As leituras precisam ser conferidas antes de sincronizar.'; job.needsReview = true; }
         continue;
       }
       target.revision = revision; queueSync(target, true);
     }
     syncStatus();
+    void reconcileConflictsFromServer();
+  }
+  async function reconcileConflictsFromServer() {
+    const authToken = token, owner = actor?.id;
+    for (const [sessionId, issue] of [...recoveryConflicts]) {
+      if (issue.reconciling || token !== authToken || actor?.id !== owner) continue;
+      issue.reconciling = true;
+      try {
+        const copies = [];
+        for (let index = 0; index < localStorage.length; index++) {
+          const key = localStorage.key(index), copy = key?.startsWith('tc_bipar_action_draft_v1:') || key?.startsWith(archivePrefix) ? read(key, null) : null;
+          if (copy?.sessionId === sessionId && Array.isArray(copy.scans)) copies.push({ key, copy });
+        }
+        if (!copies.length) throw Error('As cópias locais do lote não estão disponíveis.');
+        const latestRevision = Math.max(...copies.map(({ copy }) => Number(copy.revision) || 1));
+        const result = await api('/history/' + encodeURIComponent(sessionId), undefined, authToken);
+        if (token !== authToken || actor?.id !== owner || recoveryConflicts.get(sessionId) !== issue) continue;
+        const lot = result.lot, serverScans = Array.isArray(result.scans) ? result.scans : [];
+        if (!lot || lot.sessionId !== sessionId || lot.operator?.id !== issue.operatorId || Number(lot.revision) < latestRevision || !['open', 'archived', 'confirmed'].includes(lot.status)) throw Error('O histórico do servidor ainda não confirma todas as revisões locais.');
+        const serverById = new Map(serverScans.map(scan => [scan.clientScanId, scan]));
+        const remoteFromStore = lot.fromStoreId || '';
+        for (const { copy } of copies) {
+          const context = copy.context || {};
+          if (context.actorId !== lot.operator.id || context.mode !== lot.mode || (context.fromStoreId || '') !== remoteFromStore || context.toStoreId !== lot.toStoreId || Number(copy.revision || 1) > Number(lot.revision)) throw Error('A ação, loja ou revisão difere do lote salvo no servidor.');
+          if (Number(copy.revision || 1) === Number(lot.revision) && ((copy.status || 'open') !== lot.status || (context.transferId || '') !== (lot.transferId || ''))) throw Error('A última revisão local difere do status ou da transferência salva no servidor.');
+          const localIds = new Set();
+          for (const scan of copy.scans) {
+            if (localIds.has(scan.clientScanId)) throw Error('Uma cópia contém identificadores de bipe repetidos.');
+            localIds.add(scan.clientScanId);
+            const saved = serverById.get(scan.clientScanId);
+            if (!saved || Date.parse(scan.createdAt) !== Date.parse(saved.createdAt)) throw Error('Há bipes locais ausentes ou com horário diferente no servidor.');
+            if (Number(copy.revision || 1) === Number(lot.revision)) {
+              const localProductId = scan.product?.productSizeId || '';
+              const savedProductId = saved.product?.productSizeId || '';
+              if (scan.barcode !== saved.barcode || !!scan.removed !== !!saved.removed || String(scan.confirmedSize || '').trim() !== String(saved.confirmedSize || '').trim() || localProductId !== savedProductId || String(scan.error || '') !== String(saved.error || '')) throw Error('A última revisão contém bipes diferentes do histórico confirmado.');
+            }
+          }
+        }
+        // The server has acknowledged at least the newest local revision and
+        // contains every local scan ID with its immutable timestamp. Use its
+        // canonical physical fields, retaining only local OCR/correction
+        // annotations that are not part of the server record.
+        const copiesByRevision = copies.map(({ copy }) => copy).sort((a, b) => (Number(b.revision) || 1) - (Number(a.revision) || 1));
+        const context = { ...(copiesByRevision[0].context || {}), actorId: lot.operator.id, mode: lot.mode, fromStoreId: lot.fromStoreId || '', toStoreId: lot.toStoreId, transferId: lot.transferId || '' };
+        const canonical = { ...copiesByRevision[0], key: contextKey(context), sessionId, context, status: lot.status, revision: Number(lot.revision), syncedRevision: Number(lot.revision), scans: serverScans.map(saved => {
+          const local = copiesByRevision.flatMap(copy => copy.scans).find(scan => scan.clientScanId === saved.clientScanId) || {};
+          return { ...local, clientScanId: saved.clientScanId, barcode: saved.barcode, createdAt: saved.createdAt, removed: !!saved.removed, product: saved.product || undefined,
+            confirmedSize: saved.confirmedSize || '', requiresSizeConfirmation: saved.requiresSizeConfirmation !== false, error: saved.error || '' };
+        }) };
+        const primaryKey = draftStorageKey(canonical), serialized = JSON.stringify(canonical);
+        try { localStorage.setItem(primaryKey, serialized); }
+        catch (error) {
+          if (!pruneSyncedClosedDraftCopy([sessionId])) throw error;
+          localStorage.setItem(primaryKey, serialized);
+        }
+        if (primaryKey !== archivePrefix + sessionId) { try { localStorage.setItem(archivePrefix + sessionId, serialized); } catch (_) { /* primary canonical lot already saved */ } }
+        for (let index = localStorage.length - 1; index >= 0; index--) {
+          const key = localStorage.key(index), copy = key === primaryKey ? null : (key?.startsWith('tc_bipar_action_draft_v1:') || key?.startsWith(archivePrefix) ? read(key, null) : null);
+          if (copy?.sessionId === sessionId) localStorage.removeItem(key);
+        }
+        recoveryConflicts.delete(sessionId); legacyRecoveryInventory = legacyRecoveryInventory.filter(item => item.sessionId !== sessionId);
+        const job = syncJobs.get(sessionId); if (job) { clearTimeout(job.timer); job.error = ''; job.needsReview = false; job.draft = canonical; }
+        drafts.set(canonical.key, canonical); draftBases.set(sessionId, new Map(canonical.scans.map(scan => [scan.clientScanId, JSON.stringify(scan)])));
+        if (currentDraft?.sessionId === sessionId) {
+          currentDraft = canonical; storageFailed = false; message('Lote recuperado do histórico sincronizado. As leituras foram preservadas.');
+          if (lot.status === 'confirmed') startNewLot('confirmed');
+          else { renderReadings(); refresh(); }
+        }
+      } catch (error) {
+        if (token !== authToken || actor?.id !== owner || recoveryConflicts.get(sessionId) !== issue) continue;
+        issue.reconciling = false; issue.error = error.message || 'Não foi possível conferir o lote no servidor.';
+        if (currentDraft?.sessionId === sessionId) { storageFailed = true; message('O lote continua preservado, mas há diferenças que o servidor não confirmou. Novas leituras ficam pausadas para evitar perda de bipes.', true); refresh(); }
+        syncStatus();
+      }
+    }
   }
   function startNewLot(status = 'archived') {
     const previous = currentDraft, key = contextKey(), oldStatus = previous?.status;
@@ -530,6 +598,7 @@
     return job.promise;
   }
   async function scan(barcode, ocrText = '', options = {}) {
+    if (storageFailed || (currentDraft && recoveryConflicts.has(currentDraft.sessionId))) { message('O lote ainda está sendo recuperado. Aguarde a conferência antes de continuar bipando.', true); return null; }
     if (isInventory() || !validContext() || busy || read(pendingKey, null)) { message('Escolha a ação, entre na sua conta e confira as lojas antes de bipar.', true); return null; }
     barcode = String(barcode || '').trim(); if (!/^\d{8}$|^\d{12,14}$/.test(barcode)) { message('Leia o código de barras numérico da etiqueta. A referência do modelo não substitui o código.', true); return null; }
     const draft = currentDraft;
@@ -875,6 +944,7 @@
     if (item.product && requiresSizeInput(item) && item.ocrSize) $('etiq-confirm-det').textContent += ' · OCR sugeriu BR ' + item.ocrSize + '; confira na caixa.';
   }
   async function openCamera(retryItem = null) {
+    if (currentDraft && recoveryConflicts.has(currentDraft.sessionId)) { message('O lote está sendo conferido no histórico sincronizado. Aguarde antes de continuar bipando.', true); return; }
     // Retry persistence on the next scan attempt. A transient full-storage
     // condition must not leave the scanner permanently disabled after the
     // operator closes the camera or removes an old acknowledged copy.

@@ -90,7 +90,7 @@ function harness(shared, options = {}) {
       if (url.includes('/pending?')) return response({ transfers: [] });
       throw Error('Unexpected isolated request: ' + url);
     } });
-  const exportCode = 'window.__test = { authenticate, loadShipments, openCamera, closeCamera, capture, resolveRead, refreshIdentifications, activeReads, scansPayload, contextChanged, storeChanged, prepare, confirmAction, persist, signature, flushSync, queueSync, recoverDrafts, startNewLot, loadHistory, showHistoryDetail, copyHistory, syncPayload, historyFilters, state:()=>({actor,currentDraft,preview,cameraRead,cameraRetry,busy,stream,scanner,generation,syncJobs,historyData,historyPage,historyMode}) };';
+  const exportCode = 'window.__test = { authenticate, loadShipments, openCamera, closeCamera, capture, resolveRead, refreshIdentifications, activeReads, scansPayload, contextChanged, storeChanged, prepare, confirmAction, persist, signature, flushSync, queueSync, recoverDrafts, reconcileConflictsFromServer, startNewLot, loadHistory, showHistoryDetail, copyHistory, syncPayload, historyFilters, state:()=>({actor,currentDraft,preview,cameraRead,cameraRetry,busy,stream,scanner,generation,syncJobs,historyData,historyPage,historyMode}) };';
   assert.ok(source.endsWith('})();\n') || source.trimEnd().endsWith('})();'));
   vm.runInContext(source.replace(/\}\)\(\);\s*$/, exportCode + '\n})();'), context, { filename: 'public/bipar-actions.js' });
   h.api = window.__test; h.window = window; h.boot = () => h.api.authenticate();
@@ -141,6 +141,36 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
     assert.ok(shared.getItem('tc_bipar_action_draft_v1:' + stale.key), 'the conflicting original remains preserved');
     assert.ok(shared.getItem('tc_bipar_action_archive_v1:' + stale.sessionId), 'the archived copy remains preserved');
     assert.match(h.get('action-sync-status').textContent, /cópias divergentes/);
+  });
+  await test('server-acknowledged receipt revision safely reconciles stale browser copies and unlocks scanning', async () => {
+    const stale = legacyActionDraft(person.id, 'receipt', 2); stale.revision = 5; stale.status = 'open'; stale.scans[0].ocrText = 'old OCR';
+    const latest = JSON.parse(JSON.stringify(stale)); latest.revision = 6; latest.syncedRevision = 6; latest.scans[0].ocrText = 'late OCR';
+    const shared = storage({ [settingsKey]: JSON.stringify({ mode: 'receipt', stores: { receipt: stores[1].id }, origin: stores[0].id }),
+      ['tc_bipar_action_draft_v1:' + stale.key]: JSON.stringify(stale), ['tc_bipar_action_archive_v1:' + stale.sessionId]: JSON.stringify(latest) });
+    const h = harness(shared), detail = deferred();
+    h.historyHandler = request => /\/history\/[a-f0-9-]{36}/.test(request.url) ? detail.promise : response({ lots: [], totals: {}, page: 1, totalPages: 0, totalLots: 0 });
+    await h.boot();
+    assert.match(h.get('action-sync-status').textContent, /cópias divergentes/);
+    const scans = latest.scans.map(item => ({ clientScanId: item.clientScanId, barcode: item.barcode, createdAt: item.createdAt, removed: !!item.removed, confirmedSize: '', requiresSizeConfirmation: false, error: '', product: { ...lupo } }));
+    detail.resolve(response({ lot: { sessionId: stale.sessionId, operator: person, mode: 'receipt', fromStoreId: null, toStoreId: stores[1].id, transferId: null, revision: 6, status: 'open' }, scans }));
+    await flush(); await h.api.reconcileConflictsFromServer(); await flush();
+    assert.doesNotMatch(h.get('action-sync-status').textContent, /cópias divergentes/);
+    assert.equal(h.api.state().currentDraft.sessionId, stale.sessionId);
+    assert.equal(h.api.state().currentDraft.scans.length, 2, 'both server-acknowledged reads remain in the lot'); assert.equal(h.api.activeReads().length, 1, 'a previously removed read remains excluded');
+    assert.equal(h.api.state().currentDraft.syncedRevision, 6);
+    h.handler = () => response({ product: lupo, requiresSizeConfirmation: false });
+    await h.api.openCamera(); assert.ok(h.get('action-camera'), 'the recovered lot unlocks the scanner'); h.api.closeCamera();
+  });
+  await test('server mismatch keeps every divergent original and leaves the scanner locked', async () => {
+    const first = legacyActionDraft(person.id, 'receipt', 2); first.revision = 5; first.status = 'open';
+    const second = JSON.parse(JSON.stringify(first)); second.revision = 6; second.syncedRevision = 6; second.scans[0].barcode = '7900373303889';
+    const draftKey = 'tc_bipar_action_draft_v1:' + first.key, archiveKey = 'tc_bipar_action_archive_v1:' + first.sessionId;
+    const shared = storage({ [settingsKey]: JSON.stringify({ mode: 'receipt', stores: { receipt: stores[1].id } }), [draftKey]: JSON.stringify(first), [archiveKey]: JSON.stringify(second) });
+    const h = harness(shared); h.historyHandler = () => response({ lot: { sessionId: first.sessionId, operator: person, mode: 'receipt', fromStoreId: null, toStoreId: stores[1].id, transferId: null, revision: 6, status: 'open' }, scans: [] });
+    await h.boot(); await flush();
+    assert.ok(shared.getItem(draftKey)); assert.ok(shared.getItem(archiveKey));
+    assert.match(h.get('action-sync-status').textContent, /cópias divergentes/);
+    await h.api.openCamera(); assert.equal(h.get('action-camera'), undefined);
   });
   await test('camera without an EAN keeps reading and neither adds a piece nor sends a lookup', async () => {
     const h = harness(); await h.boot(); await h.api.openCamera(); const before = h.requests.length;
@@ -895,12 +925,12 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
     h.localStorage.setItem(pendingKey, JSON.stringify({ actorId: person.id, body: {} }));
     await h.boot(); await flush();
     const backups = () => [...h.localStorage.data.keys()].filter(key => key.startsWith('tc_bipar_action_archive_v1:recovery:'));
-    assert.equal(backups().length, 2); h.api.recoverDrafts(); await flush(); assert.equal(backups().length, 2);
-    assert.equal(h.api.persist(), true);
+    assert.equal(backups().length, 0); h.api.recoverDrafts(); await flush(); assert.equal(backups().length, 0);
+    assert.equal(h.api.persist(), false);
     const reloaded = harness(h.localStorage); await reloaded.boot(); await flush();
     assert.match(reloaded.get('action-sync-status').textContent, /cópias divergentes/);
     assert.equal(reloaded.historyRequests.some(r => /\/drafts\/(sync|recover)$/.test(r.url)), false);
-    const all = backups().flatMap(key => JSON.parse(h.localStorage.getItem(key)).scans);
+    const all = [JSON.parse(h.localStorage.getItem('tc_bipar_action_draft_v1:' + first.key)), JSON.parse(h.localStorage.getItem('tc_bipar_action_archive_v1:' + first.sessionId))].flatMap(copy => copy.scans);
     assert.equal(new Set(all.map(s => s.clientScanId)).size, 3); assert.ok(all.some(s => s.barcode === '7900373303889'));
   });
   await test('failed conflict checkpoint storage blocks subsequent writes that would erase an original copy', async () => {
@@ -910,7 +940,7 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
     h.localStorage.setItem(pendingKey, JSON.stringify({ actorId: person.id, body: {} }));
     const save = h.localStorage.setItem; h.localStorage.setItem = (key, value) => { if (key.startsWith('tc_bipar_action_archive_v1:recovery:')) throw Error('Quota full'); save(key, value); };
     await h.boot(); await flush(); assert.equal(h.api.persist(), false); assert.equal(h.localStorage.getItem(archiveKey), original);
-    assert.match(h.get('action-message').textContent, /preservadas/); assert.equal(h.historyRequests.some(r => /\/drafts\/(sync|recover)$/.test(r.url)), false);
+    assert.match(h.get('action-message').textContent, /recuperado com segurança/); assert.equal(h.historyRequests.some(r => /\/drafts\/(sync|recover)$/.test(r.url)), false);
   });
   await test('receipt boot preserves divergent checkpoints before fast lookups and delayed shipment loading can save', async () => {
     const shared = receiptStorage(), first = legacyActionDraft(person.id, 'receipt', 3), second = JSON.parse(JSON.stringify(first)); second.scans[0].barcode = '7900373303889';
@@ -918,7 +948,7 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
     shared.setItem('tc_bipar_action_draft_v1:' + first.key, JSON.stringify(first)); shared.setItem(archiveKey, JSON.stringify(second));
     const h = harness(shared), delayed = deferred(); h.handler = request => request.url.includes('/pending?') ? delayed.promise : response({ product: lupo, requiresSizeConfirmation: false });
     const booting = h.boot(); await flush(); await flush(); delayed.resolve(response({ transfers: [] })); await booting; await flush();
-    const copies = [...shared.data.keys()].filter(key => key.startsWith('tc_bipar_action_archive_v1:recovery:')).map(key => JSON.parse(shared.getItem(key)));
+    const copies = [JSON.parse(shared.getItem('tc_bipar_action_draft_v1:' + first.key)), JSON.parse(shared.getItem(archiveKey))];
     assert.ok(copies.some(copy => copy.scans.some(scan => scan.barcode === '7900373303889')));
     assert.equal(new Set(copies.flatMap(copy => copy.scans.map(scan => scan.clientScanId))).size, 3);
     assert.equal(h.historyRequests.some(r => /\/drafts\/(sync|recover)$/.test(r.url)), false);
@@ -997,5 +1027,5 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
       assert.equal(h.get('action-history-copy-text').value, ''); assert.equal(h.get('action-history-copy-text').hidden, true);
     }
   });
-  console.log('PASS: 76 action UI regression groups; isolated mocks only.');
+  console.log('PASS: 78 action UI regression groups; isolated mocks only.');
 })().catch(error => { console.error(error.stack || error); process.exitCode = 1; });
