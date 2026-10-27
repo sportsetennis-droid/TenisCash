@@ -3,6 +3,7 @@
   const $ = id => document.getElementById(id);
   const settingsKey = 'tc_bipar_actions_settings_v1', pendingKey = 'tc_bipar_actions_pending_v1';
   const read = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key) || 'null') || fallback; } catch (_) { return fallback; } };
+  const stable = value => JSON.stringify(value, function (_, item) { return item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item; });
   const settings = read(settingsKey, { mode: 'inventory', stores: {}, origin: '' });
   settings.stores = settings.stores || {};
   let action = ['inventory', 'transfer', 'receipt'].includes(settings.mode) ? settings.mode : 'inventory';
@@ -61,11 +62,11 @@
   }
   function draftStorageKey(draft) { return draft.status === 'archived' || draft.status === 'confirmed' ? archivePrefix + draft.sessionId : draftKey(draft.key); }
   function supersededBySyncedArchive(key, snapshot) {
-    if (!snapshot?.sessionId || key === archivePrefix + snapshot.sessionId || key.startsWith(archivePrefix + 'recovery:')) return false;
+    if (!snapshot?.sessionId || key === archivePrefix + snapshot.sessionId || !Array.isArray(snapshot.scans) || !snapshot.scans.length) return false;
     const canonical = read(archivePrefix + snapshot.sessionId, null);
     if (!['archived', 'confirmed'].includes(canonical?.status) || Number(canonical.syncedRevision || 0) < (Number(snapshot.revision) || 1)) return false;
-    const canonicalIds = new Set((canonical.scans || []).map(item => item.clientScanId));
-    return (snapshot.scans || []).every(item => canonicalIds.has(item.clientScanId));
+    const canonicalScans = new Map((canonical.scans || []).map(item => [item.clientScanId, stable(item)]));
+    return snapshot.scans.every(item => canonicalScans.get(item.clientScanId) === stable(item));
   }
   function pruneSyncedClosedDraftCopy(protectedSessionIds = []) {
     const protectedIds = new Set(protectedSessionIds.filter(Boolean));
@@ -239,7 +240,6 @@
     if (!actor) return;
     // Preserve the original operator, context, IDs and timestamps of older lots.
     const recovered = new Map(), savedConflictCopies = new Set(); legacyRecoveryInventory = []; recoveryConflicts.clear();
-    const stable = value => JSON.stringify(value, function (_, item) { return item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item; });
     for (let index = 0; index < localStorage.length; index++) {
       const key = localStorage.key(index);
       if (canRecoverOthers() && (['tc_bipar_transfer_sequence_v1', 'tc_bipar_transfer_pending_v1', pendingKey, 'tc_bipe_retry_queue', 'etiqFila'].includes(key) || key?.startsWith('tc_transfer_pending_'))) {
