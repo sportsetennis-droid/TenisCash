@@ -1,16 +1,20 @@
 # Plano — reconstrução física do estoque por loja
 
-Data: 26/10/2026
-Branch dedicada: `fix/stock-reconstruction-batch`
-Baseline atual do TenisCash: `bfebff91784bcca42f87c8b406ff16101a36ed62`
+Data: 27/10/2026
+Branch dedicada: `fix/include-loja07-reconstruction`
+Baseline atual do TenisCash: `c7e71a76ee756e46adbe5c2c95625808557e40e1`
 
-Status desta etapa: implementação local concluída e validada com PostgreSQL temporário isolado; não publicada e não aplicada ao estoque oficial.
+Status desta atualização: LOJA07 validada como filial Sports & Tennis; inclusão no escopo e publicação em andamento. Nenhum saldo oficial foi alterado.
 
 ## Objetivo
 
-Criar uma contagem física nova e isolada para cada loja ativa da Sports & Tennis (códigos LOJA02–LOJA06), sem usar como estoque novo as leituras de rodadas antigas, fotos, notas fiscais ou registros históricos. O repositório identifica a LOJA01/Baratão como outra empresa; ela fica fora deste lote. Uma loja ativa com código/grupo não reconhecido interrompe a abertura para impedir mistura empresarial. As contagens ficam em preparação enquanto o `StoreStock` oficial continua intacto. Só depois que todas as lojas da reconstrução estiverem conferidas, sem pendências e aptas, o sistema poderá substituir os saldos das lojas em uma única operação transacional e auditável.
+Criar uma contagem física nova e isolada para cada loja ativa da Sports & Tennis (códigos LOJA02–LOJA07), sem usar como estoque novo as leituras de rodadas antigas, fotos, notas fiscais ou registros históricos. O repositório identifica a LOJA01/Baratão como outra empresa; ela fica fora deste lote. Uma loja ativa com código/grupo não reconhecido interrompe a abertura para impedir mistura empresarial. As contagens ficam em preparação enquanto o `StoreStock` oficial continua intacto. Só depois que todas as lojas da reconstrução estiverem conferidas, sem pendências e aptas, o sistema poderá substituir os saldos das lojas em uma única operação transacional e auditável.
 
-Este trabalho prepara e testa o mecanismo. Não aplica a reconstrução ao banco oficial, não publica a versão e não substitui o estoque atual nesta etapa.
+### Evidência de associação da LOJA07
+
+Em 27/10/2026, a associação da filial foi conferida pelo cadastro operacional salvo em `C:/Users/dougl/Documents/Codex/2026-09-10/ten/artifacts/store07-setup-2026-10-25/setup.json`, que registra a LOJA07 ativa na API de produção, nome comercial Sports & Tennis, razão social META ESPORTES LTDA e CNPJ 44.052.617/0007-11. O ato empresarial em `C:/Users/dougl/Downloads/Contrato Loja 07 - CNPJ 44.052.617-0007-11.pdf` identifica META ESPORTES LTDA e confirma a abertura de uma filial no endereço Av. Governador Flávio Ribeiro Coutinho, 500, loja 129, coincidente com o cadastro. O número /0007-11 consta no cadastro operacional; o PDF é o ato societário da matriz e criação da filial, não o comprovante cadastral individual do CNPJ filial. Assim, a LOJA07 integra este escopo com base na associação registrada e no ato correspondente, não por semelhança de nome.
+
+Esta atualização inclui a filial LOJA07 no mecanismo já publicado. Não aplica a reconstrução ao banco oficial nem substitui o estoque atual.
 
 ## Baseline examinado
 
@@ -19,14 +23,14 @@ Este trabalho prepara e testa o mecanismo. Não aplica a reconstrução ao banco
 - `finishRound` já substitui o saldo (não soma os bipes) e verifica pendências, divergências do saldo inicial e movimentos registrados, mas aplica uma loja de cada vez. Assim, parte da rede pode ser atualizada enquanto outras lojas ainda não foram conferidas.
 - A conferência de movimentos consulta `StoreStockMovement`. A venda, troca e transferência já usam o livro-razão; ajuste manual e pedido Nuvemshop agora também registram movimentos com horário de execução. Edição de catálogo e realinhamento de fornecedor alteram a assinatura de variantes e, por isso, bloqueiam a aplicação se ocorrerem durante a reconstrução.
 - `ProductSize.stock` é o total comprado e não pode ser alterado por esta reconstrução. O saldo físico por loja é `StoreStock`.
-- O escopo empresarial não presume que toda linha de `Store` pertence à mesma empresa: `src/ai/prompts/system-prompts.js` e `src/services/metaCatalogSync.js` identificam LOJA01/Baratão como separado. A reconstrução inclui os códigos conhecidos LOJA02–LOJA06 e para se uma loja ativa fora desses grupos aparecer.
+- O escopo empresarial não presume que toda linha de `Store` pertence à mesma empresa: `src/ai/prompts/system-prompts.js` e `src/services/metaCatalogSync.js` identificam LOJA01/Baratão como separado. A reconstrução inclui os códigos LOJA02–LOJA07; loja ativa fora desses grupos continua bloqueando a abertura.
 - O ajuste manual agora bloqueia a linha de saldo antes de ler e substituir o valor, mantendo o saldo e o lançamento de auditoria coerentes com uma venda concorrente.
 - A versão atual do Railway inicia com `node src/index.js`; a `main` removeu o `prisma db push --accept-data-loss` do comando de inicialização. A reconstrução usa uma migração SQL aditiva e idempotente, executada sob advisory lock antes de qualquer rota `/api/stocktake`; se a estrutura não puder ser garantida, a API responde 503 sem registrar leitura nem tocar nos saldos oficiais. Nenhum `db push` foi executado em produção.
 - A árvore original já tinha alterações locais não relacionadas e arquivos temporários não rastreados. O trabalho está sendo feito nesta worktree nova, criada de `HEAD`, para preservá-los.
 
 ## Implementação planejada
 
-1. Adicionar uma entidade de reconstrução que fixa, na abertura, o conjunto ativo da Sports & Tennis (LOJA02–LOJA06) e cria uma rodada física nova para cada uma. Baratão/LOJA01 fica explicitamente fora; qualquer código ativo não classificado bloqueia o lote até existir um mapeamento de empresa. A criação não reutiliza rodadas antigas. Se uma loja ainda tiver uma rodada aberta, a operação informa qual rodada está em conflito e não inicia uma reconstrução parcial. A estrutura nova é adicionada por migração aditiva idempotente, antes de a API de bipagem consultar o Prisma Client atualizado.
+1. Adicionar uma entidade de reconstrução que fixa, na abertura, o conjunto ativo da Sports & Tennis (LOJA02–LOJA07) e cria uma rodada física nova para cada uma. Baratão/LOJA01 fica explicitamente fora; qualquer código ativo não classificado bloqueia o lote até existir um mapeamento de empresa. A criação não reutiliza rodadas antigas. Se uma loja ainda tiver uma rodada aberta, a operação informa qual rodada está em conflito e não inicia uma reconstrução parcial. A estrutura nova é adicionada por migração aditiva idempotente, antes de a API de bipagem consultar o Prisma Client atualizado.
 2. Associar cada rodada à reconstrução. O scanner atual continua registrando cada unidade física na loja e rodada certas, com a chave de reenvio idempotente. Leituras sem código lido, código ambíguo, tamanho/variante não resolvidos e capturas pendentes continuam visíveis e impedem a conferência final. Nenhum dado antigo é importado para a contagem.
 3. Permitir encerrar e revisar as coletas individualmente, mas impedir que uma rodada da reconstrução atualize o saldo oficial por conta própria. A tela de reconstrução mostra estado e pendências de todas as lojas do mesmo lote.
 4. A conclusão exige todas as lojas do conjunto inicial, confirmação de contagem completa incluindo linhas com zero, coleta encerrada, contagens conferidas, ausência de itens pendentes, código efetivamente lido, catálogo sem alteração conflitante e nenhuma movimentação de estoque desde o início. Se qualquer condição falhar, nenhuma loja é atualizada.

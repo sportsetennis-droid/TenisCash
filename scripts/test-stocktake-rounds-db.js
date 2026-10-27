@@ -12,11 +12,11 @@ function routeFunctions(){const router={use(){},get(){},post(){},delete(){}};con
  if(n.startsWith('../services/'))return require('../src/services/'+n.slice('../services/'.length));throw Error(n);
 },console,Buffer,setInterval(){},setTimeout(){},module:{exports:{}}};vm.createContext(ctx);vm.runInContext(fs.readFileSync(require.resolve('../src/routes/stocktake'),'utf8')+'\nmodule.exports.test={applyBipeIfReady,garantirBipeDaCaptura,processarEtiqueta};',ctx);return ctx.module.exports.test;}
 (async()=>{
- const suffix=Date.now().toString(36);await db.store.updateMany({where:{code:{startsWith:'UNKNOWN-'}},data:{active:false}});const store=await db.store.upsert({where:{code:'LOJA02'},create:{name:'Loja teste isolada',code:'LOJA02'},update:{name:'Loja teste isolada '+suffix,active:true}});const other=await db.store.upsert({where:{code:'LOJA03'},create:{name:'Outra loja teste',code:'LOJA03'},update:{name:'Outra loja teste '+suffix,active:true}});const separateCompany=await db.store.upsert({where:{code:'LOJA01'},create:{name:'Baratão separado',code:'LOJA01'},update:{name:'Baratão separado '+suffix,active:true}});
+ const suffix=Date.now().toString(36);await db.store.updateMany({where:{code:{startsWith:'UNKNOWN-'}},data:{active:false}});const store=await db.store.upsert({where:{code:'LOJA02'},create:{name:'Loja teste isolada',code:'LOJA02'},update:{name:'Loja teste isolada '+suffix,active:true}});const other=await db.store.upsert({where:{code:'LOJA03'},create:{name:'Outra loja teste',code:'LOJA03'},update:{name:'Outra loja teste '+suffix,active:true}});const loja07=await db.store.upsert({where:{code:'LOJA07'},create:{name:'Sports & Tennis Loja 07 teste',code:'LOJA07'},update:{name:'Sports & Tennis Loja 07 teste '+suffix,active:true}});const separateCompany=await db.store.upsert({where:{code:'LOJA01'},create:{name:'Baratão separado',code:'LOJA01'},update:{name:'Baratão separado '+suffix,active:true}});
  const product=await db.product.create({data:{sku:'TEST-'+suffix,name:'Conjunto teste',brand:'NIKE',category:'roupa',price:100}});
  const size=await db.productSize.create({data:{productId:product.id,size:'XL',barcode:'196974865902',stock:8,sizeConfirmedAt:new Date()}});
  const absent=await db.productSize.create({data:{productId:product.id,size:'M',stock:3}});
- const includedStores=await db.store.findMany({where:{active:true,code:{in:['LOJA02','LOJA03','LOJA04','LOJA05','LOJA06']}},select:{id:true,code:true}});for(const includedStore of includedStores)await db.storeStock.create({data:{storeId:includedStore.id,productSizeId:size.id,stock:includedStore.id===store.id?8:4}});await db.storeStock.create({data:{storeId:store.id,productSizeId:absent.id,stock:3}});
+ const includedStores=await db.store.findMany({where:{active:true,code:{in:['LOJA02','LOJA03','LOJA04','LOJA05','LOJA06','LOJA07']}},select:{id:true,code:true}});for(const includedStore of includedStores)await db.storeStock.create({data:{storeId:includedStore.id,productSizeId:size.id,stock:includedStore.id===store.id?8:4}});await db.storeStock.create({data:{storeId:store.id,productSizeId:absent.id,stock:3}});
  const [a,aRetry]=await Promise.all([rounds.startRound(db,store.id,'Nova rodada'),rounds.startRound(db,store.id,'Nova rodada')]);assert.equal(a.id,aRetry.id);
  const b=await rounds.startRound(db,other.id,'Outra loja');assert.notEqual(a.id,b.id);
  await assert.rejects(rounds.roundForScan(db,store.id,null),/Nenhuma rodada/);await assert.rejects(rounds.roundForScan(db,other.id,a.id),/não pertence/);
@@ -45,8 +45,8 @@ function routeFunctions(){const router={use(){},get(){},post(){},delete(){}};con
  await rounds.finishRound(db,a.id,report.reviewToken,true);
  assert.equal((await db.storeStock.findUnique({where:{storeId_productSizeId:{storeId:store.id,productSizeId:size.id}}})).stock,2,'8 old +2 counted must become2, never10');
  assert.equal((await db.storeStock.findUnique({where:{storeId_productSizeId:{storeId:store.id,productSizeId:absent.id}}})).stock,0);
- assert.equal(await db.storeStockMovement.count({where:{storeId:store.id}}),2);
- await rounds.finishRound(db,a.id,report.reviewToken,true);assert.equal(await db.storeStockMovement.count({where:{storeId:store.id}}),2);
+ assert.equal(await db.storeStockMovement.count({where:{storeId:store.id,productSizeId:{in:[size.id,absent.id]}}}),2);
+ await rounds.finishRound(db,a.id,report.reviewToken,true);assert.equal(await db.storeStockMovement.count({where:{storeId:store.id,productSizeId:{in:[size.id,absent.id]}}}),2);
  assert.equal(await funcs.garantirBipeDaCaptura(late.id,product.id,size.id,size.barcode),null,'Closed round cannot be changed by late OCR');
  const fresh=await rounds.startRound(db,store.id,'Recontagem seguinte');assert.notEqual(a.id,fresh.id);assert.equal((await rounds.roundReport(db,fresh.id)).totals.total,0);
  await rounds.createRoundBipe(db,{...data,roundId:fresh.id,scanKey:rounds.scanKey(fresh.id,'client-0001')});
@@ -61,6 +61,8 @@ function routeFunctions(){const router={use(){},get(){},post(){},delete(){}};con
  await db.store.update({where:{id:unknownStore.id},data:{active:false}});
  const batch=await rounds.startReconstruction(db,'Reconstrução de teste');assert.equal(batch.rounds.length,includedStores.length,'one round is created for every active Sports & Tennis store');
  assert.equal(batch.excludedStores.some(s=>s.code==='LOJA01'),true,'Baratão is reported as a separate company, not included in the batch');
+ assert.ok(batch.stores.some(s=>s.id===loja07.id&&s.code==='LOJA07'),'verified Sports & Tennis LOJA07 is included');
+ assert.ok(batch.rounds.some(r=>r.storeId===loja07.id),'LOJA07 receives its own physical-count round');
  await assert.rejects(rounds.startReconstruction(db,'Segunda reconstrução'),/Já existe reconstrução/);
  const batchStoreRound=batch.rounds.find(r=>r.storeId===store.id),batchOtherRound=batch.rounds.find(r=>r.storeId===other.id);assert.ok(batchStoreRound&&batchOtherRound);
  assert.equal((await rounds.roundReport(db,batchStoreRound.id)).totals.total,0,'Old reads are not imported into a fresh batch round');
@@ -105,5 +107,5 @@ function routeFunctions(){const router={use(){},get(){},post(){},delete(){}};con
  const manual=await db.$transaction(tx=>setStoreStockBalance(tx,{storeId:other.id,productSizeId:size.id,stock:2,reason:'teste de ajuste'}));
  assert.equal(manual.delta,2);assert.equal(manual.movement.type,'manual_adjustment');assert.equal(manual.movement.createdAt instanceof Date,true);
  const unchanged=await db.$transaction(tx=>setStoreStockBalance(tx,{storeId:other.id,productSizeId:size.id,stock:2}));assert.equal(unchanged.movement,null,'No-op manual adjustment does not invent a movement');
- console.log('PASS PostgreSQL real: bipes e rodadas isolados; leituras antigas não importadas; rodada antiga bloqueia novo lote; LOJA01 de outra empresa não é incluída; mudança de catálogo/movimento bloqueiam sem alterar saldos; falha numa loja reverte a transação inteira; várias lojas aplicadas juntas; reposição e zeragem corretas; comprado preservado; aplicação idempotente; ajuste manual auditado.');
+ console.log('PASS PostgreSQL real: bipes e rodadas isolados; leituras antigas não importadas; rodada antiga bloqueia novo lote; LOJA01 de outra empresa não é incluída; LOJA07 incluída com rodada própria; mudança de catálogo/movimento bloqueiam sem alterar saldos; falha numa loja reverte a transação inteira; várias lojas aplicadas juntas; reposição e zeragem corretas; comprado preservado; aplicação idempotente; ajuste manual auditado.');
 })().catch(e=>{console.error(e);process.exitCode=1}).finally(()=>db.$disconnect());
