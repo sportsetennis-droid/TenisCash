@@ -151,13 +151,52 @@ const recoveryAdmin = (role = 'admin') => db.user.create({ data: { name: 'Recove
     assert.deepEqual(await movementState(f), before);
   });
 
-  await test('recovery rejects privilege claims, changed ownership, removed-read revival and conflicting saved evidence', async () => {
+  await test('recovery appends missing receipt reads while ignoring transformed or divergent copies of persisted reads', async () => {
+    const f = await fixture(), admin = await recoveryAdmin(), beforeMovement = await movementState(f);
+    const initialScans = Array.from({ length: 77 }, () => f.scan({ createdAt: '2026-10-02T15:30:00Z' }));
+    // This saved unknown code gets a server-generated error in public history,
+    // so replaying the detail response does not reproduce its original hash.
+    initialScans.push(f.scan({ barcode: '1234567890123', product: null, error: '', createdAt: '2026-10-02T15:31:00Z' }));
+    const input = { sessionId: randomUUID(), mode: 'receipt', fromStoreId: '', toStoreId: f.to.id, transferId: '', revision: 78, scans: initialScans };
+    await history.sync(db, f.receiver, input);
+    const existingBefore = await db.scanActionRead.findMany({ where: { lotId: input.sessionId }, orderBy: { clientScanId: 'asc' } });
+    const existingIds = new Set(existingBefore.map(row => row.clientScanId));
+    const detail = await history.detail(db, f.receiver, input.sessionId);
+    assert.equal(detail.scans[77].error, 'Código ou variante ainda não identificado.');
+    const localScans = detail.scans.map(scan => ({ clientScanId: scan.clientScanId, barcode: scan.barcode,
+      createdAt: scan.createdAt.toISOString(), removed: scan.removed, confirmedSize: scan.confirmedSize,
+      product: scan.product || undefined, error: scan.error || '' }));
+    // Simulate two stale browser copies disagreeing about already-saved rows.
+    localScans[0].barcode = '9999999999999'; localScans[10].removed = true;
+    for (let index = 0; index < 24; index++) {
+      const scan = f.scan({ createdAt: new Date(Date.parse('2026-10-02T16:00:00Z') + index * 1000).toISOString() });
+      localScans.push({ clientScanId: scan.clientScanId, barcode: scan.barcode, createdAt: scan.createdAt,
+        removed: false, confirmedSize: '', product: scan.product });
+    }
+    const recovered = await history.recover(db, admin, { ...input, revision: 103, scans: localScans, originalOperatorId: f.receiver.id });
+    assert.equal(recovered.lot.operator.id, f.receiver.id);
+    assert.equal(recovered.lot.scanCount, 102); assert.equal(recovered.lot.recognizedCount, 101); assert.equal(recovered.lot.pendingCount, 1);
+    const replay = await history.recover(db, admin, { ...input, revision: 103, scans: localScans, originalOperatorId: f.receiver.id });
+    assert.equal(replay.synced, true); assert.equal(replay.lot.scanCount, 102, 'retry after a lost acknowledgement is idempotent');
+    const existingAfter = await db.scanActionRead.findMany({ where: { lotId: input.sessionId }, orderBy: { clientScanId: 'asc' } });
+    const immutableFields = rows => rows.filter(row => existingIds.has(row.clientScanId)).map(row => ({ clientScanId: row.clientScanId, barcode: row.barcode,
+      scannedAt: row.scannedAt.toISOString(), productSizeId: row.productSizeId, removed: row.removed,
+      error: row.error, payloadHash: row.payloadHash }));
+    assert.deepEqual(immutableFields(existingAfter), immutableFields(existingBefore), 'all 78 persisted rows and their hashes remain unchanged');
+    assert.equal(existingAfter.find(row => row.clientScanId === initialScans[0].clientScanId).barcode, initialScans[0].barcode, 'a stale local barcode cannot overwrite a saved read');
+    assert.equal(existingAfter.find(row => row.clientScanId === initialScans[10].clientScanId).removed, false, 'a stale local removal cannot change a saved read');
+    assert.deepEqual(await movementState(f), beforeMovement, 'draft recovery does not move stock');
+  });
+
+  await test('recovery treats saved reads as authoritative and still rejects privilege, ownership and context changes', async () => {
     const f = await fixture(), admin = await recoveryAdmin(), manager = await recoveryAdmin('manager'), read = f.scan({ removed: true }), input = { ...f.lot([read]), originalOperatorId: f.sender.id };
     for (const actor of [f.sender, { ...f.sender, role: 'superadmin' }, manager]) await assert.rejects(() => history.recover(db, actor, input), e => e.status === 403);
     await history.recover(db, admin, input);
-    const before = await movementState(f), saved = await db.scanActionLot.findUnique({ where: { sessionId: input.sessionId }, include: { scans: true } });
-    await assert.rejects(() => history.recover(db, admin, { ...input, revision: 2, scans: [{ ...read, removed: false }] }), e => e.status === 409);
-    await assert.rejects(() => history.recover(db, admin, { ...input, revision: 2, scans: [{ ...read, barcode: 'OTHER' }] }), e => e.status === 409);
+    const before = await movementState(f);
+    const preserved = await history.recover(db, admin, { ...input, revision: 2, scans: [{ ...read, removed: false, barcode: 'OTHER' }] });
+    assert.equal(preserved.lot.scanCount, 0); assert.equal(preserved.lot.removedCount, 1);
+    const saved = await db.scanActionLot.findUnique({ where: { sessionId: input.sessionId }, include: { scans: true } });
+    assert.equal(saved.scans[0].barcode, read.barcode); assert.equal(saved.scans[0].removed, true, 'recovery cannot overwrite a saved barcode or removal flag');
     await assert.rejects(() => history.recover(db, admin, { ...input, revision: 2, originalOperatorId: f.receiver.id }), e => e.status === 403);
     await assert.rejects(() => history.recover(db, admin, { ...input, revision: 2, toStoreId: f.other.id }), e => e.status === 409);
     await db.user.update({ where: { id: admin.id }, data: { role: 'seller' } });

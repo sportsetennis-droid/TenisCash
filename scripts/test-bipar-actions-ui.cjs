@@ -161,34 +161,43 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
     h.handler = () => response({ product: lupo, requiresSizeConfirmation: false });
     await h.api.openCamera(); assert.ok(h.get('action-camera'), 'the recovered lot unlocks the scanner'); h.api.closeCamera();
   });
-  await test('a 102-read local receipt unions with the 78-read server lot by scan ID and saves all 102', async () => {
-    const older = legacyActionDraft(person.id, 'receipt', 78); older.revision = 78; older.status = 'open';
+  await test('a 102-read local receipt appends 24 missing IDs while keeping the 78 server reads immutable', async () => {
+    const originalOperatorId = randomUUID(), older = legacyActionDraft(originalOperatorId, 'receipt', 78); older.revision = 78; older.status = 'open';
     const newer = JSON.parse(JSON.stringify(older)); newer.revision = 102; newer.syncedRevision = 78;
     while (newer.scans.length < 102) newer.scans.push({ clientScanId: randomUUID(), barcode: lupo.barcode, createdAt: new Date(Date.parse('2026-10-27T19:22:00Z') + newer.scans.length * 1000).toISOString(), product: lupo, removed: false });
-    newer.scans[0].ocrText = 'local OCR annotation'; newer.scans[10].removed = true;
+    newer.scans[0].barcode = '7900373256193'; newer.scans[10].removed = true;
     const shared = storage({ [settingsKey]: JSON.stringify({ mode: 'receipt', stores: { receipt: stores[1].id } }),
       ['tc_bipar_action_draft_v1:' + older.key]: JSON.stringify(older), ['tc_bipar_action_archive_v1:' + older.sessionId]: JSON.stringify(newer) });
-    const h = harness(shared), detail = deferred(), syncAck = deferred(), syncBody = deferred();
+    const h = harness(shared), detail = deferred(), syncAck = deferred(), syncBody = deferred(); h.contextUser = { ...person, role: 'admin' };
     h.historyHandler = request => {
-      if (request.url.endsWith('/drafts/sync')) { syncBody.resolve(request.body); return syncAck.promise; }
+      if (request.url.endsWith('/drafts/recover')) { syncBody.resolve(request.body); return syncAck.promise; }
       if (/\/history\/[a-f0-9-]{36}/.test(request.url)) return detail.promise;
       return response({ lots: [], totals: {}, page: 1, totalPages: 0, totalLots: 0 });
     };
     await h.boot(); assert.match(h.get('action-sync-status').textContent, /cópias divergentes/);
     const scans = older.scans.map(item => ({ clientScanId: item.clientScanId, barcode: item.barcode, createdAt: item.createdAt, removed: !!item.removed, confirmedSize: '', requiresSizeConfirmation: false, error: '', product: { ...lupo } }));
-    detail.resolve(response({ lot: { sessionId: older.sessionId, operator: person, mode: 'receipt', fromStoreId: null, toStoreId: stores[1].id, transferId: null, revision: 78, status: 'open' }, scans }));
+    detail.resolve(response({ lot: { sessionId: older.sessionId, operator: { id: originalOperatorId, name: 'Original operator' }, mode: 'receipt', fromStoreId: null, toStoreId: stores[1].id, transferId: null, revision: 78, status: 'open' }, scans }));
     const body = await syncBody.promise;
     assert.equal(body.scans.length, 102); assert.equal(new Set(body.scans.map(item => item.clientScanId)).size, 102);
-    assert.equal(body.revision, 103); assert.equal(body.scans.filter(item => item.removed).length, 2);
-    syncAck.resolve(response({ synced: true, lot: { sessionId: older.sessionId, revision: 103, status: 'open' } })); await h.api.flushSync(h.api.state().currentDraft); await flush();
+    assert.equal(body.revision, 103); assert.equal(body.originalOperatorId, originalOperatorId); assert.equal(body.scans.filter(item => item.removed).length, 1);
+    assert.equal(body.scans[0].barcode, older.scans[0].barcode, 'the persisted barcode is not overwritten by a divergent local shadow');
+    assert.equal(body.scans[10].removed, false, 'a persisted removal state is not overwritten by a divergent local shadow');
+    assert.equal(body.scans.filter(item => !scans.some(saved => saved.clientScanId === item.clientScanId)).length, 24, 'only 24 local-only reads are appended');
+    for (const saved of scans) {
+      const sent = body.scans.find(item => item.clientScanId === saved.clientScanId);
+      assert.equal(sent.barcode, saved.barcode); assert.equal(sent.createdAt, saved.createdAt);
+      assert.equal(sent.removed, saved.removed); assert.equal(sent.product.productSizeId, saved.product.productSizeId);
+      assert.equal(sent.confirmedSize, saved.confirmedSize); assert.equal(sent.error, saved.error);
+    }
+    syncAck.resolve(response({ synced: true, lot: { sessionId: older.sessionId, revision: 103, status: 'open' } }));
+    for (let attempt = 0; attempt < 10 && shared.getItem('tc_bipar_action_archive_v1:' + older.sessionId); attempt++) await new Promise(resolve => setImmediate(resolve));
     assert.doesNotMatch(h.get('action-sync-status').textContent, /cópias divergentes/);
-    assert.equal(h.api.state().currentDraft.scans.length, 102); assert.equal(h.api.state().currentDraft.syncedRevision, 103);
+    assert.equal(h.historyRequests.filter(request => request.url.endsWith('/drafts/recover')).length, 1, 'administrator recovery uses the audited recovery endpoint');
     const primary = JSON.parse(shared.getItem('tc_bipar_action_draft_v1:' + older.key)); assert.equal(primary.revision, 103, 'the primary key now holds the merged lot'); assert.equal(primary.syncedRevision, 103, 'the server acknowledged the merged lot'); assert.equal(shared.getItem('tc_bipar_action_archive_v1:' + older.sessionId), null, 'the redundant archive shadow is removed after acknowledgement');
-    await h.api.openCamera(); assert.ok(h.get('action-camera'), 'the recovered receipt can resume scanning'); h.api.closeCamera();
   });
   await test('server mismatch keeps every divergent original and leaves the scanner locked', async () => {
-    const first = legacyActionDraft(person.id, 'receipt', 2); first.revision = 5; first.status = 'open';
-    const second = JSON.parse(JSON.stringify(first)); second.revision = 6; second.syncedRevision = 6; second.scans[0].barcode = '7900373303889'; second.scans[0].createdAt = new Date(Date.parse(second.scans[0].createdAt) + 1000).toISOString();
+    const first = legacyActionDraft(person.id, 'receipt', 2); first.revision = 6; first.status = 'open';
+    const second = JSON.parse(JSON.stringify(first)); second.revision = 6; second.syncedRevision = 6; second.scans[0].barcode = '7900373303889'; second.scans[0].createdAt = new Date(Date.parse(second.scans[0].createdAt) + 1000).toISOString(); second.scans[1].barcode = '7900373303889';
     const draftKey = 'tc_bipar_action_draft_v1:' + first.key, archiveKey = 'tc_bipar_action_archive_v1:' + first.sessionId;
     const shared = storage({ [settingsKey]: JSON.stringify({ mode: 'receipt', stores: { receipt: stores[1].id } }), [draftKey]: JSON.stringify(first), [archiveKey]: JSON.stringify(second) });
     const h = harness(shared); h.historyHandler = () => response({ lot: { sessionId: first.sessionId, operator: person, mode: 'receipt', fromStoreId: null, toStoreId: stores[1].id, transferId: null, revision: 6, status: 'open' }, scans: [{ clientScanId: first.scans[0].clientScanId, barcode: '7900373303889', createdAt: first.scans[0].createdAt, removed: false, confirmedSize: '', requiresSizeConfirmation: false, error: '', product: { ...lupo, barcode: '7900373303889' } }] });

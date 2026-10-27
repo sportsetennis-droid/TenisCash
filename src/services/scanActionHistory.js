@@ -115,7 +115,7 @@ async function sync(db, actor, input) {
     return syncWithin(tx, actual, value, hash(value));
   });
 }
-async function syncWithin(tx, actual, value, payloadHash) {
+async function syncWithin(tx, actual, value, payloadHash, options = {}) {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${'scan-action-lot:' + value.sessionId}))::text`;
     let lot = await tx.scanActionLot.findUnique({ where: { sessionId: value.sessionId }, include: { scans: true } });
     if (lot) sameContext(lot, actual, value);
@@ -139,7 +139,11 @@ async function syncWithin(tx, actual, value, payloadHash) {
     }
     // Only resolve/write new or edited readings. Re-sending a growing 500-piece
     // lot must not perform 500 catalog lookups and writes for every new piece.
-    const changed = value.scans.filter(scan => lot?.scans.find(s => s.clientScanId === scan.clientScanId)?.payloadHash !== hash(scan));
+    const changed = value.scans.filter(scan => {
+      const previous = lot?.scans.find(s => s.clientScanId === scan.clientScanId);
+      if (options.preserveExisting && previous) return false;
+      return previous?.payloadHash !== hash(scan);
+    });
     const snapshots = await resolveSnapshots(tx, changed);
     const data = { mode: value.mode, operatorId: actual.id, fromStoreId: value.fromStoreId, toStoreId: value.toStoreId,
       transferId: value.transferId, revision: value.revision, payloadHash, status: value.status };
@@ -163,7 +167,7 @@ async function syncWithin(tx, actual, value, payloadHash) {
 // Restores an existing browser draft on behalf of its original operator. This
 // grants no authority to confirm stock or edit somebody else's saved readings.
 async function recover(db, actor, input = {}) {
-  const value = clean(input), originalOperatorId = uuid(input.originalOperatorId), payloadHash = hash(value);
+  const value = clean(input), originalOperatorId = uuid(input.originalOperatorId);
   return transaction(db, async tx => {
     const recoveredBy = await actualActor(tx, actor);
     if (!['admin', 'superadmin'].includes(recoveredBy.role)) fail('Somente o administrador pode recuperar lotes de outros operadores.', 403);
@@ -172,23 +176,34 @@ async function recover(db, actor, input = {}) {
     if (!canSend(original, value.mode === 'transfer' ? value.fromStoreId : value.toStoreId)) fail('A loja original não está vinculada ao operador deste lote.', 403);
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${'scan-action-lot:' + value.sessionId}))::text`;
     const before = await tx.scanActionLot.findUnique({ where: { sessionId: value.sessionId }, include: { scans: true } });
+    let recoveryValue = value;
     if (before) {
       sameContext(before, original, value);
       if (before.status === 'confirmed') return { lot: (await publicLots(tx, [before]))[0], synced: false };
       if (before.transferId !== value.transferId) fail('A recuperação não pode trocar a remessa de um lote já salvo.');
       if (before.status !== value.status) fail('A recuperação não pode reabrir ou arquivar um lote já salvo.');
-      for (const scan of value.scans) {
-        const saved = before.scans.find(s => s.clientScanId === scan.clientScanId);
-        if (saved && saved.payloadHash !== hash(scan)) fail('A recuperação encontrou uma leitura já salva com dados diferentes. O histórico original foi preservado.');
-      }
+      // The public history can contain server-resolved fields that differ from
+      // the original request hash (for example, the catalog error snapshot).
+      // Rebuild every persisted read from the database and append only IDs that
+      // are genuinely absent. Recovery must never rewrite an already-saved read.
+      const savedIds = new Set(before.scans.map(scan => scan.clientScanId));
+      const appended = value.scans.filter(scan => !savedIds.has(scan.clientScanId));
+      if (!appended.length) return { lot: (await publicLots(tx, [before]))[0], synced: value.revision === before.revision };
+      if (value.revision <= before.revision) fail('O histórico avançou antes da recuperação. Atualize o lote e tente recuperar novamente.');
+      if (before.scans.length + appended.length > MAX_SCANS) fail('O lote comporta até 500 leituras, incluindo removidas.', 400);
+      const persisted = before.scans.map(scan => ({ clientScanId: scan.clientScanId, barcode: scan.barcode,
+        scannedAt: scan.scannedAt, productSizeId: scan.productSizeId, confirmedSize: scan.confirmedSize || '',
+        removed: scan.removed === true, error: scan.error || '' }));
+      recoveryValue = { ...value, scans: [...persisted, ...appended] };
     }
-    const result = await syncWithin(tx, original, value, payloadHash);
+    const payloadHash = hash(recoveryValue);
+    const result = await syncWithin(tx, original, recoveryValue, payloadHash, { preserveExisting: !!before });
     if (!result.synced) return result;
-    const auditId = 'scan-recovery:' + hash({ sessionId: value.sessionId, originalOperatorId, revision: value.revision, payloadHash });
+    const auditId = 'scan-recovery:' + hash({ sessionId: value.sessionId, originalOperatorId, revision: recoveryValue.revision, payloadHash });
     const metadata = { source: 'bipar-administrative-recovery-v1', recoveredById: recoveredBy.id, originalOperatorId,
       sessionId: value.sessionId, mode: value.mode, fromStoreId: value.fromStoreId, toStoreId: value.toStoreId,
-      transferId: value.transferId, revision: value.revision, payloadHash, originalStatus: value.status,
-      previousReadCount: before?.scans.length || 0, readCount: value.scans.length, activeCount: result.lot.scanCount,
+      transferId: recoveryValue.transferId, revision: recoveryValue.revision, payloadHash, originalStatus: recoveryValue.status,
+      previousReadCount: before?.scans.length || 0, readCount: recoveryValue.scans.length, activeCount: result.lot.scanCount,
       removedCount: result.lot.removedCount, pendingCount: result.lot.pendingCount, stockChanged: false };
     await tx.adminAction.upsert({ where: { id: auditId }, update: {}, create: { id: auditId, adminId: recoveredBy.id,
       action: 'scan_action_draft_recovered', description: 'Rascunho de bipagem recuperado com o operador, datas e leituras originais. Nenhum estoque alterado.', metadata: JSON.stringify(metadata) } });

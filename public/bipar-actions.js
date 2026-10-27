@@ -314,10 +314,7 @@
         const serverById = new Map(serverScans.map(scan => [scan.clientScanId, scan]));
         const remoteFromStore = lot.fromStoreId || '';
         const newestCopy = copies.map(({ copy }) => copy).sort((a, b) => (Number(b.revision) || 1) - (Number(a.revision) || 1))[0];
-        const newestRevision = Number(newestCopy.revision) || 1;
-        const newestHeader = copy => stable({ status: copy.status || 'open', transferId: copy.context?.transferId || '' });
         if (copies.some(({ copy }) => copy.context?.actorId !== lot.operator.id || copy.context?.mode !== lot.mode || (copy.context?.fromStoreId || '') !== remoteFromStore || copy.context?.toStoreId !== lot.toStoreId)) throw Error('Uma cópia pertence a outra ação ou loja.');
-        if (copies.some(({ copy }) => (Number(copy.revision) || 1) === newestRevision && newestHeader(copy) !== newestHeader(newestCopy))) throw Error('As cópias mais recentes discordam sobre a remessa ou o estado do lote.');
         for (const { copy } of copies) {
           const context = copy.context || {};
           if (context.actorId !== lot.operator.id || context.mode !== lot.mode || (context.fromStoreId || '') !== remoteFromStore || context.toStoreId !== lot.toStoreId) throw Error('A ação ou as lojas diferem do lote salvo no servidor.');
@@ -326,7 +323,9 @@
             if (localIds.has(scan.clientScanId)) throw Error('Uma cópia contém identificadores de bipe repetidos.');
             localIds.add(scan.clientScanId);
             const saved = serverById.get(scan.clientScanId);
-            if (saved && Date.parse(scan.createdAt) !== Date.parse(saved.createdAt)) throw Error('O mesmo identificador de bipe tem horários divergentes nas cópias.');
+            // An existing server read is immutable during recovery. Its timestamp
+            // and payload remain authoritative; only local-only IDs need arbitration.
+            if (!saved && !Number.isFinite(Date.parse(scan.createdAt))) throw Error('Uma cópia contém um horário de bipe inválido.');
           }
         }
         const scanPayload = scan => stable({ barcode: String(scan.barcode || ''), createdAt: new Date(scan.createdAt).toISOString(), removed: !!scan.removed,
@@ -342,20 +341,20 @@
           removed: !!scan.removed, confirmedSize: scan.confirmedSize || '', requiresSizeConfirmation: scan.requiresSizeConfirmation !== false,
           product: scan.product || undefined, error: scan.error || '' }]));
         for (const [scanId, versions] of localVersions) {
-          const saved = serverById.get(scanId), maxRevision = Math.max(...versions.map(item => item.revision));
+          const saved = serverById.get(scanId);
+          // /drafts/recover must not rewrite reads already persisted in the database.
+          // Keep those exact server rows and recover only the missing physical IDs.
+          if (saved) continue;
+          const maxRevision = Math.max(...versions.map(item => item.revision));
           const newestVersions = versions.filter(item => item.revision === maxRevision);
           const distinctPayloads = new Set(newestVersions.map(item => scanPayload(item.scan)));
-          if (distinctPayloads.size > 1 && (!saved || Number(lot.revision) < maxRevision)) throw Error('O mesmo bipe diverge na revisão mais recente e o servidor ainda não pode decidir qual leitura vale.');
-          if (saved && Number(lot.revision) >= maxRevision) continue; // the server acknowledged a newer or equal revision
+          if (distinctPayloads.size > 1) throw Error('Um bipe ainda não salvo diverge entre as cópias locais; as originais foram preservadas.');
           const selected = newestVersions[0].scan;
-          const serverVersion = saved && { barcode: saved.barcode, createdAt: saved.createdAt, removed: !!saved.removed,
-            confirmedSize: saved.confirmedSize || '', product: saved.product || undefined, error: saved.error || '' };
-          if (serverVersion && Number(lot.revision) === maxRevision && scanPayload(selected) !== scanPayload(serverVersion)) throw Error('Um bipe diverge na mesma revisão confirmada pelo servidor.');
+          if (newestVersions.some(item => Date.parse(item.scan.createdAt) !== Date.parse(selected.createdAt))) throw Error('O mesmo bipe ainda não salvo tem horários divergentes nas cópias.');
           merged.set(scanId, { ...selected, clientScanId: scanId, createdAt: new Date(selected.createdAt).toISOString() });
         }
-        const context = { ...(newestCopy.context || {}), actorId: lot.operator.id, mode: lot.mode, fromStoreId: lot.fromStoreId || '', toStoreId: lot.toStoreId,
-          transferId: newestRevision > Number(lot.revision) ? (newestCopy.context?.transferId || '') : (lot.transferId || '') };
-        const status = lot.status === 'confirmed' || lot.status === 'archived' ? lot.status : (newestRevision > Number(lot.revision) ? (newestCopy.status || 'open') : lot.status);
+        const context = { ...(newestCopy.context || {}), actorId: lot.operator.id, mode: lot.mode, fromStoreId: lot.fromStoreId || '', toStoreId: lot.toStoreId, transferId: lot.transferId || '' };
+        const status = lot.status;
         const mergedScans = [...merged.values()];
         const serverPayload = serverScans.map(scan => ({ id: scan.clientScanId, payload: scanPayload(scan) })).sort((a, b) => a.id.localeCompare(b.id));
         const mergedPayload = mergedScans.map(scan => ({ id: scan.clientScanId, payload: scanPayload(scan) })).sort((a, b) => a.id.localeCompare(b.id));
