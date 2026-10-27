@@ -115,6 +115,20 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
     assert.equal(h.get('loja').children.length, 4); assert.equal(h.get('codigo').disabled, false);
     assert.equal(h.api.state().currentDraft.context.toStoreId, stores[1].id);
   });
+  await test('a closed, server-acknowledged lot removes its stale open shadow and scanner can reopen', async () => {
+    const stale = legacyActionDraft(person.id, 'receipt', 1); stale.revision = 6; stale.syncedRevision = 5; stale.status = 'open';
+    const archived = { ...stale, revision: 7, syncedRevision: 7, status: 'archived', scans: [...stale.scans, { clientScanId: randomUUID(), barcode: lupo.barcode, createdAt: new Date().toISOString() }] };
+    const shared = storage({ [settingsKey]: JSON.stringify({ mode: 'transfer', stores: { transfer: stores[1].id }, origin: stores[0].id }),
+      ['tc_bipar_action_draft_v1:' + stale.key]: JSON.stringify(stale), ['tc_bipar_action_archive_v1:' + stale.sessionId]: JSON.stringify(archived) });
+    const h = harness(shared); await h.boot();
+    assert.equal(shared.getItem('tc_bipar_action_draft_v1:' + stale.key), null, 'only the stale context-key shadow is removed');
+    assert.ok(shared.getItem('tc_bipar_action_archive_v1:' + stale.sessionId), 'the server-acknowledged archive remains intact');
+    assert.doesNotMatch(h.get('action-sync-status').textContent, /cópias divergentes/);
+    h.handler = () => response({ product: lupo, requiresSizeConfirmation: false });
+    await h.api.openCamera(); await h.api.capture({ ean: lupo.barcode }); await flush();
+    assert.equal(h.api.activeReads().length, 1); h.api.closeCamera(); await h.api.openCamera();
+    assert.ok(h.get('action-camera'), 'operator can close and reopen scanning without a false unsaved-lot lock'); h.api.closeCamera();
+  });
   await test('camera without an EAN keeps reading and neither adds a piece nor sends a lookup', async () => {
     const h = harness(); await h.boot(); await h.api.openCamera(); const before = h.requests.length;
     await h.api.capture({ ean: '', ocrText: 'ADIDAS IF1405 BR 40' });
@@ -970,5 +984,5 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
       assert.equal(h.get('action-history-copy-text').value, ''); assert.equal(h.get('action-history-copy-text').hidden, true);
     }
   });
-  console.log('PASS: 74 action UI regression groups; isolated mocks only.');
+  console.log('PASS: 75 action UI regression groups; isolated mocks only.');
 })().catch(error => { console.error(error.stack || error); process.exitCode = 1; });

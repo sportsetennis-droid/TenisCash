@@ -60,6 +60,13 @@
     return draft;
   }
   function draftStorageKey(draft) { return draft.status === 'archived' || draft.status === 'confirmed' ? archivePrefix + draft.sessionId : draftKey(draft.key); }
+  function supersededBySyncedArchive(key, snapshot) {
+    if (!snapshot?.sessionId || key === archivePrefix + snapshot.sessionId || key.startsWith(archivePrefix + 'recovery:')) return false;
+    const canonical = read(archivePrefix + snapshot.sessionId, null);
+    if (!['archived', 'confirmed'].includes(canonical?.status) || Number(canonical.syncedRevision || 0) < (Number(snapshot.revision) || 1)) return false;
+    const canonicalIds = new Set((canonical.scans || []).map(item => item.clientScanId));
+    return (snapshot.scans || []).every(item => canonicalIds.has(item.clientScanId));
+  }
   function pruneSyncedClosedDraftCopy(protectedSessionIds = []) {
     const protectedIds = new Set(protectedSessionIds.filter(Boolean));
     const candidates = [];
@@ -67,8 +74,15 @@
       const key = localStorage.key(index);
       if (!key?.startsWith('tc_bipar_action_draft_v1:') && !key?.startsWith(archivePrefix)) continue;
       const snapshot = read(key, null), revision = Number(snapshot?.revision) || 1;
-      if (!snapshot?.sessionId || protectedIds.has(snapshot.sessionId) || snapshot.context?.actorId !== actor?.id ||
-          !['archived', 'confirmed'].includes(snapshot.status) || Number(snapshot.syncedRevision || 0) < revision || recoveryConflicts.has(snapshot.sessionId)) continue;
+      if (!snapshot?.sessionId || protectedIds.has(snapshot.sessionId) || snapshot.context?.actorId !== actor?.id || recoveryConflicts.has(snapshot.sessionId)) continue;
+      let safelyReplaceable = ['archived', 'confirmed'].includes(snapshot.status) && Number(snapshot.syncedRevision || 0) >= revision;
+      // Archiving moves the primary copy from the context key to the session
+      // archive key. The old context-key copy can remain marked "open". It is
+      // safe to remove only when the canonical archived copy contains every
+      // scan ID and its server-acknowledged revision covers this stale copy.
+      // Conflict/recovery snapshots are deliberately excluded from eviction.
+      if (!safelyReplaceable) safelyReplaceable = supersededBySyncedArchive(key, snapshot);
+      if (!safelyReplaceable) continue;
       const firstScan = (snapshot.scans || []).map(item => Date.parse(item.createdAt)).filter(Number.isFinite).sort((a, b) => a - b)[0] || 0;
       candidates.push({ key, firstScan });
     }
@@ -238,6 +252,12 @@
       }
       if (!key?.startsWith('tc_bipar_action_draft_v1:') && !key?.startsWith(archivePrefix)) continue;
       const draft = read(key, null);
+      // Closing a lot moves its canonical copy to the archive key. Older
+      // context-key snapshots may still say "open"; once the archived copy
+      // has the same scan IDs and its revision is acknowledged by the server,
+      // discard that redundant shadow instead of treating it as a conflicting
+      // unsaved lot on the next page load.
+      if (supersededBySyncedArchive(key, draft)) { localStorage.removeItem(key); continue; }
       if (!draft?.context?.actorId && canRecoverOthers()) { legacyRecoveryInventory.push({ key, type: 'unidentified_draft', recordCount: Array.isArray(draft?.scans) ? draft.scans.length : null, needsReview: true }); continue; }
       if (!canRecoverDraft(draft) || !Array.isArray(draft.scans) || !draft.scans.length || draft.status === 'confirmed') continue;
       draft.revision = Number(draft.revision) || 1; draft.status ||= 'open';
@@ -855,6 +875,10 @@
     if (item.product && requiresSizeInput(item) && item.ocrSize) $('etiq-confirm-det').textContent += ' · OCR sugeriu BR ' + item.ocrSize + '; confira na caixa.';
   }
   async function openCamera(retryItem = null) {
+    // Retry persistence on the next scan attempt. A transient full-storage
+    // condition must not leave the scanner permanently disabled after the
+    // operator closes the camera or removes an old acknowledged copy.
+    if (storageFailed && currentDraft && persist(currentDraft)) refresh();
     if (!validContext() || busy || storageFailed || read(pendingKey, null)) { message(storageFailed ? 'O lote ainda não foi salvo. Resolva o aviso antes de continuar bipando.' : 'Selecione o contexto desta ação antes de abrir a câmera.', true); return; }
     if (retryItem && (!activeReads().includes(retryItem) || inflight.has(retryItem.clientScanId))) return;
     window.fecharScanner?.(); closeCamera(); const cameraId = cameraGeneration;
