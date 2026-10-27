@@ -166,6 +166,8 @@ async function reconstructionReport(db,id,{includeDetails=true}={}) {
   const responseReports=includeDetails?reports:reports.map(({bipes,captures,lines,...r})=>({
     ...r,lineCount:lines.length,differenceCount:lines.filter(line=>line.difference!==0).length,
     differenceUnits:lines.reduce((sum,line)=>sum+Math.abs(line.difference),0),
+    inactiveVariants:lines.filter(line=>!line.active).map(({productSizeId,name,sku,size,before,current,counted,difference})=>
+      ({productSizeId,name,sku,size,before,current,counted,difference})),
   }));
   return {batch,stores:scope.stores,excludedStores:scope.excludedStores,unknownStores:scope.unknownStores,expectedStoreIds:expectedIds,reports:responseReports,storeScopeChanged,roundScopeInvalid,catalogChanged,canApply:blockers.length===0,blockers};
 }
