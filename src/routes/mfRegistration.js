@@ -7,13 +7,13 @@ module.exports = function registration({ prisma, signToken }) {
   router.post('/auth/register', async (req, res) => {
     const { name, username, pin } = req.body || {};
     if (typeof name !== 'string' || !name.trim() || name.trim().length > 120 ||
-        typeof username !== 'string' || !/^[a-z0-9._-]{3,50}$/i.test(username.trim()) ||
+        typeof username !== 'string' || !username.trim() ||
         typeof pin !== 'string' || !/^\d{4,12}$/.test(pin)) {
-      return res.status(400).json({ error: 'Informe seu nome, usuário de 3 a 50 letras/números (ponto, traço ou sublinhado) e PIN de 4 a 12 números.' });
+      return res.status(400).json({ error: 'Informe seu nome, usuário e PIN de 4 a 12 números.' });
     }
     try {
       const emp = await prisma.mfEmployee.create({ data: {
-        name: name.trim(), username: username.trim().toLowerCase(),
+        name: name.trim(), username: username.trim(),
         pinHash: await bcrypt.hash(pin, 10), role: 'funcionario',
         active: true, canRecordProduction: false,
       } });

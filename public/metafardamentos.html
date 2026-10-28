@@ -127,7 +127,7 @@
         <h2>Cadastro de funcionário</h2><p class="sub">Crie seu acesso à Meta Fardamentos para bater seu ponto.</p>
         <form onsubmit="doRegister(event)">
           <label for="rg-name">Nome completo</label><input id="rg-name" class="fld" autocomplete="name" maxlength="120" required>
-          <label for="rg-user">Usuário</label><input id="rg-user" class="fld" autocomplete="username" autocapitalize="none" minlength="3" maxlength="50" pattern="[A-Za-z0-9._\-]{3,50}" placeholder="ex: maria.silva" required>
+          <label for="rg-user">Usuário</label><input id="rg-user" class="fld" autocomplete="username" placeholder="Como você quiser escrever" required>
           <label for="rg-pin">Crie seu PIN (4 a 12 números)</label><input id="rg-pin" class="fld" type="password" inputmode="numeric" autocomplete="new-password" pattern="[0-9]{4,12}" required>
           <label for="rg-confirm">Confirme seu PIN</label><input id="rg-confirm" class="fld" type="password" inputmode="numeric" autocomplete="new-password" required>
           <div class="err" id="rg-err" role="alert"></div>

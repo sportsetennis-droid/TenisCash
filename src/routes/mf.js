@@ -86,7 +86,7 @@ router.post('/auth/setup', async (req, res) => {
     if (String(pin).length < 4) return res.status(400).json({ error: 'PIN deve ter ao menos 4 digitos' });
     await getCompany();
     const emp = await prisma.mfEmployee.create({
-      data: { name, username: String(username).toLowerCase().trim(), pinHash: bcrypt.hashSync(String(pin), 8), role: 'admin' },
+      data: { name, username: String(username).trim(), pinHash: bcrypt.hashSync(String(pin), 8), role: 'admin' },
     });
     res.json({ token: signToken(emp), employee: { id: emp.id, name: emp.name, role: emp.role, canRecordProduction: canRecord(emp) } });
   } catch (err) {
@@ -102,7 +102,9 @@ router.post('/auth/login', async (req, res) => {
   try {
     const { username, pin } = req.body || {};
     if (!username || !pin) return res.status(400).json({ error: 'Usuario e PIN obrigatorios' });
-    const emp = await prisma.mfEmployee.findUnique({ where: { username: String(username).toLowerCase().trim() } });
+    const login = String(username).trim();
+    const emp = await prisma.mfEmployee.findUnique({ where: { username: login } }) ||
+      await prisma.mfEmployee.findUnique({ where: { username: login.toLowerCase() } });
     if (!emp || !emp.active || !bcrypt.compareSync(String(pin), emp.pinHash)) {
       return res.status(401).json({ error: 'Usuario ou PIN incorreto' });
     }
@@ -150,7 +152,7 @@ router.post('/employees', mfAuth, requireRole('admin', 'gerente'), async (req, r
     const emp = await prisma.mfEmployee.create({
       data: {
         name,
-        username: String(username).toLowerCase().trim(),
+        username: String(username).trim(),
         pinHash: bcrypt.hashSync(String(pin), 8),
         role: ['admin', 'gerente', 'funcionario'].includes(role) ? role : 'funcionario',
         canRecordProduction: canRecordProduction === true,
