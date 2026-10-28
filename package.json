@@ -9,6 +9,7 @@
     "dev": "node src/index.js",
     "db:push": "npx prisma db push",
     "db:generate": "npx prisma generate",
+    "test:scanner": "node scripts/test-scanner-barcode-policy.js && node scripts/test-scanner-auto.js && node scripts/test-scanner-auto-recognition.js && node scripts/test-bipar-actions-ui.cjs",
     "db:seed": "node src/seed.js",
     "agents:daily": "node scripts/run-daily-agents.js",
     "test:seller-stock": "node scripts/test-seller-stock-logic.js",

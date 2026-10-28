@@ -6,6 +6,7 @@ const { resolveBarcodeRows, aliasRows } = require('./scannerCatalog');
 const { fiscalBarcodeTarget, learnScannerBarcode, validGtin } = require('./scannerReference');
 const { applyStoreStockDelta } = require('./storeStockLedger');
 const { markConfirmed } = require('./scanActionHistory');
+const barcodePolicy = require('../../public/scanner-barcode-policy');
 
 const SOURCE = 'bipar-actions-v1';
 const MAX_SCANS = 500;
@@ -17,7 +18,7 @@ const transferInclude = {
 function fail(message, status = 409) { const error = new Error(message); error.status = status; throw error; }
 function uuid(value) { return typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value); }
 function hash(value) { return createHash('sha256').update(JSON.stringify(value)).digest('hex'); }
-function barcodeKey(value) { return String(value || '').replace(/^0+/, ''); }
+function barcodeKey(value) { return barcodePolicy.identity(value); }
 function sizeKey(value) {
   const size = String(value || '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/^BR\s*/, '').replace(/\s+/g, ' ');
   return /^(U|UNICO)$/.test(size) ? 'UNICO' : (/^\d+,\d+$/.test(size) ? size.replace(',', '.') : size);
@@ -54,7 +55,7 @@ function scansInput(input, allowEmpty = false) {
     const barcode = String(scan.barcode || '').trim();
     const confirmedSize = String(scan.confirmedSize || '').trim();
     const resolvedSize = String(scan.resolvedSize || '').trim();
-    if (!/^\d{8}$|^\d{12,14}$/.test(barcode) || !barcodeKey(barcode)) fail('Leia o código de barras EAN/UPC da própria peça.', 400);
+    if (!barcodePolicy.isScanCode(barcode) || !barcodeKey(barcode)) fail('Leia o código de barras numérico da própria peça.', 400);
     if (confirmedSize.length > 40 || resolvedSize.length > 40) fail('Tamanho informado inválido.', 400);
     // Keep legacy request hashes unchanged when no catalog snapshot is supplied.
     // resolvedSize records lookup data, never a claimed physical confirmation.
@@ -91,7 +92,7 @@ async function loadTransfer(db, id, actor, storeId) {
 }
 async function resolveCodes(db, scans, inactiveExpected = []) {
   const codes = [...new Set(scans.map(scan => scan.barcode))];
-  const variants = [...new Set(codes.flatMap(code => [code, barcodeKey(code), code.padStart(13, '0'), code.padStart(14, '0')]))];
+  const variants = [...new Set(codes.flatMap(code => barcodePolicy.variants(code)))];
   const rows = variants.length ? await db.productSize.findMany({ where: { barcode: { in: variants } }, include: { product: true } }) : [];
   const result = new Map();
   for (const code of codes) {
@@ -109,7 +110,7 @@ async function resolveCodes(db, scans, inactiveExpected = []) {
 async function lookup(db, actor, input = {}) {
   const actual = await actorFor(db, actor, input.transferId ? input.storeId : undefined);
   const barcode = String(input.barcode || '').trim();
-  if (!/^\d{8}$|^\d{12,14}$/.test(barcode) || !barcodeKey(barcode)) fail('Leia o código de barras EAN/UPC da própria peça.', 400);
+  if (!barcodePolicy.isScanCode(barcode) || !barcodeKey(barcode)) fail('Leia o código de barras numérico da própria peça.', 400);
   let transfer = null, expectedSizes = [];
   if (input.transferId) {
     transfer = await loadTransfer(db, input.transferId, actual, input.storeId);

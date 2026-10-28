@@ -115,6 +115,30 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
     assert.equal(h.get('loja').children.length, 4); assert.equal(h.get('codigo').disabled, false);
     assert.equal(h.api.state().currentDraft.context.toStoreId, stores[1].id);
   });
+  await test('typed 16-digit internal code with leading zero is retained locally and synchronized when catalog lookup is pending', async () => {
+    const h = harness(); await h.boot(); const code = '0615640591012795';
+    h.handler = request => { assert.ok(request.url.endsWith('/lookup')); assert.equal(request.body.barcode, code); return response({ error: 'Código não identificado' }, 404); };
+    const item = await h.scan(code);
+    assert.equal(item.barcode, code); assert.equal(item.product, undefined); assert.match(item.error, /Código não identificado/);
+    assert.equal(h.api.activeReads().length, 1); assert.equal(h.api.activeReads()[0].barcode, code);
+    const saved = JSON.parse(h.localStorage.getItem('tc_bipar_action_draft_v1:' + h.api.state().currentDraft.key));
+    assert.equal(saved.scans[0].barcode, code, 'manual entry keeps the exact leading zero');
+    assert.equal(await h.api.flushSync(h.api.state().currentDraft), true);
+    const sync = h.historyRequests.find(request => request.url.endsWith('/drafts/sync'));
+    assert.equal(sync.body.scans[0].barcode, code, 'the pending code reaches the server history without normalization');
+  });
+  await test('camera capture accepts the same 16-digit internal code and records it pending without assigning a product', async () => {
+    const h = harness(); await h.boot(); await h.api.openCamera(); const code = '0615640591012795';
+    h.handler = request => { assert.ok(request.url.endsWith('/lookup')); assert.equal(request.body.barcode, code); return response({ error: 'Código não identificado' }, 404); };
+    const capture = h.api.capture({ ean: code, frame: {} }); await flush();
+    const wait = [...h.timers].find(([, timer]) => timer.ms === 100);
+    if (wait) { h.timers.delete(wait[0]); wait[1].fn(); }
+    await capture; await flush();
+    const item = h.api.activeReads()[0];
+    assert.equal(item.barcode, code); assert.equal(item.product, undefined); assert.equal(h.api.activeReads().length, 1);
+    assert.equal(JSON.parse(h.localStorage.getItem('tc_bipar_action_draft_v1:' + h.api.state().currentDraft.key)).scans[0].barcode, code);
+    h.api.closeCamera();
+  });
   await test('a closed, server-acknowledged lot removes its stale open shadow and scanner can reopen', async () => {
     const stale = legacyActionDraft(person.id, 'receipt', 1); stale.revision = 6; stale.syncedRevision = 5; stale.status = 'open';
     const archived = { ...stale, revision: 7, syncedRevision: 7, status: 'archived', scans: [...stale.scans, { clientScanId: randomUUID(), barcode: lupo.barcode, createdAt: new Date().toISOString() }] };
@@ -1061,5 +1085,5 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
       assert.equal(h.get('action-history-copy-text').value, ''); assert.equal(h.get('action-history-copy-text').hidden, true);
     }
   });
-  console.log('PASS: 79 action UI regression groups; isolated mocks only.');
+  console.log('PASS: 81 action UI regression groups; isolated mocks only.');
 })().catch(error => { console.error(error.stack || error); process.exitCode = 1; });

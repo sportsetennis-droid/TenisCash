@@ -4,7 +4,7 @@ const { createAutomaticRecognizer } = require('../src/services/scannerAutomaticR
 
 const KNOWN = '4006381333931', UNKNOWN = '5901234123457';
 function fixture() {
-  const state = { bipes: [], captures: [], round: { id: 'round', storeId: 'store', status: 'counting' },
+  const state = { bipes: [], captures: [], catalogSizes: [], round: { id: 'round', storeId: 'store', status: 'counting' },
     size: { id: 'size', productId: 'product', size: '40', sizeConfirmedAt: new Date(), stock: 9,
       product: { id: 'product', name: 'Produto de teste', brand: 'TESTE', sku: 'AB1234-001', active: true } },
     learned: [], stockWrites: 0, nextId: 0 };
@@ -40,7 +40,10 @@ function fixture() {
         const row = state.captures.find(row => matches(row, where)); assert(row); Object.assign(row, copy(data)); return copy(row);
       },
     },
-    productSize: { findUnique: async ({ where }) => where.id === state.size.id ? copy(state.size) : null },
+    productSize: {
+      findUnique: async ({ where }) => where.id === state.size.id ? copy(state.size) : copy(state.catalogSizes.find(row => row.id === where.id)),
+      findMany: async ({ where }) => copy(state.catalogSizes.filter(row => row.barcode === where.barcode)),
+    },
     storeStock: new Proxy({}, { get: () => () => { state.stockWrites++; throw new Error('No stock movement in automatic recognition'); } }),
   };
   let queue = Promise.resolve();
@@ -112,6 +115,24 @@ async function rejection(promise, status, regex) {
     const next = await f.recognize({ ...input, ocrText: 'AB1234-001\nBR 40' });
     assert.equal(next.complete, true); assert.equal(next.bipeId, first.bipeId); assert.equal(f.state.bipes.length, 1);
     assert.equal(f.state.learned.at(-1).size, '40'); assert.equal(f.state.learned.at(-1).read.sku, 'AB1234-001');
+  });
+  await test('16-digit internal code with leading zero is saved once as pending without guessed product or stock movement', async () => {
+    const f = fixture(), internal = '0615640591012795';
+    const result = await f.recognize({ ...f.base, barcode: internal });
+    assert.equal(result.complete, false); assert.equal(result.pending, true); assert.equal(result.found, false);
+    assert.equal(result.barcode, internal); assert.equal(f.state.bipes.length, 1); assert.equal(f.state.bipes[0].barcode, internal);
+    assert.match(result.message, /variante cadastrada para este código/);
+    assert.equal(f.state.learned.length, 0, 'internal codes are not guessed or learned as GTINs');
+    assert.equal(f.state.stockWrites, 0);
+  });
+  await test('16-digit internal code links only to one exact active variant and never changes stock', async () => {
+    const f = fixture(), internal = '0615640591012795';
+    f.state.catalogSizes.push({ id: 'internal-size', productId: 'internal-product', size: 'M', barcode: internal, sizeConfirmedAt: new Date(),
+      product: { id: 'internal-product', name: 'T-SHIRT PLANO C. STUDIOS', brand: 'C. STUDIOS', active: true } });
+    const result = await f.recognize({ ...f.base, barcode: internal });
+    assert.equal(result.complete, true); assert.equal(result.found, true); assert.equal(result.product.size, 'M');
+    assert.equal(f.state.bipes[0].barcode, internal); assert.equal(f.state.bipes[0].productSizeId, 'internal-size');
+    assert.equal(f.state.learned.length, 0); assert.equal(f.state.stockWrites, 0);
   });
   await test('leading-zero EAN alias keeps the first actual read and scan', async () => {
     const f = fixture(), first = await f.recognize(f.base);

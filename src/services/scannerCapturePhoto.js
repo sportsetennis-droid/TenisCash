@@ -1,6 +1,7 @@
 'use strict';
 const { createHash } = require('node:crypto');
 const rounds = require('./stocktakeRounds');
+const barcodePolicy = require('../../public/scanner-barcode-policy');
 const marker = /\n\[scanner-photo-revision:(\d{1,30})\]$/;
 function revisionOf(note) { return String(note || '').match(marker)?.[1] || ''; }
 function visibleNote(note) { return String(note || '').replace(marker, ''); }
@@ -23,7 +24,7 @@ async function savePhoto(db, data) {
     const previous = await tx.productCapture.findUnique({ where: { scanKey } });
     if (previous && (previous.storeId !== storeId || previous.roundId !== roundId || previous.excludedAt || previous.status === 'descartado'))
       rounds.fail('A captura não pertence a esta loja e rodada ativa.');
-    if (previous?.barcode && barcode && previous.barcode.replace(/^0+/, '') !== barcode.replace(/^0+/, ''))
+    if (previous?.barcode && barcode && barcodePolicy.identity(previous.barcode) !== barcodePolicy.identity(barcode))
       rounds.fail('Código diferente da peça em leitura. Mantenha a mesma etiqueta ou feche o scanner para revisar.');
     const oldRevision = revisionOf(previous?.note);
     const revision = suppliedRevision;

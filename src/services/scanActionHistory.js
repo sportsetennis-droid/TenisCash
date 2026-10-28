@@ -3,10 +3,11 @@
 const { createHash, randomUUID } = require('node:crypto');
 const { operator, canSend } = require('./scanTransfers');
 const { resolveBarcodeRows, aliasRows } = require('./scannerCatalog');
+const barcodePolicy = require('../../public/scanner-barcode-policy');
 const MAX_SCANS = 500;
 const storeSelect = { id: true, code: true, name: true, active: true };
 const id = value => typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
-const key = value => String(value || '').replace(/^0+/, '');
+const key = value => barcodePolicy.identity(value);
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 function fail(message, status = 409) { const e = new Error(message); e.status = status; throw e; }
 function sizeKey(value) { return String(value || '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/^BR\s*/, '').replace(/\s+/g, ' ').replace(/^(?:U|UNICO)$/, 'UNICO').replace(/^(\d+),(\d+)$/, '$1.$2'); }
@@ -62,9 +63,9 @@ async function resolveSnapshots(db, scans) {
   const output = [];
   for (const scan of scans) {
     let matches = [];
-    if (/^(?:\d{8}|\d{12,14})$/.test(scan.barcode) && key(scan.barcode)) {
+    if (barcodePolicy.isScanCode(scan.barcode) && key(scan.barcode)) {
       if (!cache.has(key(scan.barcode))) {
-        const codes = [...new Set([scan.barcode, key(scan.barcode), scan.barcode.padStart(13, '0'), scan.barcode.padStart(14, '0')])];
+        const codes = barcodePolicy.variants(scan.barcode);
         const rows = await db.productSize.findMany({ where: { barcode: { in: codes } }, include: { product: true } });
         const direct = await resolveBarcodeRows(db, rows), aliases = await aliasRows(db, scan.barcode);
         cache.set(key(scan.barcode), [...new Map([...direct, ...aliases].map(row => [row.id, row])).values()]);

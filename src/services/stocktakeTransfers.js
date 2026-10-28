@@ -3,6 +3,7 @@ const { createHash } = require('node:crypto');
 const { Prisma } = require('@prisma/client');
 const { operator, canSend } = require('./scanTransfers');
 const { resolveBarcodeRows, aliasRows } = require('./scannerCatalog');
+const barcodePolicy = require('../../public/scanner-barcode-policy');
 const { applyStoreStockDelta } = require('./storeStockLedger');
 
 const SOURCE = 'stocktake-transfer-v1';
@@ -17,7 +18,7 @@ const transferInclude = {
 function fail(message, status = 409) { const error = new Error(message); error.status = status; throw error; }
 function uuid(value) { return typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value); }
 function hash(value) { return createHash('sha256').update(JSON.stringify(value)).digest('hex'); }
-function barcodeKey(value) { return String(value || '').replace(/^0+/, ''); }
+function barcodeKey(value) { return barcodePolicy.identity(value); }
 function validSize(value) { return !!value && !/^(?:\?|T-|REF:|Único-)/i.test(value); }
 function inputSelection(input = {}) {
   const { fromStoreId, toStoreId, roundId } = input;
@@ -71,8 +72,8 @@ function missingSelection(selection, reads) {
   return blockers;
 }
 async function barcodeMatches(db, bipes) {
-  const codes = [...new Set(bipes.map(b => b.barcode).filter(code => /^\d{8}$|^\d{12,14}$/.test(code || '')))];
-  const alternatives = [...new Set(codes.flatMap(code => [code, barcodeKey(code), code.padStart(13, '0'), code.padStart(14, '0')]))];
+  const codes = [...new Set(bipes.map(b => b.barcode).filter(code => barcodePolicy.isScanCode(code)))];
+  const alternatives = [...new Set(codes.flatMap(code => barcodePolicy.variants(code)))];
   const rows = alternatives.length ? await db.productSize.findMany({ where: { barcode: { in: alternatives } }, include: { product: true } }) : [];
   const result = new Map();
   for (const code of codes) {
@@ -114,7 +115,7 @@ async function buildPreview(db, actor, selection, suppliedReads) {
     if (!b.found || b.duplicate || !size || size.productId !== b.productId || !size.product.active) {
       block('unresolved_scan', 'Há produto não identificado, ambíguo ou inativo na sequência.', context); continue;
     }
-    if (!/^\d{8}$|^\d{12,14}$/.test(b.barcode || '')) block('missing_barcode', 'Há leitura sem código de barras efetivamente escaneado.', context);
+    if (!barcodePolicy.isScanCode(b.barcode)) block('missing_barcode', 'Há leitura sem código de barras efetivamente escaneado.', context);
     else {
       const resolved = matches.get(barcodeKey(b.barcode)) || [];
       if (resolved.length !== 1 || resolved[0] !== size.id) block('barcode_conflict', 'O código da leitura não confirma uma única variante do cadastro.', context);

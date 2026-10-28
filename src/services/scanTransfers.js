@@ -3,6 +3,7 @@ const {resolveBarcodeRows,aliasRows}=require('./scannerCatalog');
 const {matchScannerReference}=require('./scannerReference');
 const {parseScannerText}=require('./scannerText');
 const {applyStoreStockDelta}=require('./storeStockLedger');
+const barcodePolicy=require('../../public/scanner-barcode-policy');
 const SOURCE='camera-transfer-v1';
 const staffRoles=['seller','admin','superadmin','manager'];
 function fail(message,status=400){const e=new Error(message);e.status=status;throw e;}
@@ -17,7 +18,7 @@ function dayStart(now=new Date()){const date=new Intl.DateTimeFormat('en-CA',{ti
 async function lookup(db,actor,{barcode,ocrText}){
   barcode=String(barcode||'').trim();if(barcode.length>60||String(ocrText||'').length>5000)fail('Leitura inválida.');
   let sizes=[];
-  if(barcode){const codes=[...new Set([barcode,barcode.replace(/^0+/,''),barcode.padStart(13,'0'),barcode.padStart(14,'0')])];
+  if(barcode){const codes=barcodePolicy.variants(barcode);
     sizes=await resolveBarcodeRows(db,await db.productSize.findMany({where:{barcode:{in:codes}},include:{product:true}}));
     if(!sizes.length)sizes=await aliasRows(db,barcode);
   }

@@ -31,6 +31,9 @@ global.document={createElement:()=>({getContext:()=>({drawImage(){},getImageData
  code='';await gate.tick();await gate.tick();await gate.tick();code='196974865902';await gate.tick();await gate.tick();assert.equal(gated.length,0,'Repeated decoder misses without visual removal never count a stationary piece again');
  code='';shade=20;await gate.tick();await gate.tick();code='196974865902';shade=220;await gate.tick();await gate.tick();assert.equal(gated.length,1,'Removing label rearms next physical pair');
  gate.reset({afterCode:code});code='';await gate.tick();await gate.tick();code='196974865902';await gate.tick();await gate.tick();assert.equal(gated.length,1,'Captured frame protects the immediate auto-advance, before another successful decode');
+ code='0615640591012795';const internalCaptures=[];const internalScanner=auto.create({...opts,decode:()=>code,onCapture:x=>internalCaptures.push(x)});
+ await internalScanner.tick();await internalScanner.tick();assert.equal(internalCaptures.length,1);assert.equal(internalCaptures[0].ean,'0615640591012795','automatic recognition preserves the photographed 16-digit code');
+ internalScanner.reset({afterCode:'0615640591012795'});await internalScanner.tick();assert.equal(internalCaptures.length,1,'the same internal code remains locked after advancing');
  const rearmedHints=[],rearmedCaptures=[];code='196974865902';const rearmed=auto.create({...opts,onCapture:x=>rearmedCaptures.push(x),onHint:text=>rearmedHints.push(text)});
  rearmed.reset({afterCode:code});await rearmed.tick();assert.match(rearmedHints.at(-1),/Afaste/);
  code='';shade=20;await rearmed.tick();assert.match(rearmedHints.at(-1),/Afaste/,'One blank frame retains the same-piece guard');await rearmed.tick();assert.match(rearmedHints.at(-1),/Leitura automática ativa/,'Clearing the guard must also clear its stale warning');assert.equal(rearmedCaptures.length,0,'Rearming is not a new counted piece');
@@ -49,5 +52,9 @@ global.document={createElement:()=>({getContext:()=>({drawImage(){},getImageData
  workerInstance.onmessage({data:{id:workerInstance.message.id,code:'196974865902'}});
  assert.equal(await decoding,'196974865902');
  const interrupted=auto.decodeInWorker(frame);auto.stopDecoder();assert.equal(await interrupted,'');assert.equal(workerInstance.terminated,true);
+ const zxingCalls=[];let decoded='0615640591012795';global.ZXingWASM={prepareZXingModule:async()=>{},readBarcodes:async(_pixels,options)=>{zxingCalls.push(options.formats);return decoded?[{text:decoded}]:[];}};
+ const flat={width:64,height:64,data:new Uint8ClampedArray(64*64*4).fill(255)};
+ assert.equal(await auto.decodePixels(flat),'0615640591012795','ZXing decode accepts the exact 16-digit result');assert.ok(zxingCalls[0].includes('Code128'),'ZXing is configured to read the tag’s linear barcode');
+ decoded='061564059101279';assert.equal(await auto.decodePixels(flat),'','a partial 15-digit decode is not accepted');
  console.log('PASS: automatic barcode/reference capture, explicit next-piece lock, stale OCR cancellation, motion rejection, missing-label rejection');
 })().catch(e=>{console.error(e);process.exitCode=1});

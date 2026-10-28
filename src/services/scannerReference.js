@@ -1,5 +1,6 @@
 'use strict';
 const {canonicalProduct,resolveBarcodeRows,aliasRows}=require('./scannerCatalog');
+const barcodePolicy = require('../../public/scanner-barcode-policy');
 
 // Exact identifiers only. Punctuation is insignificant; colour suffixes are not.
 function normalizeReference(value) {
@@ -17,7 +18,7 @@ function validGtin(value) {
   return (10 - sum % 10) % 10 === Number(code.at(-1));
 }
 function variants(code) {
-  return [...new Set([code, code.replace(/^0+/, ''), code.padStart(13, '0'), code.padStart(14, '0')])];
+  return barcodePolicy.variants(code);
 }
 async function referenceCandidates(db, codes) {
   if (!codes.length) return [];
@@ -145,7 +146,7 @@ async function learnScannerBarcode(db, { barcode, read, size, confirmedProductId
   for(let attempt=0;;attempt++)try { return await db.$transaction(async tx => {
     let size=requestedSize;
     // Serialize competing scans of the same UPC/GTIN (including leading zero).
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${barcode.replace(/^0+/, '')}))::text AS locked`;
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${barcodePolicy.identity(barcode)}))::text AS locked`;
     const rawOwners = await tx.productSize.findMany({ where: { barcode: { in: variants(barcode) } }, include: { product: true } });
     const owners=await resolveBarcodeRows(tx,rawOwners);
     if(!owners.length)owners.push(...await aliasRows(tx,barcode));
@@ -186,7 +187,7 @@ async function learnScannerBarcode(db, { barcode, read, size, confirmedProductId
           if(!prior?.officialEvidence||prior.productId!==pid||textKey(prior.size)!==textKey(size)
             ||textKey(prior.officialEvidence.colorLiteralWithCode)!==textKey(fiscal.officialEvidence.colorLiteralWithCode))return {reason:'size_barcode_conflict'};
           const ctx=product.aiContext||{};
-          await tx.product.update({where:{id:pid},data:{aiContext:{...ctx,scannerBarcodeAliases:{...(ctx.scannerBarcodeAliases||{}),[barcode.replace(/^0+/,'')]:{
+          await tx.product.update({where:{id:pid},data:{aiContext:{...ctx,scannerBarcodeAliases:{...(ctx.scannerBarcodeAliases||{}),[barcodePolicy.identity(barcode)]:{
             size,reference:fiscal.officialEvidence.supplierCode,source:'exact-incoming-nfe-and-confirmed-official-variant',fiscalItemId:fiscal.itemId,
             matchingBarcode:ps.barcode,matchingFiscalItemId:prior.itemId,officialVariant:fiscal.officialEvidence,matchingOfficialVariant:prior.officialEvidence,at:new Date().toISOString()
           }}}}});
@@ -196,7 +197,7 @@ async function learnScannerBarcode(db, { barcode, read, size, confirmedProductId
         // A printed reference and exact size can have another GTIN after catalogue
         // consolidation. Keep the existing GTIN and record a separate alias.
         const ctx=product.aiContext||{};
-        await tx.product.update({where:{id:pid},data:{aiContext:{...ctx,scannerBarcodeAliases:{...(ctx.scannerBarcodeAliases||{}),[barcode.replace(/^0+/,'')]:{size,reference:codes[0],source:'exact-reference-and-size',at:new Date().toISOString()}}}}});
+        await tx.product.update({where:{id:pid},data:{aiContext:{...ctx,scannerBarcodeAliases:{...(ctx.scannerBarcodeAliases||{}),[barcodePolicy.identity(barcode)]:{size,reference:codes[0],source:'exact-reference-and-size',at:new Date().toISOString()}}}}});
         return {productId:pid,productSizeId:ps.id,name:product.name,barcode,reason:'matched'};
       }
       if (ps) {

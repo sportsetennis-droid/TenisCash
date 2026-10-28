@@ -1,6 +1,9 @@
 (function () {
   'use strict';
   const $ = id => document.getElementById(id);
+  const barcodePolicy = window.ScannerBarcodePolicy || {
+    isScanCode: value => /^(?:\d{8}|\d{12,14}|\d{16})$/.test(String(value || '').trim()) && !/^0+$/.test(String(value || '').trim()),
+  };
   const settingsKey = 'tc_bipar_actions_settings_v1', pendingKey = 'tc_bipar_actions_pending_v1';
   const read = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key) || 'null') || fallback; } catch (_) { return fallback; } };
   const stable = value => JSON.stringify(value, function (_, item) { return item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item; });
@@ -640,7 +643,7 @@
   async function scan(barcode, ocrText = '', options = {}) {
     if (storageFailed || (currentDraft && recoveryConflicts.has(currentDraft.sessionId))) { message('O lote ainda está sendo recuperado. Aguarde a conferência antes de continuar bipando.', true); return null; }
     if (isInventory() || !validContext() || busy || read(pendingKey, null)) { message('Escolha a ação, entre na sua conta e confira as lojas antes de bipar.', true); return null; }
-    barcode = String(barcode || '').trim(); if (!/^\d{8}$|^\d{12,14}$/.test(barcode)) { message('Leia o código de barras numérico da etiqueta. A referência do modelo não substitui o código.', true); return null; }
+    barcode = String(barcode || '').trim(); if (!barcodePolicy.isScanCode(barcode)) { message('Leia o código de barras numérico da etiqueta. A referência do modelo não substitui o código.', true); return null; }
     const draft = currentDraft;
     if (draft.scans.length >= 500) { message('Este lote chegou a 500 leituras, incluindo as retiradas. Confira e conclua ou comece outro lote; o histórico será preservado.', true); return null; }
     // Every intentional scan is one physical piece. The camera engine still
@@ -914,7 +917,7 @@
   }
   async function retryRead(draft, item, barcode, ocrText, cameraId) {
     barcode = String(barcode || '').trim();
-    if (!/^\d{8}$|^\d{12,14}$/.test(barcode) || item.removed || !activeReads(draft).includes(item)) return null;
+    if (!barcodePolicy.isScanCode(barcode) || item.removed || !activeReads(draft).includes(item)) return null;
     const unchanged = () => cameraId === cameraGeneration && currentDraft === draft && validContext() && !item.removed;
     if (!unchanged()) return null;
     if (barcode !== item.barcode) {

@@ -25,7 +25,8 @@ const router = express.Router();
 const rounds = require('../services/stocktakeRounds');
 const {captureComplete}=require('../services/scannerCompletion');
 const capturePhotos = require('../services/scannerCapturePhoto');
-const { createAutomaticRecognizer } = require('../services/scannerAutomaticRecognition');
+const { createAutomaticRecognizer, matchInternalBarcode } = require('../services/scannerAutomaticRecognition');
+const barcodePolicy = require('../../public/scanner-barcode-policy');
 const { createSchemaReadiness } = require('../services/stocktakeReconstructionSchema');
 const ensureReconstructionSchema = createSchemaReadiness(prisma);
 router.use(async (_req, res, next) => {
@@ -92,16 +93,7 @@ function normalizeScannedSize(raw) {
 // A caixa traz UPC-12 (ex 195394510652); a NFe salva GTIN-13 (0195394510652).
 // O leitor lê 12 díg e não batia no banco. Aqui geramos as duas formas.
 function barcodeVariants(code) {
-  const c = String(code || '').trim();
-  if (!c) return [];
-  const out = new Set([c]);
-  if (/^\d+$/.test(c)) {
-    const noLead = c.replace(/^0+/, '');
-    if (noLead) out.add(noLead);
-    if (c.length <= 13) out.add(c.padStart(13, '0'));
-    if (c.length <= 14) out.add(c.padStart(14, '0'));
-  }
-  return [...out];
+  return barcodePolicy.variants(code);
 }
 
 // ============================================================
@@ -801,8 +793,10 @@ async function processarEtiqueta(capId, photo, eanLocal, meta) {
   // An unreadable photograph stays saved and pending. Never substitute SKU,
   // catalogue barcode or OCR digits for the barcode actually decoded/received.
   if (!ean || !capture.barcode) return { vinculado: false, mensagem: 'Foto salva. Aguardando código de barras.' };
-  const match = await learnScannerBarcode(prisma, { barcode: ean, read: lido,
-    size: normalizeScannedSize(lido?.tamanho) });
+  const scannedSize = normalizeScannedSize(lido?.tamanho);
+  const match = barcodePolicy.isInternalCode(ean)
+    ? await matchInternalBarcode(prisma, ean, scannedSize)
+    : await learnScannerBarcode(prisma, { barcode: ean, read: lido, size: scannedSize });
   let vinculado = match.reason === 'matched';
   let bipesCasados = 0;
   const cardNome = match.name, matchedProductId = match.productId, psId = match.productSizeId;
@@ -1009,8 +1003,10 @@ async function tratarPendentesEtiqueta() {
       if (!cap.barcode) continue; // A photo without a read barcode remains pending.
       if (capturePhotos.revisionOf(cap.note) && !cap.bipeId) continue;
       const read = parseJsonSeguro(cap.note);
-      const match = await learnScannerBarcode(prisma, { barcode: cap.barcode, read,
-        size: normalizeScannedSize(read?.tamanho) });
+      const scannedSize = normalizeScannedSize(read?.tamanho);
+      const match = barcodePolicy.isInternalCode(cap.barcode)
+        ? await matchInternalBarcode(prisma, cap.barcode, scannedSize)
+        : await learnScannerBarcode(prisma, { barcode: cap.barcode, read, size: scannedSize });
       if (match.reason !== 'matched') continue;
       const linked = await garantirBipeDaCaptura(cap.id, match.productId, match.productSizeId, cap.barcode,
         { photo: cap.photo, photoRevision: capturePhotos.revisionOf(cap.note) });
@@ -1082,8 +1078,8 @@ router.get('/unrecognized', async (req, res) => {
         count(*)::int vezes,
         max(b."bipedAt") ultimo,
         array_agg(DISTINCT COALESCE(s.name,'(sem loja)')) lojas,
-        bool_or(EXISTS(SELECT 1 FROM "XmlFiscalItem" x WHERE ltrim(x.ean,'0')=ltrim(b.barcode,'0'))) em_nfe,
-        bool_or(EXISTS(SELECT 1 FROM "ProductSize" z JOIN "Product" pr ON pr.id=z."productId" WHERE ltrim(z.barcode,'0')=ltrim(b.barcode,'0') AND pr.active)) tem_card,
+        bool_or(EXISTS(SELECT 1 FROM "XmlFiscalItem" x WHERE x.ean=b.barcode OR (length(x.ean)<>16 AND length(b.barcode)<>16 AND ltrim(x.ean,'0')=ltrim(b.barcode,'0')))) em_nfe,
+        bool_or(EXISTS(SELECT 1 FROM "ProductSize" z JOIN "Product" pr ON pr.id=z."productId" WHERE (z.barcode=b.barcode OR (length(z.barcode)<>16 AND length(b.barcode)<>16 AND ltrim(z.barcode,'0')=ltrim(b.barcode,'0'))) AND pr.active)) tem_card,
         bool_or(EXISTS(SELECT 1 FROM "ProductCapture" c WHERE c.barcode=b.barcode)) tem_foto
       FROM "StocktakeBipe" b
       LEFT JOIN "Store" s ON s.id=b."storeId"

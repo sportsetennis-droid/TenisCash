@@ -1,4 +1,5 @@
 'use strict';
+const barcodePolicy=require('../../public/scanner-barcode-policy');
 // Follow only an explicit consolidation link; never infer a product from its name.
 async function canonicalProduct(db, product) {
   let p=product;const seen=new Set();
@@ -21,7 +22,7 @@ async function resolveBarcodeRows(db, rows) {
     const target=await canonicalProduct(db,row.product);
     // A reviewed alias preserves the exact GTIN identity when a legacy row
     // still carries a placeholder size after consolidation.
-    const aliasSize=target?.aiContext?.scannerBarcodeAliases?.[String(row.barcode||'').replace(/^0+/,'')]?.size;
+    const aliasSize=target?.aiContext?.scannerBarcodeAliases?.[barcodePolicy.identity(row.barcode)]?.size;
     const size=target?.sizes?.find(s=>s.size===(aliasSize||row.size));
     if(target&&size)resolved.push({...size,productId:target.id,product:target,sourceProductId:row.productId});
     else resolved.push(row); // inactive, unknown, missing size or cyclic: stays blocked
@@ -29,7 +30,7 @@ async function resolveBarcodeRows(db, rows) {
   return [...new Map(resolved.map(r=>[r.id,r])).values()];
 }
 async function aliasRows(db,barcode){
-  const key=String(barcode).replace(/^0+/,'');
+  const key=barcodePolicy.identity(barcode);
   const rows=await db.$queryRaw`SELECT id FROM "Product" WHERE active=true AND ("aiContext"->'scannerBarcodeAliases') ? ${key}`;
   const out=[];for(const row of rows){const p=await db.product.findUnique({where:{id:row.id},include:{sizes:true}});const size=p?.aiContext?.scannerBarcodeAliases?.[key]?.size;const ps=p?.sizes?.find(s=>s.size===size);if(ps)out.push({...ps,product:p,productId:p.id});}
   return out;

@@ -31,6 +31,9 @@ jobs:
       - name: Ponto e produção diária da Meta Fardamentos
         run: npm run test:mf-daily
 
+      - name: Bipagem — leitor, identificação e entradas manuais
+        run: npm run test:scanner
+
       - name: Sintaxe — node --check em todo src/
         run: find src -name '*.js' -print0 | xargs -0 -r -n1 node --check
 

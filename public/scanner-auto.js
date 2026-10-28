@@ -1,6 +1,11 @@
 /* Automatic capture, entirely on-device. One capture per physical piece cycle. */
 (function (root) {
   'use strict';
+  const barcodePolicy=root.ScannerBarcodePolicy||{
+    isScanCode:value=>/^(?:\d{8}|\d{12,14}|\d{16})$/.test(String(value||'').trim())&&!/^0+$/.test(String(value||'').trim()),
+    identity:value=>{const code=String(value||'').trim();return /^\d{16}$/.test(code)?code:code.replace(/^0+/, '');},
+  };
+  const barcodeIdentity=value=>barcodePolicy.identity(value);
   function createCanvas(){return typeof document!=='undefined'?document.createElement('canvas'):new OffscreenCanvas(1,1);}
   function labelText(text) {
     return /\b(?:[A-Z]{2}\d{4}(?:[- ]?\d{3})?|\d{5,6}(?:BR)?\s*[/\-]\s*[A-Z]{2,5})\b/i.test(text) &&
@@ -17,7 +22,7 @@
   function create({snapshot,decode,recognize,canRead,onCapture,onHint,now=Date.now,recognizeMissing=true}) {
     let epoch=0,locked=false,busy=false,lastCode='',hits=0,lastOcr=0,previous=null,stableSince=0,afterCode='',clearFrames=0,ocrJob=null;
     let confirmedCode='',confirmedSignature=null,afterSignature=null;
-    function reset(options={}){epoch++;busy=false;locked=false;lastCode='';hits=0;previous=null;stableSince=now();afterCode=String(options.afterCode||'').replace(/^0+/,'');afterSignature=afterCode&&afterCode===confirmedCode?confirmedSignature:null;clearFrames=0;}
+    function reset(options={}){epoch++;busy=false;locked=false;lastCode='';hits=0;previous=null;stableSince=now();afterCode=barcodeIdentity(options.afterCode);afterSignature=afterCode&&afterCode===confirmedCode?confirmedSignature:null;clearFrames=0;}
     function stop(){epoch++;locked=true;}
     async function tick(){
       if(locked||busy||!canRead())return;
@@ -27,7 +32,7 @@
         const code=await decode(frame);
         if(stamp!==epoch||locked||!canRead())return;
         if(afterCode){
-          const normalized=String(code||'').replace(/^0+/,'');
+          const normalized=barcodeIdentity(code);
           if(normalized===afterCode){clearFrames=0;afterSignature=signature(frame);onHint('Afaste a etiqueta já lida antes de apresentar outro par.');return;}
           if(!normalized){
             const currentSignature=signature(frame);
@@ -42,7 +47,7 @@
         }
         if(code){hits=code===lastCode?hits+1:1;lastCode=code;
           onHint('Código reconhecido. Mantenha a etiqueta parada…');
-          if(hits>=2&&stamp===epoch&&canRead()){confirmedCode=String(code).replace(/^0+/,'');confirmedSignature=signature(frame);locked=true;onCapture({ean:code,frame});}return;
+          if(hits>=2&&stamp===epoch&&canRead()){confirmedCode=barcodeIdentity(code);confirmedSignature=signature(frame);locked=true;onCapture({ean:code,frame});}return;
         }
         lastCode='';hits=0;
         if(!recognizeMissing)return;
@@ -227,7 +232,7 @@
     await prepareReader();
     const centered=centeredPixels(image);
     let results=await root.ZXingWASM.readBarcodes(centered,readerOptions);
-    const codesOf=items=>[...new Set(items.map(r=>String(r.text||'')).filter(t=>/^\d{8}$|^\d{12,14}$/.test(t)))];
+    const codesOf=items=>[...new Set(items.map(r=>String(r.text||'').trim()).filter(t=>barcodePolicy.isScanCode(t)))];
     // Ambiguity is already decisive; do not enlarge and decode the same labels
     // another four times before refusing to choose between them.
     if(codesOf(results).length>1)return '';
@@ -290,7 +295,7 @@
   }
   function ensureDecoderWorker(){
     if(decoderWorker)return decoderWorker;
-    const worker=decoderWorker=new Worker('/scanner-barcode-worker.js?v=20261018-live-fast-2');
+    const worker=decoderWorker=new Worker('/scanner-barcode-worker.js?v=20261027-internal-codes-1');
     worker.onmessage=({data})=>{
       if(decoderWorker!==worker)return;
       if(data?.ready){decoderState={method:'worker',ready:true,error:null};finishWarmup(true);return;}
@@ -341,7 +346,7 @@
       ctx.translate(c.width/2,c.height/2);ctx.rotate(angle*Math.PI/180);
       ctx.drawImage(frame,(frame.width-w)/2,(frame.height-h)/2,w,h,-w/2,-h/2,w,h);
       try{const result=core.decode(new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(new ZXing.HTMLCanvasElementLuminanceSource(c))));
-        const text=String(result.getText()||'').trim();if(/^\d{8}$|^\d{12,14}$/.test(text))return text;
+        const text=String(result.getText()||'').trim();if(barcodePolicy.isScanCode(text))return text;
       }catch(_){}finally{core.reset();}
     }
     return '';

@@ -1,11 +1,12 @@
 'use strict';
+const barcodePolicy=require('../../public/scanner-barcode-policy');
 // Read model only: never adds the old official balance to the new count.
 function summarizeVariant(bipes, captures, size, movements) {
  const captureByBipe = new Map(captures.filter(c=>c.bipeId).map(c=>[c.bipeId,c]));
  let counted=0,pending=0; const evidence=[];
  for(const b of bipes){
   const c=captureByBipe.get(b.id);
-  const valid=b.found&&!b.duplicate&&/^\d{8}$|^\d{12,14}$/.test(b.barcode||'')&&size&&size.productId===b.productId&&size.product.active&&size.size&&!/^(?:\?|T-|REF:)/i.test(size.size)&&(!c||c.status==='vinculado')&&(!/adidas|nike/i.test(size.product.brand||'')||Boolean(size.sizeConfirmedAt))&&(!/adidas/i.test(size.product.brand||'')||+new Date(size.sizeConfirmedAt)>=+new Date(b.bipedAt));
+  const valid=b.found&&!b.duplicate&&barcodePolicy.isScanCode(b.barcode)&&size&&size.productId===b.productId&&size.product.active&&size.size&&!/^(?:\?|T-|REF:)/i.test(size.size)&&(!c||c.status==='vinculado')&&(!/adidas|nike/i.test(size.product.brand||'')||Boolean(size.sizeConfirmedAt))&&(!/adidas/i.test(size.product.brand||'')||+new Date(size.sizeConfirmedAt)>=+new Date(b.bipedAt));
   if(valid) counted++; else pending++;
   evidence.push({barcode:b.barcode,seller:b.sellerName,at:b.bipedAt,valid});
  }

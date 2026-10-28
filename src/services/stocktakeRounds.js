@@ -1,5 +1,6 @@
 'use strict';
 const { createHash } = require('node:crypto');
+const barcodePolicy = require('../../public/scanner-barcode-policy');
 const RECONSTRUCTION_STORE_CODES = new Set(['LOJA02','LOJA03','LOJA04','LOJA05','LOJA06','LOJA07']);
 const SEPARATE_COMPANY_STORE_CODES = new Set(['LOJA01']);
 function fail(message, status = 409, details = null) { const e = new Error(message); e.status = status; if(details)e.details=details; throw e; }
@@ -24,7 +25,7 @@ async function createRoundBipe(db, input) {
       const capture = await tx.productCapture.findUnique({ where: { id: captureId } });
       if (!capture || capture.excludedAt || capture.status === 'descartado' || capture.scanKey !== data.scanKey ||
           capture.roundId !== data.roundId || capture.storeId !== data.storeId ||
-          String(capture.barcode || '').replace(/^0+/, '') !== String(data.barcode || '').replace(/^0+/, ''))
+          barcodePolicy.identity(capture.barcode) !== barcodePolicy.identity(data.barcode))
         fail('A foto desta leitura não está ativa nesta loja e rodada.');
     }
     const existing = await tx.stocktakeBipe.findUnique({ where: { scanKey: data.scanKey } });

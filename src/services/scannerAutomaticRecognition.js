@@ -4,9 +4,25 @@ const rounds = require('./stocktakeRounds');
 const { learnScannerBarcode, validGtin } = require('./scannerReference');
 const { parseScannerText } = require('./scannerText');
 const { captureComplete } = require('./scannerCompletion');
+const barcodePolicy = require('../../public/scanner-barcode-policy');
+const { resolveBarcodeRows } = require('./scannerCatalog');
 
 function sameBarcode(a, b) {
-  return String(a || '').replace(/^0+/, '') === String(b || '').replace(/^0+/, '');
+  return barcodePolicy.identity(a) === barcodePolicy.identity(b);
+}
+
+async function matchInternalBarcode(db, barcode, size) {
+  // Internal printed barcodes keep their leading zeros and only resolve on an
+  // exact, existing ProductSize link. They are never treated as fiscal GTINs.
+  const rows = await db.productSize.findMany({ where: { barcode }, include: { product: true } });
+  const matches = await resolveBarcodeRows(db, rows);
+  if (matches.length > 1) return { reason: 'barcode_conflict' };
+  const variant = matches[0];
+  if (!variant) return { reason: 'barcode_not_linked' };
+  if (!variant.product?.active) return { reason: 'inactive_product' };
+  if (!variant.size || variant.size === '?' || /^T-/.test(variant.size)) return { reason: 'size_required' };
+  if (size && String(size).trim().toUpperCase() !== String(variant.size).trim().toUpperCase()) return { reason: 'size_conflict' };
+  return { reason: 'matched', productId: variant.productId, productSizeId: variant.id, name: variant.product.name };
 }
 
 function pendingMessage(reason) {
@@ -15,6 +31,7 @@ function pendingMessage(reason) {
     size_required: 'Código lido. Continue aproximando o tamanho da mesma etiqueta.',
     reference_conflict: 'Há referências divergentes. Continue com a mesma etiqueta para conferir.',
     barcode_conflict: 'Este código possui cadastros divergentes. A leitura permanece pendente.',
+    barcode_not_linked: 'Código lido e salvo. Ainda não há uma variante cadastrada para este código; o bipe continua pendente.',
     size_conflict: 'O tamanho lido difere do cadastro. A leitura permanece pendente.',
     size_barcode_conflict: 'O tamanho possui outro código de barras. A leitura permanece pendente.',
     brand_conflict: 'A marca lida difere do cadastro. A leitura permanece pendente.',
@@ -40,7 +57,7 @@ function createAutomaticRecognizer({ db, normalizeScannedSize, needsManualSize,
 
   return async function recognize(input, request = {}) {
     const barcodeRead = String(input.barcode || '').trim();
-    if (!validGtin(barcodeRead)) {
+    if (!barcodePolicy.isInternalCode(barcodeRead) && !validGtin(barcodeRead)) {
       const error = new Error('Continue com a câmera na mesma etiqueta para ler o código de barras.');
       error.status = 422; error.barcodeRequired = true; throw error;
     }
@@ -89,7 +106,10 @@ function createAutomaticRecognizer({ db, normalizeScannedSize, needsManualSize,
     });
     const text = typeof input.ocrText === 'string' ? input.ocrText.slice(0, 4000) : '';
     const read = parseScannerText(text);
-    const match = await learn(db, { barcode, read, size: normalizeScannedSize(read?.tamanho) });
+    const scannedSize = normalizeScannedSize(read?.tamanho);
+    const match = barcodePolicy.isInternalCode(barcode)
+      ? await matchInternalBarcode(db, barcode, scannedSize)
+      : await learn(db, { barcode, read, size: scannedSize });
 
     const resolved = await db.$transaction(async tx => {
       await rounds.roundForScan(tx, input.storeId, input.roundId, true);
@@ -147,4 +167,4 @@ function createAutomaticRecognizer({ db, normalizeScannedSize, needsManualSize,
   };
 }
 
-module.exports = { createAutomaticRecognizer, pendingMessage };
+module.exports = { createAutomaticRecognizer, pendingMessage, matchInternalBarcode };
