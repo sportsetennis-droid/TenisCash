@@ -15,6 +15,7 @@ const { commissionWindow, calculateRankingCommissions } = require('../services/r
 const { salesVisibility } = require('../services/salesVisibility');
 const { getRankingOwner } = require('../services/rankingOwner');
 const { correctSaleSeller } = require('../services/saleSellerCorrection');
+const { sellerWorksInStore } = require('../services/sellerStoreAssignment');
 
 const router = express.Router();
 
@@ -341,8 +342,8 @@ router.post('/clockin-as', sellerOnly, async (req, res) => {
     });
     if (!vendor || !vendor.active) return res.status(404).json({ error: 'Vendedor não encontrado' });
     if (vendor.role !== 'seller') return res.status(400).json({ error: 'Selecionado não é vendedor' });
-    // Lock: PDV institucional só bate ponto de vendedor da PRÓPRIA loja
-    if (req.scope?.isStoreLocked && vendor.storeId !== req.scope.storeId) {
+    // Lock: PDV institucional só bate ponto de vendedor vinculado à loja ativa.
+    if (req.scope?.isStoreLocked && !sellerWorksInStore(vendor, req.scope.storeId)) {
       return res.status(403).json({ error: 'Vendedor não pertence a esta loja' });
     }
 
