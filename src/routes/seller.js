@@ -15,7 +15,7 @@ const { commissionWindow, calculateRankingCommissions } = require('../services/r
 const { salesVisibility } = require('../services/salesVisibility');
 const { getRankingOwner } = require('../services/rankingOwner');
 const { correctSaleSeller } = require('../services/saleSellerCorrection');
-const { sellerWorksInStore } = require('../services/sellerStoreAssignment');
+const { sellerWorksInStore, sellerAssignedStoreIds, resolveSellerClockInStore } = require('../services/sellerStoreAssignment');
 
 const router = express.Router();
 
@@ -507,6 +507,7 @@ router.post('/clockin', authMiddleware, sellerOnly, async (req, res) => {
       select: {
         id: true,
         storeId: true,
+        storeIds: true,
         role: true,
         active: true,
         store: { select: { id: true, code: true, name: true, latitude: true, longitude: true } },
@@ -517,21 +518,52 @@ router.post('/clockin', authMiddleware, sellerOnly, async (req, res) => {
       return res.status(403).json({ error: 'Acesso restrito ao vendedor' });
     }
 
-    const resolvedStoreId = storeId || u.storeId;
-    if (!resolvedStoreId) return res.status(400).json({ error: 'Vendedor sem loja vinculada (storeId)' });
+    let resolvedStoreId;
+    let store;
+    if (u.role === 'seller') {
+      const assignedStoreIds = sellerAssignedStoreIds(u);
+      if (!assignedStoreIds.length) return res.status(400).json({ error: 'Vendedor sem loja vinculada (storeId)' });
 
-    const store = u.store || await prisma.store.findUnique({
-      where: { id: resolvedStoreId },
-      select: { id: true, code: true, name: true, latitude: true, longitude: true },
-    });
-    if (!store) return res.status(404).json({ error: 'Loja não encontrada' });
-    if (typeof store.latitude !== 'number' || typeof store.longitude !== 'number') {
-      return res.status(400).json({ error: 'Loja sem coordenadas configuradas' });
-    }
+      const assignedStores = await prisma.store.findMany({
+        where: { id: { in: assignedStoreIds } },
+        select: { id: true, code: true, name: true, latitude: true, longitude: true },
+      });
+      const match = resolveSellerClockInStore({
+        seller: u,
+        requestedStoreId: storeId,
+        stores: assignedStores,
+        latitude,
+        longitude,
+        distanceMeters: haversineMeters,
+      });
+      if (!match.ok) {
+        if (match.reason === 'unassigned_store') return res.status(403).json({ error: 'Vendedor não está vinculado a esta loja' });
+        if (match.reason === 'store_not_found') return res.status(404).json({ error: 'Loja vinculada não encontrada' });
+        if (match.reason === 'missing_coordinates') return res.status(400).json({ error: 'Loja sem coordenadas configuradas' });
+        if (match.reason === 'too_far') {
+          return res.status(403).json({ error: `Você está a ${Math.round(match.distanceM)}m da loja. Bata o ponto quando estiver dentro do raio de 150m.` });
+        }
+        return res.status(400).json({ error: 'Vendedor sem loja vinculada (storeId)' });
+      }
+      store = match.store;
+      resolvedStoreId = store.id;
+    } else {
+      resolvedStoreId = storeId || u.storeId;
+      if (!resolvedStoreId) return res.status(400).json({ error: 'Vendedor sem loja vinculada (storeId)' });
 
-    const distM = haversineMeters(latitude, longitude, store.latitude, store.longitude);
-    if (distM > 150) {
-      return res.status(403).json({ error: `Você está a ${Math.round(distM)}m da loja. Bata o ponto quando estiver dentro do raio de 150m.` });
+      store = !storeId && u.store ? u.store : await prisma.store.findUnique({
+        where: { id: resolvedStoreId },
+        select: { id: true, code: true, name: true, latitude: true, longitude: true },
+      });
+      if (!store) return res.status(404).json({ error: 'Loja não encontrada' });
+      if (!Number.isFinite(store.latitude) || !Number.isFinite(store.longitude)) {
+        return res.status(400).json({ error: 'Loja sem coordenadas configuradas' });
+      }
+
+      const distM = haversineMeters(latitude, longitude, store.latitude, store.longitude);
+      if (distM > 150) {
+        return res.status(403).json({ error: `Você está a ${Math.round(distM)}m da loja. Bata o ponto quando estiver dentro do raio de 150m.` });
+      }
     }
 
     // Validação de sequência (dia Recife)
