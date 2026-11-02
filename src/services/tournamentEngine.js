@@ -107,10 +107,17 @@ async function generateFixtures(categoryId, opts = {}) {
     return generateRoundRobin(category, entries, 'ROUND_ROBIN');
   }
   if (format === 'GROUPS' || format === 'GROUPS_KNOCKOUT') {
-    // distribui em grupos (serpentina por seed) e gera o round-robin da fase de grupos.
+    // Grupos já definidos manualmente? (todos os inscritos com groupName) →
+    // RESPEITA o sorteio existente. Senão, distribui em serpentina por seed.
     // No GROUPS_KNOCKOUT o mata-mata vem depois, via generateKnockoutFromGroups().
-    const groupCount = resolveGroupCount(entries, opts.groupCount);
-    await assignGroups(entries, groupCount);
+    const allHaveGroups = entries.length > 0 && entries.every((e) => e.groupName);
+    let groupCount;
+    if (allHaveGroups && !opts.forceRedraw) {
+      groupCount = new Set(entries.map((e) => e.groupName)).size;
+    } else {
+      groupCount = resolveGroupCount(entries, opts.groupCount);
+      await assignGroups(entries, groupCount);
+    }
     const r = await generateRoundRobin(category, entries, 'GROUPS');
     return { ...r, format, phase: 'GROUPS', groupCount };
   }
