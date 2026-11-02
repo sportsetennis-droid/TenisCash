@@ -9,6 +9,7 @@
     "dev": "node src/index.js",
     "db:push": "npx prisma db push",
     "db:generate": "npx prisma generate",
+    "test:tournament": "node scripts/test-tournament-engine.js",
     "db:seed": "node src/seed.js",
     "agents:daily": "node scripts/run-daily-agents.js",
     "test:seller-stock": "node scripts/test-seller-stock-logic.js",

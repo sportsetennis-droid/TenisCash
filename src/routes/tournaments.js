@@ -10,8 +10,15 @@
 const express = require('express');
 const { prisma, authMiddleware } = require('../middleware');
 const engine = require('../services/tournamentEngine');
+const { notify, notifyMany } = require('../services/notify');
 
 const router = express.Router();
+
+// Membros (userIds) de uma entry — pra notificar a dupla/atleta.
+async function entryMemberIds(entryId) {
+  const ms = await prisma.entryMember.findMany({ where: { entryId }, select: { userId: true } });
+  return ms.map((m) => m.userId);
+}
 
 const SPORTS = new Set([
   'TENNIS', 'BEACH_TENNIS', 'PADEL', 'FUTSAL', 'SOCCER', 'VOLLEY',
@@ -403,6 +410,14 @@ router.post('/:id/entries/request', authMiddleware, async (req, res) => {
       },
       include: { members: true },
     });
+    try {
+      await notify(t.ownerId, {
+        type: 'entry',
+        title: 'Novo pedido de inscrição',
+        body: `${name} pediu vaga em "${t.name}". Aprove na categoria.`,
+        link: '#/t/' + t.id,
+      });
+    } catch (_) {}
     res.status(201).json(entry);
   } catch (err) {
     console.error('[tournaments] request entry', err);
@@ -426,6 +441,15 @@ router.post('/entries/:entryId/approve', authMiddleware, async (req, res) => {
       where: { id: entry.id },
       data: { status: 'CONFIRMED' },
     });
+    try {
+      const ids = await entryMemberIds(entry.id);
+      await notifyMany(ids, {
+        type: 'entry',
+        title: 'Inscrição confirmada ✅',
+        body: 'O organizador confirmou sua inscrição. Bora jogar!',
+        link: '#/t/' + entry.tournamentId,
+      });
+    } catch (_) {}
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -529,7 +553,7 @@ router.post('/matches/:matchId/result', authMiddleware, async (req, res) => {
   try {
     const match = await prisma.tournamentMatch.findUnique({
       where: { id: req.params.matchId },
-      include: { tournament: { select: { id: true, ownerId: true } } },
+      include: { tournament: { select: { id: true, ownerId: true, name: true } } },
     });
     if (!match) return res.status(404).json({ error: 'partida não encontrada' });
     const isAdmin = ['admin', 'superadmin', 'manager'].includes(req.userRole);
@@ -538,6 +562,25 @@ router.post('/matches/:matchId/result', authMiddleware, async (req, res) => {
     }
     const r = await engine.applyMatchResult(match.id, req.body || {});
     if (!r.ok) return res.status(400).json(r);
+
+    // avisa os atletas das duas entries (menos quem lançou o placar)
+    try {
+      const ids = [
+        ...(match.homeEntryId ? await entryMemberIds(match.homeEntryId) : []),
+        ...(match.awayEntryId ? await entryMemberIds(match.awayEntryId) : []),
+      ];
+      await notifyMany(
+        ids,
+        {
+          type: 'result',
+          title: 'Resultado publicado',
+          body: `Saiu o placar da sua partida em ${match.tournament.name}.`,
+          link: '#/t/' + match.tournamentId,
+        },
+        req.userId
+      );
+    } catch (_) {}
+
     res.json(r);
   } catch (err) {
     console.error('[tournaments] result', err);
@@ -562,6 +605,95 @@ router.post('/matches/:matchId/live', authMiddleware, async (req, res) => {
       data: { liveState: req.body?.liveState ?? null, status: req.body?.status || 'LIVE' },
     });
     res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Agenda data/hora/quadra de uma partida (só dono). Avisa os atletas.
+router.post('/matches/:matchId/schedule', authMiddleware, async (req, res) => {
+  try {
+    const match = await prisma.tournamentMatch.findUnique({
+      where: { id: req.params.matchId },
+      include: { tournament: { select: { id: true, ownerId: true, name: true } } },
+    });
+    if (!match) return res.status(404).json({ error: 'partida não encontrada' });
+    const isAdmin = ['admin', 'superadmin', 'manager'].includes(req.userRole);
+    if (match.tournament.ownerId !== req.userId && !isAdmin) {
+      return res.status(403).json({ error: 'só o organizador agenda' });
+    }
+    const b = req.body || {};
+    const data = {};
+    if (b.scheduledAt !== undefined) data.scheduledAt = b.scheduledAt ? new Date(b.scheduledAt) : null;
+    if (b.location !== undefined) data.location = b.location ? String(b.location).slice(0, 120) : null;
+    const updated = await prisma.tournamentMatch.update({ where: { id: match.id }, data });
+
+    // avisa os atletas das duas entries sobre o agendamento
+    try {
+      const whenTxt = updated.scheduledAt
+        ? new Date(updated.scheduledAt).toLocaleString('pt-BR', {
+            day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Fortaleza',
+          })
+        : null;
+      const parts = [whenTxt, updated.location].filter(Boolean).join(' · ');
+      const ids = [
+        ...(match.homeEntryId ? await entryMemberIds(match.homeEntryId) : []),
+        ...(match.awayEntryId ? await entryMemberIds(match.awayEntryId) : []),
+      ];
+      await notifyMany(
+        ids,
+        {
+          type: 'schedule',
+          title: 'Jogo agendado',
+          body: `Sua partida em ${match.tournament.name}${parts ? ': ' + parts : ' foi agendada'}.`,
+          link: '#/t/' + match.tournamentId,
+        },
+        req.userId
+      );
+    } catch (_) {}
+
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =====================================================================
+// NOTIFICAÇÕES IN-APP (central de avisos do atleta)
+// =====================================================================
+
+// Minhas notificações (+ contador de não lidas)
+router.get('/notifications/mine', authMiddleware, async (req, res) => {
+  try {
+    const list = await prisma.appNotification.findMany({
+      where: { userId: req.userId },
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(Number(req.query.limit) || 50, 100),
+    });
+    const unread = await prisma.appNotification.count({ where: { userId: req.userId, read: false } });
+    res.json({ notifications: list, unread });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Marca uma como lida
+router.post('/notifications/:id/read', authMiddleware, async (req, res) => {
+  try {
+    const n = await prisma.appNotification.findUnique({ where: { id: req.params.id } });
+    if (!n || n.userId !== req.userId) return res.status(404).json({ error: 'notificação não encontrada' });
+    await prisma.appNotification.update({ where: { id: n.id }, data: { read: true } });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Marca todas as minhas como lidas
+router.post('/notifications/read-all', authMiddleware, async (req, res) => {
+  try {
+    await prisma.appNotification.updateMany({ where: { userId: req.userId, read: false }, data: { read: true } });
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -636,6 +768,15 @@ router.post('/challenges', authMiddleware, async (req, res) => {
         message: b.message || null,
       },
     });
+    try {
+      const me = await prisma.user.findUnique({ where: { id: req.userId }, select: { name: true } });
+      await notify(challengedId, {
+        type: 'challenge',
+        title: '⚔️ Novo desafio 1v1',
+        body: `${(me && me.name) || 'Um atleta'} te desafiou${b.message ? ': "' + String(b.message).slice(0, 80) + '"' : ''}.`,
+        link: '#/desafios',
+      });
+    } catch (_) {}
     res.status(201).json(ch);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -677,6 +818,15 @@ router.post('/challenges/:id/respond', authMiddleware, async (req, res) => {
         where: { id: ch.id },
         data: { status: action === 'accept' ? 'ACCEPTED' : 'DECLINED' },
       });
+      try {
+        const me = await prisma.user.findUnique({ where: { id: req.userId }, select: { name: true } });
+        await notify(ch.challengerId, {
+          type: 'challenge',
+          title: action === 'accept' ? 'Desafio aceito ✅' : 'Desafio recusado',
+          body: `${(me && me.name) || 'O atleta'} ${action === 'accept' ? 'aceitou' : 'recusou'} seu desafio.`,
+          link: '#/desafios',
+        });
+      } catch (_) {}
       return res.json(u);
     }
     return res.status(400).json({ error: 'action inválida (accept|decline|cancel)' });
