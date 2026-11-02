@@ -292,7 +292,24 @@ async function buildBracketFromSeeded(category, seedEntries, opts = {}) {
     }
   }
 
-  const totalMatches = Object.values(allRounds).reduce((s, arr) => s + arr.length, 0);
+  // Disputa de 3º lugar — só quando há semifinal (bracket >= 4).
+  // Os perdedores das 2 semis são encaminhados pra cá em applyMatchResult.
+  let thirdCreated = 0;
+  if (roundsCount >= 2) {
+    await prisma.tournamentMatch.create({
+      data: {
+        tournamentId: category.tournamentId,
+        categoryId: category.id,
+        stage: 'THIRD',
+        round: roundsCount + 1,
+        ordering: 0,
+        status: 'SCHEDULED',
+      },
+    });
+    thirdCreated = 1;
+  }
+
+  const totalMatches = Object.values(allRounds).reduce((s, arr) => s + arr.length, 0) + thirdCreated;
   return {
     ok: true,
     format: 'KNOCKOUT',
@@ -383,6 +400,21 @@ async function applyMatchResult(matchId, result = {}) {
     return { ok: false, error: 'partida ainda sem os dois inscritos definidos' };
   }
 
+  // Validação de sanidade do placar (multi-esporte: NÃO força regra de tênis,
+  // só rejeita número inválido/negativo pra não corromper a classificação).
+  const okNum = (v) =>
+    v === undefined || v === null || v === '' || (Number.isFinite(Number(v)) && Number(v) >= 0 && Number(v) <= 999);
+  if (Array.isArray(result.games)) {
+    for (const g of result.games) {
+      if (!okNum(g.homeGames) || !okNum(g.awayGames) || !okNum(g.homeTiebreak) || !okNum(g.awayTiebreak)) {
+        return { ok: false, error: 'placar inválido (use números de 0 a 999)' };
+      }
+    }
+  }
+  if (!okNum(result.homeScore) || !okNum(result.awayScore)) {
+    return { ok: false, error: 'placar inválido' };
+  }
+
   // Grava sets (se vierem) e conta sets vencidos
   let hs = 0;
   let as = 0;
@@ -416,6 +448,12 @@ async function applyMatchResult(matchId, result = {}) {
     // empate (liga) → winnerEntryId fica null
   }
 
+  // No mata-mata não pode haver empate: a chave trava sem vencedor definido.
+  const isKnockout = !['LEAGUE', 'GROUP'].includes(match.stage);
+  if (isKnockout && !winnerEntryId) {
+    return { ok: false, error: 'mata-mata não pode terminar empatado — defina o vencedor (ou use W.O.)' };
+  }
+
   await prisma.tournamentMatch.update({
     where: { id: matchId },
     data: { homeScore: hs, awayScore: as, winnerEntryId, status: 'FINISHED', liveState: null },
@@ -427,6 +465,21 @@ async function applyMatchResult(matchId, result = {}) {
       where: { id: match.nextMatchId },
       data: match.nextSlot === 'away' ? { awayEntryId: winnerEntryId } : { homeEntryId: winnerEntryId },
     });
+  }
+
+  // Disputa de 3º lugar: o PERDEDOR da semifinal cai na partida THIRD.
+  // Semi ordering 0 → slot "casa" da THIRD; ordering 1 → slot "visitante".
+  if (match.stage === 'SEMI' && winnerEntryId) {
+    const loserId = winnerEntryId === match.homeEntryId ? match.awayEntryId : match.homeEntryId;
+    const third = await prisma.tournamentMatch.findFirst({
+      where: { categoryId: match.categoryId, stage: 'THIRD' },
+    });
+    if (third && loserId) {
+      await prisma.tournamentMatch.update({
+        where: { id: third.id },
+        data: match.ordering === 0 ? { homeEntryId: loserId } : { awayEntryId: loserId },
+      });
+    }
   }
 
   // Classificação (liga/grupos)
