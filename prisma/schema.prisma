@@ -3701,10 +3701,13 @@ model Tournament {
   registrationCloseAt DateTime?
   maxEntries          Int?
 
-  // Config de TenisCash — movimento REAL de saldo é fase 2 (gated por aprovação do dono)
+  // Config de TenisCash — movimento REAL de saldo (fase 2).
+  // cashEnabled: trava mestra. Só admin/gerente liga. SEM isto, NADA cobra/paga.
+  cashEnabled      Boolean @default(false)
   entryFeeCash     Float   @default(0) // custo de inscrição em TenisCash
   prizeCash        Float   @default(0) // prêmio ao campeão em TenisCash
   prizeDescription String?
+  prizePaidAt      DateTime? // quando o prêmio foi pago ao campeão (idempotência: paga 1x)
 
   visibility String   @default("public")
   createdAt  DateTime @default(now())
@@ -3752,6 +3755,7 @@ model TournamentEntry {
   groupName String? // grupo na fase de grupos
   status    String   @default("CONFIRMED") // PENDING | CONFIRMED | WITHDRAWN
   entryPaid Boolean  @default(false) // pagou inscrição em TenisCash (fase 2)
+  entryTxId String? // id da Transaction do débito da inscrição (idempotência + estorno)
   createdAt DateTime @default(now())
 
   members     EntryMember[]

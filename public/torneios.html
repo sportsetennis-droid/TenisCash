@@ -269,8 +269,16 @@ function renderCreate(){
   html+='<div class="row"><div><label>Cidade</label><input id="c-city" placeholder="João Pessoa"></div><div><label>UF</label><input id="c-state" maxlength="2" placeholder="PB"></div></div>';
   html+='<div class="row"><div><label>Início</label><input id="c-start" type="date"></div><div><label>Vagas (opc)</label><input id="c-max" type="number" inputmode="numeric" placeholder="∞"></div></div>';
   html+='<label>Premiação (texto)</label><input id="c-prize" placeholder="Ex: R$500 + troféu + 2000 TenisCash">';
+  const canCash=ME&&['admin','superadmin','manager'].includes(ME.role);
+  if(canCash){
+    html+='<div class="card" style="box-shadow:none;background:var(--soft);margin:12px 0 0;padding:12px">'+
+      '<div style="font-weight:800;font-size:13px;margin-bottom:4px">💰 TenisCash real (opcional)</div>'+
+      '<div class="row"><div><label>Inscrição (T$)</label><input id="c-fee" type="number" inputmode="numeric" placeholder="0"></div>'+
+      '<div><label>Prêmio campeão (T$)</label><input id="c-prizecash" type="number" inputmode="numeric" placeholder="0"></div></div>'+
+      '<p class="muted" style="margin:8px 0 0">Com valor &gt; 0, o torneio cobra a inscrição e paga o campeão em saldo REAL. Deixe 0 pra torneio sem dinheiro.</p></div>';
+  }
   html+='<div style="height:16px"></div><button class="btn" data-act="create">Criar torneio</button>';
-  html+='<p class="muted" style="margin:12px 0 0">Inscrição/premiação em TenisCash real chega na fase 2.</p>';
+  html+='<p class="muted" style="margin:12px 0 0">'+(canCash?'Valores em TenisCash movem saldo real — confira antes de publicar.':'Inscrição/prêmio em TenisCash real é liberado só pelo admin.')+'</p>';
   html+='</div></div>';app.innerHTML=html;
 }
 async function doCreate(){
@@ -282,6 +290,11 @@ async function doCreate(){
     startDate:document.getElementById('c-start').value||null,
     maxEntries:document.getElementById('c-max').value||null,
     prizeDescription:document.getElementById('c-prize').value.trim()||null};
+  const feeEl=document.getElementById('c-fee'),prizeEl=document.getElementById('c-prizecash');
+  if(feeEl||prizeEl){
+    const fee=Number(feeEl&&feeEl.value)||0,pz=Number(prizeEl&&prizeEl.value)||0;
+    if(fee>0||pz>0){body.entryFeeCash=fee;body.prizeCash=pz;body.cashEnabled=true;}
+  }
   try{const t=await api('/',{method:'POST',body});toast('Torneio criado!');go('t/'+t.id);}
   catch(e){toast(e.message);}
 }
@@ -302,6 +315,7 @@ async function renderTournament(id){
     (t.isDoubles?'<span class="pill g">Duplas</span>':'')+'</div>';
   html+='<div class="muted">'+esc(FMT_LABEL[t.format]||t.format)+(t.city?' · '+esc(t.city):'')+' · '+(t._count?t._count.entries:0)+' inscritos</div>';
   if(t.prizeDescription)html+='<div style="margin-top:8px;font-weight:700;font-size:14px">🏆 '+esc(t.prizeDescription)+'</div>';
+  if(t.cashEnabled&&(t.entryFeeCash>0||t.prizeCash>0))html+='<div style="margin-top:8px;font-size:13px"><span class="pill ok">💰 TenisCash</span> inscrição '+(t.entryFeeCash||0)+' T$ · prêmio '+(t.prizeCash||0)+' T$'+(t.prizePaidAt?' <span class="pill g">pago</span>':'')+'</div>';
   html+='<div class="row" style="margin-top:12px"><a class="btn sec plain" href="/t/'+esc(t.slug)+'" style="text-decoration:none">Página pública</a>'+
     '<button class="btn sec" data-act="share-t" data-slug="'+esc(t.slug)+'" data-name="'+esc(t.name)+'">Compartilhar</button></div>';
   html+='</div>';
@@ -315,6 +329,16 @@ async function renderTournament(id){
     html+=muralCard(t.id,false,posts);
     html+='<div class="card"><div class="empty"><div class="ic">👀</div>Você está vendo como visitante.<br>Só o organizador gerencia a chave.</div></div></div>';
     app.innerHTML=html;return;
+  }
+
+  // prêmio em TenisCash real (só dono/admin paga)
+  if(t.cashEnabled&&t.prizeCash>0){
+    html+='<div class="card"><h2 style="margin:0 0 6px">💰 Prêmio em TenisCash</h2>'+
+      '<p class="muted" style="margin:0 0 10px">Campeão recebe <b>'+(t.prizeCash||0)+' T$</b>'+(t.entryFeeCash>0?' · inscrição '+(t.entryFeeCash)+' T$':'')+'. Saldo REAL.</p>'+
+      (t.prizePaidAt?'<div class="pill ok">✅ prêmio já pago ao campeão</div>':
+        '<button class="btn" data-act="pay-prize" data-id="'+t.id+'">🏆 Pagar prêmio ao campeão</button>'+
+        '<p class="muted" style="margin:8px 0 0">Só funciona com a final concluída. Credita no saldo do campeão (idempotente).</p>')+
+      '</div>';
   }
 
   // status control
@@ -768,6 +792,7 @@ document.addEventListener('click',async(ev)=>{
   if(a==='create'){doCreate();return;}
   if(a==='open-t'){go('t/'+el.dataset.id);return;}
   if(a==='set-status'){const s=document.getElementById('t-status').value;try{await api('/'+el.dataset.id+'/status',{method:'POST',body:{status:s}});toast('Situação atualizada');}catch(e){toast(e.message);}return;}
+  if(a==='pay-prize'){if(confirm('Pagar o prêmio ao campeão agora? Credita TenisCash REAL no saldo dele.')){try{const r=await api('/'+el.dataset.id+'/pay-prize',{method:'POST'});toast('Prêmio pago: '+(r.prizeCash||0)+' T$');renderTournament(el.dataset.id);}catch(e){toast(e.message);}}return;}
   if(a==='add-cat'){sheetAddCat(el.dataset.id);return;}
   if(a==='save-cat'){saveCat(el.dataset.tid);return;}
   if(a==='open-cat'){openCat(el.dataset.tid,el.dataset.cid,el.dataset.cname,el.dataset.dbl==='1',el.dataset.fmt);return;}
