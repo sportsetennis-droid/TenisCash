@@ -315,6 +315,33 @@ router.post('/:id/entries', authMiddleware, async (req, res) => {
     });
     if (!cat) return res.status(400).json({ error: 'categoria não pertence a este torneio' });
 
+    // ---- INSCRIÇÃO DE TIME/CLUBE (sem conta): só o NOME ----
+    // Pra torneio de equipes (futsal, society, vôlei...), a inscrição é o CLUBE.
+    // Não exige atleta com conta TenisCash. Aciona com { team:true, name:"Clube" }.
+    if (b.team === true || b.teamName) {
+      const teamName = String(b.teamName || b.name || '').trim();
+      if (!teamName) return res.status(400).json({ error: 'nome do time obrigatório' });
+      const dupName = await prisma.tournamentEntry.findFirst({
+        where: { categoryId: cat.id, name: teamName },
+      });
+      if (dupName) return res.status(409).json({ error: 'já existe um time com esse nome nesta categoria' });
+      if (t.maxEntries) {
+        const count = await prisma.tournamentEntry.count({ where: { tournamentId: t.id } });
+        if (count >= t.maxEntries) return res.status(409).json({ error: 'torneio lotado' });
+      }
+      const teamEntry = await prisma.tournamentEntry.create({
+        data: {
+          tournamentId: t.id,
+          categoryId: cat.id,
+          name: teamName,
+          seed: b.seed ? Number(b.seed) : null,
+          groupName: b.groupName || null,
+        },
+        include: { members: true },
+      });
+      return res.status(201).json(teamEntry);
+    }
+
     // resolve membros
     let handles = b.memberUserIds || b.memberUsernames || [];
     if (!Array.isArray(handles)) handles = [handles];
@@ -535,6 +562,30 @@ router.post('/entries/:entryId/approve', authMiddleware, async (req, res) => {
         link: '#/t/' + entry.tournamentId,
       });
     } catch (_) {}
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Define/ajusta o grupo (A/B/...) de uma inscrição (só dono/admin).
+// Usado pra montar grupos pré-definidos antes de gerar os jogos.
+router.post('/entries/:entryId/group', authMiddleware, async (req, res) => {
+  try {
+    const entry = await prisma.tournamentEntry.findUnique({
+      where: { id: req.params.entryId },
+      include: { tournament: { select: { ownerId: true } } },
+    });
+    if (!entry) return res.status(404).json({ error: 'inscrição não encontrada' });
+    const isAdmin = ['admin', 'superadmin', 'manager'].includes(req.userRole);
+    if (entry.tournament.ownerId !== req.userId && !isAdmin) {
+      return res.status(403).json({ error: 'só o organizador define os grupos' });
+    }
+    const groupName = req.body?.groupName ? String(req.body.groupName).trim().slice(0, 8) : null;
+    const updated = await prisma.tournamentEntry.update({
+      where: { id: entry.id },
+      data: { groupName },
+    });
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: err.message });
