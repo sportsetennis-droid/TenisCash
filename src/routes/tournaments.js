@@ -11,6 +11,7 @@ const express = require('express');
 const { prisma, authMiddleware } = require('../middleware');
 const engine = require('../services/tournamentEngine');
 const { notify, notifyMany } = require('../services/notify');
+const cash = require('../services/tournamentCash');
 
 const router = express.Router();
 
@@ -82,6 +83,16 @@ router.post('/', authMiddleware, async (req, res) => {
     const sport = SPORTS.has(b.sport) ? b.sport : 'TENNIS';
     const format = FORMATS.has(b.format) ? b.format : 'KNOCKOUT';
 
+    // TenisCash real (fase 2): só admin/gerente pode ligar cobrança/prêmio.
+    // Atleta comum cria torneio só com valores zerados (sem movimento de saldo).
+    const entryFeeCash = Number(b.entryFeeCash) || 0;
+    const prizeCash = Number(b.prizeCash) || 0;
+    const wantsCash = !!b.cashEnabled || entryFeeCash > 0 || prizeCash > 0;
+    if (wantsCash && !cash.isAdmin(req.userRole)) {
+      return res.status(403).json({ error: 'só admin/gerente pode criar torneio com TenisCash real (inscrição/prêmio)' });
+    }
+    const cashEnabled = wantsCash && cash.isAdmin(req.userRole) ? !!b.cashEnabled || entryFeeCash > 0 || prizeCash > 0 : false;
+
     const t = await prisma.tournament.create({
       data: {
         slug: await uniqueSlug(b.slug || b.name),
@@ -100,8 +111,9 @@ router.post('/', authMiddleware, async (req, res) => {
         endDate: b.endDate ? new Date(b.endDate) : null,
         registrationCloseAt: b.registrationCloseAt ? new Date(b.registrationCloseAt) : null,
         maxEntries: b.maxEntries ? Number(b.maxEntries) : null,
-        entryFeeCash: Number(b.entryFeeCash) || 0,
-        prizeCash: Number(b.prizeCash) || 0,
+        cashEnabled,
+        entryFeeCash,
+        prizeCash,
         prizeDescription: b.prizeDescription || null,
         visibility: b.visibility === 'private' ? 'private' : 'public',
       },
@@ -182,6 +194,19 @@ router.patch('/:id', authMiddleware, async (req, res) => {
       if (b[f] !== undefined) data[f] = b[f] ? new Date(b[f]) : null;
     }
     if (b.visibility) data.visibility = b.visibility === 'private' ? 'private' : 'public';
+
+    // Campos de TenisCash real: só admin/gerente altera (antifraude).
+    const touchesCash =
+      b.cashEnabled !== undefined || b.entryFeeCash !== undefined || b.prizeCash !== undefined;
+    if (touchesCash) {
+      if (!cash.isAdmin(req.userRole)) {
+        return res.status(403).json({ error: 'só admin/gerente altera inscrição/prêmio em TenisCash' });
+      }
+      if (b.entryFeeCash !== undefined) data.entryFeeCash = Number(b.entryFeeCash) || 0;
+      if (b.prizeCash !== undefined) data.prizeCash = Number(b.prizeCash) || 0;
+      if (b.cashEnabled !== undefined) data.cashEnabled = !!b.cashEnabled;
+    }
+
     const updated = await prisma.tournament.update({ where: { id: t.id }, data });
     res.json(updated);
   } catch (err) {
@@ -197,8 +222,35 @@ router.post('/:id/status', authMiddleware, async (req, res) => {
     const status = req.body?.status;
     if (!TOURNAMENT_STATUS.has(status)) return res.status(400).json({ error: 'status inválido' });
     const updated = await prisma.tournament.update({ where: { id: t.id }, data: { status } });
-    res.json(updated);
+
+    // Torneio cancelado → estorna 100% das inscrições pagas em TenisCash.
+    let refund = null;
+    if (status === 'CANCELED' && t.cashEnabled) {
+      try {
+        refund = await cash.refundAllEntries(t.id, 'torneio cancelado');
+      } catch (e) {
+        console.error('[tournaments] refund on cancel', e.message);
+      }
+    }
+    res.json(refund && refund.refunded ? { ...updated, refundedEntries: refund.refunded } : updated);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Paga o prêmio em TenisCash ao campeão (só dono/admin). Idempotente + teto.
+router.post('/:id/pay-prize', authMiddleware, async (req, res) => {
+  try {
+    const t = await loadOwned(req, res, req.params.id);
+    if (!t) return;
+    if (!cash.isAdmin(req.userRole) && t.ownerId !== req.userId) {
+      return res.status(403).json({ error: 'sem permissão' });
+    }
+    const r = await cash.payPrize(t.id);
+    if (!r.ok) return res.status(400).json(r);
+    res.json(r);
+  } catch (err) {
+    console.error('[tournaments] pay-prize', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -312,6 +364,18 @@ router.post('/:id/entries', authMiddleware, async (req, res) => {
       },
       include: { members: true },
     });
+
+    // Torneio com TenisCash real → cobra a inscrição na hora (entry nasce CONFIRMED).
+    // Se o saldo não cobre, desfaz a inscrição e avisa (nada fica pela metade).
+    if (t.cashEnabled && t.entryFeeCash > 0) {
+      const c = await cash.chargeEntry(entry.id);
+      if (!c.ok) {
+        await prisma.tournamentEntry.delete({ where: { id: entry.id } }).catch(() => {});
+        return res.status(402).json({ error: c.error });
+      }
+      if (c.charged) entry.entryPaid = true;
+    }
+
     res.status(201).json(entry);
   } catch (err) {
     console.error('[tournaments] entry', err);
@@ -343,15 +407,28 @@ router.delete('/entries/:entryId', authMiddleware, async (req, res) => {
   try {
     const entry = await prisma.tournamentEntry.findUnique({
       where: { id: req.params.entryId },
-      include: { members: true, tournament: { select: { ownerId: true } } },
+      include: { members: true, tournament: { select: { ownerId: true, status: true, cashEnabled: true } } },
     });
     if (!entry) return res.status(404).json({ error: 'inscrição não encontrada' });
     const isOwner = entry.tournament.ownerId === req.userId;
     const isSelf = entry.members.some((m) => m.userId === req.userId);
     const isAdmin = ['admin', 'superadmin', 'manager'].includes(req.userRole);
     if (!isOwner && !isSelf && !isAdmin) return res.status(403).json({ error: 'sem permissão' });
+
+    // Estorno 100% da inscrição em TenisCash SE ainda não começou (DRAFT/OPEN).
+    // Depois de começar (ONGOING/FINISHED) não há estorno (política padrão).
+    let refunded = false;
+    if (entry.entryPaid && entry.tournament.cashEnabled && ['DRAFT', 'OPEN'].includes(entry.tournament.status)) {
+      try {
+        const r = await cash.refundEntry(entry.id, 'inscrição removida');
+        refunded = !!r.refunded;
+      } catch (e) {
+        console.error('[tournaments] refund on delete', e.message);
+      }
+    }
+
     await prisma.tournamentEntry.delete({ where: { id: entry.id } });
-    res.json({ ok: true });
+    res.json({ ok: true, refunded });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -430,13 +507,21 @@ router.post('/entries/:entryId/approve', authMiddleware, async (req, res) => {
   try {
     const entry = await prisma.tournamentEntry.findUnique({
       where: { id: req.params.entryId },
-      include: { tournament: { select: { ownerId: true } } },
+      include: { tournament: { select: { ownerId: true, cashEnabled: true, entryFeeCash: true } } },
     });
     if (!entry) return res.status(404).json({ error: 'inscrição não encontrada' });
     const isAdmin = ['admin', 'superadmin', 'manager'].includes(req.userRole);
     if (entry.tournament.ownerId !== req.userId && !isAdmin) {
       return res.status(403).json({ error: 'só o organizador aprova' });
     }
+
+    // Torneio com TenisCash real → cobra ANTES de confirmar. Saldo insuficiente
+    // = não confirma (fica PENDING), nada pela metade.
+    if (entry.tournament.cashEnabled && entry.tournament.entryFeeCash > 0 && !entry.entryPaid) {
+      const c = await cash.chargeEntry(entry.id);
+      if (!c.ok) return res.status(402).json({ error: c.error });
+    }
+
     const updated = await prisma.tournamentEntry.update({
       where: { id: entry.id },
       data: { status: 'CONFIRMED' },
