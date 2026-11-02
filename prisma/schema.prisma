@@ -3914,6 +3914,22 @@ model TournamentPost {
   @@index([tournamentId, createdAt])
 }
 
+// Notificação in-app (central de avisos do atleta). Sem relação forte
+// com User (userId solto, padrão dos modelos de competição) pra não tocar
+// o modelo User. Lida pelo app via /api/tournaments/notifications.
+model AppNotification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   @default("info") // challenge | entry | result | schedule | info
+  title     String?
+  body      String   @default("")
+  link      String? // rota no app, ex: "#/t/<id>" ou "#/desafios"
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, read, createdAt])
+}
+
 // ============================================================
 // PROFISSIONAL ESPORTIVO — Card público + Gestão + Cobrança
 // ------------------------------------------------------------
