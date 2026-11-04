@@ -1,7 +1,13 @@
 const META_WA_API_VERSION = process.env.META_WHATSAPP_API_VERSION || process.env.META_GRAPH_VERSION || 'v22.0';
 // Token: prioriza dedicado de WhatsApp, depois System User token (META_USER_TOKEN), depois Page Token
-const META_WA_ACCESS_TOKEN = process.env.META_WHATSAPP_ACCESS_TOKEN || process.env.WHATSAPP_ACCESS_TOKEN || process.env.META_USER_TOKEN || process.env.META_PAGE_TOKEN;
-const META_WA_PHONE_NUMBER_ID = process.env.META_WHATSAPP_PHONE_NUMBER_ID || process.env.META_WHATSAPP_PHONE_ID || process.env.WHATSAPP_PHONE_NUMBER_ID;
+const { loadMetaWhatsAppCredentials } = require('./services/whatsappCredentials');
+const META_WA_ENV_CREDENTIALS = {
+  accessToken: process.env.META_WHATSAPP_ACCESS_TOKEN || process.env.WHATSAPP_ACCESS_TOKEN || process.env.META_USER_TOKEN || process.env.META_PAGE_TOKEN,
+  phoneNumberId: process.env.META_WHATSAPP_PHONE_NUMBER_ID || process.env.META_WHATSAPP_PHONE_ID || process.env.WHATSAPP_PHONE_NUMBER_ID,
+  wabaId: process.env.META_WHATSAPP_BUSINESS_ID || process.env.WHATSAPP_BUSINESS_ID || null,
+};
+let connectedMetaCredentials = null;
+let connectedMetaCredentialsPromise = null;
 const META_WA_CODE_TEMPLATE = process.env.META_WHATSAPP_CODE_TEMPLATE || process.env.WHATSAPP_CODE_TEMPLATE;
 const META_WA_CODE_TEMPLATE_LANG = process.env.META_WHATSAPP_CODE_TEMPLATE_LANG || 'pt_BR';
 
@@ -9,11 +15,51 @@ const META_WA_CODE_TEMPLATE_LANG = process.env.META_WHATSAPP_CODE_TEMPLATE_LANG 
 const EVOLUTION_API_URL = (process.env.EVOLUTION_API_URL || '').replace(/\/+$/, '');
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY;
 const EVOLUTION_INSTANCE = process.env.EVOLUTION_INSTANCE || 'teniscash';
-// 'auto' (padrao) = Evolution primeiro, Meta fallback; 'meta' = Meta primeiro (usar quando a Cloud API liberar)
+// Auto mantém Evolution primeiro até a conexão Embedded Signup existir; depois prioriza Meta.
+// 'evolution' e 'meta' permitem escolher explicitamente a ordem.
 const WHATSAPP_PROVIDER = (process.env.WHATSAPP_PROVIDER || 'auto').toLowerCase();
 
+async function loadConnectedMetaCredentials() {
+  if (connectedMetaCredentials) return connectedMetaCredentials;
+  if (!connectedMetaCredentialsPromise) {
+    connectedMetaCredentialsPromise = loadMetaWhatsAppCredentials()
+      .then((credentials) => {
+        connectedMetaCredentials = credentials || null;
+        return connectedMetaCredentials;
+      })
+      .catch((err) => {
+        console.error('[whatsapp/config] não foi possível carregar credenciais Meta armazenadas:', err.message);
+        connectedMetaCredentialsPromise = null;
+        return null;
+      });
+  }
+  return connectedMetaCredentialsPromise;
+}
+
+function currentMetaWhatsAppCredentials() {
+  return connectedMetaCredentials || META_WA_ENV_CREDENTIALS;
+}
+
+function setMetaWhatsAppCredentials(credentials) {
+  connectedMetaCredentials = credentials ? { ...credentials } : null;
+  connectedMetaCredentialsPromise = Promise.resolve(connectedMetaCredentials);
+}
+
+async function getMetaWhatsAppConfigSummary() {
+  await loadConnectedMetaCredentials();
+  const credentials = currentMetaWhatsAppCredentials();
+  return {
+    configured: !!(credentials.accessToken && credentials.phoneNumberId),
+    phoneNumberId: credentials.phoneNumberId || null,
+    businessId: credentials.wabaId || null,
+    displayPhoneNumber: credentials.displayPhoneNumber || null,
+    source: connectedMetaCredentials ? 'embedded-signup' : 'environment',
+  };
+}
+
 function isMetaWhatsAppConfigured() {
-  return !!(META_WA_ACCESS_TOKEN && META_WA_PHONE_NUMBER_ID);
+  const credentials = currentMetaWhatsAppCredentials();
+  return !!(credentials.accessToken && credentials.phoneNumberId);
 }
 
 function isEvolutionConfigured() {
@@ -24,9 +70,17 @@ function isWhatsAppConfigured() {
   return isMetaWhatsAppConfigured() || isEvolutionConfigured();
 }
 
+async function isWhatsAppConfiguredAsync() {
+  await loadConnectedMetaCredentials();
+  return isWhatsAppConfigured();
+}
+
 function whatsappProviderOrder() {
   const order = [];
-  if (WHATSAPP_PROVIDER === 'meta') {
+  if (WHATSAPP_PROVIDER === 'evolution') {
+    if (isEvolutionConfigured()) order.push('evolution');
+    if (isMetaWhatsAppConfigured()) order.push('meta');
+  } else if (WHATSAPP_PROVIDER === 'meta' || connectedMetaCredentials) {
     if (isMetaWhatsAppConfigured()) order.push('meta');
     if (isEvolutionConfigured()) order.push('evolution');
   } else {
@@ -117,14 +171,16 @@ async function sendEvolutionMedia(phone, mediaUrl, fileName, caption, instance =
 }
 
 async function sendMetaWhatsAppPayload(payload) {
+  await loadConnectedMetaCredentials();
   if (!isMetaWhatsAppConfigured()) return { ok: false, error: 'Meta WhatsApp nao configurado' };
 
-  const url = `https://graph.facebook.com/${META_WA_API_VERSION}/${META_WA_PHONE_NUMBER_ID}/messages`;
+  const credentials = currentMetaWhatsAppCredentials();
+  const url = `https://graph.facebook.com/${META_WA_API_VERSION}/${credentials.phoneNumberId}/messages`;
   try {
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${META_WA_ACCESS_TOKEN}`,
+        Authorization: `Bearer ${credentials.accessToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ messaging_product: 'whatsapp', ...payload }),
@@ -183,6 +239,7 @@ function generateCode() {
 }
 
 async function sendVerificationCode(phone) {
+  await loadConnectedMetaCredentials();
   const code = generateCode();
 
   const formattedPhone = formatPhoneBR(phone);
@@ -288,6 +345,7 @@ function formatPhoneBR(raw) {
 }
 
 async function sendCustomMessage(phone, message) {
+  await loadConnectedMetaCredentials();
   const providers = whatsappProviderOrder();
   if (!providers.length) {
     return { ok: false, provider: null, error: 'WhatsApp nao configurado' };
@@ -347,6 +405,9 @@ module.exports = {
   sendCampaignBatch,
   formatPhoneBR,
   isMetaWhatsAppConfigured,
+  isWhatsAppConfiguredAsync,
+  getMetaWhatsAppConfigSummary,
+  setMetaWhatsAppCredentials,
   isEvolutionConfigured,
   isWhatsAppConfigured,
   sendMetaText,

@@ -3547,19 +3547,32 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 <script>
   // Initialize FB SDK quando user abrir a tab WhatsApp
   window.waCoexConfig = null;
+  window.waCoexFbInitPromise = null;
+  window.waCoexFbInitializedFor = null;
+  window.waCoexSignupAttempt = null;
   function waCoexLog(msg) {
     const el = document.getElementById('wa-coex-log');
     if (!el) return;
     el.style.display = 'block';
-    el.innerHTML += '[' + new Date().toLocaleTimeString() + '] ' + msg + '<br>';
+    const row = document.createElement('div');
+    row.textContent = '[' + new Date().toLocaleTimeString() + '] ' + String(msg || '');
+    el.appendChild(row);
     el.scrollTop = el.scrollHeight;
+  }
+  function waCoexEscapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    })[char]);
   }
   async function waCoexLoadConfig() {
     if (window.waCoexConfig) return window.waCoexConfig;
     try {
       const headers = { 'Authorization': 'Bearer ' + (localStorage.getItem('tc_admin_token') || '') };
       const r = await fetch('/api/whatsapp/embedded-signup-config', { headers });
-      const data = await r.json();
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.appId) {
+        throw new Error(data.error || 'A configuração do Meta está incompleta.');
+      }
       window.waCoexConfig = data;
       return data;
     } catch (e) {
@@ -3568,119 +3581,248 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     }
   }
   function waCoexInitFB(appId, graphVersion) {
-    if (window.FB) return;
-    window.fbAsyncInit = function() {
-      FB.init({ appId: appId, autoLogAppEvents: true, xfbml: true, version: graphVersion || 'v22.0' });
-      waCoexLog('FB SDK ready (appId=' + appId + ')');
-    };
-    const s = document.createElement('script');
-    s.async = true; s.defer = true; s.crossOrigin = 'anonymous';
-    s.src = 'https://connect.facebook.net/en_US/sdk.js';
-    document.head.appendChild(s);
+    if (window.FB && window.waCoexFbInitializedFor === appId) return Promise.resolve(window.FB);
+    if (window.FB && window.waCoexFbInitializedFor && window.waCoexFbInitializedFor !== appId) {
+      return Promise.reject(new Error('O SDK do Facebook já foi iniciado para outro aplicativo.'));
+    }
+    if (window.FB) {
+      try {
+        window.FB.init({ appId, autoLogAppEvents: true, xfbml: true, version: graphVersion || 'v22.0' });
+        window.waCoexFbInitializedFor = appId;
+        return Promise.resolve(window.FB);
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    }
+    if (window.waCoexFbInitPromise) return window.waCoexFbInitPromise;
+    window.waCoexFbInitPromise = new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (error) reject(error);
+        else resolve(window.FB);
+      };
+      const timer = setTimeout(() => finish(new Error('O SDK do Facebook demorou para carregar.')), 15000);
+      window.fbAsyncInit = function() {
+        try {
+          window.FB.init({ appId, autoLogAppEvents: true, xfbml: true, version: graphVersion || 'v22.0' });
+          window.waCoexFbInitializedFor = appId;
+          waCoexLog('SDK do Facebook carregado.');
+          finish();
+        } catch (error) {
+          finish(error);
+        }
+      };
+      let s = document.getElementById('wa-coex-fb-sdk');
+      if (!s) {
+        s = document.createElement('script');
+        s.id = 'wa-coex-fb-sdk';
+        s.async = true;
+        s.defer = true;
+        s.crossOrigin = 'anonymous';
+        s.src = 'https://connect.facebook.net/en_US/sdk.js';
+        document.head.appendChild(s);
+      }
+      s.addEventListener('error', () => finish(new Error('Não foi possível carregar o SDK do Facebook.')), { once: true });
+    }).catch((error) => {
+      window.waCoexFbInitPromise = null;
+      throw error;
+    });
+    return window.waCoexFbInitPromise;
   }
   async function waCoexLoadStatus() {
     const div = document.getElementById('wa-coex-status');
+    const connectButton = document.getElementById('wa-coex-connect-btn');
+    if (connectButton && !window.waCoexSignupAttempt) connectButton.disabled = true;
     div.innerHTML = '<div class="loading-spinner">Verificando...</div>';
     try {
       const headers = { 'Authorization': 'Bearer ' + (localStorage.getItem('tc_admin_token') || '') };
       const cfg = await waCoexLoadConfig();
       const r = await fetch('/api/whatsapp/status', { headers });
-      const status = await r.json();
-      const secretOk = cfg?.ready;
+      const status = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(status.error || 'Não foi possível consultar a conexão.');
+      const secretOk = cfg?.appSecretReady;
       div.innerHTML = '<div style="display:grid;grid-template-columns:auto 1fr;gap:8px 16px;font-size:13px">' +
-        '<strong>App ID:</strong><span>' + (cfg?.appId || '—') + '</span>' +
-        '<strong>Config ID (Embedded Signup):</strong><span>' + (cfg?.configId || '—') + '</span>' +
+        '<strong>App ID:</strong><span>' + waCoexEscapeHtml(cfg?.appId || '—') + '</span>' +
+        '<strong>Config ID (Embedded Signup):</strong><span>' + waCoexEscapeHtml(cfg?.configId || '—') + '</span>' +
         '<strong>APP_SECRET no servidor:</strong><span>' + (secretOk ? '✅ configurado' : '❌ FALTA — admin precisa setar META_APP_SECRET no Railway') + '</span>' +
-        '<strong>Phone Number ID:</strong><span>' + (status?.phoneNumberId || '—') + '</span>' +
-        '<strong>WABA ID:</strong><span>' + (status?.businessId || '—') + '</span>' +
-        '<strong>Provider ativo:</strong><span>' + (status?.metaConfigured ? '✅ Cloud API configurado' : '⚠️ pendente') + '</span>' +
+        '<strong>Phone Number ID:</strong><span>' + waCoexEscapeHtml(status?.phoneNumberId || '—') + '</span>' +
+        '<strong>WABA ID:</strong><span>' + waCoexEscapeHtml(status?.businessId || '—') + '</span>' +
+        '<strong>Número conectado:</strong><span>' + waCoexEscapeHtml(status?.displayPhoneNumber || '—') + '</span>' +
+        '<strong>Cloud API:</strong><span>' + (status?.metaConnectionSource === 'embedded-signup' && status?.displayPhoneNumber ? '✅ conexão salva' : status?.metaConfigured ? '⚠️ credenciais configuradas; vínculo do número não confirmado' : '⚠️ pendente') + '</span>' +
+        '<strong>Canal prioritário:</strong><span>' + waCoexEscapeHtml(status?.provider || '—') + '</span>' +
         '</div>';
-      if (cfg) waCoexInitFB(cfg.appId, cfg.graphVersion);
+      if (cfg) {
+        try {
+          await waCoexInitFB(cfg.appId, cfg.graphVersion);
+        } catch (e) {
+          waCoexLog('Falha ao iniciar SDK: ' + e.message);
+        }
+      }
     } catch (e) {
-      div.innerHTML = '<div style="color:red">Erro: ' + e.message + '</div>';
+      div.innerHTML = '<div style="color:red">Erro: ' + waCoexEscapeHtml(e.message) + '</div>';
+    } finally {
+      if (connectButton && !window.waCoexSignupAttempt) connectButton.disabled = false;
     }
   }
-  async function waCoexLaunch() {
-    const cfg = await waCoexLoadConfig();
-    if (!cfg) { alert('Erro carregando config'); return; }
-    if (!cfg.ready) {
+  function waCoexLaunch() {
+    const cfg = window.waCoexConfig;
+    if (!cfg) { alert('Aguarde o carregamento do status do WhatsApp e tente novamente.'); return; }
+    if (!cfg.configId) {
+      alert('Falta cadastrar META_LOGIN_CONFIG_ID no TenisCash usando o Config ID atual do Embedded Signup no painel da Meta.');
+      return;
+    }
+    if (!cfg.appSecretReady) {
       alert('⚠️ META_APP_SECRET não está configurado no Railway. Sem ele, o callback OAuth não consegue trocar o code por token.');
       return;
     }
-    // Estratégia: redirect na mesma tab (em vez de popup) pra evitar bloqueio.
-    // Quando voltar com ?code=XXX&state=wa_coex_*, waCoexHandleReturn() processa.
-    // redirect_uri NÃO leva query (Meta modo estrito) — usamos state pra identificar.
-    const redirectUri = window.location.origin + '/admin.html';
-    const extras = encodeURIComponent(JSON.stringify({
-      setup: {},
-      featureType: 'whatsapp_business_app_onboarding',  // Coexistence
-      sessionInfoVersion: '3',
-      version: 'v3',
-    }));
-    const url = 'https://www.facebook.com/' + (cfg.graphVersion || 'v22.0') +
-      '/dialog/oauth' +
-      '?client_id=' + cfg.appId +
-      '&config_id=' + cfg.configId +
-      '&redirect_uri=' + encodeURIComponent(redirectUri) +
-      '&response_type=code' +
-      '&override_default_response_type=true' +
-      '&extras=' + extras +
-      '&state=wa_coex_' + Date.now();
-    waCoexLog('Redirecionando pro Embedded Signup do Meta...');
-    waCoexLog('URL: ' + url.substring(0, 100) + '...');
-    // Salva intent no localStorage pra processar quando voltar
-    localStorage.setItem('wa_coex_pending', '1');
-    setTimeout(() => { window.location.href = url; }, 800);
+    if (window.waCoexSignupAttempt) {
+      waCoexLog('Já existe uma conexão em andamento.');
+      return;
+    }
+    if (!window.FB || window.waCoexFbInitializedFor !== cfg.appId || typeof window.FB.login !== 'function') {
+      alert('O SDK do Facebook ainda está carregando. Aguarde o status concluir e tente novamente.');
+      return;
+    }
+    const button = document.getElementById('wa-coex-connect-btn');
+    if (button) button.disabled = true;
+    window.waCoexSignupAttempt = { code: null, ids: null, timer: null };
+    window.waCoexSignupAttempt.timer = setTimeout(() => {
+      waCoexFinishSignupAttempt('Tempo esgotado aguardando a confirmação da Meta. Nenhuma conexão foi salva.');
+    }, 180000);
+    waCoexLog('Abrindo o cadastro integrado da Meta. Conclua a seleção do número na janela da Meta.');
+    try {
+      window.FB.login((response) => {
+        const code = response?.authResponse?.code;
+        if (!code) {
+          const attempt = window.waCoexSignupAttempt;
+          if (attempt) waCoexFinishSignupAttempt('A Meta não retornou o código de autorização. Nenhuma conexão foi salva.');
+          return;
+        }
+        if (!window.waCoexSignupAttempt) return;
+        window.waCoexSignupAttempt.code = code;
+        waCoexLog('Autorização recebida; aguardando os IDs do telefone e da conta.');
+        waCoexMaybeFinishSignup();
+      }, {
+        config_id: cfg.configId,
+        auth_type: 'rerequest',
+        response_type: 'code',
+        override_default_response_type: true,
+        extras: {
+          setup: {},
+          featureType: 'whatsapp_business_app_onboarding',
+          sessionInfoVersion: '3',
+        },
+      });
+    } catch (e) {
+      waCoexFinishSignupAttempt('A Meta não abriu o cadastro: ' + e.message);
+    }
   }
 
-  function waCoexHandleReturn() {
-    const params = new URLSearchParams(window.location.search);
-    const state = params.get('state') || '';
-    if (!state.startsWith('wa_coex_')) return;
-    const code = params.get('code');
-    const error = params.get('error');
-    const errorMsg = params.get('error_description') || params.get('error_reason');
-    // Limpa URL
-    history.replaceState({}, '', '/admin.html');
-    localStorage.removeItem('wa_coex_pending');
-    // Auto-abre tab WhatsApp
-    setTimeout(() => switchTabByName('whatsapp'), 300);
-    setTimeout(() => {
-      if (error) {
-        waCoexLog('❌ Meta retornou erro: ' + error + (errorMsg ? ' — ' + errorMsg : ''));
-        return;
-      }
-      if (!code) {
-        waCoexLog('❌ Sem code na URL de retorno.');
-        return;
-      }
-      waCoexLog('✅ Code recebido (len=' + code.length + '), enviando ao backend...');
-      const headers = {
-        'Authorization': 'Bearer ' + (localStorage.getItem('tc_admin_token') || ''),
-        'Content-Type': 'application/json',
-      };
-      fetch('/api/whatsapp/embedded-signup-callback', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ code }),
-      })
-        .then(r => r.json())
-        .then(d => {
-          waCoexLog('Backend response: ' + JSON.stringify(d, null, 2));
-          if (d.success) {
-            waCoexLog('✅✅ SUCESSO. WABA=' + d.wabaId + ' Phone=' + d.phoneNumberId + ' Subscribed=' + d.subscribed);
-            waCoexLog('Token guardado no log do servidor — atualize META_USER_TOKEN no Railway.');
-            waCoexLoadStatus();
-          } else {
-            waCoexLog('❌ ERRO: ' + (d.error || 'desconhecido'));
-          }
-        })
-        .catch(err => waCoexLog('❌ fetch err: ' + err.message));
-    }, 600);
+  function waCoexFinishSignupAttempt(message) {
+    const attempt = window.waCoexSignupAttempt;
+    if (attempt?.timer) clearTimeout(attempt.timer);
+    window.waCoexSignupAttempt = null;
+    const button = document.getElementById('wa-coex-connect-btn');
+    if (button) button.disabled = false;
+    if (message) waCoexLog(message);
   }
-  // Auto-detecta retorno do Embedded Signup
-  document.addEventListener('DOMContentLoaded', waCoexHandleReturn);
-  if (document.readyState !== 'loading') waCoexHandleReturn();
+
+  function waCoexMaybeFinishSignup() {
+    const attempt = window.waCoexSignupAttempt;
+    if (!attempt || !attempt.code || !attempt.ids) return;
+    const { code, ids } = attempt;
+    if (attempt.submitting) return;
+    attempt.submitting = true;
+    if (attempt.timer) clearTimeout(attempt.timer);
+    waCoexLog('IDs do telefone recebidos; finalizando a conexão no TenisCash.');
+    const headers = {
+      'Authorization': 'Bearer ' + (localStorage.getItem('tc_admin_token') || ''),
+      'Content-Type': 'application/json',
+    };
+    fetch('/api/whatsapp/embedded-signup-callback', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        code,
+        phone_number_id: ids.phone_number_id,
+        waba_id: ids.waba_id,
+        business_id: ids.business_id || null,
+      }),
+    })
+      .then(async (r) => {
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data.success) throw new Error(data.error || 'A Meta não confirmou a conexão.');
+        return data;
+      })
+      .then((data) => {
+        waCoexLog('Conexão salva para ' + (data.displayPhoneNumber || data.phoneNumberId) + '. WABA ' + data.wabaId + '; webhook da conta ' + (data.subscribed ? 'confirmado' : 'pendente') + '.');
+        if (data.webhookSet === false) waCoexLog('A Meta conectou a conta, mas não confirmou a configuração específica do webhook do telefone.');
+        waCoexLoadStatus();
+      })
+      .catch((error) => {
+        waCoexLog('Falha ao concluir a conexão: ' + error.message);
+      })
+      .finally(() => {
+        window.waCoexSignupAttempt = null;
+        const button = document.getElementById('wa-coex-connect-btn');
+        if (button) button.disabled = false;
+      });
+  }
+
+  function waCoexHandleMetaMessage(event) {
+    let message = event.data;
+    try {
+      if (typeof message === 'string') message = JSON.parse(message);
+      if (message && typeof message.data === 'string') {
+        try { message.data = JSON.parse(message.data); } catch (_) {}
+      }
+    } catch (_) {
+      return;
+    }
+    const host = (() => {
+      try { return new URL(event.origin).hostname; } catch (_) { return ''; }
+    })();
+    if (!['www.facebook.com', 'web.facebook.com', 'm.facebook.com'].includes(host) || !event.origin.startsWith('https://')) return;
+    if (!message || message.type !== 'WA_EMBEDDED_SIGNUP') return;
+    const eventName = message.event || message.data?.event;
+    const data = message.data && typeof message.data === 'object' ? message.data : message;
+    if (eventName === 'CANCEL' || eventName === 'ERROR') {
+      waCoexFinishSignupAttempt('A Meta cancelou ou não concluiu a seleção. Nenhuma conexão foi salva.');
+      return;
+    }
+    if (!['FINISH', 'FINISH_ONLY_WABA', 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING'].includes(eventName)) return;
+    const phoneNumberId = String(data.phone_number_id || data.phoneNumberId || '').trim();
+    const wabaId = String(data.waba_id || data.wabaId || '').trim();
+    const businessId = String(data.business_id || data.businessId || '').trim();
+    if (!wabaId || (!phoneNumberId && eventName !== 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING')) {
+      waCoexFinishSignupAttempt('A Meta não informou o telefone e a conta WhatsApp. Nenhuma conexão foi salva.');
+      return;
+    }
+    if (!window.waCoexSignupAttempt) return;
+    window.waCoexSignupAttempt.ids = {
+      phone_number_id: phoneNumberId,
+      waba_id: wabaId,
+      business_id: businessId || null,
+    };
+    waCoexLog('Seleção da conta recebida da Meta; o servidor confirmará o número.');
+    waCoexMaybeFinishSignup();
+  }
+  window.addEventListener('message', waCoexHandleMetaMessage);
+
+  function waCoexHandleLegacyOAuthReturn() {
+    const params = new URLSearchParams(window.location.search);
+    if (!(params.get('state') || '').startsWith('wa_coex_')) return;
+    history.replaceState({}, '', '/admin.html');
+    setTimeout(() => {
+      if (typeof switchTabByName === 'function') switchTabByName('whatsapp');
+      waCoexLog('A tentativa anterior não concluiu a conexão. Inicie novamente pelo botão Conectar WhatsApp.');
+    }, 300);
+  }
+  document.addEventListener('DOMContentLoaded', waCoexHandleLegacyOAuthReturn);
+  if (document.readyState !== 'loading') waCoexHandleLegacyOAuthReturn();
   async function waCoexTestSend() {
     const phone = prompt('Telefone destino (com DDD, ex: 5583996713153):');
     if (!phone) return;
