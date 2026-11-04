@@ -275,10 +275,10 @@ router.post('/embedded-signup-callback', authMiddleware, adminMiddleware, async 
   try {
     const { code, phone_number_id, waba_id, business_id } = req.body || {};
     if (!code) return res.status(400).json({ error: 'code ausente' });
-    const phoneNumberId = String(phone_number_id || '').trim();
+    let phoneNumberId = String(phone_number_id || '').trim();
     const wabaId = String(waba_id || '').trim();
     const businessId = String(business_id || '').trim();
-    if (!/^\d{5,30}$/.test(phoneNumberId) || !/^\d{5,30}$/.test(wabaId) || (businessId && !/^\d{5,30}$/.test(businessId))) {
+    if ((phoneNumberId && !/^\d{5,30}$/.test(phoneNumberId)) || !/^\d{5,30}$/.test(wabaId) || (businessId && !/^\d{5,30}$/.test(businessId))) {
       return res.status(400).json({ error: 'A Meta não retornou os IDs da conta e do telefone. Nenhuma conexão foi salva.' });
     }
 
@@ -302,6 +302,22 @@ router.post('/embedded-signup-callback', authMiddleware, adminMiddleware, async 
 
     const accessToken = tokenData.access_token;
 
+    // A conclusão de coexistência pode retornar apenas waba_id. Resolve o telefone
+    // pela conta autorizada e pelo número esperado, sem escolher o primeiro ativo.
+    const expectedPhone = String(process.env.META_WHATSAPP_EXPECTED_PHONE || '558396713153').replace(/\D/g, '');
+    const numbersResp = await fetch(`https://graph.facebook.com/${graphVersion}/${wabaId}/phone_numbers?fields=id,display_phone_number&limit=100`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const numbersData = await numbersResp.json().catch(() => ({}));
+    const matches = Array.isArray(numbersData.data) ? numbersData.data.filter((phone) =>
+      String(phone.display_phone_number || '').replace(/\D/g, '') === expectedPhone &&
+      (!phoneNumberId || String(phone.id) === phoneNumberId)
+    ) : [];
+    if (!numbersResp.ok || numbersData.error || matches.length !== 1 || !/^\d{5,30}$/.test(String(matches[0]?.id || ''))) {
+      return res.status(409).json({ error: 'A conta autorizada não confirmou um único telefone da Sports & Tennis esperado. Nenhuma conexão foi salva.' });
+    }
+    phoneNumberId = String(matches[0].id);
+
     // Confirma que o token trocado realmente acessa o telefone escolhido no Embedded Signup.
     const phoneResp = await fetch(`https://graph.facebook.com/${graphVersion}/${phoneNumberId}?fields=id,display_phone_number,verified_name`, {
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -313,7 +329,6 @@ router.post('/embedded-signup-callback', authMiddleware, adminMiddleware, async 
         details: phoneData.error?.message || 'Telefone não acessível pelo token recebido.',
       });
     }
-    const expectedPhone = String(process.env.META_WHATSAPP_EXPECTED_PHONE || '558396713153').replace(/\D/g, '');
     const selectedPhone = String(phoneData.display_phone_number || '').replace(/\D/g, '');
     if (expectedPhone && selectedPhone !== expectedPhone) {
       return res.status(409).json({

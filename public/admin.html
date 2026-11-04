@@ -3797,7 +3797,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     const phoneNumberId = String(data.phone_number_id || data.phoneNumberId || '').trim();
     const wabaId = String(data.waba_id || data.wabaId || '').trim();
     const businessId = String(data.business_id || data.businessId || '').trim();
-    if (!phoneNumberId || !wabaId) {
+    if (!wabaId || (!phoneNumberId && eventName !== 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING')) {
       waCoexFinishSignupAttempt('A Meta não informou o telefone e a conta WhatsApp. Nenhuma conexão foi salva.');
       return;
     }
@@ -3807,7 +3807,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       waba_id: wabaId,
       business_id: businessId || null,
     };
-    waCoexLog('Seleção do telefone recebida da Meta.');
+    waCoexLog('Seleção da conta recebida da Meta; o servidor confirmará o número.');
     waCoexMaybeFinishSignup();
   }
   window.addEventListener('message', waCoexHandleMetaMessage);
