@@ -92,7 +92,7 @@ async function notifySellers(store, { title, body, url, whatsapp: waText }) {
     });
     for (const s of sellers) {
       pushSvc.sendToUser(s.id, { title, body, url, tag: 'live-' + store.id }).catch(() => {});
-      if (waText && s.phone && whatsapp.isWhatsAppConfigured && whatsapp.isWhatsAppConfigured()) {
+      if (waText && s.phone && whatsapp.isWhatsAppConfiguredAsync && await whatsapp.isWhatsAppConfiguredAsync()) {
         whatsapp.sendCustomMessage(s.phone, waText).catch(() => {});
       }
     }

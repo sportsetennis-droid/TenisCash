@@ -1,7 +1,8 @@
 const express = require('express');
 const crypto = require('crypto');
-const { sendCustomMessage, sendEvolutionRaw, isMetaWhatsAppConfigured, isEvolutionConfigured, formatPhoneBR } = require('../whatsapp');
+const { sendCustomMessage, sendEvolutionRaw, isMetaWhatsAppConfigured, isEvolutionConfigured, formatPhoneBR, getMetaWhatsAppConfigSummary, setMetaWhatsAppCredentials } = require('../whatsapp');
 const { authMiddleware, adminMiddleware } = require('../middleware');
+const { saveMetaWhatsAppCredentials } = require('../services/whatsappCredentials');
 const { getAttendantReply, isEnabled: attendantEnabled } = require('../services/aiAttendant');
 const { handleMetaWebhook, INSTANCE: METAFARD_INSTANCE } = require('../services/metaFardamentosAttendant');
 const { handleBarataoWebhook, INSTANCE: BARATAO_INSTANCE } = require('../services/barataoAttendant');
@@ -203,18 +204,31 @@ router.post('/evolution', async (req, res) => {
   }
 });
 
-router.get('/status', authMiddleware, adminMiddleware, (_req, res) => {
-  const metaConfigured = isMetaWhatsAppConfigured();
+router.get('/status', authMiddleware, adminMiddleware, async (_req, res) => {
+  const metaConnection = await getMetaWhatsAppConfigSummary();
+  const metaConfigured = metaConnection.configured || isMetaWhatsAppConfigured();
   const evolutionConfigured = isEvolutionConfigured();
+  const providerSetting = (process.env.WHATSAPP_PROVIDER || 'auto').toLowerCase();
+  const provider = providerSetting === 'evolution' && evolutionConfigured
+    ? 'evolution'
+    : providerSetting === 'meta' && metaConfigured
+      ? 'meta'
+      : providerSetting === 'auto' && metaConnection.source === 'embedded-signup' && metaConfigured
+        ? 'meta'
+        : evolutionConfigured
+          ? 'evolution'
+          : 'meta';
 
   res.json({
-    provider: evolutionConfigured ? 'evolution' : 'meta',
+    provider,
     ready: metaConfigured || evolutionConfigured,
     metaConfigured,
     evolutionConfigured,
+    metaConnectionSource: metaConnection.source,
     evolutionInstance: process.env.EVOLUTION_INSTANCE || 'teniscash',
-    phoneNumberId: process.env.META_WHATSAPP_PHONE_NUMBER_ID || process.env.META_WHATSAPP_PHONE_ID || process.env.WHATSAPP_PHONE_NUMBER_ID || null,
-    businessId: process.env.META_WHATSAPP_BUSINESS_ID || process.env.WHATSAPP_BUSINESS_ID || null,
+    phoneNumberId: metaConnection.phoneNumberId || process.env.META_WHATSAPP_PHONE_NUMBER_ID || process.env.META_WHATSAPP_PHONE_ID || process.env.WHATSAPP_PHONE_NUMBER_ID || null,
+    businessId: metaConnection.businessId || process.env.META_WHATSAPP_BUSINESS_ID || process.env.WHATSAPP_BUSINESS_ID || null,
+    displayPhoneNumber: metaConnection.displayPhoneNumber || null,
     webhookUrl: '/api/whatsapp/webhook',
   });
 });
@@ -236,22 +250,24 @@ router.post('/send-test', authMiddleware, adminMiddleware, async (req, res) => {
 
 // =====================================================================
 // EMBEDDED SIGNUP COEXISTENCE
-// Fluxo: usuario clica botao no admin -> FB.login abre popup Meta ->
-// usuario passa pelo wizard escolhendo "Use WhatsApp Business app" ->
-// Meta retorna `code` (curto, ~5s) -> trocamos por System User Token (~60d+) ->
-// salvamos em env vars / DB e atualizamos subscribed_apps.
+// O SDK da Meta devolve o código OAuth e os IDs da conta/telefone em sinais separados.
+// O callback valida o número esperado, troca o código, inscreve o webhook e guarda
+// as credenciais cifradas no banco. A versão do fluxo vem da configuração Meta.
 // =====================================================================
 
 router.get('/embedded-signup-config', authMiddleware, adminMiddleware, (_req, res) => {
   const appId = process.env.META_APP_ID || '2450210998825590';
-  const configId = process.env.META_LOGIN_CONFIG_ID || '961531953387744';
+  const configId = process.env.META_LOGIN_CONFIG_ID || null;
   const graphVersion = process.env.META_WHATSAPP_API_VERSION || 'v22.0';
+  const appSecretReady = !!process.env.META_APP_SECRET;
   res.json({
     appId,
     configId,
     graphVersion,
     callbackPath: '/api/whatsapp/embedded-signup-callback',
-    ready: !!(process.env.META_APP_SECRET),
+    appSecretReady,
+    configReady: !!configId,
+    ready: !!(appSecretReady && configId),
   });
 });
 
@@ -259,6 +275,12 @@ router.post('/embedded-signup-callback', authMiddleware, adminMiddleware, async 
   try {
     const { code, phone_number_id, waba_id, business_id } = req.body || {};
     if (!code) return res.status(400).json({ error: 'code ausente' });
+    const phoneNumberId = String(phone_number_id || '').trim();
+    const wabaId = String(waba_id || '').trim();
+    const businessId = String(business_id || '').trim();
+    if (!/^\d{5,30}$/.test(phoneNumberId) || !/^\d{5,30}$/.test(wabaId) || (businessId && !/^\d{5,30}$/.test(businessId))) {
+      return res.status(400).json({ error: 'A Meta não retornou os IDs da conta e do telefone. Nenhuma conexão foi salva.' });
+    }
 
     const appId = process.env.META_APP_ID || '2450210998825590';
     const appSecret = process.env.META_APP_SECRET;
@@ -279,65 +301,92 @@ router.post('/embedded-signup-callback', authMiddleware, adminMiddleware, async 
     }
 
     const accessToken = tokenData.access_token;
-    console.log(`[whatsapp/embedded-signup] token obtido | waba=${waba_id} | phone=${phone_number_id} | business=${business_id}`);
+
+    // Confirma que o token trocado realmente acessa o telefone escolhido no Embedded Signup.
+    const phoneResp = await fetch(`https://graph.facebook.com/${graphVersion}/${phoneNumberId}?fields=id,display_phone_number,verified_name`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const phoneData = await phoneResp.json().catch(() => ({}));
+    if (!phoneResp.ok || phoneData.error || String(phoneData.id || '') !== phoneNumberId) {
+      return res.status(400).json({
+        error: 'A Meta não confirmou acesso ao telefone selecionado. Nenhuma conexão foi salva.',
+        details: phoneData.error?.message || 'Telefone não acessível pelo token recebido.',
+      });
+    }
+    const expectedPhone = String(process.env.META_WHATSAPP_EXPECTED_PHONE || '558396713153').replace(/\D/g, '');
+    const selectedPhone = String(phoneData.display_phone_number || '').replace(/\D/g, '');
+    if (expectedPhone && selectedPhone !== expectedPhone) {
+      return res.status(409).json({
+        error: 'O número selecionado na Meta não é o WhatsApp da Sports & Tennis esperado. Nenhuma conexão foi salva.',
+      });
+    }
 
     // 2. Subscribe webhook field `messages` na WABA com este token (idempotente)
     let subscribed = false;
-    if (waba_id) {
-      try {
-        const subUrl = `https://graph.facebook.com/${graphVersion}/${waba_id}/subscribed_apps`;
-        const subResp = await fetch(subUrl, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        const subData = await subResp.json();
-        subscribed = !!subData.success;
-        console.log(`[whatsapp/embedded-signup] subscribe WABA ${waba_id}: ${JSON.stringify(subData)}`);
-      } catch (err) {
-        console.error('[whatsapp/embedded-signup] erro subscribe:', err.message);
-      }
+    try {
+      const subUrl = `https://graph.facebook.com/${graphVersion}/${wabaId}/subscribed_apps`;
+      const subResp = await fetch(subUrl, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const subData = await subResp.json().catch(() => ({}));
+      subscribed = !!subData.success;
+    } catch (err) {
+      console.error('[whatsapp/embedded-signup] falha ao inscrever webhook:', err.message);
+    }
+    if (!subscribed) {
+      return res.status(502).json({ error: 'A Meta não concluiu a inscrição do webhook para a conta. Nenhuma conexão foi salva.' });
     }
 
     // 3. Configura webhook URL no phone_number (importante pra Coexistence)
     let webhookSet = false;
-    if (phone_number_id) {
+    if (phoneNumberId) {
       try {
         const cbUrl = process.env.META_WHATSAPP_WEBHOOK_URL || 'https://teniscash.com.br/api/whatsapp/webhook';
         const verifyToken = process.env.META_WHATSAPP_VERIFY_TOKEN || DEFAULT_VERIFY_TOKEN;
-        const phoneUrl = `https://graph.facebook.com/${graphVersion}/${phone_number_id}`;
-        const phoneResp = await fetch(phoneUrl, {
+        const webhookResp = await fetch(`https://graph.facebook.com/${graphVersion}/${phoneNumberId}`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             webhook_configuration: { override_callback_uri: cbUrl, verify_token: verifyToken },
           }),
         });
-        const phoneData = await phoneResp.json();
-        webhookSet = !!phoneData.success;
-        console.log(`[whatsapp/embedded-signup] phone webhook set: ${JSON.stringify(phoneData)}`);
+        const webhookData = await webhookResp.json().catch(() => ({}));
+        webhookSet = !!webhookData.success;
       } catch (err) {
         console.error('[whatsapp/embedded-signup] erro webhook config:', err.message);
       }
     }
 
-    // 4. Retorna pro frontend (mascara token mas registra em log)
+    const credentials = {
+      accessToken,
+      phoneNumberId,
+      wabaId,
+      businessId: businessId || null,
+      displayPhoneNumber: phoneData.display_phone_number || null,
+      verifiedName: phoneData.verified_name || null,
+      connectedAt: new Date().toISOString(),
+    };
+    await saveMetaWhatsAppCredentials(credentials);
+    setMetaWhatsAppCredentials(credentials);
+    console.log(`[whatsapp/embedded-signup] conexão salva | waba=${wabaId} | phone=${phoneNumberId} | webhook=${webhookSet}`);
+
+    // 4. Nunca devolve o token Meta ao navegador; ele fica cifrado no banco.
     return res.json({
       success: true,
-      tokenObtained: true,
-      tokenLength: accessToken.length,
-      tokenPreview: accessToken.substring(0, 12) + '...',
-      wabaId: waba_id,
-      phoneNumberId: phone_number_id,
-      businessId: business_id,
+      connected: true,
+      tokenStored: true,
+      wabaId,
+      phoneNumberId,
+      businessId: businessId || null,
+      displayPhoneNumber: credentials.displayPhoneNumber,
       subscribed,
       webhookSet,
-      nextStep: 'Token gerado. Copie do log do Railway e atualize META_USER_TOKEN/META_WHATSAPP_ACCESS_TOKEN nas env vars.',
-      // Em prod, idealmente persistimos em DB encrypted. Por ora logamos pro admin copiar.
-      tokenFull: accessToken,
+      warning: webhookSet ? null : 'O telefone foi conectado, mas a configuração específica do webhook não foi confirmada.',
     });
   } catch (err) {
-    console.error('[whatsapp/embedded-signup-callback]', err);
-    return res.status(500).json({ error: err.message || 'Erro no callback' });
+    console.error('[whatsapp/embedded-signup-callback]', err.message || 'falha');
+    return res.status(500).json({ error: 'Falha ao finalizar a conexão com o WhatsApp. Nenhum token foi mostrado no navegador.' });
   }
 });
 
