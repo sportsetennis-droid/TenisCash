@@ -3651,7 +3651,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         '<strong>Phone Number ID:</strong><span>' + waCoexEscapeHtml(status?.phoneNumberId || '—') + '</span>' +
         '<strong>WABA ID:</strong><span>' + waCoexEscapeHtml(status?.businessId || '—') + '</span>' +
         '<strong>Número conectado:</strong><span>' + waCoexEscapeHtml(status?.displayPhoneNumber || '—') + '</span>' +
-        '<strong>Cloud API:</strong><span>' + (status?.metaConfigured ? '✅ conectado' : '⚠️ pendente') + '</span>' +
+        '<strong>Cloud API:</strong><span>' + (status?.metaConnectionSource === 'embedded-signup' && status?.displayPhoneNumber ? '✅ conexão salva' : status?.metaConfigured ? '⚠️ credenciais configuradas; vínculo do número não confirmado' : '⚠️ pendente') + '</span>' +
         '<strong>Canal prioritário:</strong><span>' + waCoexEscapeHtml(status?.provider || '—') + '</span>' +
         '</div>';
       if (cfg) {
@@ -3712,6 +3712,8 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         override_default_response_type: true,
         extras: {
           setup: {},
+          featureType: 'whatsapp_business_app_onboarding',
+          sessionInfoVersion: '3',
         },
       });
     } catch (e) {
@@ -3791,7 +3793,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       waCoexFinishSignupAttempt('A Meta cancelou ou não concluiu a seleção. Nenhuma conexão foi salva.');
       return;
     }
-    if (eventName !== 'FINISH' && eventName !== 'FINISH_ONLY_WABA') return;
+    if (!['FINISH', 'FINISH_ONLY_WABA', 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING'].includes(eventName)) return;
     const phoneNumberId = String(data.phone_number_id || data.phoneNumberId || '').trim();
     const wabaId = String(data.waba_id || data.wabaId || '').trim();
     const businessId = String(data.business_id || data.businessId || '').trim();
