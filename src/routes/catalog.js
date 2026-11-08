@@ -319,20 +319,19 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
       const candidateTerms = new Set();
       for (const rawTerm of salesTerms) {
         const term = normalize(rawTerm).replace(/[^a-z0-9]/g, '');
-        if (term.length <= 4) {
-          if (term.length <= 2) candidateTerms.add(term);
-          else for (let i = 0; i < term.length - 1; i++) candidateTerms.add(term.slice(i, i + 2));
-        } else {
-          for (let i = 0; i < term.length - 2; i++) candidateTerms.add(term.slice(i, i + 3));
+        if (term.length <= 3) candidateTerms.add(term);
+        else {
+          candidateTerms.add(term.slice(0, 3));
+          candidateTerms.add(term.slice(-3));
         }
       }
-      const grams = [...candidateTerms].slice(0, 32);
-      if (grams.length) {
+      const fragments = [...candidateTerms].slice(0, 24);
+      if (fragments.length) {
         const candidates = await prisma.product.findMany({
           where: {
             AND: [
               ...baseAndConds,
-              { OR: grams.flatMap(t => [
+              { OR: fragments.flatMap(t => [
                 { name: { contains: t, mode: 'insensitive' } },
                 { sku: { contains: t, mode: 'insensitive' } },
                 { brand: { contains: t, mode: 'insensitive' } },
