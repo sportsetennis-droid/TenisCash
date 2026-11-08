@@ -795,3 +795,40 @@ Ordem do Douglas: se o código já tiver bipe não excluído na mesma loja e rod
 
 ## Conferência parcial por variante — 16/09/2026
 Pedido Douglas: disponibilizar a contagem parcial nas categorias e na consulta de estoque do vendedor. Novo read model stockVerification calcula por rodada ativa + loja + ProductSize, preservando produto/cor e sem somar StoreStock ao contado. Verde + ✓ informa quantidade validada disponível; amarelo indica pendência/reconciliação; cinza não conferido não significa falta. Evidência expansível contém barcode, operador, data e rodada. Filtros nas duas telas; totalizador de categorias em Conferidos usa apenas saldo validado. Saídas registradas (venda/transferência) posteriores à contagem reduzem saldo derivado uma vez, sem escrever estoque; entradas/ajustes, saldo negativo e movimentos intercalados exigem reconferência. Adidas com confirmação de tamanho anterior ao bipe não recebe verde. Fotos danificadas sem variante não são promovidas a saldo validado. Sem mudança fiscal, comprado ou encerramento da rodada. Estado de publicação e evidências no BIPAGEM.md da tarefa.
+
+## ⚖️ CONSTITUIÇÃO DO SISTEMA APEX / TORNEIOS — dono 2026-11-08
+
+Fundada pelo dono: **"primeiro é testar antes de dizer que está pronto; segundo é gravar o caminho que faço para acessar ou alterar tudo; terceiro é colocar tudo que for necessário de programação."** As 3 leis valem pra TODA sessão.
+
+### LEI 1 — TESTAR NO AMBIENTE REAL ANTES DE DIZER "PRONTO"
+- NUNCA dizer "funciona/pronto/no ar" sem validar em **produção** (`teniscash.com.br`), não só no código ou no "deploy ok".
+- Tenho acesso de rede ao site: `curl` no endpoint real → confirmar **200 + os DADOS certos**.
+- ⚠️ **O SPA responde 200 pra rota inexistente** (fallback HTML). Então 200 não prova nada — conferir se o corpo é **JSON de verdade** (ou o conteúdo esperado), não só o código. Igual pra deploy: esperar a rota devolver JSON, não só 200.
+- Testar em dado REAL **sem sujar**: usar dado de teste e **APAGAR** depois; NUNCA "finalizar"/mudar o estado de um jogo/torneio real já compartilhado.
+- Endpoint com login de admin eu não consigo testar sem token → falar explícito: "testei o público X; o Y precisa você clicar / um token".
+- Padrão de fala: "testado X, Y, Z (no ar, com limpeza)" só depois de testar mesmo; senão "falta testar W com você".
+
+### LEI 2 — GRAVAR O CAMINHO DE ACESSO / ALTERAÇÃO (todo caminho fica aqui)
+**URLs:** site `https://teniscash.com.br` · health `/api/health` · gestão/árbitro `/torneios.html` · página pública do torneio `/t/<slug>` · app do cliente `/` · card do atleta `/atleta/<handle>`.
+**Rede (sessão cloud):** a sessão só alcança o site se `teniscash.com.br` estiver liberado no ambiente (já liberado no Default). Sessão nova sem acesso → liberar o host nas settings do ambiente (ferramentas de environment) antes de curlar.
+**Deploy:** fluxo = branch → PR → **squash merge no `main`** → Railway deploya sozinho. CI roda no main/PR (npm ci + `prisma generate` + `node --check` + `check-requires`). Deploy leva ~2-4 min; o healthcheck mantém a versão antiga se o boot quebrar.
+**⚠️⚠️ A ARMADILHA — MIGRAÇÃO NÃO RODA NO DEPLOY:** o `startCommand` do `railway.toml` é só `node src/index.js` — **SEM `prisma db push`** (removido no commit `96d9e0e`, "start app without destructive schema push", pra evitar push destrutivo). Logo **COLUNA/TABELA NOVA NÃO ENTRA SOZINHA NO BANCO**. Toda mudança de schema **ADITIVA** tem que ir como `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` / `CREATE TABLE IF NOT EXISTS` em **`src/services/ensureApexSchema.js`** (roda no boot, idempotente, nunca apaga). Depois do deploy, **CONFERIR no ar** (curl num endpoint que usa a coluna; `500 "column ... does not exist"` = não aplicou). Origem (2026-11-08): `Tournament.cashEnabled` + `AppNotification` quebraram `/api/tournaments` em prod por dias por causa disso.
+**Admin/auth:** endpoints com `authMiddleware` exigem JWT. Sessão sem token → o dono clica na UI OU passa token no formulário seguro (`request_credential`), **NUNCA no chat**. (Enquanto o dono pediu "sem token por enquanto", as escritas de import/súmula/elenco estão **abertas e marcadas** pra re-proteger com credencial de árbitro depois.)
+**Checklist antes de PUSH que mexe em `src/`:** 1) `node --check` nos arquivos · 2) `node scripts/check-requires.js` · 3) se mexeu em schema → garantir o `ALTER` aditivo no `ensureApexSchema.js` · 4) após merge/deploy → `curl` health 200 + endpoint real devolvendo **JSON** + dados certos.
+
+### LEI 3 — TUDO DE PROGRAMAÇÃO FICA AQUI
+**Stack:** Node + Express + Prisma + PostgreSQL (Railway), CommonJS; front vanilla HTML/JS em `public/`.
+**Módulo APEX — arquivos:**
+- Rotas: `src/routes/tournaments.js`
+- Serviços: `src/services/{tournamentEngine, tournamentCash, notify, ensureApexSchema, matchSheet, futsalMasterCupSeed}.js`
+- Front: `public/torneios.html` (gestão + tela do árbitro/súmula) · página pública `/t/:slug` e card `/atleta/:username` renderizados em `src/index.js`
+- Teste: `scripts/test-tournament-engine.js` (`npm run test:tournament`)
+**Schema (models APEX):** Tournament, TournamentCategory, TournamentEntry, EntryMember, TournamentMatch, MatchGame, TournamentStanding, AthleteRating, PlayChallenge, TournamentPost, AppNotification, RosterPlayer, MatchEvent. Campos extra: `Tournament.cashEnabled/prizePaidAt`, `TournamentEntry.entryTxId`.
+**Convenções:**
+- Entry = atleta/dupla (com conta, via EntryMember) **OU** time/clube (`team:true`, só nome, sem conta).
+- Grupos pré-definidos são **respeitados** se todas as entries já têm `groupName` (não re-sorteia).
+- `cashEnabled` trava o movimento REAL de TenisCash (só admin liga); inscrição cobra/estorna, prêmio paga com teto (`PRIZE_CASH_MAX`).
+- **Súmula digital:** `RosterPlayer` (elenco: nome/número/goleiro/capitão) + `MatchEvent` (GOAL/ASSIST/YELLOW/RED por jogador; FOUL/TIMEOUT por time). `finalize` conta os GOAL → placar via `engine.applyMatchResult` → classificação/chave. Ranking: `GET /:id/stats/{scorers|assists|cards}?categoryId=`.
+- Regra de futsal na súmula: falta acumulada por tempo, **6ª falta = tiro livre direto sem barreira** (alerta na tela).
+**Torneio real em produção:** II Futsal Master Cup 2026 (`/t/futsal-master-cup-2026`), carregado da tabela oficial via `importFutsalMasterCup` (botão em /torneios.html; idempotente). 5 categorias, 34 times, 65 jogos. Jogos ambíguos da tabela (44, 51) e por-resultado (30, 56) + mata-mata entram "a confirmar".
+**A construir (roadmap):** credencial de árbitro/treinador (tirar o "sem token") · cadastro de atleta (@Instagram/WhatsApp + senha + foto — foto do IG só via Business Discovery p/ conta comercial; WhatsApp NÃO tem API de foto por número; senão upload) · súmula de **treino** (treinador) · dashboards de temporada/mês e mais filtros de ranking.
