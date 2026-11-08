@@ -126,14 +126,14 @@ router.post('/', authMiddleware, async (req, res) => {
   }
 });
 
-// Importa o II Futsal Master Cup 2026 da tabela oficial (só admin/gerente).
-// Idempotente — pode rodar de novo sem duplicar. Botão em /torneios.html.
-router.post('/import/futsal-master-cup', authMiddleware, async (req, res) => {
+// Importa o II Futsal Master Cup 2026 da tabela oficial.
+// ⚠️ TEMPORÁRIO (dono pediu "sem token por enquanto"): SEM auth. É seguro o
+// suficiente porque é IDEMPOTENTE e cria só este torneio fixo (sem parâmetros,
+// sem dinheiro, sem dados de usuário). Re-proteger depois de carregado.
+// Sem token, o organizador vira o primeiro admin (findOwner trata null).
+router.post('/import/futsal-master-cup', async (req, res) => {
   try {
-    if (!cash.isAdmin(req.userRole)) {
-      return res.status(403).json({ error: 'só admin/gerente importa o torneio' });
-    }
-    const r = await importFutsalMasterCup(req.userId);
+    const r = await importFutsalMasterCup(req.userId || null);
     if (!r.ok) return res.status(400).json(r);
     res.json(r);
   } catch (err) {
