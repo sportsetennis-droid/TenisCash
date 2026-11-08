@@ -210,18 +210,35 @@ async function importFutsalMasterCup(ownerId) {
     created += 1;
   }
 
-  // 4) Mata-mata: ligar semifinais → final (vencedor sobe sozinho) + rótulo da vaga.
-  // "Vencedor Semifinal 1/2" é verdade universal (não é chute). A vaga das SEMIs
-  // (qual posição de qual grupo) fica pro dono confirmar — não se inventa.
+  // 4) Mata-mata: rótulos da vaga LIDOS DA TABELA OFICIAL (não é chute) + ligar
+  // semifinais → final. Cruzamentos por nº do jogo, conforme a TABELA DE JOGOS:
+  // 50+: SF1(46)=1ºA×2ºB, SF2(47)=1ºB×2ºA · 55+: SF1(48)=1ºA×2ºA, SF2(49)=1ºB×2ºB
+  // 40+: SF1(57)=1ºA×2ºB, SF2(58)=1ºB×2ºA · 45+: SF1(59)=1ºA×2ºB, SF2(60)=1ºB×2ºA
+  const SF_LABELS = {
+    46: ['1º Chave A', '2º Chave B'], 47: ['1º Chave B', '2º Chave A'],
+    48: ['1º Chave A', '2º Chave A'], 49: ['1º Chave B', '2º Chave B'],
+    57: ['1º Chave A', '2º Chave B'], 58: ['1º Chave B', '2º Chave A'],
+    59: ['1º Chave A', '2º Chave B'], 60: ['1º Chave B', '2º Chave A'],
+  };
   for (const catName of Object.keys(TEAMS)) {
     const cid = catId[catName];
     if (!cid) continue;
     const semis = await prisma.tournamentMatch.findMany({ where: { tournamentId: t.id, categoryId: cid, stage: 'SEMI' }, orderBy: { ordering: 'asc' } });
     const fin = await prisma.tournamentMatch.findFirst({ where: { tournamentId: t.id, categoryId: cid, stage: 'FINAL' }, orderBy: { ordering: 'asc' } });
+    // Rótulo da vaga nas semifinais (só quando o slot ainda não tem time)
+    for (const s of semis) {
+      const lbl = SF_LABELS[s.ordering];
+      if (!lbl) continue;
+      const sp = {};
+      if (!s.homeEntryId) sp.homeSourceLabel = lbl[0];
+      if (!s.awayEntryId) sp.awaySourceLabel = lbl[1];
+      if (Object.keys(sp).length) await prisma.tournamentMatch.update({ where: { id: s.id }, data: sp }).catch(() => {});
+    }
     if (!fin) continue;
+    // Final: com semifinais → "Vencedor Semifinal 1/2"; sem semis (60+ grupo único) → 1º×2º.
     const fp = {};
-    if (!fin.homeEntryId && !fin.homeSourceLabel) fp.homeSourceLabel = 'Vencedor Semifinal 1';
-    if (!fin.awayEntryId && !fin.awaySourceLabel) fp.awaySourceLabel = 'Vencedor Semifinal 2';
+    if (!fin.homeEntryId) fp.homeSourceLabel = semis.length >= 2 ? 'Vencedor Semifinal 1' : '1º Colocado';
+    if (!fin.awayEntryId) fp.awaySourceLabel = semis.length >= 2 ? 'Vencedor Semifinal 2' : '2º Colocado';
     if (Object.keys(fp).length) await prisma.tournamentMatch.update({ where: { id: fin.id }, data: fp }).catch(() => {});
     for (let i = 0; i < semis.length && i < 2; i++) {
       if (!semis[i].nextMatchId) {
