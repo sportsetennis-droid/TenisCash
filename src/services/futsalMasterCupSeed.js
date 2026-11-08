@@ -18,6 +18,7 @@ const prisma = new PrismaClient();
 
 const SLUG = 'futsal-master-cup-2026';
 const TZ = '-03:00'; // America/Fortaleza
+const LOGO_URL = '/img/futsal-master-cup.png'; // logo oficial (public/img, servido estático)
 const R = 'Ginásio Ronaldão';
 const M = 'Ginásio Marista';
 
@@ -143,6 +144,7 @@ async function importFutsalMasterCup(ownerId) {
       data: {
         slug: SLUG, name: 'II Futsal Master Cup 2026', sport: 'FUTSAL',
         format: 'GROUPS_KNOCKOUT', isDoubles: false, ownerId: owner.id,
+        bannerUrl: LOGO_URL,
         city: 'João Pessoa', state: 'PB',
         description: '2ª edição · categorias master 40+ a 60+ · 19 a 22 de novembro de 2026.',
         startDate: new Date('2026-11-19T00:00:00' + TZ),
@@ -150,9 +152,12 @@ async function importFutsalMasterCup(ownerId) {
         status: 'ONGOING', visibility: 'public', cashEnabled: false,
       },
     });
-  } else if (ownerId && t.ownerId !== ownerId) {
-    // Importar logado = reivindicar a organização (aparece em "Meus torneios").
-    t = await prisma.tournament.update({ where: { id: t.id }, data: { ownerId: owner.id } });
+  } else {
+    // Reivindica a organização se logado (aparece em "Meus torneios") e garante o banner.
+    const patch = {};
+    if (ownerId && t.ownerId !== ownerId) patch.ownerId = owner.id;
+    if (!t.bannerUrl) patch.bannerUrl = LOGO_URL;
+    if (Object.keys(patch).length) t = await prisma.tournament.update({ where: { id: t.id }, data: patch });
   }
 
   // 2) Categorias + times (idempotente)

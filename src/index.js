@@ -1207,6 +1207,8 @@ app.get('/t/:slug', async (req, res) => {
   *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
   body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f5f5f7;color:#1d1d1f;line-height:1.5;padding-bottom:env(safe-area-inset-bottom)}
   .container{max-width:520px;margin:0 auto;padding:14px}
+  .logo-wrap{background:#000;border-radius:16px;padding:18px 16px;margin-bottom:12px;text-align:center;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+  .logo-wrap img{width:72%;max-width:280px;height:auto;display:inline-block}
   .header{background:linear-gradient(135deg,#E5571E,#EE7240);color:#fff;padding:18px 18px;border-radius:16px;box-shadow:0 8px 24px rgba(229,87,30,.25)}
   .badge{display:inline-block;background:${st[1]};color:#fff;font-size:11px;font-weight:800;padding:4px 10px;border-radius:8px;text-transform:uppercase;letter-spacing:.5px}
   .header h1{font-size:21px;font-weight:800;margin-top:10px;line-height:1.2}
@@ -1252,6 +1254,7 @@ app.get('/t/:slug', async (req, res) => {
 </head>
 <body>
   <div class="container">
+    ${t.bannerUrl ? '<div class="logo-wrap"><img src="' + apexEsc(t.bannerUrl) + '" alt="' + apexEsc(t.name) + '"></div>' : ''}
     <div class="header">
       <span class="badge">${apexEsc(st[0])}</span>
       <h1>${apexEsc(t.name)}</h1>
