@@ -45,6 +45,9 @@ async function buildSheet(matchId) {
       id: match.id, status: match.status, stage: match.stage, groupName: match.groupName,
       scheduledAt: match.scheduledAt, location: match.location,
       homeScore: match.homeScore, awayScore: match.awayScore, winnerEntryId: match.winnerEntryId,
+      referee1: match.referee1, referee2: match.referee2, scorer: match.scorer,
+      homePenalties: match.homePenalties, awayPenalties: match.awayPenalties,
+      decidedByPenalties: match.decidedByPenalties,
       tournamentId: match.tournamentId, categoryId: match.categoryId,
     },
     home, away, events,
@@ -88,19 +91,59 @@ async function deleteEvent(eventId) {
   return { ok: true };
 }
 
+// Grava a arbitragem da súmula (árbitro 1/2, mesa). Não finaliza.
+async function setOfficials(matchId, body = {}) {
+  const clean = (v) => (v == null || v === '' ? null : String(v).slice(0, 120));
+  const data = {};
+  if ('referee1' in body) data.referee1 = clean(body.referee1);
+  if ('referee2' in body) data.referee2 = clean(body.referee2);
+  if ('scorer' in body) data.scorer = clean(body.scorer);
+  if (!Object.keys(data).length) return { ok: false, error: 'nada pra gravar' };
+  const match = await prisma.tournamentMatch.update({ where: { id: matchId }, data }).catch(() => null);
+  if (!match) return { ok: false, error: 'partida não encontrada' };
+  return { ok: true, match: { id: match.id, referee1: match.referee1, referee2: match.referee2, scorer: match.scorer } };
+}
+
 // Fecha a súmula: conta os gols (eventos GOAL) e aplica o placar pelo engine
-// (vira FINISHED, recalcula classificação e avança a chave).
-async function finalizeMatch(matchId) {
+// (vira FINISHED, recalcula classificação e avança a chave). Se vier empate no
+// mata-mata, o desempate por PÊNALTIS define o vencedor (sem contar como gol).
+async function finalizeMatch(matchId, opts = {}) {
   const match = await prisma.tournamentMatch.findUnique({
     where: { id: matchId },
-    select: { id: true, homeEntryId: true, awayEntryId: true },
+    select: { id: true, homeEntryId: true, awayEntryId: true, stage: true },
   });
   if (!match) return { ok: false, error: 'partida não encontrada' };
   if (!match.homeEntryId || !match.awayEntryId) return { ok: false, error: 'partida sem os dois times definidos' };
+
+  // Arbitragem opcional junto do fechamento
+  await setOfficials(matchId, opts).catch(() => {});
+
   const goals = await prisma.matchEvent.findMany({ where: { matchId, type: 'GOAL' }, select: { entryId: true } });
   const hs = goals.filter((g) => g.entryId === match.homeEntryId).length;
   const as = goals.filter((g) => g.entryId === match.awayEntryId).length;
-  return engine.applyMatchResult(matchId, { homeScore: hs, awayScore: as });
+
+  // Pênaltis (desempate) — só valem quando o tempo normal empatou.
+  const hasPk = opts.homePenalties != null && opts.homePenalties !== '' && opts.awayPenalties != null && opts.awayPenalties !== '';
+  const hp = hasPk ? Number(opts.homePenalties) : null;
+  const ap = hasPk ? Number(opts.awayPenalties) : null;
+  let winnerEntryId = null;
+  let decidedByPenalties = false;
+  if (hasPk && hs === as && hp !== ap) {
+    winnerEntryId = hp > ap ? match.homeEntryId : match.awayEntryId;
+    decidedByPenalties = true;
+  }
+
+  const res = await engine.applyMatchResult(matchId, { homeScore: hs, awayScore: as, winnerEntryId });
+  if (!res.ok) return res;
+
+  // Persiste o placar de pênaltis pra súmula (não altera gols/classificação).
+  if (hasPk) {
+    await prisma.tournamentMatch.update({
+      where: { id: matchId },
+      data: { homePenalties: hp, awayPenalties: ap, decidedByPenalties },
+    }).catch(() => {});
+  }
+  return { ...res, homePenalties: hp, awayPenalties: ap, decidedByPenalties };
 }
 
 // Ranking de jogadores de um torneio (ou categoria): artilharia/assistências/cartões.
@@ -150,4 +193,4 @@ async function playerStats(tournamentId, opts = {}) {
   return rows;
 }
 
-module.exports = { buildSheet, addEvent, deleteEvent, finalizeMatch, playerStats };
+module.exports = { buildSheet, addEvent, deleteEvent, finalizeMatch, setOfficials, playerStats };
