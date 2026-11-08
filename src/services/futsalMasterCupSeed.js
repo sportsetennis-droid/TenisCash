@@ -210,6 +210,26 @@ async function importFutsalMasterCup(ownerId) {
     created += 1;
   }
 
+  // 4) Mata-mata: ligar semifinais → final (vencedor sobe sozinho) + rótulo da vaga.
+  // "Vencedor Semifinal 1/2" é verdade universal (não é chute). A vaga das SEMIs
+  // (qual posição de qual grupo) fica pro dono confirmar — não se inventa.
+  for (const catName of Object.keys(TEAMS)) {
+    const cid = catId[catName];
+    if (!cid) continue;
+    const semis = await prisma.tournamentMatch.findMany({ where: { tournamentId: t.id, categoryId: cid, stage: 'SEMI' }, orderBy: { ordering: 'asc' } });
+    const fin = await prisma.tournamentMatch.findFirst({ where: { tournamentId: t.id, categoryId: cid, stage: 'FINAL' }, orderBy: { ordering: 'asc' } });
+    if (!fin) continue;
+    const fp = {};
+    if (!fin.homeEntryId && !fin.homeSourceLabel) fp.homeSourceLabel = 'Vencedor Semifinal 1';
+    if (!fin.awayEntryId && !fin.awaySourceLabel) fp.awaySourceLabel = 'Vencedor Semifinal 2';
+    if (Object.keys(fp).length) await prisma.tournamentMatch.update({ where: { id: fin.id }, data: fp }).catch(() => {});
+    for (let i = 0; i < semis.length && i < 2; i++) {
+      if (!semis[i].nextMatchId) {
+        await prisma.tournamentMatch.update({ where: { id: semis[i].id }, data: { nextMatchId: fin.id, nextSlot: i === 0 ? 'home' : 'away' } }).catch(() => {});
+      }
+    }
+  }
+
   const totalTeams = Object.values(TEAMS).reduce((s, g) => s + Object.values(g).flat().length, 0);
   return {
     ok: true, slug: t.slug, tournamentId: t.id,

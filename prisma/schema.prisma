@@ -3808,6 +3808,8 @@ model TournamentMatch {
   homePenalties      Int? // pênaltis do mandante (desempate mata-mata)
   awayPenalties      Int? // pênaltis do visitante
   decidedByPenalties Boolean @default(false)
+  homeSourceLabel    String? // vaga do mandante no mata-mata ("Vencedor Semifinal 1", "1º Grupo A")
+  awaySourceLabel    String? // vaga do visitante
   winnerEntryId String?
   winnerEntry   TournamentEntry? @relation("winnerEntry", fields: [winnerEntryId], references: [id])
 
