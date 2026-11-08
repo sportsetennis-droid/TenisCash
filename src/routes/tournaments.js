@@ -8,7 +8,10 @@
 // =====================================================================
 
 const express = require('express');
-const { prisma, authMiddleware } = require('../middleware');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const { prisma, authMiddleware, JWT_SECRET } = require('../middleware');
+const { instagramAvatar, fetchInstagramProfile, igConfigured } = require('../services/instagramPhoto');
 const engine = require('../services/tournamentEngine');
 const { notify, notifyMany } = require('../services/notify');
 const cash = require('../services/tournamentCash');
@@ -990,6 +993,84 @@ router.post('/notifications/read-all', authMiddleware, async (req, res) => {
     await prisma.appNotification.updateMany({ where: { userId: req.userId, read: false }, data: { read: true } });
     res.json({ ok: true });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =====================================================================
+// CADASTRO DE ATLETA (sem token) — WhatsApp + senha + foto
+// Foto: upload OU automática do Instagram (Business Discovery). WhatsApp é a
+// conta (login por telefone). Instagram opcional → @username + foto automática.
+// =====================================================================
+
+// Preview da foto do Instagram (sem criar conta) — pra conferir o @.
+router.get('/athletes/ig-photo/:handle', async (req, res) => {
+  try {
+    if (!igConfigured()) return res.json({ configured: false, found: false });
+    const prof = await fetchInstagramProfile(req.params.handle);
+    if (!prof) return res.json({ configured: true, found: false });
+    res.json({ configured: true, found: true, username: prof.username, name: prof.name, picUrl: prof.picUrl });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Cadastra atleta. body: { name, whatsapp, password, instagram?, photo?(dataURI) }
+router.post('/athletes/register', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const name = String(b.name || '').trim();
+    const password = String(b.password || '');
+    const whatsapp = String(b.whatsapp || b.phone || '').replace(/\D/g, '');
+    if (!name) return res.status(400).json({ error: 'nome obrigatório' });
+    if (password.length < 4 || password.length > 20) return res.status(400).json({ error: 'senha deve ter 4 a 20 caracteres' });
+    if (!whatsapp || whatsapp.length < 10) return res.status(400).json({ error: 'WhatsApp com DDD obrigatório' });
+
+    const existing = await prisma.user.findUnique({ where: { phone: whatsapp } });
+    if (existing && existing.active !== false) return res.status(409).json({ error: 'este WhatsApp já tem conta' });
+
+    const igHandle = b.instagram ? String(b.instagram).replace(/^@/, '').trim() : null;
+
+    // Foto: upload explícito vence; senão tenta Instagram automático.
+    let avatar = typeof b.photo === 'string' && b.photo.startsWith('data:') ? b.photo : null;
+    let photoSource = avatar ? 'upload' : 'none';
+    let igName = null;
+    if (!avatar && igHandle) {
+      const ig = await instagramAvatar(igHandle);
+      if (ig && ig.avatar) { avatar = ig.avatar; igName = ig.name; photoSource = 'instagram'; }
+    }
+
+    // @username único (User e AthleteProfile). Se o handle já existe, não grava username.
+    let username = null;
+    if (igHandle) {
+      const taken = await prisma.user.findUnique({ where: { username: igHandle }, select: { id: true } });
+      if (!taken) username = igHandle;
+    }
+
+    const hashed = await bcrypt.hash(password, 10);
+    const user = await prisma.user.create({
+      data: {
+        name, phone: whatsapp, pin: hashed, balance: 0,
+        lgpdAccepted: true, lgpdDate: new Date(),
+        username: username || undefined,
+      },
+    });
+
+    await prisma.athleteProfile.upsert({
+      where: { userId: user.id },
+      create: { userId: user.id, username: username || null, avatarUrl: avatar || null },
+      update: { avatarUrl: avatar || undefined, username: username || undefined },
+    });
+
+    const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: '30d' });
+    res.status(201).json({
+      token,
+      user: { id: user.id, name: user.name, phone: user.phone, username, role: user.role },
+      instagram: igHandle, instagramName: igName,
+      photoSource, hasPhoto: !!avatar,
+    });
+  } catch (err) {
+    console.error('[tournaments] register athlete', err);
     res.status(500).json({ error: err.message });
   }
 });
