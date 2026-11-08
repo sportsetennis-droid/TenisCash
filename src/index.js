@@ -1252,7 +1252,7 @@ app.get('/t/:slug', async (req, res) => {
   .sn{font-size:13px;font-weight:700;color:#cfd6e2;line-height:1.2;word-break:break-word;max-width:100%}
   .sn.win{color:#fff}
   .sn.win:after{content:" ✓";color:var(--green)}
-  img.tb.big.logo{object-fit:contain;background:#0b0e14;padding:2px}
+  img.tb.big.logo{object-fit:contain;background:transparent;box-shadow:none;padding:0}
   .tb.big.tbd{background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px var(--line);color:var(--mut);font-weight:700}
   .sn.tbd{color:var(--mut);font-weight:600;font-size:12px}
   .score{flex:0 0 auto;min-width:82px;display:flex;align-items:center;justify-content:center;gap:7px;padding-top:12px}
