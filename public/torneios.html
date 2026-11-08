@@ -827,7 +827,7 @@ let SUMULA=null;
 async function renderSumula(mid){
   loading();
   let s;try{s=await api('/matches/'+mid+'/sheet');}catch(e){app.innerHTML=topbar('Súmula',true)+'<div class="wrap"><div class="card"><div class="empty">'+esc(e.message)+'</div></div></div>';return;}
-  SUMULA={mid:mid};
+  SUMULA={mid:mid,last:s};
   const h=s.home,a=s.away;
   const done=s.match.status==='FINISHED'||s.match.status==='WALKOVER';
   let html=topbar('Súmula',true)+'<div class="wrap">';
@@ -837,7 +837,17 @@ async function renderSumula(mid){
       '<div style="font-size:30px;font-weight:900;color:var(--orange-d);white-space:nowrap">'+s.liveScore.home+' <span style="color:var(--mut)">×</span> '+s.liveScore.away+'</div>'+
       '<div style="flex:1;font-weight:800;font-size:13px">'+esc(a.entry?a.entry.name:'—')+'</div></div>'+
     '<div class="muted" style="margin-top:6px;font-size:12px">faltas acumuladas: '+s.fouls.home+' × '+s.fouls.away+(done?' · <span class="pill ok">encerrada</span>':'')+'</div>'+
-    ((s.fouls.home>=6||s.fouls.away>=6)?'<div class="pill w" style="margin-top:6px">⚠️ 6ª falta — tiro livre direto sem barreira</div>':'')+'</div>';
+    ((s.fouls.home>=6||s.fouls.away>=6)?'<div class="pill w" style="margin-top:6px">⚠️ 6ª falta — tiro livre direto sem barreira</div>':'')+
+    ((s.match.decidedByPenalties)?'<div class="pill g" style="margin-top:6px">Pênaltis '+(s.match.homePenalties!=null?s.match.homePenalties:'-')+'×'+(s.match.awayPenalties!=null?s.match.awayPenalties:'-')+'</div>':'')+'</div>';
+  // Arbitragem
+  var mt=s.match;
+  if(!done)html+='<div class="card"><h2 style="margin:0 0 8px;font-size:14px">Arbitragem</h2>'+
+    '<label>Árbitro 1</label><input id="ref1" value="'+esc(mt.referee1||'')+'" placeholder="árbitro principal">'+
+    '<label>Árbitro 2</label><input id="ref2" value="'+esc(mt.referee2||'')+'" placeholder="árbitro auxiliar">'+
+    '<label>Mesa / anotador</label><input id="refm" value="'+esc(mt.scorer||'')+'" placeholder="anotador">'+
+    '<div style="height:10px"></div><button class="btn sm sec" data-act="sum-officials" data-mid="'+mid+'">Salvar arbitragem</button></div>';
+  else if(mt.referee1||mt.referee2||mt.scorer)html+='<div class="card"><h2 style="margin:0 0 6px;font-size:14px">Arbitragem</h2><div class="muted" style="font-size:12px;line-height:1.7">'+
+    (mt.referee1?'Árbitro 1: <b>'+esc(mt.referee1)+'</b><br>':'')+(mt.referee2?'Árbitro 2: <b>'+esc(mt.referee2)+'</b><br>':'')+(mt.scorer?'Mesa: <b>'+esc(mt.scorer)+'</b>':'')+'</div></div>';
   [['home',h],['away',a]].forEach(function(pair){
     var sd=pair[1];if(!sd.entry)return;
     html+='<div class="card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'+
@@ -847,7 +857,7 @@ async function renderSumula(mid){
     else sd.roster.forEach(function(p){
       html+='<div class="listitem" data-act="sum-player" data-pid="'+p.id+'" data-eid="'+sd.entry.id+'" data-pn="'+esc(p.name)+'" style="cursor:pointer">'+
         '<div class="av" style="font-size:14px">'+(p.number!=null?p.number:'–')+'</div>'+
-        '<div class="grow"><div class="nm">'+esc(p.name)+(p.isCaptain?' <span class="pill g">C</span>':'')+(p.isGoalkeeper?' <span class="pill g">GOL</span>':'')+'</div></div>'+
+        '<div class="grow"><div class="nm">'+esc(p.name)+(p.isCaptain?' <span class="pill g">C</span>':'')+(p.isGoalkeeper?' <span class="pill g">GOL</span>':'')+(p.role==='COACH'?' <span class="pill w">TÉC</span>':'')+(p.role==='ASSISTANT'?' <span class="pill w">AUX</span>':'')+(p.started?' <span class="pill ok">titular</span>':'')+'</div></div>'+
         '<button class="btn sm dang" data-act="sum-delplayer" data-pid="'+p.id+'" style="margin-right:6px">✕</button>'+
         '<span style="color:var(--mut);font-size:12px">+ evento ›</span></div>';
     });
@@ -887,22 +897,41 @@ async function sumEvent(type,eid,pid){
 async function sumFoul(eid){try{await api('/matches/'+SUMULA.mid+'/events',{method:'POST',body:{entryId:eid,type:'FOUL'}});toast('Falta');sumReload();}catch(e){toast(e.message);}}
 async function sumDelEvent(id){try{await api('/events/'+id,{method:'DELETE'});toast('Removido');sumReload();}catch(e){toast(e.message);}}
 function sumAddPlayerSheet(eid){
-  openSheet('<h3>Adicionar jogador</h3>'+
-    '<label>Nome</label><input id="rp-name" placeholder="Nome do atleta">'+
+  openSheet('<h3>Adicionar ao elenco</h3>'+
+    '<label>Nome</label><input id="rp-name" placeholder="Nome do atleta / comissão">'+
     '<label>Número</label><input id="rp-num" type="number" inputmode="numeric" placeholder="nº da camisa">'+
-    '<div style="display:flex;gap:16px;margin-top:10px"><label style="margin:0;text-transform:none;display:flex;align-items:center;gap:6px"><input type="checkbox" id="rp-gk" style="width:auto"> Goleiro</label>'+
-    '<label style="margin:0;text-transform:none;display:flex;align-items:center;gap:6px"><input type="checkbox" id="rp-cap" style="width:auto"> Capitão</label></div>'+
+    '<label>Função</label><select id="rp-role"><option value="PLAYER">Jogador</option><option value="COACH">Técnico</option><option value="ASSISTANT">Auxiliar</option></select>'+
+    '<div style="display:flex;gap:16px;margin-top:10px;flex-wrap:wrap"><label style="margin:0;text-transform:none;display:flex;align-items:center;gap:6px"><input type="checkbox" id="rp-gk" style="width:auto"> Goleiro</label>'+
+    '<label style="margin:0;text-transform:none;display:flex;align-items:center;gap:6px"><input type="checkbox" id="rp-cap" style="width:auto"> Capitão</label>'+
+    '<label style="margin:0;text-transform:none;display:flex;align-items:center;gap:6px"><input type="checkbox" id="rp-start" style="width:auto"> Titular</label></div>'+
     '<div style="height:12px"></div><button class="btn" data-act="rp-save" data-eid="'+eid+'">Adicionar</button>');
 }
 async function sumSavePlayer(eid){
   var name=document.getElementById('rp-name').value.trim();if(!name)return toast('Nome do jogador');
   var num=document.getElementById('rp-num').value;
-  var body={name:name,number:num!==''?Number(num):null,isGoalkeeper:document.getElementById('rp-gk').checked,isCaptain:document.getElementById('rp-cap').checked};
-  try{await api('/entries/'+eid+'/players',{method:'POST',body:body});closeSheet();toast('Jogador adicionado');sumReload();}catch(e){toast(e.message);}
+  var body={name:name,number:num!==''?Number(num):null,isGoalkeeper:document.getElementById('rp-gk').checked,isCaptain:document.getElementById('rp-cap').checked,role:document.getElementById('rp-role').value,started:document.getElementById('rp-start').checked};
+  try{await api('/entries/'+eid+'/players',{method:'POST',body:body});closeSheet();toast('Adicionado ao elenco');sumReload();}catch(e){toast(e.message);}
 }
-async function sumFinalize(mid){
-  if(!confirm('Fechar a súmula e lançar o placar? Encerra o jogo e atualiza a classificação.'))return;
-  try{var r=await api('/matches/'+mid+'/finalize',{method:'POST'});toast('Súmula fechada: '+r.homeScore+'×'+r.awayScore);sumReload();}catch(e){toast(e.message);}
+async function sumOfficials(mid){
+  var g=function(id){var e=document.getElementById(id);return e?e.value:undefined;};
+  try{await api('/matches/'+mid+'/officials',{method:'POST',body:{referee1:g('ref1'),referee2:g('ref2'),scorer:g('refm')}});toast('Arbitragem salva');}catch(e){toast(e.message);}
+}
+function sumFinalize(mid){
+  if(!SUMULA||!SUMULA.last)return;
+  var s=SUMULA.last, tie=s.liveScore.home===s.liveScore.away;
+  var g=function(id){var e=document.getElementById(id);return e?e.value:'';};
+  openSheet('<h3>Fechar súmula</h3><p class="muted">Placar '+s.liveScore.home+'×'+s.liveScore.away+'. Confere a arbitragem e fecha. Encerra o jogo e atualiza a classificação/chave.</p>'+
+    '<label>Árbitro 1</label><input id="fz-ref1" value="'+esc(g("ref1")||s.match.referee1||"")+'">'+
+    '<label>Árbitro 2</label><input id="fz-ref2" value="'+esc(g("ref2")||s.match.referee2||"")+'">'+
+    (tie?('<div class="pill w" style="margin:10px 0">Empate — no mata-mata informe os pênaltis pra definir o vencedor (fica fora do placar de gols).</div>'+
+      '<div class="row"><div style="flex:1"><label>Pênaltis '+esc(s.home.entry?s.home.entry.name:"casa")+'</label><input id="fz-pk-h" type="number" inputmode="numeric" placeholder="0"></div>'+
+      '<div style="flex:1"><label>Pênaltis '+esc(s.away.entry?s.away.entry.name:"fora")+'</label><input id="fz-pk-a" type="number" inputmode="numeric" placeholder="0"></div></div>'):'')+
+    '<div style="height:12px"></div><button class="btn" data-act="fz-go" data-mid="'+mid+'">🏁 Fechar súmula</button>');
+}
+async function sumFinalizeGo(mid){
+  var g=function(id){var e=document.getElementById(id);return e&&e.value!==''?e.value:undefined;};
+  var body={referee1:g('fz-ref1'),referee2:g('fz-ref2'),homePenalties:g('fz-pk-h'),awayPenalties:g('fz-pk-a')};
+  try{var r=await api('/matches/'+mid+'/finalize',{method:'POST',body:body});closeSheet();toast('Súmula fechada: '+r.homeScore+'×'+r.awayScore+(r.decidedByPenalties?' (pên. '+r.homePenalties+'×'+r.awayPenalties+')':''));sumReload();}catch(e){toast(e.message);}
 }
 
 document.addEventListener('click',async(ev)=>{
@@ -948,6 +977,8 @@ document.addEventListener('click',async(ev)=>{
   if(a==='sum-delplayer'){if(confirm('Remover jogador do elenco?')){try{await api('/players/'+el.dataset.pid,{method:'DELETE'});toast('Removido');sumReload();}catch(e){toast(e.message);}}return;}
   if(a==='rp-save'){sumSavePlayer(el.dataset.eid);return;}
   if(a==='sum-finalize'){sumFinalize(el.dataset.mid);return;}
+  if(a==='sum-officials'){sumOfficials(el.dataset.mid);return;}
+  if(a==='fz-go'){sumFinalizeGo(el.dataset.mid);return;}
   if(a==='import-futsal'){if(confirm('Importar o II Futsal Master Cup 2026 (times + 65 jogos da tabela oficial)? Pode rodar de novo sem duplicar.')){toast('Importando...');try{const r=await api('/import/futsal-master-cup',{method:'POST'});toast('Pronto: '+r.teams+' times · '+r.matchesCreated+' jogos'+(r.matchesTBD?' ('+r.matchesTBD+' a confirmar)':''));go('t/'+r.tournamentId);}catch(e){toast(e.message);}}return;}
   if(a==='notif-go'){go(el.dataset.h);return;}
   if(a==='wo'){walkover(el.dataset.mid,el.dataset.w);return;}

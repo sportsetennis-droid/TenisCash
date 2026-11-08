@@ -3801,6 +3801,13 @@ model TournamentMatch {
 
   homeScore     Int? // sets/games/gols do mandante (resumo)
   awayScore     Int?
+  // Súmula oficial
+  referee1           String? // árbitro principal
+  referee2           String? // árbitro auxiliar
+  scorer             String? // anotador / mesa
+  homePenalties      Int? // pênaltis do mandante (desempate mata-mata)
+  awayPenalties      Int? // pênaltis do visitante
+  decidedByPenalties Boolean @default(false)
   winnerEntryId String?
   winnerEntry   TournamentEntry? @relation("winnerEntry", fields: [winnerEntryId], references: [id])
 
@@ -3944,6 +3951,8 @@ model RosterPlayer {
   number       Int?
   isGoalkeeper Boolean  @default(false)
   isCaptain    Boolean  @default(false)
+  role         String   @default("PLAYER") // PLAYER | COACH (técnico) | ASSISTANT (auxiliar)
+  started      Boolean  @default(false) // titular (início) x banco
   userId       String? // futuro: conta do atleta
   createdAt    DateTime @default(now())
 

@@ -877,11 +877,13 @@ router.post('/entries/:entryId/players', async (req, res) => {
     const b = req.body || {};
     const name = String(b.name || '').trim();
     if (!name) return res.status(400).json({ error: 'nome do jogador obrigatório' });
+    const role = ['PLAYER', 'COACH', 'ASSISTANT'].includes(String(b.role || '').toUpperCase()) ? String(b.role).toUpperCase() : 'PLAYER';
     const player = await prisma.rosterPlayer.create({
       data: {
         entryId: entry.id, name: name.slice(0, 80),
         number: b.number != null && b.number !== '' ? Number(b.number) : null,
         isGoalkeeper: !!b.isGoalkeeper, isCaptain: !!b.isCaptain,
+        role, started: !!b.started,
         userId: b.userId || null,
       },
     });
@@ -933,10 +935,22 @@ router.delete('/events/:eventId', async (req, res) => {
   }
 });
 
-// Fecha a súmula: conta os gols e aplica o placar (classificação + chave)
+// Grava a arbitragem da partida (árbitro 1/2, mesa) — sem finalizar
+router.post('/matches/:matchId/officials', async (req, res) => {
+  try {
+    const r = await sheet.setOfficials(req.params.matchId, req.body || {});
+    if (!r.ok) return res.status(400).json(r);
+    res.json(r);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Fecha a súmula: conta os gols e aplica o placar (classificação + chave).
+// body opcional: { homePenalties, awayPenalties, referee1, referee2, scorer }
 router.post('/matches/:matchId/finalize', async (req, res) => {
   try {
-    const r = await sheet.finalizeMatch(req.params.matchId);
+    const r = await sheet.finalizeMatch(req.params.matchId, req.body || {});
     if (!r.ok) return res.status(400).json(r);
     res.json(r);
   } catch (err) {
@@ -1006,10 +1020,6 @@ router.post('/notifications/read-all', authMiddleware, async (req, res) => {
 // Preview da foto do Instagram (sem criar conta) — pra conferir o @.
 router.get('/athletes/ig-photo/:handle', async (req, res) => {
   try {
-    if (req.query.debug === '1') {
-      const { diagnoseInstagram } = require('../services/instagramPhoto');
-      return res.json(await diagnoseInstagram(req.params.handle));
-    }
     if (!igConfigured()) return res.json({ configured: false, found: false });
     const prof = await fetchInstagramProfile(req.params.handle);
     if (!prof) return res.json({ configured: true, found: false });
