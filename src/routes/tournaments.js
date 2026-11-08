@@ -682,20 +682,37 @@ router.get('/:id/categories/:catId/matches', async (req, res) => {
 // Classificação da categoria (público)
 router.get('/:id/categories/:catId/standings', async (req, res) => {
   try {
+    const catId = req.params.catId;
     const standings = await prisma.tournamentStanding.findMany({
-      where: { categoryId: req.params.catId },
+      where: { categoryId: catId },
       orderBy: [{ groupName: 'asc' }, { rank: 'asc' }, { points: 'desc' }],
       include: {
         entry: {
           select: {
             id: true,
             name: true,
+            logoUrl: true,
             members: { include: { user: { select: { id: true, name: true, username: true } } } },
           },
         },
       },
     });
-    res.json({ standings });
+    if (standings.length) return res.json({ standings });
+
+    // Nenhum jogo finalizado ainda → monta a tabela ZERADA com todos os inscritos
+    // (pra classificação aparecer desde o início, como todo sistema de torneio).
+    const entries = await prisma.tournamentEntry.findMany({
+      where: { categoryId: catId, status: 'CONFIRMED' },
+      select: { id: true, name: true, logoUrl: true, groupName: true },
+    });
+    const zero = entries.map((e) => ({
+      entryId: e.id, groupName: e.groupName || null, rank: 0,
+      played: 0, won: 0, drawn: 0, lost: 0, scoreFor: 0, scoreAgainst: 0, points: 0,
+      entry: { id: e.id, name: e.name, logoUrl: e.logoUrl, members: [] },
+    }));
+    zero.sort((a, b) => (a.groupName || '').localeCompare(b.groupName || '') || a.entry.name.localeCompare(b.entry.name));
+    zero.forEach((r, i) => { r.rank = i + 1; });
+    res.json({ standings: zero, provisional: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
