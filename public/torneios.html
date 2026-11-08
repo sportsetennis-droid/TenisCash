@@ -464,10 +464,26 @@ async function renderCatPanel(tab){
         body+=stdTable(byG[g]);});
     }
   }
+  if(tab==='ranking'){
+    let sc=[],as=[],cd=[];
+    try{sc=(await api('/'+tid+'/stats/scorers?categoryId='+cid)).ranking||[];}catch(e){}
+    try{as=(await api('/'+tid+'/stats/assists?categoryId='+cid)).ranking||[];}catch(e){}
+    try{cd=(await api('/'+tid+'/stats/cards?categoryId='+cid)).ranking||[];}catch(e){}
+    const rk=function(rows,metric,lbl){
+      const top=rows.filter(r=>metric==='cards'?(r.yellow+r.red)>0:(metric==='assists'?r.assists>0:r.goals>0)).slice(0,15);
+      if(!top.length)return '';
+      let h='<div style="font-weight:900;font-size:15px;margin:14px 0 6px">'+lbl+'</div><table><thead><tr><th class="t-nm">Jogador</th><th>Equipe</th>'+(metric==='cards'?'<th>🟨</th><th>🟥</th>':'<th>'+(metric==='assists'?'A':'G')+'</th>')+'</tr></thead><tbody>';
+      top.forEach((r,i)=>{h+='<tr><td class="t-nm">'+(i+1)+'. '+esc((r.number!=null?r.number+' ':'')+r.name)+'</td><td>'+esc(r.team||'')+'</td>'+(metric==='cards'?'<td>'+r.yellow+'</td><td>'+r.red+'</td>':'<td><b>'+(metric==='assists'?r.assists:r.goals)+'</b></td>')+'</tr>';});
+      return h+'</tbody></table>';
+    };
+    const all=rk(sc,'scorers','⚽ Artilheiros')+rk(as,'assists','🎯 Assistências')+rk(cd,'cards','🟨 Cartões');
+    body+=all||'<div class="empty" style="padding:16px">Sem dados ainda. Preencha as súmulas dos jogos (botão 📋 na Chave).</div>';
+  }
   panel.innerHTML='<div class="card"><h2>'+esc(cname)+' <span class="pill g" style="vertical-align:middle">'+esc(FMT_LABEL[fmt]||fmt)+'</span></h2>'+
     '<div class="tabs"><button data-act="cat-tab" data-tab="inscritos" class="'+(tab==='inscritos'?'on':'')+'">Inscritos</button>'+
     '<button data-act="cat-tab" data-tab="chave" class="'+(tab==='chave'?'on':'')+'">Chave</button>'+
-    '<button data-act="cat-tab" data-tab="tabela" class="'+(tab==='tabela'?'on':'')+'">Tabela</button></div>'+body+'</div>';
+    '<button data-act="cat-tab" data-tab="tabela" class="'+(tab==='tabela'?'on':'')+'">Tabela</button>'+
+    '<button data-act="cat-tab" data-tab="ranking" class="'+(tab==='ranking'?'on':'')+'">Ranking</button></div>'+body+'</div>';
 }
 // renderiza partidas agrupadas por rodada (com súmula set-a-set quando concluída)
 function renderMatchRounds(arr){
@@ -832,6 +848,7 @@ async function renderSumula(mid){
       html+='<div class="listitem" data-act="sum-player" data-pid="'+p.id+'" data-eid="'+sd.entry.id+'" data-pn="'+esc(p.name)+'" style="cursor:pointer">'+
         '<div class="av" style="font-size:14px">'+(p.number!=null?p.number:'–')+'</div>'+
         '<div class="grow"><div class="nm">'+esc(p.name)+(p.isCaptain?' <span class="pill g">C</span>':'')+(p.isGoalkeeper?' <span class="pill g">GOL</span>':'')+'</div></div>'+
+        '<button class="btn sm dang" data-act="sum-delplayer" data-pid="'+p.id+'" style="margin-right:6px">✕</button>'+
         '<span style="color:var(--mut);font-size:12px">+ evento ›</span></div>';
     });
     html+='<div style="height:8px"></div><button class="btn sm sec" data-act="sum-addplayer" data-eid="'+sd.entry.id+'">+ jogador</button></div>';
@@ -928,6 +945,7 @@ document.addEventListener('click',async(ev)=>{
   if(a==='sum-foul'){sumFoul(el.dataset.eid);return;}
   if(a==='sum-delevent'){sumDelEvent(el.dataset.id);return;}
   if(a==='sum-addplayer'){sumAddPlayerSheet(el.dataset.eid);return;}
+  if(a==='sum-delplayer'){if(confirm('Remover jogador do elenco?')){try{await api('/players/'+el.dataset.pid,{method:'DELETE'});toast('Removido');sumReload();}catch(e){toast(e.message);}}return;}
   if(a==='rp-save'){sumSavePlayer(el.dataset.eid);return;}
   if(a==='sum-finalize'){sumFinalize(el.dataset.mid);return;}
   if(a==='import-futsal'){if(confirm('Importar o II Futsal Master Cup 2026 (times + 65 jogos da tabela oficial)? Pode rodar de novo sem duplicar.')){toast('Importando...');try{const r=await api('/import/futsal-master-cup',{method:'POST'});toast('Pronto: '+r.teams+' times · '+r.matchesCreated+' jogos'+(r.matchesTBD?' ('+r.matchesTBD+' a confirmar)':''));go('t/'+r.tournamentId);}catch(e){toast(e.message);}}return;}
