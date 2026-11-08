@@ -3934,6 +3934,39 @@ model AppNotification {
   @@index([userId, read, createdAt])
 }
 
+// Súmula digital de futsal — elenco por time + eventos do jogo.
+// RosterPlayer: jogador de uma equipe (TournamentEntry). Por ora nome+número
+// (não exige conta); userId liga à conta do atleta quando houver.
+model RosterPlayer {
+  id           String   @id @default(cuid())
+  entryId      String // time (TournamentEntry)
+  name         String
+  number       Int?
+  isGoalkeeper Boolean  @default(false)
+  isCaptain    Boolean  @default(false)
+  userId       String? // futuro: conta do atleta
+  createdAt    DateTime @default(now())
+
+  @@index([entryId])
+}
+
+// MatchEvent: cada evento da súmula. GOAL/ASSIST/YELLOW/RED referenciam
+// playerId; FOUL (falta acumulada) e TIMEOUT referenciam só o time (entryId).
+model MatchEvent {
+  id        String   @id @default(cuid())
+  matchId   String
+  entryId   String // time do evento
+  playerId  String? // RosterPlayer (gol/assistência/cartão)
+  type      String // GOAL | ASSIST | YELLOW | RED | FOUL | TIMEOUT
+  minute    Int?
+  period    Int? // 1 | 2
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([matchId])
+  @@index([playerId])
+}
+
 // ============================================================
 // PROFISSIONAL ESPORTIVO — Card público + Gestão + Cobrança
 // ------------------------------------------------------------
