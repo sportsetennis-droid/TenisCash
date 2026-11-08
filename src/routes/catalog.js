@@ -236,23 +236,21 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
     const stopWords = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'em', 'no', 'na', 'nos', 'nas', 'com', 'sem', 'para', 'pra', 'por', 'um', 'uma', 'uns', 'umas']);
     const salesTerms = (search.match(/[\p{L}\p{N}]+/gu) || [])
       .filter(s => s.length >= 2 && !stopWords.has(s.toLocaleLowerCase('pt-BR')));
+    const fields = t => ([
+      { name: { contains: t, mode: 'insensitive' } },
+      { sku: { contains: t, mode: 'insensitive' } },
+      { internalBarcode: { contains: t, mode: 'insensitive' } },
+      { brand: { contains: t, mode: 'insensitive' } },
+      { category: { contains: t, mode: 'insensitive' } },
+      { subcategory: { contains: t, mode: 'insensitive' } },
+      { aiContext: { path: ['supplierRef'], string_contains: t } },
+      { aiContext: { path: ['classification', 'modality'], string_contains: t } },
+      { aiContext: { path: ['classification', 'tier'], string_contains: t } },
+      { aiContext: { path: ['color'], string_contains: t } },
+      { sizes: { some: { barcode: { contains: t, mode: 'insensitive' } } } },
+    ]);
     // BUSCA INTELIGENTE multi-palavra: "bola reebok" acha quem tem bola E reebok (qualquer ordem/campo).
     if (search) {
-      // Busca ABRANGENTE: nome, REF (sku), marca, categoria/sub, FORN (supplierRef),
-      // modalidade/especialidade, cor E código de barras (EAN) de qualquer tamanho.
-      const fields = t => ([
-        { name: { contains: t, mode: 'insensitive' } },
-        { sku: { contains: t, mode: 'insensitive' } },
-        { internalBarcode: { contains: t, mode: 'insensitive' } },
-        { brand: { contains: t, mode: 'insensitive' } },
-        { category: { contains: t, mode: 'insensitive' } },
-        { subcategory: { contains: t, mode: 'insensitive' } },
-        { aiContext: { path: ['supplierRef'], string_contains: t } },
-        { aiContext: { path: ['classification', 'modality'], string_contains: t } },
-        { aiContext: { path: ['classification', 'tier'], string_contains: t } },
-        { aiContext: { path: ['color'], string_contains: t } },
-        { sizes: { some: { barcode: { contains: t, mode: 'insensitive' } } } },
-      ]);
       const termos = salesSearch
         ? salesTerms
         : search.split(/\s+/).map(s => s.trim()).filter(s => s.length >= 2);
@@ -316,7 +314,7 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
     // sem resultado, tolera acentos e erros pequenos e ordena os candidatos por proximidade.
     if (salesSearch && search && total === 0) {
       const normalize = value => String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      const candidateTerms = new Set();
+      const candidateTerms = new Set(salesTerms);
       for (const rawTerm of salesTerms) {
         const term = normalize(rawTerm).replace(/[^a-z0-9]/g, '');
         if (term.length <= 3) candidateTerms.add(term);
@@ -326,24 +324,42 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
         }
       }
       const fragments = [...candidateTerms].slice(0, 24);
-      if (fragments.length) {
-        const candidates = await prisma.product.findMany({
-          where: {
-            AND: [
-              ...baseAndConds,
-              { OR: fragments.flatMap(t => [
-                { name: { contains: t, mode: 'insensitive' } },
-                { sku: { contains: t, mode: 'insensitive' } },
-                { brand: { contains: t, mode: 'insensitive' } },
-                { category: { contains: t, mode: 'insensitive' } },
-                { subcategory: { contains: t, mode: 'insensitive' } },
-              ]) },
-            ],
-          },
-          take: 300,
-          orderBy: [{ featured: 'desc' }, { name: 'asc' }],
-          select: { id: true, name: true, sku: true, internalBarcode: true, brand: true, category: true, subcategory: true, aiContext: true },
-        });
+      const candidateFilters = [];
+      for (const fragment of fragments) candidateFilters.push(...fields(fragment));
+      let candidates = [];
+      if (candidateFilters.length) {
+        try {
+          candidates = await prisma.product.findMany({
+            where: { AND: [...baseAndConds, { OR: candidateFilters }] },
+            take: 300,
+            orderBy: [{ featured: 'desc' }, { name: 'asc' }],
+            select: { id: true, name: true, sku: true, internalBarcode: true, brand: true, category: true, subcategory: true, aiContext: true },
+          });
+        } catch (candidateError) {
+          console.error('catalog/products nearest-search candidates', candidateError);
+          const simpleFilters = [];
+          for (const term of salesTerms) {
+            simpleFilters.push(
+              { name: { contains: term, mode: 'insensitive' } },
+              { sku: { contains: term, mode: 'insensitive' } },
+              { brand: { contains: term, mode: 'insensitive' } },
+              { category: { contains: term, mode: 'insensitive' } },
+              { subcategory: { contains: term, mode: 'insensitive' } },
+            );
+          }
+          try {
+            if (simpleFilters.length) candidates = await prisma.product.findMany({
+              where: { AND: [...baseAndConds, { OR: simpleFilters }] },
+              take: 100,
+              orderBy: [{ featured: 'desc' }, { name: 'asc' }],
+              select: { id: true, name: true, sku: true, internalBarcode: true, brand: true, category: true, subcategory: true, aiContext: true },
+            });
+          } catch (fallbackError) {
+            console.error('catalog/products nearest-search simple fallback', fallbackError);
+          }
+        }
+      }
+      {
         const bigrams = value => {
           const word = normalize(value).replace(/[^a-z0-9]/g, '');
           const result = new Set();
