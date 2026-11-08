@@ -822,6 +822,7 @@ Fundada pelo dono: **"primeiro é testar antes de dizer que está pronto; segund
 - Rotas: `src/routes/tournaments.js`
 - Serviços: `src/services/{tournamentEngine, tournamentCash, notify, ensureApexSchema, matchSheet, futsalMasterCupSeed}.js`
 - Front: `public/torneios.html` (gestão + tela do árbitro/súmula) · página pública `/t/:slug` e card `/atleta/:username` renderizados em `src/index.js`
+  - **Página pública — menu de visões (2026-11-08):** dentro de cada categoria há um seletor de abas `.vtab` (JS: `VIEWS`/`VIEW`/`renderView`/`renderViews`) no padrão dos apps de competição (FotMob/LiveScore: sub-abas Tabela/Jogos/Estatísticas, confirmado por pesquisa): **Jogos** (confrontos, default) · **Classificação** (tabela) · **Estatísticas** (artilheiros+assistências+cartões). `load()` cacheia `DATA` (matches/stand/scorers/assists/cards) e só re-renderiza ao trocar de aba (não refetcha); guarda `CURID` evita corrida ao trocar de categoria; poll AO VIVO preservado. Classificação e rankings têm estado vazio amigável ("aparece quando os jogos começarem").
 - Teste: `scripts/test-tournament-engine.js` (`npm run test:tournament`)
 **Schema (models APEX):** Tournament, TournamentCategory, TournamentEntry, EntryMember, TournamentMatch, MatchGame, TournamentStanding, AthleteRating, PlayChallenge, TournamentPost, AppNotification, RosterPlayer, MatchEvent. Campos extra: `Tournament.cashEnabled/prizePaidAt`, `TournamentEntry.entryTxId`.
 **Convenções:**
