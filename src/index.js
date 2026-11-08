@@ -1246,6 +1246,7 @@ app.get('/t/:slug', async (req, res) => {
   .post-d{font-size:11px;color:#8e8e93;margin-top:6px}
   .grp-h{font-size:14px;font-weight:800;color:#1d1d1f;margin:14px 4px 6px}
   .sumula{font-size:12px;color:#8e8e93;font-weight:700;padding:2px 0 6px;letter-spacing:.3px}
+  .sched{font-size:12px;color:#8e8e93;font-weight:700;padding:7px 0 3px;letter-spacing:.2px;border-bottom:1px solid #f0f0f3}
   .footer{text-align:center;padding:22px;color:#8e8e93;font-size:11px}
 </style>
 </head>
@@ -1281,9 +1282,13 @@ app.get('/t/:slug', async (req, res) => {
   var elBody = document.getElementById('catbody');
   var STAGE = {FINAL:'Final',SEMI:'Semifinal',QUARTER:'Quartas de final',RO16:'Oitavas de final',RO32:'16-avos',RO64:'32-avos'};
   function esc(s){s=(s==null?'':''+s);return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+  function fmtWhen(d){try{var s=new Date(d).toLocaleString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'America/Fortaleza'});return s.charAt(0).toUpperCase()+s.slice(1);}catch(e){return '';}}
   function matchHtml(m){
     var h=m.homeEntry?m.homeEntry.name:'A definir';
     var a=m.awayEntry?m.awayEntry.name:'A definir';
+    var whenStr=m.scheduledAt?fmtWhen(m.scheduledAt):'';
+    var locStr=m.location||'';
+    var schedLine=(whenStr||locStr)?'<div class="sched">'+(whenStr?'📅 '+esc(whenStr):'')+(locStr?(whenStr?'  ·  ':'')+'📍 '+esc(locStr):'')+'</div>':'';
     var done=(m.status==='FINISHED'||m.status==='WALKOVER');
     var live=(m.status==='LIVE');
     var hs=done&&m.homeScore!=null?m.homeScore:'';
@@ -1296,6 +1301,7 @@ app.get('/t/:slug', async (req, res) => {
     }
     var sumula=(done&&m.games&&m.games.length)?m.games.map(function(s){return s.homeGames+'-'+s.awayGames;}).join('  '):'';
     return '<div class="mt">'
+      +schedLine
       +'<div class="mt-row'+(hw?' win':'')+'"><span class="nm">'+esc(h)+'</span><span class="sc">'+esc(hs)+'</span></div>'
       +'<div class="mt-row'+(aw?' win':'')+'"><span class="nm">'+esc(a)+'</span><span class="sc">'+esc(as)+'</span></div>'
       +(sumula?'<div class="sumula">📋 '+esc(sumula)+'</div>':(m.status==='WALKOVER'?'<div class="sumula">W.O.</div>':''))
@@ -1336,7 +1342,7 @@ app.get('/t/:slug', async (req, res) => {
       var nm=s.entry?s.entry.name:'?';
       return '<tr><td>'+(s.rank||i+1)+'</td><td class="tl">'+esc(nm)+'</td><td>'+s.played+'</td><td>'+s.won+'</td><td>'+s.drawn+'</td><td>'+s.lost+'</td><td>'+(s.scoreFor-s.scoreAgainst)+'</td><td><b>'+s.points+'</b></td></tr>';
     }).join('');
-    return '<table class="tbl" style="margin-bottom:10px"><thead><tr><th>#</th><th class="tl">Atleta</th><th>J</th><th>V</th><th>E</th><th>D</th><th>SG</th><th>Pts</th></tr></thead><tbody>'+body+'</tbody></table>';
+    return '<table class="tbl" style="margin-bottom:10px"><thead><tr><th>#</th><th class="tl">Equipe</th><th>J</th><th>V</th><th>E</th><th>D</th><th>SG</th><th>Pts</th></tr></thead><tbody>'+body+'</tbody></table>';
   }
   function renderStandings(stand){
     if(!stand.length) return '';
