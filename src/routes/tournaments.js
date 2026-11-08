@@ -130,19 +130,6 @@ router.post('/', authMiddleware, async (req, res) => {
   }
 });
 
-// AUTOTESTE da súmula em produção (TEMPORÁRIO, sem token, guarda ?g=).
-// Cria torneio-teste descartável, fecha nos pênaltis, confere avanço na chave
-// e apaga tudo. Remover depois de validar. Fora de /api/admin de propósito.
-router.post('/_selftest', async (req, res) => {
-  if (req.query.g !== 'sumula-2026-ok') return res.status(404).json({ error: 'not found' });
-  try {
-    const { runSelfTest } = require('../services/sumulaSelfTest');
-    res.json(await runSelfTest());
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // Importa o II Futsal Master Cup 2026 da tabela oficial.
 // ⚠️ TEMPORÁRIO (dono pediu "sem token por enquanto"): SEM auth. É seguro o
 // suficiente porque é IDEMPOTENTE e cria só este torneio fixo (sem parâmetros,
