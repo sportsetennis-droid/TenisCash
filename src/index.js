@@ -1277,6 +1277,7 @@ app.get('/t/:slug', async (req, res) => {
   .tbl tr.q td:first-child{box-shadow:inset 3px 0 0 var(--green)}
   .tbl tr.q td:first-child{color:var(--green);font-weight:800}
   .tbl td b{color:#fff}
+  .tlogo{width:19px;height:19px;object-fit:contain;vertical-align:middle;margin-right:7px}
   .pos{display:inline-flex;align-items:center;justify-content:center;min-width:20px}
   .empty{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:30px 16px;text-align:center;color:var(--mut);font-size:14px}
   .post{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px 15px;margin-bottom:9px}
@@ -1394,7 +1395,8 @@ app.get('/t/:slug', async (req, res) => {
   function stdTableHtml(rows){
     var body=rows.map(function(s,i){
       var nm=s.entry?s.entry.name:'?';
-      return '<tr'+(i<2?' class="q"':'')+'><td>'+(s.rank||i+1)+'</td><td class="tl">'+esc(nm)+'</td><td>'+s.played+'</td><td>'+s.won+'</td><td>'+s.drawn+'</td><td>'+s.lost+'</td><td>'+(s.scoreFor-s.scoreAgainst)+'</td><td><b>'+s.points+'</b></td></tr>';
+      var lg=s.entry&&s.entry.logoUrl?'<img class="tlogo" src="'+esc(s.entry.logoUrl)+'">':'';
+      return '<tr'+(i<2?' class="q"':'')+'><td>'+(s.rank||i+1)+'</td><td class="tl">'+lg+esc(nm)+'</td><td>'+s.played+'</td><td>'+s.won+'</td><td>'+s.drawn+'</td><td>'+s.lost+'</td><td>'+(s.scoreFor-s.scoreAgainst)+'</td><td><b>'+s.points+'</b></td></tr>';
     }).join('');
     return '<table class="tbl" style="margin-bottom:10px"><thead><tr><th>#</th><th class="tl">Equipe</th><th>J</th><th>V</th><th>E</th><th>D</th><th>SG</th><th>Pts</th></tr></thead><tbody>'+body+'</tbody></table>';
   }
@@ -1441,14 +1443,15 @@ app.get('/t/:slug', async (req, res) => {
       var matches=(res[0]&&res[0].matches)||[];
       var stand=(res[1]&&res[1].standings)||[];
       var html='';
+      var ek=function(t){return '<div class="empty" style="padding:16px">'+t+'</div>';};
       var stHtml=renderStandings(stand);
-      if(stHtml) html+='<div class="sec-h">Classificação</div>'+stHtml;
+      html+='<div class="sec-h">Classificação</div>'+(stHtml||ek('A classificação aparece quando os jogos começarem.'));
       var sc=rankTable((res[2]&&res[2].ranking)||[],'scorers');
-      if(sc) html+='<div class="sec-h">Artilheiros</div>'+sc;
+      html+='<div class="sec-h">Artilheiros</div>'+(sc||ek('Sem gols ainda — aparece quando os jogos começarem.'));
       var as=rankTable((res[3]&&res[3].ranking)||[],'assists');
-      if(as) html+='<div class="sec-h">Assistências</div>'+as;
+      html+='<div class="sec-h">Assistências</div>'+(as||ek('Sem assistências ainda.'));
       var cd=rankTable((res[4]&&res[4].ranking)||[],'cards');
-      if(cd) html+='<div class="sec-h">Cartões</div>'+cd;
+      html+='<div class="sec-h">Cartões</div>'+(cd||ek('Sem cartões ainda.'));
       html+='<div class="sec-h">Jogos</div>'+renderMatches(matches);
       elBody.innerHTML=html;
       if(matches.some(function(m){return m.status==='LIVE';})){POLL=setTimeout(function(){load(catId,true);},20000);}
