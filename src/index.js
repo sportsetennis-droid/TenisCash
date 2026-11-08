@@ -1353,32 +1353,46 @@ app.get('/t/:slug', async (req, res) => {
       return (g!=='_'?'<div class="grp-h">Grupo '+esc(g)+'</div>':'')+stdTableHtml(byG[g]);
     }).join('');
   }
-  function renderScorers(rows){
+  function rankTable(rows, kind){
     if(!rows||!rows.length) return '';
-    var top=rows.filter(function(r){return r.goals>0;}).slice(0,10);
+    var top=rows.filter(function(r){return (kind==='cards'?(r.yellow+r.red):(kind==='assists'?r.assists:r.goals))>0;}).slice(0,10);
     if(!top.length) return '';
-    var body=top.map(function(r,i){
-      return '<tr><td>'+(i+1)+'</td><td class="tl">'+esc((r.number!=null?r.number+' ':'')+r.name)+'</td><td style="text-align:left;color:#8e8e93">'+esc(r.team||'')+'</td><td><b>'+r.goals+'</b></td></tr>';
-    }).join('');
-    return '<table class="tbl" style="margin-bottom:10px"><thead><tr><th>#</th><th class="tl">Jogador</th><th class="tl">Equipe</th><th>Gols</th></tr></thead><tbody>'+body+'</tbody></table>';
+    var nm=function(r){return esc((r.number!=null?r.number+' ':'')+r.name);};
+    var tm=function(r){return '<td style="text-align:left;color:#8e8e93">'+esc(r.team||'')+'</td>';};
+    var head,body;
+    if(kind==='cards'){
+      head='<th>🟨</th><th>🟥</th>';
+      body=top.map(function(r,i){return '<tr><td>'+(i+1)+'</td><td class="tl">'+nm(r)+'</td>'+tm(r)+'<td>'+r.yellow+'</td><td>'+r.red+'</td></tr>';}).join('');
+    }else{
+      var col=kind==='assists'?'assists':'goals', label=kind==='assists'?'Assist.':'Gols';
+      head='<th>'+label+'</th>';
+      body=top.map(function(r,i){return '<tr><td>'+(i+1)+'</td><td class="tl">'+nm(r)+'</td>'+tm(r)+'<td><b>'+r[col]+'</b></td></tr>';}).join('');
+    }
+    return '<table class="tbl" style="margin-bottom:10px"><thead><tr><th>#</th><th class="tl">Jogador</th><th class="tl">Equipe</th>'+head+'</tr></thead><tbody>'+body+'</tbody></table>';
   }
   var POLL=null;
   function load(catId, silent){
     if(POLL){clearTimeout(POLL);POLL=null;}
     if(!silent) elBody.innerHTML='<div class="empty">Carregando…</div>';
+    var S='/api/tournaments/'+TID+'/stats/';
+    var cq='?categoryId='+catId;
+    var J=function(u){return fetch(u).then(function(r){return r.json();}).catch(function(){return {};});};
     Promise.all([
       fetch('/api/tournaments/'+TID+'/categories/'+catId+'/matches').then(function(r){return r.json();}),
       fetch('/api/tournaments/'+TID+'/categories/'+catId+'/standings').then(function(r){return r.json();}),
-      fetch('/api/tournaments/'+TID+'/stats/scorers?categoryId='+catId).then(function(r){return r.json();}).catch(function(){return {};})
+      J(S+'scorers'+cq), J(S+'assists'+cq), J(S+'cards'+cq)
     ]).then(function(res){
       var matches=(res[0]&&res[0].matches)||[];
       var stand=(res[1]&&res[1].standings)||[];
-      var scorers=(res[2]&&res[2].ranking)||[];
       var html='';
       var stHtml=renderStandings(stand);
       if(stHtml) html+='<div class="sec-h">Classificação</div>'+stHtml;
-      var scHtml=renderScorers(scorers);
-      if(scHtml) html+='<div class="sec-h">Artilheiros</div>'+scHtml;
+      var sc=rankTable((res[2]&&res[2].ranking)||[],'scorers');
+      if(sc) html+='<div class="sec-h">Artilheiros</div>'+sc;
+      var as=rankTable((res[3]&&res[3].ranking)||[],'assists');
+      if(as) html+='<div class="sec-h">Assistências</div>'+as;
+      var cd=rankTable((res[4]&&res[4].ranking)||[],'cards');
+      if(cd) html+='<div class="sec-h">Cartões</div>'+cd;
       html+='<div class="sec-h">Jogos</div>'+renderMatches(matches);
       elBody.innerHTML=html;
       if(matches.some(function(m){return m.status==='LIVE';})){POLL=setTimeout(function(){load(catId,true);},20000);}
