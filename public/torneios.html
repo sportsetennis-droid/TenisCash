@@ -234,7 +234,7 @@ async function renderHome(){
       '<div class="grow"><div class="nm">'+esc(t.name)+'</div>'+
       '<div class="sub">'+esc(FMT_LABEL[t.format]||t.format)+' · '+(t._count?t._count.entries:0)+' inscritos</div></div>'+
       '<span class="pill '+st[1]+'">'+esc(st[0])+'</span></div>';});}
-  if(ME&&['admin','superadmin','manager'].includes(ME.role)){
+  if(ME){
     html+='<div style="height:8px"></div><button class="btn sm sec" data-act="import-futsal" style="width:100%">⚽ Importar II Futsal Master Cup 2026</button>';
   }
   html+='</div>';
