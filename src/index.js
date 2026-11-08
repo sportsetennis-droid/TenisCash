@@ -1244,15 +1244,20 @@ app.get('/t/:slug', async (req, res) => {
   .mt{background:linear-gradient(180deg,var(--card),#10141d);border:1px solid var(--line);border-radius:16px;padding:0;margin-bottom:11px;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.3)}
   .mt.is-live{border-color:rgba(238,43,43,.5);box-shadow:0 0 0 1px rgba(238,43,43,.3),0 6px 20px rgba(238,43,43,.18)}
   .sched{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--mut);font-weight:600;padding:10px 14px;background:rgba(255,255,255,.02);border-bottom:1px solid var(--line);letter-spacing:.2px}
-  .mt-row{display:flex;align-items:center;gap:11px;padding:12px 14px;font-size:16px}
-  .mt-row+.mt-row{border-top:1px solid var(--line)}
-  .tb{flex-shrink:0;width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-family:'Oswald',sans-serif;font-weight:700;font-size:13px;color:#fff;letter-spacing:.3px;background:linear-gradient(135deg,hsl(var(--h,220),55%,42%),hsl(var(--h,220),60%,26%));box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
-  .mt-row .nm{flex:1;font-weight:600;color:#dfe4ec;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .mt-row.win .nm{font-weight:800;color:#fff}
-  .mt-row.win .nm:after{content:" ✓";color:var(--green);font-weight:900}
-  .mt-row .sc{font-family:'Oswald',sans-serif;font-weight:700;font-size:24px;min-width:30px;text-align:center;color:#fff}
-  .mt-row.win .sc{color:var(--gold)}
-  .mt-row .vs{font-family:'Oswald',sans-serif;font-weight:600;font-size:13px;color:var(--mut);min-width:30px;text-align:center;letter-spacing:1px}
+  .tb{flex-shrink:0;width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-family:'Oswald',sans-serif;font-weight:700;font-size:13px;color:#fff;letter-spacing:.3px;background:linear-gradient(135deg,hsl(var(--h,220),55%,44%),hsl(var(--h,220),60%,26%));box-shadow:inset 0 0 0 1px rgba(255,255,255,.14)}
+  /* confronto HORIZONTAL: time × placar × time */
+  .confront{display:flex;align-items:flex-start;gap:8px;padding:16px 10px 15px}
+  .side{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:9px;text-align:center}
+  .tb.big{width:48px;height:48px;border-radius:13px;font-size:17px}
+  .sn{font-size:13px;font-weight:700;color:#cfd6e2;line-height:1.2;word-break:break-word;max-width:100%}
+  .sn.win{color:#fff}
+  .sn.win:after{content:" ✓";color:var(--green)}
+  .score{flex:0 0 auto;min-width:82px;display:flex;align-items:center;justify-content:center;gap:7px;padding-top:12px}
+  .score .sc{font-family:'Oswald',sans-serif;font-weight:700;font-size:31px;line-height:1;color:#fff}
+  .score .sc.w{color:var(--gold)}
+  .score .x{color:var(--mut);font-size:15px;font-weight:600}
+  .score .vs{font-family:'Oswald',sans-serif;font-weight:600;font-size:15px;color:var(--mut);letter-spacing:1.5px;border:1px solid var(--line);padding:7px 11px;border-radius:9px}
+  .score .vs.lv{color:var(--red2);border-color:rgba(238,43,43,.45)}
   .liverow{display:flex;align-items:center;gap:8px;padding:9px 14px;background:rgba(238,43,43,.08);border-top:1px solid var(--line)}
   .livebadge{display:inline-flex;align-items:center;gap:6px;background:var(--red);color:#fff;font-size:10px;font-weight:900;padding:4px 9px;border-radius:7px;text-transform:uppercase;letter-spacing:.7px}
   .livebadge .dot{width:7px;height:7px;border-radius:50%;background:#fff;animation:lp 1.1s infinite}
@@ -1332,10 +1337,16 @@ app.get('/t/:slug', async (req, res) => {
       setsStr=m.liveState.sets.map(function(s){return (s.h!=null?s.h:0)+'-'+(s.a!=null?s.a:0);}).join('  ');
     }
     var sumula=(done&&m.games&&m.games.length)?m.games.map(function(s){return s.homeGames+'-'+s.awayGames;}).join('  '):'';
+    var ctr = done
+      ? '<span class="sc'+(hw?' w':'')+'">'+esc(hs)+'</span><span class="x">×</span><span class="sc'+(aw?' w':'')+'">'+esc(as)+'</span>'
+      : '<span class="vs'+(live?' lv':'')+'">VS</span>';
     return '<div class="mt'+(live?' is-live':'')+'">'
       +schedLine
-      +'<div class="mt-row'+(hw?' win':'')+'"><span class="tb" style="--h:'+hue(h)+'">'+ini(h)+'</span><span class="nm">'+esc(h)+'</span><span class="sc">'+esc(hs)+'</span></div>'
-      +'<div class="mt-row'+(aw?' win':'')+'"><span class="tb" style="--h:'+hue(a)+'">'+ini(a)+'</span><span class="nm">'+esc(a)+'</span><span class="sc">'+esc(as)+'</span></div>'
+      +'<div class="confront">'
+      +'<div class="side"><span class="tb big" style="--h:'+hue(h)+'">'+ini(h)+'</span><span class="sn'+(hw?' win':'')+'">'+esc(h)+'</span></div>'
+      +'<div class="score">'+ctr+'</div>'
+      +'<div class="side"><span class="tb big" style="--h:'+hue(a)+'">'+ini(a)+'</span><span class="sn'+(aw?' win':'')+'">'+esc(a)+'</span></div>'
+      +'</div>'
       +(sumula?'<div class="sumula">📋 '+esc(sumula)+'</div>':(m.status==='WALKOVER'?'<div class="sumula">W.O.</div>':''))
       +(live?'<div class="liverow"><span class="livebadge"><span class="dot"></span>Ao vivo</span><span class="livesets">'+esc(setsStr)+'</span></div>':'')
       +'</div>';
