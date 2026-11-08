@@ -1235,7 +1235,11 @@ app.get('/t/:slug', async (req, res) => {
   .cat.active{border-color:transparent;color:#fff;background:linear-gradient(135deg,var(--red),#c81e1e);box-shadow:0 8px 20px rgba(238,43,43,.35)}
   .cat .cnt{background:rgba(255,255,255,.08);color:var(--mut);font-size:11px;font-weight:700;padding:1px 8px;border-radius:7px}
   .cat.active .cnt{background:rgba(0,0,0,.25);color:#fff}
+  .views{display:flex;gap:7px;margin:14px 2px 4px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:4px}
+  .vtab{flex:1;border:none;background:transparent;color:var(--mut);font-family:'Oswald',sans-serif;font-size:13px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;padding:9px 6px;border-radius:9px;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:.15s}
+  .vtab.active{background:linear-gradient(135deg,var(--red),#c81e1e);color:#fff;box-shadow:0 4px 12px rgba(238,43,43,.3)}
   .sec-h{font-family:'Oswald',sans-serif;font-size:15px;color:#fff;text-transform:uppercase;letter-spacing:1.5px;font-weight:600;margin:24px 2px 12px;display:flex;align-items:center;gap:9px}
+  .views+#catbody .sec-h:first-child,.views~#catbody>.sec-h:first-child{margin-top:16px}
   .sec-h:before{content:"";width:4px;height:17px;background:linear-gradient(var(--red),var(--gold));border-radius:3px;display:inline-block}
   .grp-h{font-family:'Oswald',sans-serif;font-size:16px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--gold);margin:20px 2px 10px;padding-left:10px;border-left:3px solid var(--red)}
   .rnd{margin-bottom:16px}
@@ -1309,6 +1313,7 @@ app.get('/t/:slug', async (req, res) => {
     ${muralHtml}
 
     <div class="cats" id="cats"></div>
+    <div class="views" id="views"></div>
     <div id="catbody"></div>
 
     <div class="footer">teniscash.com.br · Sports &amp; Tennis</div>
@@ -1318,7 +1323,10 @@ app.get('/t/:slug', async (req, res) => {
   var TID = ${JSON.stringify(t.id)};
   var CATS = ${catJson};
   var elTabs = document.getElementById('cats');
+  var elViews = document.getElementById('views');
   var elBody = document.getElementById('catbody');
+  var VIEW = 'jogos', DATA = null, CURID = null;
+  var VIEWS = [['jogos','Jogos'],['tabela','Classificação'],['stats','Estatísticas']];
   var STAGE = {FINAL:'Final',SEMI:'Semifinal',QUARTER:'Quartas de final',RO16:'Oitavas de final',RO32:'16-avos',RO64:'32-avos'};
   function esc(s){s=(s==null?'':''+s);return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
   function ini(s){s=(s==null?'':''+s).replace(/[^0-9A-Za-zÀ-ÿ ]/g,' ').trim();var p=s.split(/\\s+/);var a=(p[0]||'?').charAt(0);var b=(p[1]||'').charAt(0);return ((a+b).toUpperCase())||'?';}
@@ -1429,9 +1437,35 @@ app.get('/t/:slug', async (req, res) => {
     return '<table class="tbl" style="margin-bottom:10px"><thead><tr><th>#</th><th class="tl">Jogador</th><th class="tl">Equipe</th>'+head+'</tr></thead><tbody>'+body+'</tbody></table>';
   }
   var POLL=null;
+  var ek=function(t){return '<div class="empty" style="padding:16px">'+t+'</div>';};
+  function renderView(){
+    if(!DATA){elBody.innerHTML=ek('Carregando…');return;}
+    var html='';
+    if(VIEW==='tabela'){
+      html=renderStandings(DATA.stand)||ek('A classificação aparece quando os jogos começarem.');
+    }else if(VIEW==='stats'){
+      html+='<div class="sec-h">Artilheiros</div>'+(rankTable(DATA.scorers,'scorers')||ek('Sem gols ainda — aparece quando os jogos começarem.'));
+      html+='<div class="sec-h">Assistências</div>'+(rankTable(DATA.assists,'assists')||ek('Sem assistências ainda.'));
+      html+='<div class="sec-h">Cartões</div>'+(rankTable(DATA.cards,'cards')||ek('Sem cartões ainda.'));
+    }else{
+      html=renderMatches(DATA.matches);
+    }
+    elBody.innerHTML=html;
+  }
+  function renderViews(){
+    elViews.innerHTML=VIEWS.map(function(v){return '<button class="vtab'+(v[0]===VIEW?' active':'')+'" data-v="'+v[0]+'">'+esc(v[1])+'</button>';}).join('');
+    Array.prototype.forEach.call(elViews.querySelectorAll('.vtab'),function(b){
+      b.addEventListener('click',function(){
+        VIEW=b.getAttribute('data-v');
+        Array.prototype.forEach.call(elViews.querySelectorAll('.vtab'),function(x){x.classList.remove('active');});
+        b.classList.add('active');renderView();
+      });
+    });
+  }
   function load(catId, silent){
     if(POLL){clearTimeout(POLL);POLL=null;}
-    if(!silent) elBody.innerHTML='<div class="empty">Carregando…</div>';
+    CURID=catId;
+    if(!silent){DATA=null;renderView();}
     var S='/api/tournaments/'+TID+'/stats/';
     var cq='?categoryId='+catId;
     var J=function(u){return fetch(u).then(function(r){return r.json();}).catch(function(){return {};});};
@@ -1440,22 +1474,11 @@ app.get('/t/:slug', async (req, res) => {
       fetch('/api/tournaments/'+TID+'/categories/'+catId+'/standings').then(function(r){return r.json();}),
       J(S+'scorers'+cq), J(S+'assists'+cq), J(S+'cards'+cq)
     ]).then(function(res){
-      var matches=(res[0]&&res[0].matches)||[];
-      var stand=(res[1]&&res[1].standings)||[];
-      var html='';
-      var ek=function(t){return '<div class="empty" style="padding:16px">'+t+'</div>';};
-      var stHtml=renderStandings(stand);
-      html+='<div class="sec-h">Classificação</div>'+(stHtml||ek('A classificação aparece quando os jogos começarem.'));
-      var sc=rankTable((res[2]&&res[2].ranking)||[],'scorers');
-      html+='<div class="sec-h">Artilheiros</div>'+(sc||ek('Sem gols ainda — aparece quando os jogos começarem.'));
-      var as=rankTable((res[3]&&res[3].ranking)||[],'assists');
-      html+='<div class="sec-h">Assistências</div>'+(as||ek('Sem assistências ainda.'));
-      var cd=rankTable((res[4]&&res[4].ranking)||[],'cards');
-      html+='<div class="sec-h">Cartões</div>'+(cd||ek('Sem cartões ainda.'));
-      html+='<div class="sec-h">Jogos</div>'+renderMatches(matches);
-      elBody.innerHTML=html;
-      if(matches.some(function(m){return m.status==='LIVE';})){POLL=setTimeout(function(){load(catId,true);},20000);}
-    }).catch(function(){if(!silent)elBody.innerHTML='<div class="empty">Erro ao carregar.</div>';});
+      if(CURID!==catId) return;
+      DATA={ matches:(res[0]&&res[0].matches)||[], stand:(res[1]&&res[1].standings)||[], scorers:(res[2]&&res[2].ranking)||[], assists:(res[3]&&res[3].ranking)||[], cards:(res[4]&&res[4].ranking)||[] };
+      renderView();
+      if(DATA.matches.some(function(m){return m.status==='LIVE';})){POLL=setTimeout(function(){load(catId,true);},20000);}
+    }).catch(function(){if(!silent)elBody.innerHTML=ek('Erro ao carregar.');});
   }
   function renderTabs(){
     elTabs.innerHTML=CATS.map(function(c,i){
@@ -1468,7 +1491,7 @@ app.get('/t/:slug', async (req, res) => {
       });
     });
   }
-  if(CATS.length){renderTabs();load(CATS[0].id);}else{elBody.innerHTML='<div class="empty">Nenhuma categoria criada ainda.</div>';}
+  if(CATS.length){renderTabs();renderViews();load(CATS[0].id);}else{elBody.innerHTML='<div class="empty">Nenhuma categoria criada ainda.</div>';}
 })();
 </script>
 </body>
