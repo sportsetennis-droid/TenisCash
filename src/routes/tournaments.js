@@ -13,6 +13,7 @@ const engine = require('../services/tournamentEngine');
 const { notify, notifyMany } = require('../services/notify');
 const cash = require('../services/tournamentCash');
 const { importFutsalMasterCup } = require('../services/futsalMasterCupSeed');
+const sheet = require('../services/matchSheet');
 
 const router = express.Router();
 
@@ -841,6 +842,112 @@ router.post('/matches/:matchId/teams', authMiddleware, async (req, res) => {
     if (!Object.keys(data).length) return res.status(400).json({ error: 'informe homeEntryId e/ou awayEntryId' });
     const updated = await prisma.tournamentMatch.update({ where: { id: match.id }, data });
     res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =====================================================================
+// SÚMULA DIGITAL + ELENCO + ESTATÍSTICAS (futsal)
+// ⚠️ Escritas SEM token por enquanto (dono pediu) — re-proteger depois com
+// credencial de árbitro. Leituras são públicas.
+// =====================================================================
+
+// Elenco de um time (lista) — público
+router.get('/entries/:entryId/players', async (req, res) => {
+  try {
+    const players = await prisma.rosterPlayer.findMany({
+      where: { entryId: req.params.entryId },
+      orderBy: [{ number: 'asc' }, { name: 'asc' }],
+    });
+    res.json({ players });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Adiciona jogador ao elenco (nome + número, opcional goleiro/capitão)
+router.post('/entries/:entryId/players', async (req, res) => {
+  try {
+    const entry = await prisma.tournamentEntry.findUnique({ where: { id: req.params.entryId }, select: { id: true } });
+    if (!entry) return res.status(404).json({ error: 'time não encontrado' });
+    const b = req.body || {};
+    const name = String(b.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'nome do jogador obrigatório' });
+    const player = await prisma.rosterPlayer.create({
+      data: {
+        entryId: entry.id, name: name.slice(0, 80),
+        number: b.number != null && b.number !== '' ? Number(b.number) : null,
+        isGoalkeeper: !!b.isGoalkeeper, isCaptain: !!b.isCaptain,
+        userId: b.userId || null,
+      },
+    });
+    res.status(201).json(player);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Remove jogador do elenco
+router.delete('/players/:playerId', async (req, res) => {
+  try {
+    await prisma.rosterPlayer.delete({ where: { id: req.params.playerId } }).catch(() => {});
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Súmula completa de uma partida (elenco + eventos + placar) — público
+router.get('/matches/:matchId/sheet', async (req, res) => {
+  try {
+    const s = await sheet.buildSheet(req.params.matchId);
+    if (!s) return res.status(404).json({ error: 'partida não encontrada' });
+    res.json(s);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Registra um evento da súmula (gol, assistência, cartão, falta, tempo)
+router.post('/matches/:matchId/events', async (req, res) => {
+  try {
+    const r = await sheet.addEvent(req.params.matchId, req.body || {});
+    if (!r.ok) return res.status(400).json(r);
+    res.status(201).json(r.event);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Remove um evento da súmula
+router.delete('/events/:eventId', async (req, res) => {
+  try {
+    await sheet.deleteEvent(req.params.eventId);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Fecha a súmula: conta os gols e aplica o placar (classificação + chave)
+router.post('/matches/:matchId/finalize', async (req, res) => {
+  try {
+    const r = await sheet.finalizeMatch(req.params.matchId);
+    if (!r.ok) return res.status(400).json(r);
+    res.json(r);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Ranking de jogadores (artilharia/assistências/cartões) — público
+// kind = scorers | assists | cards · ?categoryId= opcional
+router.get('/:id/stats/:kind', async (req, res) => {
+  try {
+    const kind = ['scorers', 'assists', 'cards'].includes(req.params.kind) ? req.params.kind : 'scorers';
+    const rows = await sheet.playerStats(req.params.id, { kind, categoryId: req.query.categoryId || null });
+    res.json({ kind, ranking: rows });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -24,6 +24,32 @@ const STATEMENTS = [
      CONSTRAINT "AppNotification_pkey" PRIMARY KEY ("id")
    )`,
   `CREATE INDEX IF NOT EXISTS "AppNotification_userId_read_createdAt_idx" ON "AppNotification" ("userId", "read", "createdAt")`,
+  `CREATE TABLE IF NOT EXISTS "RosterPlayer" (
+     "id" TEXT NOT NULL,
+     "entryId" TEXT NOT NULL,
+     "name" TEXT NOT NULL,
+     "number" INTEGER,
+     "isGoalkeeper" BOOLEAN NOT NULL DEFAULT false,
+     "isCaptain" BOOLEAN NOT NULL DEFAULT false,
+     "userId" TEXT,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "RosterPlayer_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE INDEX IF NOT EXISTS "RosterPlayer_entryId_idx" ON "RosterPlayer" ("entryId")`,
+  `CREATE TABLE IF NOT EXISTS "MatchEvent" (
+     "id" TEXT NOT NULL,
+     "matchId" TEXT NOT NULL,
+     "entryId" TEXT NOT NULL,
+     "playerId" TEXT,
+     "type" TEXT NOT NULL,
+     "minute" INTEGER,
+     "period" INTEGER,
+     "note" TEXT,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "MatchEvent_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE INDEX IF NOT EXISTS "MatchEvent_matchId_idx" ON "MatchEvent" ("matchId")`,
+  `CREATE INDEX IF NOT EXISTS "MatchEvent_playerId_idx" ON "MatchEvent" ("playerId")`,
 ];
 
 async function ensureApexSchema(prisma) {
