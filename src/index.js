@@ -1614,6 +1614,16 @@ app.get('*', (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`TenisCash API rodando na porta ${PORT}`);
 
+  // Migração aditiva/idempotente das colunas novas do APEX (o deploy não roda
+  // prisma db push). Garante cashEnabled/prizePaidAt/entryTxId/AppNotification.
+  try {
+    const { prisma } = require('./middleware');
+    const { ensureApexSchema } = require('./services/ensureApexSchema');
+    ensureApexSchema(prisma).catch((e) => console.error('[ensureApexSchema] erro:', e.message));
+  } catch (e) {
+    console.error('[ensureApexSchema] falha ao iniciar:', e.message);
+  }
+
   try {
     require('./services/cameraBandCorrection').startCameraBandCorrection(PORT);
   } catch (e) {
