@@ -12,6 +12,7 @@ const { prisma, authMiddleware } = require('../middleware');
 const engine = require('../services/tournamentEngine');
 const { notify, notifyMany } = require('../services/notify');
 const cash = require('../services/tournamentCash');
+const { importFutsalMasterCup } = require('../services/futsalMasterCupSeed');
 
 const router = express.Router();
 
@@ -121,6 +122,22 @@ router.post('/', authMiddleware, async (req, res) => {
     res.status(201).json(t);
   } catch (err) {
     console.error('[tournaments] create', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Importa o II Futsal Master Cup 2026 da tabela oficial (só admin/gerente).
+// Idempotente — pode rodar de novo sem duplicar. Botão em /torneios.html.
+router.post('/import/futsal-master-cup', authMiddleware, async (req, res) => {
+  try {
+    if (!cash.isAdmin(req.userRole)) {
+      return res.status(403).json({ error: 'só admin/gerente importa o torneio' });
+    }
+    const r = await importFutsalMasterCup(req.userId);
+    if (!r.ok) return res.status(400).json(r);
+    res.json(r);
+  } catch (err) {
+    console.error('[tournaments] import futsal', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -788,6 +805,41 @@ router.post('/matches/:matchId/schedule', authMiddleware, async (req, res) => {
       );
     } catch (_) {}
 
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Define/ajusta os times de uma partida (só dono/admin). Usado pros jogos
+// "a confirmar" (mata-mata por classificação, jogos por-resultado, erros da
+// tabela). Aceita homeEntryId/awayEntryId (ou null pra limpar). Valida que a
+// entry pertence à mesma categoria.
+router.post('/matches/:matchId/teams', authMiddleware, async (req, res) => {
+  try {
+    const match = await prisma.tournamentMatch.findUnique({
+      where: { id: req.params.matchId },
+      include: { tournament: { select: { ownerId: true } } },
+    });
+    if (!match) return res.status(404).json({ error: 'partida não encontrada' });
+    const isAdmin = ['admin', 'superadmin', 'manager'].includes(req.userRole);
+    if (match.tournament.ownerId !== req.userId && !isAdmin) {
+      return res.status(403).json({ error: 'só o organizador define os times' });
+    }
+    const b = req.body || {};
+    const data = {};
+    for (const [field, key] of [['homeEntryId', 'home'], ['awayEntryId', 'away']]) {
+      if (b[field] === undefined) continue;
+      if (b[field] === null || b[field] === '') { data[field] = null; continue; }
+      const e = await prisma.tournamentEntry.findFirst({
+        where: { id: String(b[field]), categoryId: match.categoryId },
+        select: { id: true },
+      });
+      if (!e) return res.status(400).json({ error: `time ${key} não pertence a esta categoria` });
+      data[field] = e.id;
+    }
+    if (!Object.keys(data).length) return res.status(400).json({ error: 'informe homeEntryId e/ou awayEntryId' });
+    const updated = await prisma.tournamentMatch.update({ where: { id: match.id }, data });
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: err.message });

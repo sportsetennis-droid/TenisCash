@@ -234,6 +234,9 @@ async function renderHome(){
       '<div class="grow"><div class="nm">'+esc(t.name)+'</div>'+
       '<div class="sub">'+esc(FMT_LABEL[t.format]||t.format)+' · '+(t._count?t._count.entries:0)+' inscritos</div></div>'+
       '<span class="pill '+st[1]+'">'+esc(st[0])+'</span></div>';});}
+  if(ME&&['admin','superadmin','manager'].includes(ME.role)){
+    html+='<div style="height:8px"></div><button class="btn sm sec" data-act="import-futsal" style="width:100%">⚽ Importar II Futsal Master Cup 2026</button>';
+  }
   html+='</div>';
 
   html+='<div class="card"><div class="linkrow" data-act="nav" data-h="avisos"><div class="l"><span class="ic">🔔</span> Avisos'+(unread?' <span class="pill w">'+unread+'</span>':'')+'</div><span style="color:var(--mut)">›</span></div>'+
@@ -500,6 +503,8 @@ function matchCard(m){
       '<button class="btn sm sec" data-act="result" data-mid="'+m.id+'" data-h="'+esc(m.homeEntry.name)+'" data-a="'+esc(m.awayEntry.name)+'" data-hid="'+m.homeEntry.id+'" data-aid="'+m.awayEntry.id+'">'+(done?'editar':'placar final')+'</button>'+
       '<button class="btn sm gho" data-act="sched" data-mid="'+m.id+'" data-when="'+esc(m.scheduledAt||'')+'" data-loc="'+esc(m.location||'')+'">📅 '+((m.scheduledAt||m.location)?'reagendar':'agendar')+'</button>'+
     '</div>':'')+
+    ((!m.homeEntry||!m.awayEntry)&&m.status!=='WALKOVER'?'<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm gho" data-act="set-teams" data-mid="'+m.id+'">👥 definir times</button>'+
+      '<button class="btn sm gho" data-act="sched" data-mid="'+m.id+'" data-when="'+esc(m.scheduledAt||'')+'" data-loc="'+esc(m.location||'')+'">📅 '+((m.scheduledAt||m.location)?'reagendar':'agendar')+'</button></div>':'')+
   '</div></div>';
 }
 function stdTable(rows){
@@ -522,6 +527,23 @@ async function doSchedule(mid){
   const loc=document.getElementById('sc-loc').value.trim();
   const body={scheduledAt:when?new Date(when).toISOString():null,location:loc||null};
   try{await api('/matches/'+mid+'/schedule',{method:'POST',body});closeSheet();toast('Jogo agendado');renderCatPanel('chave');}
+  catch(e){toast(e.message);}
+}
+
+// ---------- definir times de uma partida "a confirmar" ----------
+async function sheetSetTeams(mid){
+  if(!CURCAT)return toast('abra a categoria');
+  let entries=[];try{entries=(await api('/'+CURCAT.tid+'/entries?categoryId='+CURCAT.cid)).entries||[];}catch(e){}
+  const opts='<option value="">— a confirmar —</option>'+entries.map(e=>'<option value="'+e.id+'">'+esc(e.name)+(e.groupName?' (G'+esc(e.groupName)+')':'')+'</option>').join('');
+  openSheet('<h3>Definir times</h3><p class="muted">Escolha os dois times (ou deixe "a confirmar").</p>'+
+    '<label>Time 1 (casa)</label><select id="st-home">'+opts+'</select>'+
+    '<label>Time 2 (visitante)</label><select id="st-away">'+opts+'</select>'+
+    '<div style="height:14px"></div><button class="btn" data-act="save-teams" data-mid="'+mid+'">Salvar</button>');
+}
+async function doSetTeams(mid){
+  const home=document.getElementById('st-home').value||null;
+  const away=document.getElementById('st-away').value||null;
+  try{await api('/matches/'+mid+'/teams',{method:'POST',body:{homeEntryId:home,awayEntryId:away}});closeSheet();toast('Times definidos');renderCatPanel('chave');}
   catch(e){toast(e.message);}
 }
 
@@ -814,6 +836,9 @@ document.addEventListener('click',async(ev)=>{
   if(a==='save-result'){saveResult(el.dataset.mid);return;}
   if(a==='sched'){sheetSchedule(el.dataset.mid,el.dataset.when,el.dataset.loc);return;}
   if(a==='save-sched'){doSchedule(el.dataset.mid);return;}
+  if(a==='set-teams'){sheetSetTeams(el.dataset.mid);return;}
+  if(a==='save-teams'){doSetTeams(el.dataset.mid);return;}
+  if(a==='import-futsal'){if(confirm('Importar o II Futsal Master Cup 2026 (times + 65 jogos da tabela oficial)? Pode rodar de novo sem duplicar.')){toast('Importando...');try{const r=await api('/import/futsal-master-cup',{method:'POST'});toast('Pronto: '+r.teams+' times · '+r.matchesCreated+' jogos'+(r.matchesTBD?' ('+r.matchesTBD+' a confirmar)':''));go('t/'+r.tournamentId);}catch(e){toast(e.message);}}return;}
   if(a==='notif-go'){go(el.dataset.h);return;}
   if(a==='wo'){walkover(el.dataset.mid,el.dataset.w);return;}
   if(a==='live'){sheetLive(el.dataset.mid,el.dataset.h,el.dataset.a);return;}
