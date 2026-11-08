@@ -9,16 +9,26 @@
 // Roda no SERVIDOR (tem internet livre), não no sandbox.
 // =====================================================================
 
-const GRAPH = `https://graph.facebook.com/${process.env.META_GRAPH_VERSION || 'v22.0'}`;
+const GRAPH = `https://graph.facebook.com/${process.env.META_GRAPH_VERSION || process.env.META_GRAPH_API_VERSION || 'v22.0'}`;
+
+// Resolve token + id da conta IG que CONSULTA (Business Discovery), caindo pros
+// nomes de env que o resto do projeto já usa (o publisher de IG funciona com
+// META_PAGE_TOKEN + META_INSTAGRAM_ID), pra ligar sem o dono criar segredo novo.
+function igToken() {
+  return process.env.META_IG_ACCESS_TOKEN || process.env.META_PAGE_TOKEN || process.env.META_USER_TOKEN || null;
+}
+function igBizId() {
+  return process.env.META_IG_BUSINESS_ID || process.env.META_IG_USER_ID || process.env.META_INSTAGRAM_ID || null;
+}
 
 function igConfigured() {
-  return !!(process.env.META_IG_ACCESS_TOKEN && process.env.META_IG_BUSINESS_ID);
+  return !!(igToken() && igBizId());
 }
 
 // Retorna { username, name, picUrl } ou null (não configurado / conta pessoal / não achou).
 async function fetchInstagramProfile(handle) {
-  const token = process.env.META_IG_ACCESS_TOKEN;
-  const biz = process.env.META_IG_BUSINESS_ID;
+  const token = igToken();
+  const biz = igBizId();
   const h = String(handle || '').replace(/^@/, '').trim();
   if (!token || !biz || !h) return null;
   try {
