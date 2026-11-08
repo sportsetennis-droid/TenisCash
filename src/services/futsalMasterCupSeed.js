@@ -150,6 +150,9 @@ async function importFutsalMasterCup(ownerId) {
         status: 'ONGOING', visibility: 'public', cashEnabled: false,
       },
     });
+  } else if (ownerId && t.ownerId !== ownerId) {
+    // Importar logado = reivindicar a organização (aparece em "Meus torneios").
+    t = await prisma.tournament.update({ where: { id: t.id }, data: { ownerId: owner.id } });
   }
 
   // 2) Categorias + times (idempotente)
