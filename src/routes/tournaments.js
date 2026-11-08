@@ -1006,6 +1006,10 @@ router.post('/notifications/read-all', authMiddleware, async (req, res) => {
 // Preview da foto do Instagram (sem criar conta) — pra conferir o @.
 router.get('/athletes/ig-photo/:handle', async (req, res) => {
   try {
+    if (req.query.debug === '1') {
+      const { diagnoseInstagram } = require('../services/instagramPhoto');
+      return res.json(await diagnoseInstagram(req.params.handle));
+    }
     if (!igConfigured()) return res.json({ configured: false, found: false });
     const prof = await fetchInstagramProfile(req.params.handle);
     if (!prof) return res.json({ configured: true, found: false });

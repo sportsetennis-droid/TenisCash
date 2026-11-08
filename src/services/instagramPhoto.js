@@ -45,6 +45,29 @@ async function fetchInstagramProfile(handle) {
   }
 }
 
+// Diagnóstico: devolve a resposta CRUA do Graph (erro incluído) pra entender
+// por que o Business Discovery não acha. NUNCA inclui o token na saída.
+async function diagnoseInstagram(handle) {
+  const token = igToken();
+  const biz = igBizId();
+  const h = String(handle || '').replace(/^@/, '').trim();
+  const out = { hasToken: !!token, hasBizId: !!biz, bizIdLen: biz ? String(biz).length : 0, graphVersion: GRAPH.split('/').pop() };
+  if (!token || !biz || !h) { out.error = 'faltam token/bizId/handle'; return out; }
+  try {
+    const fields = `business_discovery.username(${encodeURIComponent(h)}){username,name,profile_picture_url,followers_count}`;
+    const url = `${GRAPH}/${biz}?fields=${fields}&access_token=${encodeURIComponent(token)}`;
+    const r = await fetch(url);
+    out.httpStatus = r.status;
+    const j = await r.json().catch(() => null);
+    // Só repassa o erro do Graph e o business_discovery — nunca o token.
+    if (j && j.error) out.graphError = { message: j.error.message, type: j.error.type, code: j.error.code, subcode: j.error.error_subcode };
+    out.businessDiscovery = (j && j.business_discovery) ? { username: j.business_discovery.username, name: j.business_discovery.name, hasPhoto: !!j.business_discovery.profile_picture_url } : null;
+  } catch (e) {
+    out.fetchError = e.message;
+  }
+  return out;
+}
+
 // Baixa a imagem e devolve data URI base64 (durável — a URL do IG expira).
 // Se a imagem for grande demais (>1.5MB) ou falhar, devolve a URL original.
 async function toDataUri(picUrl) {
@@ -68,4 +91,4 @@ async function instagramAvatar(handle) {
   return { username: prof.username, name: prof.name, avatar };
 }
 
-module.exports = { fetchInstagramProfile, toDataUri, instagramAvatar, igConfigured };
+module.exports = { fetchInstagramProfile, toDataUri, instagramAvatar, igConfigured, diagnoseInstagram };
