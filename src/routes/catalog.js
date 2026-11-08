@@ -154,6 +154,7 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
     res.set('Cache-Control', 'no-store');
     const myStore = await resolveMyStoreScope(req);
     const search = String(req.query.search || req.query.q || '').trim();
+    const salesSearch = String(req.query.salesSearch || '') === '1';
     const brand = String(req.query.brand || '').trim();
     const category = String(req.query.category || '').trim();
     const page = Math.max(1, parseInt(req.query.page || '1', 10) || 1);
@@ -231,6 +232,10 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
     if (aiFilters.length) andConds.push(...aiFilters);
     const sizeCondition = Object.keys(sizesSome).length ? { sizes: { some: sizesSome } } : null;
     if (sizeCondition) andConds.push(sizeCondition);
+    const baseAndConds = andConds.slice();
+    const stopWords = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'em', 'no', 'na', 'nos', 'nas', 'com', 'sem', 'para', 'pra', 'por', 'um', 'uma', 'uns', 'umas']);
+    const salesTerms = (search.match(/[\p{L}\p{N}]+/gu) || [])
+      .filter(s => s.length >= 2 && !stopWords.has(s.toLocaleLowerCase('pt-BR')));
     // BUSCA INTELIGENTE multi-palavra: "bola reebok" acha quem tem bola E reebok (qualquer ordem/campo).
     if (search) {
       // Busca ABRANGENTE: nome, REF (sku), marca, categoria/sub, FORN (supplierRef),
@@ -248,7 +253,9 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
         { aiContext: { path: ['color'], string_contains: t } },
         { sizes: { some: { barcode: { contains: t, mode: 'insensitive' } } } },
       ]);
-      const termos = search.split(/\s+/).map(s => s.trim()).filter(s => s.length >= 2);
+      const termos = salesSearch
+        ? salesTerms
+        : search.split(/\s+/).map(s => s.trim()).filter(s => s.length >= 2);
       for (const t of (termos.length ? termos : [search])) andConds.push({ OR: fields(t) });
     }
     const where = { AND: andConds };
@@ -304,6 +311,105 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
         select: { size: true },
       }) : Promise.resolve(null),
     ]);
+
+    // Só a busca da tela Vender tem fallback aproximado. Mantém exatos primeiro;
+    // sem resultado, tolera acentos e erros pequenos e ordena os candidatos por proximidade.
+    if (salesSearch && search && total === 0) {
+      const normalize = value => String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const candidateTerms = new Set();
+      for (const rawTerm of salesTerms) {
+        const term = normalize(rawTerm).replace(/[^a-z0-9]/g, '');
+        if (term.length <= 4) {
+          if (term.length <= 2) candidateTerms.add(term);
+          else for (let i = 0; i < term.length - 1; i++) candidateTerms.add(term.slice(i, i + 2));
+        } else {
+          for (let i = 0; i < term.length - 2; i++) candidateTerms.add(term.slice(i, i + 3));
+        }
+      }
+      const grams = [...candidateTerms].slice(0, 32);
+      if (grams.length) {
+        const candidates = await prisma.product.findMany({
+          where: {
+            AND: [
+              ...baseAndConds,
+              { OR: grams.flatMap(t => [
+                { name: { contains: t, mode: 'insensitive' } },
+                { sku: { contains: t, mode: 'insensitive' } },
+                { brand: { contains: t, mode: 'insensitive' } },
+                { category: { contains: t, mode: 'insensitive' } },
+                { subcategory: { contains: t, mode: 'insensitive' } },
+              ]) },
+            ],
+          },
+          take: 300,
+          orderBy: [{ featured: 'desc' }, { name: 'asc' }],
+          select: { id: true, name: true, sku: true, internalBarcode: true, brand: true, category: true, subcategory: true, aiContext: true },
+        });
+        const bigrams = value => {
+          const word = normalize(value).replace(/[^a-z0-9]/g, '');
+          const result = new Set();
+          if (word.length <= 2) result.add(word);
+          else for (let i = 0; i < word.length - 1; i++) result.add(word.slice(i, i + 2));
+          return result;
+        };
+        const similarity = (term, value) => {
+          const normalizedValue = normalize(value);
+          if (!normalizedValue) return 0;
+          if (normalizedValue.includes(term)) return 1;
+          let best = 0;
+          const targetTerms = normalizedValue.split(/[^a-z0-9]+/).filter(Boolean);
+          const queryBigrams = bigrams(term);
+          for (const targetTerm of targetTerms) {
+            if (targetTerm.includes(term) || term.includes(targetTerm)) {
+              best = Math.max(best, Math.min(targetTerm.length, term.length) / Math.max(targetTerm.length, term.length));
+            }
+            const targetBigrams = bigrams(targetTerm);
+            let shared = 0;
+            for (const bigram of queryBigrams) if (targetBigrams.has(bigram)) shared++;
+            best = Math.max(best, (2 * shared) / Math.max(1, queryBigrams.size + targetBigrams.size));
+          }
+          return best;
+        };
+        const ranked = candidates.map(product => {
+          const context = product.aiContext && typeof product.aiContext === 'object' ? product.aiContext : {};
+          const contextText = [context.supplierRef, context.color, context.classification?.modality, context.classification?.tier].filter(Boolean).join(' ');
+          const searchable = [
+            [product.name, 1.2], [product.brand, 1.05], [product.sku, 1], [product.internalBarcode, 1],
+            [product.category, 0.85], [product.subcategory, 0.8], [contextText, 0.65],
+          ];
+          const scores = salesTerms.map(term =>
+            Math.max(...searchable.map(([value, weight]) => similarity(normalize(term), value) * weight))
+          );
+          const average = scores.reduce((sum, score) => sum + score, 0) / Math.max(1, scores.length);
+          const matched = scores.filter(score => score >= 0.45).length;
+          return { product, score: average + (matched / Math.max(1, scores.length)) * 0.15, matched };
+        }).filter(result => result.matched > 0 && result.score >= 0.28)
+          .sort((a, b) => b.score - a.score || String(a.product.name).localeCompare(String(b.product.name), 'pt-BR'));
+
+        const pageIds = ranked.slice(skip, skip + pageSize).map(result => result.product.id);
+        const fullRows = pageIds.length ? await prisma.product.findMany({
+          where: { AND: [...baseAndConds, { id: { in: pageIds } }] },
+          select: {
+            id: true, sku: true, internalBarcode: true, name: true, brand: true, category: true, subcategory: true,
+            shortDescription: true, longDescription: true, price: true, promoPrice: true, imageUrl: true, imageUrls: true,
+            aiContext: true, featured: true,
+            sizes: {
+              orderBy: { size: 'asc' },
+              select: {
+                id: true, size: true, stock: true, barcode: true, sizeConfirmedAt: true,
+                storeStocks: {
+                  ...(storeId ? { where: { storeId } } : {}),
+                  include: { store: { select: { id: true, code: true, name: true } } },
+                },
+              },
+            },
+          },
+        }) : [];
+        const fullRowsById = new Map(fullRows.map(product => [product.id, product]));
+        rows = pageIds.map(id => fullRowsById.get(id)).filter(Boolean);
+        total = ranked.length;
+      }
+    }
 
     const products = rows.map((p) => {
       const card = formatProductCard(p);
