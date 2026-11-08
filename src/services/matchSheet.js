@@ -126,9 +126,11 @@ async function finalizeMatch(matchId, opts = {}) {
   const hasPk = opts.homePenalties != null && opts.homePenalties !== '' && opts.awayPenalties != null && opts.awayPenalties !== '';
   const hp = hasPk ? Number(opts.homePenalties) : null;
   const ap = hasPk ? Number(opts.awayPenalties) : null;
+  // Pênaltis só decidem no mata-mata; em liga/grupo o empate é legítimo (1 ponto).
+  const isKnockout = !['LEAGUE', 'GROUP'].includes(match.stage);
   let winnerEntryId = null;
   let decidedByPenalties = false;
-  if (hasPk && hs === as && hp !== ap) {
+  if (hasPk && isKnockout && hs === as && hp !== ap) {
     winnerEntryId = hp > ap ? match.homeEntryId : match.awayEntryId;
     decidedByPenalties = true;
   }
