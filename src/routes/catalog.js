@@ -310,100 +310,18 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
       }) : Promise.resolve(null),
     ]);
 
-    // Só a busca da tela Vender tem fallback aproximado. Mantém exatos primeiro;
-    // sem resultado, tolera acentos e erros pequenos e ordena os candidatos por proximidade.
-    if (salesSearch && search && total === 0) {
-      const normalize = value => String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      const candidateTerms = new Set(salesTerms);
-      for (const rawTerm of salesTerms) {
-        const term = normalize(rawTerm).replace(/[^a-z0-9]/g, '');
-        if (term.length <= 3) candidateTerms.add(term);
-        else {
-          candidateTerms.add(term.slice(0, 3));
-          candidateTerms.add(term.slice(-3));
-        }
-      }
-      const fragments = [...candidateTerms].slice(0, 24);
-      const candidateFilters = [];
-      for (const fragment of fragments) candidateFilters.push(...fields(fragment));
-      let candidates = [];
-      if (candidateFilters.length) {
-        try {
-          candidates = await prisma.product.findMany({
-            where: { AND: [...baseAndConds, { OR: candidateFilters }] },
-            take: 300,
-            orderBy: [{ featured: 'desc' }, { name: 'asc' }],
-            select: { id: true, name: true, sku: true, internalBarcode: true, brand: true, category: true, subcategory: true, aiContext: true },
-          });
-        } catch (candidateError) {
-          console.error('catalog/products nearest-search candidates', candidateError);
-          const simpleFilters = [];
-          for (const term of salesTerms) {
-            simpleFilters.push(
-              { name: { contains: term, mode: 'insensitive' } },
-              { sku: { contains: term, mode: 'insensitive' } },
-              { brand: { contains: term, mode: 'insensitive' } },
-              { category: { contains: term, mode: 'insensitive' } },
-              { subcategory: { contains: term, mode: 'insensitive' } },
-            );
-          }
-          try {
-            if (simpleFilters.length) candidates = await prisma.product.findMany({
-              where: { AND: [...baseAndConds, { OR: simpleFilters }] },
-              take: 100,
-              orderBy: [{ featured: 'desc' }, { name: 'asc' }],
-              select: { id: true, name: true, sku: true, internalBarcode: true, brand: true, category: true, subcategory: true, aiContext: true },
-            });
-          } catch (fallbackError) {
-            console.error('catalog/products nearest-search simple fallback', fallbackError);
-          }
-        }
-      }
-      {
-        const bigrams = value => {
-          const word = normalize(value).replace(/[^a-z0-9]/g, '');
-          const result = new Set();
-          if (word.length <= 2) result.add(word);
-          else for (let i = 0; i < word.length - 1; i++) result.add(word.slice(i, i + 2));
-          return result;
-        };
-        const similarity = (term, value) => {
-          const normalizedValue = normalize(value);
-          if (!normalizedValue) return 0;
-          if (normalizedValue.includes(term)) return 1;
-          let best = 0;
-          const targetTerms = normalizedValue.split(/[^a-z0-9]+/).filter(Boolean);
-          const queryBigrams = bigrams(term);
-          for (const targetTerm of targetTerms) {
-            if (targetTerm.includes(term) || term.includes(targetTerm)) {
-              best = Math.max(best, Math.min(targetTerm.length, term.length) / Math.max(targetTerm.length, term.length));
-            }
-            const targetBigrams = bigrams(targetTerm);
-            let shared = 0;
-            for (const bigram of queryBigrams) if (targetBigrams.has(bigram)) shared++;
-            best = Math.max(best, (2 * shared) / Math.max(1, queryBigrams.size + targetBigrams.size));
-          }
-          return best;
-        };
-        const ranked = candidates.map(product => {
-          const context = product.aiContext && typeof product.aiContext === 'object' ? product.aiContext : {};
-          const contextText = [context.supplierRef, context.color, context.classification?.modality, context.classification?.tier].filter(Boolean).join(' ');
-          const searchable = [
-            [product.name, 1.2], [product.brand, 1.05], [product.sku, 1], [product.internalBarcode, 1],
-            [product.category, 0.85], [product.subcategory, 0.8], [contextText, 0.65],
-          ];
-          const scores = salesTerms.map(term =>
-            Math.max(...searchable.map(([value, weight]) => similarity(normalize(term), value) * weight))
-          );
-          const average = scores.reduce((sum, score) => sum + score, 0) / Math.max(1, scores.length);
-          const matched = scores.filter(score => score >= 0.45).length;
-          return { product, score: average + (matched / Math.max(1, scores.length)) * 0.15, matched };
-        }).filter(result => result.matched > 0 && result.score >= 0.28)
-          .sort((a, b) => b.score - a.score || String(a.product.name).localeCompare(String(b.product.name), 'pt-BR'));
-
-        const pageIds = ranked.slice(skip, skip + pageSize).map(result => result.product.id);
-        const fullRows = pageIds.length ? await prisma.product.findMany({
-          where: { AND: [...baseAndConds, { id: { in: pageIds } }] },
+    // Busca da tela Vender: primeiro exige todas as palavras úteis; se não achar,
+    // relaxa para qualquer palavra e ranqueia por quantas delas aparecem no produto.
+    if (salesSearch && search && total === 0 && salesTerms.length) {
+      const nearestFilters = [];
+      for (const term of salesTerms) nearestFilters.push(...fields(term));
+      const nearestWhere = { AND: [...baseAndConds, { OR: nearestFilters }] };
+      const [nearestTotal, candidates] = await Promise.all([
+        prisma.product.count({ where: nearestWhere }),
+        prisma.product.findMany({
+          where: nearestWhere,
+          take: 100,
+          orderBy: [{ featured: 'desc' }, { name: 'asc' }],
           select: {
             id: true, sku: true, internalBarcode: true, name: true, brand: true, category: true, subcategory: true,
             shortDescription: true, longDescription: true, price: true, promoPrice: true, imageUrl: true, imageUrls: true,
@@ -419,11 +337,19 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
               },
             },
           },
-        }) : [];
-        const fullRowsById = new Map(fullRows.map(product => [product.id, product]));
-        rows = pageIds.map(id => fullRowsById.get(id)).filter(Boolean);
-        total = ranked.length;
-      }
+        }),
+      ]);
+      const normalize = value => String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const ranked = candidates.map(product => {
+        const text = normalize([
+          product.name, product.brand, product.sku, product.internalBarcode,
+          product.category, product.subcategory, product.shortDescription, product.longDescription,
+        ].filter(Boolean).join(' '));
+        const matched = salesTerms.reduce((count, term) => count + (text.includes(normalize(term)) ? 1 : 0), 0);
+        return { product, matched };
+      }).sort((a, b) => b.matched - a.matched || (String(a.product.name) < String(b.product.name) ? -1 : 1));
+      total = nearestTotal;
+      rows = ranked.slice(skip, skip + pageSize).map(result => result.product);
     }
 
     const products = rows.map((p) => {
