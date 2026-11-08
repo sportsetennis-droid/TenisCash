@@ -3753,6 +3753,7 @@ model TournamentEntry {
   name      String // nome de exibição: "João & Maria" | "Time Bessa"
   seed      Int? // cabeça de chave
   groupName String? // grupo na fase de grupos
+  logoUrl   String? // escudo do time (data URI pequeno OU URL)
   status    String   @default("CONFIRMED") // PENDING | CONFIRMED | WITHDRAWN
   entryPaid Boolean  @default(false) // pagou inscrição em TenisCash (fase 2)
   entryTxId String? // id da Transaction do débito da inscrição (idempotência + estorno)

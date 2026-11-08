@@ -422,8 +422,10 @@ async function renderCatPanel(tab){
     if(!confirmed.length)body+='<div class="empty" style="padding:16px">Sem inscritos confirmados ainda.</div>';
     else confirmed.forEach((e,i)=>{
       const who=(e.members||[]).map(m=>'@'+(m.user.username||m.user.name||'?')).join(' & ');
-      body+='<div class="listitem"><div class="av">'+(i+1)+'</div><div class="grow"><div class="nm">'+esc(e.name)+(e.groupName?' <span class="pill g">Grupo '+esc(e.groupName)+'</span>':'')+'</div><div class="sub">'+esc(who)+'</div></div>'+
-        '<button class="btn sm dang" data-act="del-entry" data-eid="'+e.id+'">✕</button></div>';});
+      const av=e.logoUrl?'<img class="av" src="'+esc(e.logoUrl)+'" style="object-fit:contain;background:#fff">':'<div class="av">'+(i+1)+'</div>';
+      body+='<div class="listitem">'+av+'<div class="grow"><div class="nm">'+esc(e.name)+(e.groupName?' <span class="pill g">Grupo '+esc(e.groupName)+'</span>':'')+'</div><div class="sub">'+esc(who)+'</div></div>'+
+        '<button class="btn sm gho" data-act="team-logo" data-eid="'+e.id+'" title="escudo">🖼</button>'+
+        '<button class="btn sm dang" data-act="del-entry" data-eid="'+e.id+'" style="margin-left:6px">✕</button></div>';});
     body+='<div style="height:10px"></div>';
     if(isGroups)body+='<button class="btn" data-act="gen-groups" data-tid="'+tid+'" data-cid="'+cid+'">⚡ Sortear grupos + gerar jogos</button>'+
       '<p class="muted" style="margin-top:8px">Distribui os confirmados em grupos (serpentina por seed) e cria a fase de grupos. Depois, na aba "Chave", avance pro mata-mata.</p>';
@@ -912,6 +914,29 @@ async function sumSavePlayer(eid){
   var body={name:name,number:num!==''?Number(num):null,isGoalkeeper:document.getElementById('rp-gk').checked,isCaptain:document.getElementById('rp-cap').checked,role:document.getElementById('rp-role').value,started:document.getElementById('rp-start').checked};
   try{await api('/entries/'+eid+'/players',{method:'POST',body:body});closeSheet();toast('Adicionado ao elenco');sumReload();}catch(e){toast(e.message);}
 }
+function pickTeamLogo(eid){
+  var inp=document.createElement('input');inp.type='file';inp.accept='image/*';
+  inp.onchange=function(){
+    var f=inp.files&&inp.files[0];if(!f)return;toast('Processando escudo...');
+    var r=new FileReader();
+    r.onload=function(){
+      var img=new Image();
+      img.onload=function(){
+        var max=160,w=img.width,h=img.height,s=Math.min(1,max/Math.max(w,h));
+        var cw=Math.max(1,Math.round(w*s)),ch=Math.max(1,Math.round(h*s));
+        var cv=document.createElement('canvas');cv.width=cw;cv.height=ch;
+        cv.getContext('2d').drawImage(img,0,0,cw,ch);
+        var data=cv.toDataURL('image/png');
+        if(data.length>760000)data=cv.toDataURL('image/jpeg',0.82);
+        api('/entries/'+eid+'/logo',{method:'POST',body:{logo:data}}).then(function(){toast('Escudo salvo');renderCatPanel('inscritos');}).catch(function(e){toast(e.message);});
+      };
+      img.onerror=function(){toast('Imagem inválida');};
+      img.src=r.result;
+    };
+    r.readAsDataURL(f);
+  };
+  inp.click();
+}
 async function sumOfficials(mid){
   var g=function(id){var e=document.getElementById(id);return e?e.value:undefined;};
   try{await api('/matches/'+mid+'/officials',{method:'POST',body:{referee1:g('ref1'),referee2:g('ref2'),scorer:g('refm')}});toast('Arbitragem salva');}catch(e){toast(e.message);}
@@ -977,6 +1002,7 @@ document.addEventListener('click',async(ev)=>{
   if(a==='sum-delplayer'){if(confirm('Remover jogador do elenco?')){try{await api('/players/'+el.dataset.pid,{method:'DELETE'});toast('Removido');sumReload();}catch(e){toast(e.message);}}return;}
   if(a==='rp-save'){sumSavePlayer(el.dataset.eid);return;}
   if(a==='sum-finalize'){sumFinalize(el.dataset.mid);return;}
+  if(a==='team-logo'){pickTeamLogo(el.dataset.eid);return;}
   if(a==='sum-officials'){sumOfficials(el.dataset.mid);return;}
   if(a==='fz-go'){sumFinalizeGo(el.dataset.mid);return;}
   if(a==='import-futsal'){if(confirm('Importar o II Futsal Master Cup 2026 (times + 65 jogos da tabela oficial)? Pode rodar de novo sem duplicar.')){toast('Importando...');try{const r=await api('/import/futsal-master-cup',{method:'POST'});toast('Pronto: '+r.teams+' times · '+r.matchesCreated+' jogos'+(r.matchesTBD?' ('+r.matchesTBD+' a confirmar)':''));go('t/'+r.tournamentId);}catch(e){toast(e.message);}}return;}
