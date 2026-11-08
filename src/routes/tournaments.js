@@ -668,8 +668,8 @@ router.get('/:id/categories/:catId/matches', async (req, res) => {
       where: { categoryId: req.params.catId },
       orderBy: [{ round: 'asc' }, { ordering: 'asc' }],
       include: {
-        homeEntry: { select: { id: true, name: true, seed: true } },
-        awayEntry: { select: { id: true, name: true, seed: true } },
+        homeEntry: { select: { id: true, name: true, seed: true, logoUrl: true } },
+        awayEntry: { select: { id: true, name: true, seed: true, logoUrl: true } },
         games: { orderBy: { setNumber: 'asc' } },
       },
     });
@@ -888,6 +888,28 @@ router.post('/entries/:entryId/players', async (req, res) => {
       },
     });
     res.status(201).json(player);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Define/limpa o escudo (logo) de um time — sem token (igual súmula/elenco).
+// body { logo: dataURI } ou { logo: null } pra limpar. Guarda data URI pequeno.
+router.post('/entries/:entryId/logo', async (req, res) => {
+  try {
+    const entry = await prisma.tournamentEntry.findUnique({ where: { id: req.params.entryId }, select: { id: true } });
+    if (!entry) return res.status(404).json({ error: 'time não encontrado' });
+    const raw = (req.body || {}).logo;
+    let logoUrl = null;
+    if (raw && typeof raw === 'string' && raw.trim()) {
+      const v = raw.trim();
+      const okFmt = v.startsWith('data:image/') || v.startsWith('http://') || v.startsWith('https://') || v.startsWith('/');
+      if (!okFmt) return res.status(400).json({ error: 'logo inválida (envie uma imagem)' });
+      if (v.length > 800000) return res.status(413).json({ error: 'logo muito grande — reduza a imagem' });
+      logoUrl = v;
+    }
+    await prisma.tournamentEntry.update({ where: { id: entry.id }, data: { logoUrl } });
+    res.json({ ok: true, logoUrl });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
