@@ -1252,6 +1252,8 @@ app.get('/t/:slug', async (req, res) => {
   .sn{font-size:13px;font-weight:700;color:#cfd6e2;line-height:1.2;word-break:break-word;max-width:100%}
   .sn.win{color:#fff}
   .sn.win:after{content:" ✓";color:var(--green)}
+  .tb.big.tbd{background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px var(--line);color:var(--mut);font-weight:700}
+  .sn.tbd{color:var(--mut);font-weight:600;font-size:12px}
   .score{flex:0 0 auto;min-width:82px;display:flex;align-items:center;justify-content:center;gap:7px;padding-top:12px}
   .score .sc{font-family:'Oswald',sans-serif;font-weight:700;font-size:31px;line-height:1;color:#fff}
   .score .sc.w{color:var(--gold)}
@@ -1319,6 +1321,10 @@ app.get('/t/:slug', async (req, res) => {
   function esc(s){s=(s==null?'':''+s);return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
   function ini(s){s=(s==null?'':''+s).replace(/[^0-9A-Za-zÀ-ÿ ]/g,' ').trim();var p=s.split(/\\s+/);var a=(p[0]||'?').charAt(0);var b=(p[1]||'').charAt(0);return ((a+b).toUpperCase())||'?';}
   function hue(s){var h=0;s=(s==null?'':''+s);for(var i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))>>>0;return h%360;}
+  function sideEl(entry,label,win){
+    if(!entry){var t=label||'A definir';return '<div class="side"><span class="tb big tbd">?</span><span class="sn tbd">'+esc(t)+'</span></div>';}
+    return '<div class="side"><span class="tb big" style="--h:'+hue(entry.name)+'">'+ini(entry.name)+'</span><span class="sn'+(win?' win':'')+'">'+esc(entry.name)+'</span></div>';
+  }
   function fmtWhen(d){try{var s=new Date(d).toLocaleString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'America/Fortaleza'});return s.charAt(0).toUpperCase()+s.slice(1);}catch(e){return '';}}
   function matchHtml(m){
     var h=m.homeEntry?m.homeEntry.name:'A definir';
@@ -1343,9 +1349,9 @@ app.get('/t/:slug', async (req, res) => {
     return '<div class="mt'+(live?' is-live':'')+'">'
       +schedLine
       +'<div class="confront">'
-      +'<div class="side"><span class="tb big" style="--h:'+hue(h)+'">'+ini(h)+'</span><span class="sn'+(hw?' win':'')+'">'+esc(h)+'</span></div>'
+      +sideEl(m.homeEntry, m.homeSourceLabel, hw)
       +'<div class="score">'+ctr+'</div>'
-      +'<div class="side"><span class="tb big" style="--h:'+hue(a)+'">'+ini(a)+'</span><span class="sn'+(aw?' win':'')+'">'+esc(a)+'</span></div>'
+      +sideEl(m.awayEntry, m.awaySourceLabel, aw)
       +'</div>'
       +(sumula?'<div class="sumula">📋 '+esc(sumula)+'</div>':(m.status==='WALKOVER'?'<div class="sumula">W.O.</div>':''))
       +(live?'<div class="liverow"><span class="livebadge"><span class="dot"></span>Ao vivo</span><span class="livesets">'+esc(setsStr)+'</span></div>':'')
