@@ -182,6 +182,7 @@ function route(){
   if(view==='vitrine')return renderVitrine();
   if(view==='ranking')return renderRankings();
   if(view==='avisos')return renderNotifications();
+  if(view==='sumula'&&arg)return renderSumula(arg);
   return renderHome();
 }
 
@@ -500,6 +501,7 @@ function matchCard(m){
     (isLive?'<div style="margin-top:6px"><span class="livetag"><span class="dot"></span>ao vivo</span> <b style="font-size:13px">'+esc(liveStr)+'</b></div>':'')+
     (can?'<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">'+
       (!done?'<button class="btn sm gho" data-act="live" data-mid="'+m.id+'" data-h="'+esc(m.homeEntry.name)+'" data-a="'+esc(m.awayEntry.name)+'">▶ ao vivo</button>':'')+
+      '<button class="btn sm gho" data-act="sumula" data-mid="'+m.id+'">📋 súmula</button>'+
       '<button class="btn sm sec" data-act="result" data-mid="'+m.id+'" data-h="'+esc(m.homeEntry.name)+'" data-a="'+esc(m.awayEntry.name)+'" data-hid="'+m.homeEntry.id+'" data-aid="'+m.awayEntry.id+'">'+(done?'editar':'placar final')+'</button>'+
       '<button class="btn sm gho" data-act="sched" data-mid="'+m.id+'" data-when="'+esc(m.scheduledAt||'')+'" data-loc="'+esc(m.location||'')+'">📅 '+((m.scheduledAt||m.location)?'reagendar':'agendar')+'</button>'+
     '</div>':'')+
@@ -804,6 +806,88 @@ async function renderRankings(){
 }
 
 // ---------- delegated events ----------
+// ---------- SÚMULA DIGITAL (tela do árbitro) ----------
+let SUMULA=null;
+async function renderSumula(mid){
+  loading();
+  let s;try{s=await api('/matches/'+mid+'/sheet');}catch(e){app.innerHTML=topbar('Súmula',true)+'<div class="wrap"><div class="card"><div class="empty">'+esc(e.message)+'</div></div></div>';return;}
+  SUMULA={mid:mid};
+  const h=s.home,a=s.away;
+  const done=s.match.status==='FINISHED'||s.match.status==='WALKOVER';
+  let html=topbar('Súmula',true)+'<div class="wrap">';
+  html+='<div class="card" style="text-align:center">'+
+    '<div style="display:flex;align-items:center;justify-content:space-around;gap:6px">'+
+      '<div style="flex:1;font-weight:800;font-size:13px">'+esc(h.entry?h.entry.name:'—')+'</div>'+
+      '<div style="font-size:30px;font-weight:900;color:var(--orange-d);white-space:nowrap">'+s.liveScore.home+' <span style="color:var(--mut)">×</span> '+s.liveScore.away+'</div>'+
+      '<div style="flex:1;font-weight:800;font-size:13px">'+esc(a.entry?a.entry.name:'—')+'</div></div>'+
+    '<div class="muted" style="margin-top:6px;font-size:12px">faltas acumuladas: '+s.fouls.home+' × '+s.fouls.away+(done?' · <span class="pill ok">encerrada</span>':'')+'</div>'+
+    ((s.fouls.home>=6||s.fouls.away>=6)?'<div class="pill w" style="margin-top:6px">⚠️ 6ª falta — tiro livre direto sem barreira</div>':'')+'</div>';
+  [['home',h],['away',a]].forEach(function(pair){
+    var sd=pair[1];if(!sd.entry)return;
+    html+='<div class="card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'+
+      '<h2 style="margin:0;font-size:14px">'+esc(sd.entry.name)+'</h2>'+
+      '<button class="btn sm gho" data-act="sum-foul" data-eid="'+sd.entry.id+'">+ falta</button></div>';
+    if(!sd.roster.length)html+='<div class="empty" style="padding:12px">Sem elenco. Adicione os jogadores.</div>';
+    else sd.roster.forEach(function(p){
+      html+='<div class="listitem" data-act="sum-player" data-pid="'+p.id+'" data-eid="'+sd.entry.id+'" data-pn="'+esc(p.name)+'" style="cursor:pointer">'+
+        '<div class="av" style="font-size:14px">'+(p.number!=null?p.number:'–')+'</div>'+
+        '<div class="grow"><div class="nm">'+esc(p.name)+(p.isCaptain?' <span class="pill g">C</span>':'')+(p.isGoalkeeper?' <span class="pill g">GOL</span>':'')+'</div></div>'+
+        '<span style="color:var(--mut);font-size:12px">+ evento ›</span></div>';
+    });
+    html+='<div style="height:8px"></div><button class="btn sm sec" data-act="sum-addplayer" data-eid="'+sd.entry.id+'">+ jogador</button></div>';
+  });
+  html+='<div class="card"><h2 style="margin:0 0 6px">Eventos</h2>';
+  if(!s.events.length)html+='<div class="empty" style="padding:10px">Nenhum evento ainda.</div>';
+  else{
+    var ICON={GOAL:'⚽',ASSIST:'🎯',YELLOW:'🟨',RED:'🟥',FOUL:'🚫',TIMEOUT:'⏱'},LBL={GOAL:'Gol',ASSIST:'Assistência',YELLOW:'Amarelo',RED:'Vermelho',FOUL:'Falta',TIMEOUT:'Tempo'};
+    var names={};[h,a].forEach(function(sd){sd.roster.forEach(function(p){names[p.id]=p.name;});});
+    var team={};if(h.entry)team[h.entry.id]=h.entry.name;if(a.entry)team[a.entry.id]=a.entry.name;
+    s.events.slice().reverse().forEach(function(e){
+      html+='<div class="listitem"><div class="grow"><div class="nm">'+(ICON[e.type]||'•')+' '+(LBL[e.type]||e.type)+(e.playerId&&names[e.playerId]?' — '+esc(names[e.playerId]):'')+'</div>'+
+        '<div class="sub">'+esc(team[e.entryId]||'')+(e.minute!=null?" · "+e.minute+"'":'')+'</div></div>'+
+        '<button class="btn sm dang" data-act="sum-delevent" data-id="'+e.id+'">✕</button></div>';
+    });
+  }
+  html+='</div>';
+  if(!done)html+='<button class="btn" data-act="sum-finalize" data-mid="'+mid+'">🏁 Fechar súmula ('+s.liveScore.home+'×'+s.liveScore.away+')</button>';
+  else html+='<div class="card"><div class="muted" style="text-align:center">Súmula encerrada. Placar oficial '+(s.match.homeScore!=null?s.match.homeScore:'-')+'×'+(s.match.awayScore!=null?s.match.awayScore:'-')+'.</div></div>';
+  html+='</div>';app.innerHTML=html;
+}
+function sumReload(){if(SUMULA)renderSumula(SUMULA.mid);}
+function sumPlayerSheet(pid,eid,pn){
+  openSheet('<h3>'+esc(pn)+'</h3><p class="muted">Registrar evento (minuto opcional).</p>'+
+    '<label>Minuto</label><input id="sum-min" type="number" inputmode="numeric" placeholder="opcional">'+
+    '<div class="row" style="margin-top:10px"><button class="btn" data-act="sum-ev" data-t="GOAL" data-pid="'+pid+'" data-eid="'+eid+'">⚽ Gol</button>'+
+    '<button class="btn sec" data-act="sum-ev" data-t="ASSIST" data-pid="'+pid+'" data-eid="'+eid+'">🎯 Assist.</button></div>'+
+    '<div class="row" style="margin-top:8px"><button class="btn sec" data-act="sum-ev" data-t="YELLOW" data-pid="'+pid+'" data-eid="'+eid+'">🟨 Amarelo</button>'+
+    '<button class="btn sec" data-act="sum-ev" data-t="RED" data-pid="'+pid+'" data-eid="'+eid+'">🟥 Vermelho</button></div>');
+}
+async function sumEvent(type,eid,pid){
+  var minEl=document.getElementById('sum-min');var min=minEl&&minEl.value!==''?Number(minEl.value):undefined;
+  try{await api('/matches/'+SUMULA.mid+'/events',{method:'POST',body:{entryId:eid,playerId:pid,type:type,minute:min}});closeSheet();toast('Registrado');sumReload();}
+  catch(e){toast(e.message);}
+}
+async function sumFoul(eid){try{await api('/matches/'+SUMULA.mid+'/events',{method:'POST',body:{entryId:eid,type:'FOUL'}});toast('Falta');sumReload();}catch(e){toast(e.message);}}
+async function sumDelEvent(id){try{await api('/events/'+id,{method:'DELETE'});toast('Removido');sumReload();}catch(e){toast(e.message);}}
+function sumAddPlayerSheet(eid){
+  openSheet('<h3>Adicionar jogador</h3>'+
+    '<label>Nome</label><input id="rp-name" placeholder="Nome do atleta">'+
+    '<label>Número</label><input id="rp-num" type="number" inputmode="numeric" placeholder="nº da camisa">'+
+    '<div style="display:flex;gap:16px;margin-top:10px"><label style="margin:0;text-transform:none;display:flex;align-items:center;gap:6px"><input type="checkbox" id="rp-gk" style="width:auto"> Goleiro</label>'+
+    '<label style="margin:0;text-transform:none;display:flex;align-items:center;gap:6px"><input type="checkbox" id="rp-cap" style="width:auto"> Capitão</label></div>'+
+    '<div style="height:12px"></div><button class="btn" data-act="rp-save" data-eid="'+eid+'">Adicionar</button>');
+}
+async function sumSavePlayer(eid){
+  var name=document.getElementById('rp-name').value.trim();if(!name)return toast('Nome do jogador');
+  var num=document.getElementById('rp-num').value;
+  var body={name:name,number:num!==''?Number(num):null,isGoalkeeper:document.getElementById('rp-gk').checked,isCaptain:document.getElementById('rp-cap').checked};
+  try{await api('/entries/'+eid+'/players',{method:'POST',body:body});closeSheet();toast('Jogador adicionado');sumReload();}catch(e){toast(e.message);}
+}
+async function sumFinalize(mid){
+  if(!confirm('Fechar a súmula e lançar o placar? Encerra o jogo e atualiza a classificação.'))return;
+  try{var r=await api('/matches/'+mid+'/finalize',{method:'POST'});toast('Súmula fechada: '+r.homeScore+'×'+r.awayScore);sumReload();}catch(e){toast(e.message);}
+}
+
 document.addEventListener('click',async(ev)=>{
   const el=ev.target.closest('[data-act]');if(!el)return;
   const a=el.dataset.act;
@@ -838,6 +922,14 @@ document.addEventListener('click',async(ev)=>{
   if(a==='save-sched'){doSchedule(el.dataset.mid);return;}
   if(a==='set-teams'){sheetSetTeams(el.dataset.mid);return;}
   if(a==='save-teams'){doSetTeams(el.dataset.mid);return;}
+  if(a==='sumula'){go('sumula/'+el.dataset.mid);return;}
+  if(a==='sum-player'){sumPlayerSheet(el.dataset.pid,el.dataset.eid,el.dataset.pn);return;}
+  if(a==='sum-ev'){sumEvent(el.dataset.t,el.dataset.eid,el.dataset.pid);return;}
+  if(a==='sum-foul'){sumFoul(el.dataset.eid);return;}
+  if(a==='sum-delevent'){sumDelEvent(el.dataset.id);return;}
+  if(a==='sum-addplayer'){sumAddPlayerSheet(el.dataset.eid);return;}
+  if(a==='rp-save'){sumSavePlayer(el.dataset.eid);return;}
+  if(a==='sum-finalize'){sumFinalize(el.dataset.mid);return;}
   if(a==='import-futsal'){if(confirm('Importar o II Futsal Master Cup 2026 (times + 65 jogos da tabela oficial)? Pode rodar de novo sem duplicar.')){toast('Importando...');try{const r=await api('/import/futsal-master-cup',{method:'POST'});toast('Pronto: '+r.teams+' times · '+r.matchesCreated+' jogos'+(r.matchesTBD?' ('+r.matchesTBD+' a confirmar)':''));go('t/'+r.tournamentId);}catch(e){toast(e.message);}}return;}
   if(a==='notif-go'){go(el.dataset.h);return;}
   if(a==='wo'){walkover(el.dataset.mid,el.dataset.w);return;}

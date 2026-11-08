@@ -1353,19 +1353,32 @@ app.get('/t/:slug', async (req, res) => {
       return (g!=='_'?'<div class="grp-h">Grupo '+esc(g)+'</div>':'')+stdTableHtml(byG[g]);
     }).join('');
   }
+  function renderScorers(rows){
+    if(!rows||!rows.length) return '';
+    var top=rows.filter(function(r){return r.goals>0;}).slice(0,10);
+    if(!top.length) return '';
+    var body=top.map(function(r,i){
+      return '<tr><td>'+(i+1)+'</td><td class="tl">'+esc((r.number!=null?r.number+' ':'')+r.name)+'</td><td style="text-align:left;color:#8e8e93">'+esc(r.team||'')+'</td><td><b>'+r.goals+'</b></td></tr>';
+    }).join('');
+    return '<table class="tbl" style="margin-bottom:10px"><thead><tr><th>#</th><th class="tl">Jogador</th><th class="tl">Equipe</th><th>Gols</th></tr></thead><tbody>'+body+'</tbody></table>';
+  }
   var POLL=null;
   function load(catId, silent){
     if(POLL){clearTimeout(POLL);POLL=null;}
     if(!silent) elBody.innerHTML='<div class="empty">Carregando…</div>';
     Promise.all([
       fetch('/api/tournaments/'+TID+'/categories/'+catId+'/matches').then(function(r){return r.json();}),
-      fetch('/api/tournaments/'+TID+'/categories/'+catId+'/standings').then(function(r){return r.json();})
+      fetch('/api/tournaments/'+TID+'/categories/'+catId+'/standings').then(function(r){return r.json();}),
+      fetch('/api/tournaments/'+TID+'/stats/scorers?categoryId='+catId).then(function(r){return r.json();}).catch(function(){return {};})
     ]).then(function(res){
       var matches=(res[0]&&res[0].matches)||[];
       var stand=(res[1]&&res[1].standings)||[];
+      var scorers=(res[2]&&res[2].ranking)||[];
       var html='';
       var stHtml=renderStandings(stand);
       if(stHtml) html+='<div class="sec-h">Classificação</div>'+stHtml;
+      var scHtml=renderScorers(scorers);
+      if(scHtml) html+='<div class="sec-h">Artilheiros</div>'+scHtml;
       html+='<div class="sec-h">Jogos</div>'+renderMatches(matches);
       elBody.innerHTML=html;
       if(matches.some(function(m){return m.status==='LIVE';})){POLL=setTimeout(function(){load(catId,true);},20000);}
