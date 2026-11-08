@@ -1026,8 +1026,8 @@ router.post('/athletes/register', async (req, res) => {
     if (password.length < 4 || password.length > 20) return res.status(400).json({ error: 'senha deve ter 4 a 20 caracteres' });
     if (!whatsapp || whatsapp.length < 10) return res.status(400).json({ error: 'WhatsApp com DDD obrigatório' });
 
-    const existing = await prisma.user.findUnique({ where: { phone: whatsapp } });
-    if (existing && existing.active !== false) return res.status(409).json({ error: 'este WhatsApp já tem conta' });
+    const existing = await prisma.user.findUnique({ where: { phone: whatsapp }, select: { id: true } });
+    if (existing) return res.status(409).json({ error: 'este WhatsApp já tem conta' });
 
     const igHandle = b.instagram ? String(b.instagram).replace(/^@/, '').trim() : null;
 
