@@ -1,10 +1,12 @@
 'use strict';
-const assert=require('node:assert/strict'),{randomUUID}=require('node:crypto'),fs=require('node:fs'),path=require('node:path');
+const assert=require('node:assert/strict'),{randomUUID,createHash}=require('node:crypto'),fs=require('node:fs'),path=require('node:path');
 const url=process.env.ROUND_TEST_DATABASE_URL;
 if(!url?.startsWith('postgresql://roundtest@127.0.0.1:55329/stock_replacement_'))throw Error('Use exclusivamente banco stock_replacement_ local isolado na porta 55329.');
 const {PrismaClient}=require('@prisma/client'),db=new PrismaClient({datasources:{db:{url}}});
 const {createRecovery}=require('../src/services/stockReplacementCaptureRecovery');
 const photos=require('../src/services/scannerCapturePhoto'),decoder=require('../src/services/barcodeDecoder');
+const repeatConfirmation=require('../src/services/scannerRepeatConfirmation');
+process.env.JWT_SECRET='isolated-capture-recovery-repeat-test-key';
 const writer=require('zxing-wasm/writer');
 writer.prepareZXingModule({overrides:{wasmBinary:fs.readFileSync(path.join(__dirname,'../node_modules/zxing-wasm/dist/writer/zxing_writer.wasm'))}});
 const queued=[];
@@ -48,6 +50,39 @@ async function unchanged(f,c,reason,s=service){
  console.log('PASS same archived capture: concurrent retries keep one bipe, original operator/time/photo/key and zero stock before verification');
 
  const repeated=await capture(f,{barcode:c.barcode});await unchanged(f,repeated,'repeat_confirmation_required');
+ let blockedDecodeCalls=0;
+ await unchanged(f,repeated,'repeat_confirmation_required',createRecovery({decode:async()=>{blockedDecodeCalls++;throw Error('blocked repeat must not decode')},enqueue:()=>{}}));
+ assert.equal(blockedDecodeCalls,0);
+ // Simulate an authenticated acceptance committed with the original photo,
+ // followed by a lost request before createRoundBipe/HTTP acknowledgement.
+ await photos.savePhoto(db,{...repeated,photoRevision:'1'}, {afterSave:(tx,cap)=>repeatConfirmation.record(tx,cap,
+  {actorId:f.seller.id,confirmedCount:1,photo:repeated.photo,photoRevision:'1',barcode:repeated.barcode})});
+ const resumed=await service.recover(db,repeated.id),resumedBipe=await db.stocktakeBipe.findUnique({where:{id:resumed.bipeId}});
+ assert.equal(resumed.recovered,true);assert.equal(resumedBipe.scanKey,repeated.scanKey);assert.equal(resumedBipe.sellerId,repeated.sellerId);
+ assert.equal(resumedBipe.bipedAt.getTime(),repeated.createdAt.getTime());assert.equal(resumedBipe.applied,false);
+ assert.equal((await service.recover(db,repeated.id)).bipeId,resumed.bipeId);
+ assert.equal(await db.stocktakeBipe.count({where:{roundId:f.round.id,barcode:c.barcode}}),2);
+ assert.equal(await db.storeStockMovement.count({where:{storeId:f.store.id}}),0);
+ console.log('PASS persisted explicit confirmation survives lost upload response; historical repeat avoids decoder; recovery reuses original key/time/photo and remains unapplied/idempotent');
+ const ownerA=await capture(f,{barcode:c.barcode}),ownerB=await capture(f,{barcode:c.barcode}),ownerWrong=await capture(f,{barcode:c.barcode,photo:await image(code())});
+ const ownerManifest=JSON.stringify({source:'explicit-owner-chat-confirmation-v1',executor:'system-maintenance',operationId:'isolated-owner-capture-recovery',
+  confirmedBy:'Test owner',userStatement:'These exact three test capture IDs represent separate physical pairs',targets:[ownerA,ownerB,ownerWrong].map(cap=>({
+   captureId:cap.id,roundId:cap.roundId,storeId:cap.storeId,scanKey:cap.scanKey,sellerId:cap.sellerId,sellerName:cap.sellerName,barcode:cap.barcode,
+   createdAt:cap.createdAt.toISOString(),photoRevision:photos.revisionOf(cap.note),photoDataUrlSha256:createHash('sha256').update(cap.photo).digest('hex')}))});
+ for(const cap of [ownerA,ownerB,ownerWrong])await db.$transaction(tx=>repeatConfirmation.recordOwnerReview(tx,cap,{manifestText:ownerManifest}));
+ const ownerResults=await Promise.all([service.recover(db,ownerA.id),service.recover(db,ownerB.id)]);
+ assert.ok(ownerResults.every(x=>x.recovered));assert.equal(new Set(ownerResults.map(x=>x.bipeId)).size,2);
+ for(let i=0;i<2;i++){
+  const cap=[ownerA,ownerB][i],result=ownerResults[i],bipe=await db.stocktakeBipe.findUnique({where:{id:result.bipeId}});
+  assert.equal(bipe.sellerId,cap.sellerId);assert.equal(bipe.scanKey,cap.scanKey);assert.equal(bipe.bipedAt.getTime(),cap.createdAt.getTime());assert.equal(bipe.applied,false);
+  assert.equal((await service.recover(db,cap.id)).bipeId,result.bipeId);
+ }
+ assert.equal(await db.stocktakeBipe.count({where:{roundId:f.round.id,barcode:c.barcode}}),4);
+ await unchanged(f,ownerWrong,'photo_barcode_mismatch');
+ const outsideOwner=await capture(f,{barcode:c.barcode});await unchanged(f,outsideOwner,'repeat_confirmation_required');
+ await assert.rejects(()=>db.$transaction(tx=>repeatConfirmation.recordOwnerReview(tx,outsideOwner,{manifestText:ownerManifest})),e=>e.status===409);
+ assert.equal(await db.storeStockMovement.count({where:{storeId:f.store.id}}),0);
+ console.log('PASS explicit owner grants bind only finite manifest capture IDs; concurrent same-EAN recovery survives count growth, preserves original identities, remains idempotent and cannot bypass original-photo decode or stock verification');
  const race=await fixture(),raceCode=code(),raceA=await capture(race,{barcode:raceCode}),raceB=await capture(race,{barcode:raceCode});
  const raceResults=await Promise.all([service.recover(db,raceA.id),service.recover(db,raceB.id)]);
  assert.equal(raceResults.filter(x=>x.recovered).length,1);assert.equal(raceResults.filter(x=>x.reason==='repeat_confirmation_required').length,1);

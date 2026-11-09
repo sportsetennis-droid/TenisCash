@@ -8,7 +8,12 @@ const hash=value=>createHash('sha256').update(typeof value==='string'?value:JSON
 const photoDigest=value=>createHash('sha256').update(Buffer.from(value.slice(value.indexOf(',')+1),'base64')).digest('hex');
 const normalized=value=>String(value||'').normalize('NFKC').toUpperCase().replace(/[^A-Z0-9]/g,'');
 const sizeKey=value=>String(value||'').replace(',','.').trim();
-function reasonText(reason){if(reason==='photo_barcode_not_found')return 'O código de barras não ficou legível nesta foto. Reenquadre a mesma etiqueta.';if(reason==='photo_barcode_mismatch')return 'O código confirmado na foto é diferente do código lido. Confira a mesma peça.';return ({produto_ou_variante_pendente:'Produto ou variante ainda não identificados.',foto_ou_codigo_pendente:'Falta a foto arquivada com o código desta peça.',tipo_de_produto_pendente:'Conferir a classificação do produto para esta contagem de calçados.',codigo_da_foto_divergente:'O código da foto não confirmou o código lido.',tamanho_da_foto_divergente:'O tamanho BR da foto difere do cadastro. Conferir antes de incluir.',referencia_ou_marca_divergente:'A referência e a marca da etiqueta ainda precisam ser confirmadas.',photo_barcode_conflict:'A foto não permitiu confirmar um único código de barras.',photo_size_or_reference_pending:'Falta confirmar o tamanho BR e a referência na foto.',ocr_busy:'Conferência da foto na fila.',ocr_timeout:'A leitura da foto será tentada novamente.',ocr_unavailable:'Conferência local da foto temporariamente indisponível.',
+function reasonText(reason,options={}){
+ if(options.autoReprocess===true)return reasonText(reason)+(options.processing===true?' Reprocessamento automático em andamento.':' Aguardando reprocessamento automático.')+' Esta leitura ainda não foi aplicada ao estoque.';
+ if(reason==='photo_barcode_not_found')return 'O código de barras não ficou legível nesta foto. Reenquadre a mesma etiqueta.';
+ if(reason==='photo_barcode_mismatch')return 'O código confirmado na foto é diferente do código lido. Confira a mesma peça.';
+ return ({produto_ou_variante_pendente:'Produto ou variante ainda não identificados.',foto_ou_codigo_pendente:'Falta a foto arquivada com o código desta peça.',tipo_de_produto_pendente:'Conferir a classificação do produto para esta contagem de calçados.',codigo_da_foto_divergente:'O código da foto não confirmou o código lido.',tamanho_da_foto_divergente:'O tamanho BR da foto difere do cadastro. Conferir antes de incluir.',referencia_ou_marca_divergente:'A referência e a marca da etiqueta ainda precisam ser confirmadas.',photo_barcode_conflict:'A foto não permitiu confirmar um único código de barras.',photo_size_or_reference_pending:'Falta confirmar o tamanho BR e a referência na foto.',ocr_busy:'Conferência da foto na fila.',ocr_timeout:'A conferência da foto excedeu o tempo disponível; leitura preservada.',ocr_unavailable:'Conferência local da foto temporariamente indisponível.',
+ queue_recheck_wait:'Foto arquivada; conferência ainda pendente.',
  ocr_memory_limit:'A conferência da foto excedeu a memória disponível; leitura preservada.',
  photo_input_invalid:'O arquivo da foto não pôde ser processado. Confira a foto desta peça.',
  operator_not_authorized:'O operador original desta leitura está sem autorização para esta loja.',
@@ -18,7 +23,8 @@ function reasonText(reason){if(reason==='photo_barcode_not_found')return 'O cód
  photo_decode_unavailable:'A conferência do código da foto está temporariamente indisponível.',
  photo_decode_memory_limit:'A conferência do código da foto excedeu a memória disponível.',
  photo_decode_failed:'Não foi possível conferir o código na foto desta peça.',
- leitura_encerrada:'Leitura encerrada ou excluída.'})[reason]||'Foto arquivada; aguardando conferência para entrar no novo estoque.';}
+ leitura_encerrada:'Leitura encerrada ou excluída.'})[reason]||'Foto arquivada; aguardando conferência para entrar no novo estoque.';
+}
 function fail(message,status=409){const e=Error(message);e.status=status;throw e;}
 async function preview(db,storeId){
  const store=await db.store.findUnique({where:{id:storeId},select:{id:true,code:true,name:true,active:true}});
@@ -78,9 +84,17 @@ function validateRead(c,read){
 }
 async function referenceMatches(db,c,read){
  const p=c.size.product;let ctx=p.aiContext||{};if(typeof ctx==='string'){try{ctx=JSON.parse(ctx)}catch(_){ctx={}}}
+ const brands=[...String(read.text||'').matchAll(/\b(REEBOK|NIKE|ADIDAS|PUMA|FILA|ASICS|SKECHERS|MIZUNO|OLYMPIKUS|FIBER)\b/gi)].map(m=>normalized(m[1]));
+ if(brands.some(brand=>brand!==normalized(p.brand)))return null;
+ if(normalized(p.brand)==='FIBER'){
+  const matched=require('./scannerReference').matchFiberReference({...p,aiContext:ctx},read);
+  if(matched.handled)return matched.reference;
+ }
  const catalogRefs=[p.sku,ctx.supplierRef].map(normalized).filter(Boolean);
  const refs=[...catalogRefs,...(Array.isArray(ctx.scannerReferences)?ctx.scannerReferences:[]).map(normalized)].filter(Boolean);
  const fiscal=await require('./scannerArchivedLabel').fiscalRows(db,c.bipe.barcode);
+ const manufacturer=require('./scannerReference').matchIncomingManufacturerReference({...p,aiContext:ctx},read,fiscal);
+ if(manufacturer.handled)return manufacturer.reference;
  for(const row of fiscal.filter(r=>r.productId===p.id)){
   refs.push(normalized(row.supplierCode));
   catalogRefs.push(normalized(row.supplierCode));
@@ -104,7 +118,6 @@ async function referenceMatches(db,c,read){
  // SKU prefixes used by the existing catalog are identifiers, not new models.
  for(const ref of [...refs])if(ref.startsWith('T')&&ref.length>5)refs.push(ref.slice(1));
  match=match||(read.references||[]).find(ref=>refs.includes(normalized(ref)));
- const brands=[...String(read.text||'').matchAll(/\b(REEBOK|NIKE|ADIDAS|PUMA|FILA|ASICS|SKECHERS|MIZUNO|OLYMPIKUS)\b/gi)].map(m=>normalized(m[1]));
  return match&&!brands.some(brand=>brand!==normalized(p.brand))?match:null;
 }
 // Only server-generated evidence is accepted here. No HTTP route accepts an OCR verdict.

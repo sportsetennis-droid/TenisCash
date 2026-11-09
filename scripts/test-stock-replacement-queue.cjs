@@ -59,14 +59,14 @@ async function activeJob(q,c){await q.enqueueCapture(c);return fetchJob(q);}
  await settle(q,fresh);assert.equal(await stock(f),3);
  console.log('PASS expired attempt fencing rolls back stock, movement and bipe; the current lease applies exactly once');
  const failFirst=await piece(f,q),good=await piece(f,q);job=await fetchJob(q);readHook=async()=>({pending:true,reason:'ocr_memory_limit'});
- await assert.rejects(()=>q.processJob(job),/ocr_memory_limit/);await q.boss.fail(queueModule.QUEUE,job,{reason:'ocr_memory_limit'});
+ const resourceWait=await q.processJob(job);assert.equal(resourceWait.reason,'ocr_memory_limit');assert.equal(resourceWait.autoReprocess,true);
+ const scheduled=(await queueModule.health(db,{roundId:f.round.id})).items.find(x=>x.captureId===failFirst.cap.id&&x.state==='created');assert.ok(scheduled?.autoReprocess);assert.ok(new Date(scheduled.nextAttemptAt)>new Date());
  readHook=async()=>readFor(good.cap);let following=await fetchJob(q);
  if(following.data.captureId===failFirst.cap.id){await q.boss.fail(queueModule.QUEUE,following,{reason:'test_delay'});following=await q.boss.fetch(queueModule.QUEUE,{batchSize:1,includeMetadata:true,minPriority:priority,maxPriority:priority});following=following[0];}
  assert.equal(following.data.captureId,good.cap.id);await settle(q,following);assert.equal(await stock(f),4);
- console.log('PASS transient OCR/memory failure is retried independently and does not block the next piece');
+ console.log('PASS costly OCR failure commits pending plus a future lower-priority job and does not block the next piece');
  const wrong=await piece(f,q);await db.user.update({where:{id:f.seller.id},data:{active:false}});readHook=async()=>readFor(wrong.cap);
- // Drain the deliberate earlier retry before the newly revoked operator job.
- for(let i=0;i<2;i++){const j=await fetchJob(q);assert.equal((await settle(q,j)).reason,'operator_not_authorized');}
+ const revoked=await fetchJob(q);assert.equal((await settle(q,revoked)).reason,'operator_not_authorized');
  assert.equal(await stock(f),4);await db.user.update({where:{id:f.seller.id},data:{active:true}});
  const h=await queueModule.health(db,{roundId:f.round.id,storeId:f.store.id});assert.ok(h.available);assert.ok(h.items.every(x=>x.captureId));assert.ok(!JSON.stringify(h).includes('data:image'));assert.ok(!JSON.stringify(h).includes('test-only'));assert.equal(h.items.some(x=>'data' in x),false);
  console.log('PASS operator authorization is rechecked and status exposes only job metadata, without image, barcode payload or credentials');

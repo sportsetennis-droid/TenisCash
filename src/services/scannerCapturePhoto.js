@@ -2,12 +2,14 @@
 const { createHash } = require('node:crypto');
 const rounds = require('./stocktakeRounds');
 const barcodePolicy = require('../../public/scanner-barcode-policy');
+const repeatConfirmation = require('./scannerRepeatConfirmation');
 const marker = /\n\[scanner-photo-revision:(\d{1,30})\]$/;
 function revisionOf(note) { return String(note || '').match(marker)?.[1] || ''; }
-function visibleNote(note) { return String(note || '').replace(marker, ''); }
+function visibleNote(note) { return repeatConfirmation.strip(String(note || '').replace(marker, '')); }
 function photoNote(note, message, revision = revisionOf(note)) {
+  const confirmation = String(revision) === revisionOf(note) ? repeatConfirmation.marker(note) : '';
   const suffix = revision ? '\n[scanner-photo-revision:' + revision + ']' : '';
-  return visibleNote(message).slice(0, 480 - suffix.length) + suffix;
+  return visibleNote(message).slice(0, 480 - confirmation.length - suffix.length) + confirmation + suffix;
 }
 function hash(photo) { return createHash('sha256').update(photo).digest('hex'); }
 function normalizeRevision(value) {

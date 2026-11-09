@@ -8,9 +8,13 @@ const otherCategory = /^(?:ROUPAS?|VESTUARIO|ACESSORIOS?|BOLA|INSUMO)$/;
 function classification(product) {
   const name=normalize(product?.name), category=normalize(product?.category), ncm=String(product?.ncm||'').replace(/\D/g,'');
   if (excludedName.test(name)) return 'outside';
+  const categoryMatches=footwearCategory.test(category), fiscalMatches=/^640[1-5]\d{4}$/.test(ncm);
+  // Legacy fiscal names such as SAPATO/SAPATILHA do not override two
+  // concordant footwear fields. An accessory/clothing name still wins above;
+  // either category or NCM alone remains insufficient for those legacy names.
+  if (categoryMatches && fiscalMatches) return 'footwear';
   if (/\b(?:BOTAS?|SAPATOS?|SAPATILHAS?|TAMANCOS?|MULES?)\b/.test(name) && !/\bCHUTEIRAS?\b/.test(name)) return 'outside';
   if (footwearName.test(name)) return 'footwear';
-  const categoryMatches=footwearCategory.test(category), fiscalMatches=/^640[1-5]\d{4}$/.test(ncm);
   if (categoryMatches && (!ncm || fiscalMatches)) return 'footwear';
   // Imported NCM/category conflicts are not permission to zero other merchandise.
   if (categoryMatches || fiscalMatches) return 'review';
