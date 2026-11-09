@@ -1229,7 +1229,7 @@ app.get('/t/:slug', async (req, res) => {
   .prize{margin-top:14px;background:linear-gradient(90deg,rgba(245,197,66,.16),rgba(245,197,66,.05));border:1px solid rgba(245,197,66,.3);color:var(--gold);border-radius:12px;padding:11px 14px;font-size:13px;font-weight:700;position:relative}
   .about{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;color:#c9d0dc;font-size:14px}
   /* CATS */
-  .cats{display:flex;gap:9px;overflow-x:auto;padding:18px 2px 6px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .cats{display:flex;flex-wrap:wrap;gap:9px;padding:18px 2px 6px}
   .cats::-webkit-scrollbar{display:none}
   .cat{flex-shrink:0;border:1px solid var(--line);background:var(--card);color:var(--txt);font-family:'Oswald',sans-serif;font-size:15px;font-weight:600;letter-spacing:.5px;padding:9px 16px;border-radius:12px;cursor:pointer;-webkit-tap-highlight-color:transparent;display:flex;align-items:center;gap:7px;transition:.15s}
   .cat.active{border-color:transparent;color:#fff;background:linear-gradient(135deg,var(--red),#c81e1e);box-shadow:0 8px 20px rgba(238,43,43,.35)}
