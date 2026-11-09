@@ -88,9 +88,9 @@ const GAMES = [
   [41, '21', '13:00', M, '55+', 'G', 'AxB', 'Foz Futsal - PR', 'Brasil Sertão - RN'],
   [42, '21', '13:50', M, '55+', 'G', 'AxB', 'Cristo Rei - PB', 'Cabo Branco - PB'],
   [43, '21', '14:40', M, '55+', 'G', 'AxB', 'Amigos CG - PB', 'Santa Cruz - PE'],
-  // 44: 60+ "Cabo Branco x Amigos CG" — Cabo Branco NÃO é do 60+ (provável erro,
-  // faltou Causos e Lendas x Amigos CG). A confirmar.
-  [44, '21', '15:30', M, '60+', 'G', 'U', X, X],
+  // 44: a tabela oficial trazia "Cabo Branco x Amigos CG", mas Cabo Branco NÃO é do 60+.
+  // O 60+ é round-robin (todos x todos); o ÚNICO par que faltava é Causos e Lendas x Amigos CG.
+  [44, '21', '15:30', M, '60+', 'G', 'U', 'Causos e Lendas - PB', 'Amigos CG - PB'],
   [45, '21', '16:20', M, '60+', 'G', 'U', 'Brasil Sertão - RN', 'Foz Futsal - PR'],
   [46, '21', '18:00', M, '50+', 'SF', null, X, X],
   [47, '21', '18:50', M, '50+', 'SF', null, X, X],
@@ -189,13 +189,22 @@ async function importFutsalMasterCup(ownerId) {
   // 3) Jogos (idempotente por ordering = nº do jogo)
   let created = 0;
   let tbd = 0;
+  let backfilled = 0;
   for (const [n, day, time, venue, catName, stageCode, grp, home, away] of GAMES) {
     const cid = catId[catName];
     if (!cid) continue;
-    const exists = await prisma.tournamentMatch.findFirst({ where: { tournamentId: t.id, ordering: n } });
-    if (exists) continue;
     const homeId = home ? entryId[catName + '|' + home] || null : null;
     const awayId = away ? entryId[catName + '|' + away] || null : null;
+    const exists = await prisma.tournamentMatch.findFirst({ where: { tournamentId: t.id, ordering: n } });
+    if (exists) {
+      // Jogo "a confirmar" que agora tem os dois times na tabela → preenche.
+      // Seguro: só mexe se ainda SCHEDULED e com algum slot vazio (nunca sobrescreve jogo já definido/jogado).
+      if (exists.status === 'SCHEDULED' && (!exists.homeEntryId || !exists.awayEntryId) && homeId && awayId) {
+        await prisma.tournamentMatch.update({ where: { id: exists.id }, data: { homeEntryId: homeId, awayEntryId: awayId } });
+        backfilled += 1;
+      }
+      continue;
+    }
     if (!homeId || !awayId) tbd += 1;
     await prisma.tournamentMatch.create({
       data: {
@@ -251,7 +260,7 @@ async function importFutsalMasterCup(ownerId) {
   return {
     ok: true, slug: t.slug, tournamentId: t.id,
     categories: Object.keys(TEAMS).length, teams: totalTeams,
-    matchesCreated: created, matchesTBD: tbd,
+    matchesCreated: created, matchesTBD: tbd, matchesBackfilled: backfilled,
     publicUrl: '/t/' + t.slug,
   };
 }
