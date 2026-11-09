@@ -4029,6 +4029,24 @@ model MatchOfficial {
   @@index([userId])
 }
 
+// Vínculo ATLETA ↔ TIME (clube) — convite/aceite nos dois sentidos.
+// Clube = UM só em várias categorias → vínculo pelo NOME do clube (clubName).
+model TeamMembership {
+  id              String    @id @default(cuid())
+  tournamentId    String
+  clubName        String
+  userId          String
+  status          String    @default("PENDING") // PENDING | ACTIVE | DECLINED | REMOVED
+  initiatedBy     String    @default("ATHLETE") // ATHLETE | TEAM
+  invitedByUserId String?
+  createdAt       DateTime  @default(now())
+  respondedAt     DateTime?
+
+  @@unique([tournamentId, clubName, userId])
+  @@index([tournamentId])
+  @@index([userId])
+}
+
 // ============================================================
 // PROFISSIONAL ESPORTIVO — Card público + Gestão + Cobrança
 // ------------------------------------------------------------

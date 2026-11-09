@@ -94,6 +94,24 @@ const STATEMENTS = [
   `CREATE UNIQUE INDEX IF NOT EXISTS "MatchOfficial_uniq" ON "MatchOfficial" ("matchId", "userId", "role")`,
   `CREATE INDEX IF NOT EXISTS "MatchOfficial_match_idx" ON "MatchOfficial" ("matchId")`,
   `CREATE INDEX IF NOT EXISTS "MatchOfficial_user_idx" ON "MatchOfficial" ("userId")`,
+  // Vínculo ATLETA ↔ TIME (clube) — convite/aceite nos dois sentidos.
+  // O clube é UM só em várias categorias, então o vínculo é por NOME do clube (clubName).
+  // status: PENDING | ACTIVE | DECLINED | REMOVED · initiatedBy: ATHLETE | TEAM
+  `CREATE TABLE IF NOT EXISTS "TeamMembership" (
+     "id" TEXT NOT NULL,
+     "tournamentId" TEXT NOT NULL,
+     "clubName" TEXT NOT NULL,
+     "userId" TEXT NOT NULL,
+     "status" TEXT NOT NULL DEFAULT 'PENDING',
+     "initiatedBy" TEXT NOT NULL DEFAULT 'ATHLETE',
+     "invitedByUserId" TEXT,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     "respondedAt" TIMESTAMP(3),
+     CONSTRAINT "TeamMembership_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "TeamMembership_uniq" ON "TeamMembership" ("tournamentId", "clubName", "userId")`,
+  `CREATE INDEX IF NOT EXISTS "TeamMembership_tournament_idx" ON "TeamMembership" ("tournamentId")`,
+  `CREATE INDEX IF NOT EXISTS "TeamMembership_user_idx" ON "TeamMembership" ("userId")`,
 ];
 
 async function ensureApexSchema(prisma) {

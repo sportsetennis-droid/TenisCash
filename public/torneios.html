@@ -351,6 +351,7 @@ async function renderTournament(id){
     if(myRoles.length)html+=myRolePanel(t,MR);
     if(rset.has('REFEREE'))html+='<div class="card"><h2 style="margin:0 0 6px">🧑‍⚖️ Minha arbitragem</h2><div id="my-matches"><div class="spin"></div></div></div>';
     if(rset.has('TEAM_ADMIN')||rset.has('COACH'))html+='<div class="card"><h2 style="margin:0 0 6px">🛡️ Meu time</h2><div id="my-team"><div class="spin"></div></div></div>';
+    html+='<div class="card"><h2 style="margin:0 0 6px">⚽ Meu time no torneio</h2><div id="my-membership"><div class="spin"></div></div></div>';
     if(canRegister){
       html+='<div class="card" style="background:var(--soft)"><h2 style="margin:0 0 6px">Quer jogar?</h2>'+
         '<p class="muted" style="margin:0 0 10px">Peça sua inscrição neste torneio. O organizador aprova.</p>'+
@@ -363,6 +364,7 @@ async function renderTournament(id){
     TEAM_CTX={tid:t.id};
     if(rset.has('REFEREE'))loadMyMatches(t.id);
     if(rset.has('TEAM_ADMIN')||rset.has('COACH'))loadMyTeam(t.id,rset.has('TEAM_ADMIN'));
+    loadMyMembership(t.id);
     return;
   }
 
@@ -502,9 +504,12 @@ async function loadMyTeam(tid,canLogo){
     const ent=(c.entries||[]).map(e=>'<div class="listitem" style="padding-left:6px"><div class="grow"><div class="nm" style="font-size:14px">'+esc(e.category||'—')+'</div><div class="sub">'+e.roster+' no elenco</div></div>'+
       '<button class="btn sm sec" data-act="team-roster" data-eid="'+e.entryId+'" data-cat="'+esc(e.category||'')+'">Elenco ›</button></div>'+
       '<div id="roster-'+e.entryId+'"></div>').join('');
+    const first=((c.entries||[])[0]||{}).entryId||'';
     return '<div style="border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:10px">'+
       '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'+logo+'<div class="grow"><div class="nm" style="font-weight:800">'+esc(c.name)+'</div><div class="sub">'+(c.entries||[]).length+' categoria(s)</div></div>'+
-      (canLogo?'<button class="btn sm gho" data-act="team-logo-club" data-eid="'+((c.entries||[])[0]||{}).entryId+'">Escudo</button>':'')+'</div>'+ent+'</div>';
+      (canLogo?'<button class="btn sm gho" data-act="team-logo-club" data-eid="'+first+'">Escudo</button>':'')+'</div>'+
+      '<button class="btn sm gho" data-act="team-members" data-eid="'+first+'" style="width:100%;margin-bottom:6px">👥 Atletas vinculados ›</button><div id="members-'+first+'"></div>'+
+      ent+'</div>';
   }).join('');
 }
 async function toggleRoster(eid,cat){
@@ -559,6 +564,85 @@ function teamPickLogo(eid){
       };img.onerror=function(){toast('Imagem inválida');};img.src=r.result;};
     r.readAsDataURL(f);};
   inp.click();
+}
+
+// ---------- Vínculo ATLETA ↔ TIME (convite/aceite nos dois sentidos) ----------
+// Lado do ATLETA: meu vínculo + convites pra aceitar + pedir pra entrar num time.
+async function loadMyMembership(tid){
+  const box=document.getElementById('my-membership');if(!box)return;
+  let d={active:[],invites:[],requested:[]};try{d=await api('/'+tid+'/my-memberships');}catch(e){box.innerHTML='<div class="empty" style="padding:12px">'+esc(e.message)+'</div>';return;}
+  let h='';
+  (d.active||[]).forEach(m=>{h+='<div class="listitem"><div class="av" style="background:var(--grad);color:#fff">⚽</div>'+
+    '<div class="grow"><div class="nm">Você joga pelo '+esc(m.clubName)+'</div><div class="sub">vínculo ativo</div></div>'+
+    '<button class="btn sm dang" data-act="mem-remove" data-tid="'+tid+'" data-mid="'+m.id+'">Sair</button></div>';});
+  (d.invites||[]).forEach(m=>{h+='<div class="listitem" style="background:var(--soft);border-radius:10px;padding:8px"><div class="grow"><div class="nm">Convite do '+esc(m.clubName)+'</div><div class="sub">o time te convidou</div></div>'+
+    '<button class="btn sm" data-act="mem-resp" data-tid="'+tid+'" data-mid="'+m.id+'" data-ac="accept" style="margin-right:6px">Aceitar</button>'+
+    '<button class="btn sm sec" data-act="mem-resp" data-tid="'+tid+'" data-mid="'+m.id+'" data-ac="decline">Recusar</button></div>';});
+  (d.requested||[]).forEach(m=>{h+='<div class="listitem"><div class="grow"><div class="nm">'+esc(m.clubName)+'</div><div class="sub">pedido enviado — aguardando o time aceitar</div></div>'+
+    '<button class="btn sm dang" data-act="mem-remove" data-tid="'+tid+'" data-mid="'+m.id+'">Cancelar</button></div>';});
+  if(!(d.active||[]).length)h+='<div style="height:6px"></div><button class="btn sm" data-act="join-team" data-tid="'+tid+'" style="width:100%">+ Entrar num time</button>';
+  if(!h)h='<div class="empty" style="padding:12px">Você ainda não está num time.</div>';
+  box.innerHTML=h;
+}
+async function sheetJoinTeam(tid){
+  let teams=[];try{teams=(await api('/'+tid+'/teams')).teams||[];}catch(e){}
+  if(!teams.length)return toast('Nenhum time cadastrado ainda');
+  const opts=teams.map(t=>'<button class="btn sec" data-act="do-join" data-tid="'+tid+'" data-eid="'+t.entryId+'" style="width:100%;margin-bottom:6px;justify-content:flex-start">'+(t.logoUrl?'':'')+esc(t.name)+'</button>').join('');
+  openSheet('<h3 style="margin:0 0 4px">Entrar num time</h3><p class="muted" style="margin:0 0 10px;font-size:12px">Escolha o clube. O time recebe seu pedido e aceita.</p>'+opts);
+}
+async function doJoinTeam(tid,eid){
+  try{const r=await api('/'+tid+'/teams/'+eid+'/join',{method:'POST'});closeSheet();
+    toast(r.activated?'Você entrou no time!':'Pedido enviado — aguarde o time aceitar');loadMyMembership(tid);}catch(e){toast(e.message);}
+}
+async function memRespond(tid,mid,action,eid){
+  try{const r=await api('/'+tid+'/memberships/'+mid+'/respond',{method:'POST',body:{action}});
+    toast(action==='accept'?(r.accepted?'Vínculo aceito!':'Feito'):'Recusado');
+    if(eid)renderMembers(eid);else loadMyMembership(tid);}catch(e){toast(e.message);}
+}
+async function memRemove(tid,mid){
+  if(!confirm('Desfazer o vínculo com o time?'))return;
+  try{await api('/'+tid+'/memberships/'+mid+'/remove',{method:'POST'});toast('Vínculo desfeito');loadMyMembership(tid);
+    if(TEAM_CTX.tid)loadMyTeam(TEAM_CTX.tid,TEAM_CTX.canLogo);}catch(e){toast(e.message);}
+}
+// Lado do TIME: atletas vinculados + pedidos pra aceitar + convidar.
+async function toggleMembers(eid){
+  const box=document.getElementById('members-'+eid);if(!box)return;
+  if(box.dataset.open==='1'){box.innerHTML='';box.dataset.open='';return;}
+  box.dataset.open='1';box.innerHTML='<div class="spin"></div>';await renderMembers(eid);
+}
+async function renderMembers(eid){
+  const box=document.getElementById('members-'+eid);if(!box||!TEAM_CTX.tid)return;
+  const tid=TEAM_CTX.tid;
+  let d={active:[],pending:[]};try{d=await api('/'+tid+'/teams/'+eid+'/members');}catch(e){box.innerHTML='<div class="empty" style="padding:10px">'+esc(e.message)+'</div>';return;}
+  let h='<div style="background:var(--soft);border-radius:10px;padding:8px;margin:4px 0 8px">';
+  (d.pending||[]).filter(m=>m.initiatedBy==='ATHLETE').forEach(m=>{h+='<div class="listitem" style="padding:7px 4px"><div class="grow"><div class="nm" style="font-size:14px">'+esc((m.user&&m.user.name)||'—')+'</div><div class="sub">pediu pra entrar</div></div>'+
+    '<button class="btn sm" data-act="mem-resp" data-tid="'+tid+'" data-mid="'+m.id+'" data-ac="accept" data-eid="'+eid+'" style="margin-right:6px">Aceitar</button>'+
+    '<button class="btn sm dang" data-act="mem-resp" data-tid="'+tid+'" data-mid="'+m.id+'" data-ac="decline" data-eid="'+eid+'">Recusar</button></div>';});
+  (d.pending||[]).filter(m=>m.initiatedBy==='TEAM').forEach(m=>{h+='<div class="listitem" style="padding:7px 4px"><div class="grow"><div class="nm" style="font-size:14px">'+esc((m.user&&m.user.name)||'—')+'</div><div class="sub">convidado — aguardando aceitar</div></div><span class="pill w">pendente</span></div>';});
+  if(!(d.active||[]).length)h+='<div class="empty" style="padding:10px">Nenhum atleta vinculado ainda.</div>';
+  else (d.active||[]).forEach(m=>{h+='<div class="listitem" style="padding:7px 4px"><div class="av" style="font-size:13px">'+initials((m.user&&m.user.name)||'?')+'</div>'+
+    '<div class="grow"><div class="nm" style="font-size:14px">'+esc((m.user&&m.user.name)||'—')+((m.user&&m.user.username)?' <span class="sub">@'+esc(m.user.username)+'</span>':'')+'</div><div class="sub">vinculado</div></div>'+
+    '<button class="btn sm dang" data-act="mem-remove-team" data-tid="'+tid+'" data-mid="'+m.id+'" data-eid="'+eid+'">✕</button></div>';});
+  h+='<div style="height:6px"></div><button class="btn sm sec" data-act="invite-athlete" data-eid="'+eid+'" style="width:100%">+ Convidar atleta</button></div>';
+  box.innerHTML=h;
+}
+function sheetInvite(eid){
+  openSheet('<h3 style="margin:0 0 4px">Convidar atleta</h3><p class="muted" style="margin:0 0 10px;font-size:12px">Por telefone ou @usuário. Ele recebe o convite e aceita no app.</p>'+
+    '<label>Telefone</label><input id="iv-phone" inputmode="numeric" placeholder="(83) 9...">'+
+    '<label>ou @usuário</label><input id="iv-user" placeholder="@instagram">'+
+    '<div style="height:12px"></div><button class="btn" data-act="do-invite" data-eid="'+eid+'">Convidar</button>');
+}
+async function doInvite(eid){
+  if(!TEAM_CTX.tid)return;const tid=TEAM_CTX.tid;
+  const phone=(document.getElementById('iv-phone').value||'').replace(/\D/g,'');
+  const username=(document.getElementById('iv-user').value||'').replace(/^@/,'').trim();
+  if(!phone&&!username)return toast('Informe telefone ou @usuário');
+  try{const r=await api('/'+tid+'/teams/'+eid+'/invite',{method:'POST',body:{phone:phone||undefined,username:username||undefined}});
+    closeSheet();toast(r.activated?'Atleta entrou no time!':'Convite enviado');renderMembers(eid);}catch(e){toast(e.message);}
+}
+async function memRemoveTeam(tid,mid,eid){
+  if(!confirm('Tirar o atleta do time?'))return;
+  try{await api('/'+tid+'/memberships/'+mid+'/remove',{method:'POST'});toast('Removido');renderMembers(eid);}catch(e){toast(e.message);}
 }
 
 // Mural/avisos do torneio (texto). isOwner mostra o compositor + remover.
@@ -1220,6 +1304,14 @@ document.addEventListener('click',async(ev)=>{
   if(a==='tp-save'){teamSavePlayer(el.dataset.eid,el.dataset.cat);return;}
   if(a==='team-delplayer'){teamDelPlayer(el.dataset.eid,el.dataset.pid,el.dataset.cat);return;}
   if(a==='team-logo-club'){if(el.dataset.eid)teamPickLogo(el.dataset.eid);return;}
+  if(a==='join-team'){sheetJoinTeam(el.dataset.tid);return;}
+  if(a==='do-join'){doJoinTeam(el.dataset.tid,el.dataset.eid);return;}
+  if(a==='mem-resp'){memRespond(el.dataset.tid,el.dataset.mid,el.dataset.ac,el.dataset.eid);return;}
+  if(a==='mem-remove'){memRemove(el.dataset.tid,el.dataset.mid);return;}
+  if(a==='mem-remove-team'){memRemoveTeam(el.dataset.tid,el.dataset.mid,el.dataset.eid);return;}
+  if(a==='team-members'){toggleMembers(el.dataset.eid);return;}
+  if(a==='invite-athlete'){sheetInvite(el.dataset.eid);return;}
+  if(a==='do-invite'){doInvite(el.dataset.eid);return;}
   if(a==='add-role'){sheetAddRole(el.dataset.tid);return;}
   if(a==='save-role'){saveAddRole(el.dataset.tid);return;}
   if(a==='del-role'){if(confirm('Remover esta pessoa do papel?')){try{await api('/'+el.dataset.tid+'/roles/'+el.dataset.rid,{method:'DELETE'});toast('Removido');loadRoles(el.dataset.tid);}catch(e){toast(e.message);}}return;}
