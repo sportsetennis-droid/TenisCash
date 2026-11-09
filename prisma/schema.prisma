@@ -4060,6 +4060,7 @@ model TrainingSession {
   location        String?
   status            String    @default("SCHEDULED") // SCHEDULED | DONE | CANCELED
   notes             String?
+  plan              Json? // plano em blocos [{name, minutes, description}]
   recurrenceGroupId String? // agrupa uma série recorrente (toda terça/quinta...)
   createdByUserId   String?
   createdAt         DateTime  @default(now())
@@ -4068,6 +4069,19 @@ model TrainingSession {
   @@index([tournamentId])
   @@index([tournamentId, clubName])
   @@index([recurrenceGroupId])
+}
+
+// Modelo de plano de treino reutilizável por clube (templates).
+model TrainingTemplate {
+  id              String   @id @default(cuid())
+  tournamentId    String
+  clubName        String
+  name            String   @default("Modelo")
+  plan            Json     @default("[]")
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+
+  @@index([tournamentId, clubName])
 }
 
 model TrainingAttendance {

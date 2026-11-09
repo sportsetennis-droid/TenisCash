@@ -127,8 +127,19 @@ async function get(sessionId) {
   return { session: s, roster };
 }
 
+// Plano do treino em blocos cronometrados (aquecimento→técnico→...→volta à calma).
+function sanitizePlan(plan) {
+  if (!Array.isArray(plan)) return [];
+  return plan.slice(0, 30).map((b) => ({
+    name: String((b && b.name) || 'Bloco').slice(0, 60),
+    minutes: Math.max(0, Math.min(240, Math.round(Number(b && b.minutes) || 0))),
+    description: (b && b.description) ? String(b.description).slice(0, 500) : '',
+  }));
+}
+
 async function update(sessionId, body = {}) {
   const data = {};
+  if ('plan' in body) data.plan = sanitizePlan(body.plan);
   if ('title' in body) data.title = body.title ? String(body.title).slice(0, 120) : 'Treino';
   if ('focus' in body) data.focus = body.focus ? String(body.focus).slice(0, 300) : null;
   if ('location' in body) data.location = body.location ? String(body.location).slice(0, 160) : null;
@@ -243,4 +254,30 @@ async function forUser(tournamentId, userId) {
   return { sessions: mapped, upcoming, past };
 }
 
-module.exports = { clubOfEntry, create, createRecurring, remind, list, get, update, remove, confirm, mark, forUser, prontuario, sessionClub };
+// ----- Templates de plano (reutilizáveis por clube) -----
+async function createTemplate({ tournamentId, entryId, createdByUserId, name, plan }) {
+  const clubName = await clubOfEntry(entryId, tournamentId);
+  if (!clubName) return { ok: false, code: 404, error: 'time não encontrado neste torneio' };
+  const tpl = await prisma.trainingTemplate.create({ data: { tournamentId, clubName, name: (name && String(name).slice(0, 80)) || 'Modelo', plan: sanitizePlan(plan), createdByUserId: createdByUserId || null } });
+  return { ok: true, template: tpl };
+}
+async function listTemplates(tournamentId, entryId) {
+  const clubName = await clubOfEntry(entryId, tournamentId);
+  if (!clubName) return { templates: [] };
+  const templates = await prisma.trainingTemplate.findMany({ where: { tournamentId, clubName }, orderBy: { createdAt: 'desc' } });
+  return { templates };
+}
+async function applyTemplate(sessionId, templateId) {
+  const s = await sessionClub(sessionId);
+  if (!s) return { ok: false, code: 404, error: 'treino não encontrado' };
+  const tpl = await prisma.trainingTemplate.findFirst({ where: { id: String(templateId), tournamentId: s.tournamentId, clubName: s.clubName } });
+  if (!tpl) return { ok: false, code: 404, error: 'modelo não encontrado' };
+  const up = await prisma.trainingSession.update({ where: { id: s.id }, data: { plan: sanitizePlan(tpl.plan) } });
+  return { ok: true, session: up };
+}
+async function deleteTemplate(tournamentId, templateId) {
+  await prisma.trainingTemplate.deleteMany({ where: { id: String(templateId), tournamentId } }).catch(() => {});
+  return { ok: true };
+}
+
+module.exports = { clubOfEntry, create, createRecurring, remind, list, get, update, remove, confirm, mark, forUser, prontuario, sessionClub, createTemplate, listTemplates, applyTemplate, deleteTemplate };

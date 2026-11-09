@@ -176,6 +176,49 @@ router.post('/:id/teams/:entryId/trainings/recurring', authMiddleware, async (re
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Modelos de plano (templates do clube) — baseados no treino (sem precisar de entryId).
+router.get('/trainings/:sid/templates', authMiddleware, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const s = await training.sessionClub(req.params.sid);
+    if (!s) return res.status(404).json({ error: 'treino não encontrado' });
+    if (!(await canTrainClub(req, s.tournamentId, s.clubName))) return res.status(403).json({ error: 'sem permissão' });
+    const templates = await prisma.trainingTemplate.findMany({ where: { tournamentId: s.tournamentId, clubName: s.clubName }, orderBy: { createdAt: 'desc' } });
+    res.json({ templates });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+// Salva o plano atual do treino como modelo reutilizável. TRAIN.
+router.post('/trainings/:sid/save-template', authMiddleware, async (req, res) => {
+  try {
+    const full = await training.get(req.params.sid);
+    if (!full) return res.status(404).json({ error: 'treino não encontrado' });
+    const s = full.session;
+    if (!(await canTrainClub(req, s.tournamentId, s.clubName))) return res.status(403).json({ error: 'sem permissão' });
+    const name = String((req.body || {}).name || s.title || 'Modelo').slice(0, 80);
+    const tpl = await prisma.trainingTemplate.create({ data: { tournamentId: s.tournamentId, clubName: s.clubName, name, plan: Array.isArray(s.plan) ? s.plan : [], createdByUserId: req.userId } });
+    res.status(201).json({ ok: true, template: tpl });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+router.delete('/:id/training-templates/:tplId', authMiddleware, async (req, res) => {
+  try {
+    const tpl = await prisma.trainingTemplate.findFirst({ where: { id: req.params.tplId, tournamentId: req.params.id }, select: { clubName: true } });
+    if (!tpl) return res.json({ ok: true });
+    if (!(await canTrainClub(req, req.params.id, tpl.clubName))) return res.status(403).json({ error: 'sem permissão' });
+    res.json(await training.deleteTemplate(req.params.id, req.params.tplId));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+// Aplica um modelo ao treino (copia o plano). TRAIN.
+router.post('/trainings/:sid/apply-template', authMiddleware, async (req, res) => {
+  try {
+    const s = await training.sessionClub(req.params.sid);
+    if (!s) return res.status(404).json({ error: 'treino não encontrado' });
+    if (!(await canTrainClub(req, s.tournamentId, s.clubName))) return res.status(403).json({ error: 'sem permissão' });
+    const r = await training.applyTemplate(req.params.sid, (req.body || {}).templateId);
+    if (!r.ok) return res.status(r.code || 400).json(r);
+    res.json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Lista treinos do clube (histórico). Gestor do treino OU atleta vinculado.
 router.get('/:id/teams/:entryId/trainings', authMiddleware, async (req, res) => {
   try {
