@@ -31,6 +31,8 @@ function harness(shared, options = {}) {
   class Element {
     constructor(tag = 'div', id = '') { this.tagName = tag.toUpperCase(); this.id = id; this._value = ''; this.children = []; this.events = {}; this.dataset = {}; this.style = { setProperty(name, value) { this[name] = value; } }; this.hidden = false; this.disabled = false; this.checked = false; this.textContent = ''; this.classList = { toggle() {}, add() {}, remove() {} }; }
     get value() { return this._value; }
+    get isConnected() { return this === document.body || !!this.parent?.isConnected; }
+    showModal() { this.open = true; }
     set value(value) { this._value = this.tagName === 'SELECT' && !this.children.some(child => child.value === String(value)) ? '' : String(value); }
     append(...children) { for (const child of children) { child.parent = this; this.children.push(child); attach(child); } }
     add(child) { this.append(child); }
@@ -63,7 +65,8 @@ function harness(shared, options = {}) {
   const body = new Element('body');
   document = { body, hidden: false, activeElement: body, events: {}, getElementById: id => nodes.get(id) || null,
     createElement: tag => new Element(tag), addEventListener(name, fn) { (this.events[name] ||= []).push(fn); } };
-  const h = { requests, historyRequests, nodes, localStorage, sessionStorage, scannerInstances, tracks, intervals, timers, document,
+  const blobUrls = new Map();
+  const h = { requests, historyRequests, nodes, localStorage, sessionStorage, scannerInstances, tracks, intervals, timers, document, blobUrls,
     get: id => nodes.get(id), handler: null, historyHandler: null, contextHandler: null, contextUser: person, play: async () => {}, recognize: async () => '', decode: async () => '', confirmDuplicate: async () => true };
   const window = { events: {}, addEventListener(name, fn) { (this.events[name] ||= []).push(fn); }, ScannerTransfer: { refresh() {} }, ScannerConfirm: { ask: text => h.confirmDuplicate(text) },
     ScannerView: { markup: () => '__SCANNER__' }, ScannerOCR: { recognize: canvas => h.recognize(canvas) },
@@ -71,6 +74,7 @@ function harness(shared, options = {}) {
     ScannerAuto: { stopDecoder() {}, decodeInWorker: canvas => h.decode(canvas), create(options) { const scanner = { options, resets: [], stopped: false, tick() {}, reset(value) { this.resets.push(value); this.stopped = false; }, stop() { this.stopped = true; } }; scannerInstances.push(scanner); return scanner; } },
     fecharScanner() {} };
   const context = vm.createContext({ window, document, localStorage, sessionStorage, console, crypto: { randomUUID }, AbortController, URLSearchParams, atob,
+    URL: { createObjectURL(blob) { const url = 'blob:' + randomUUID(); blobUrls.set(url, blob); return url; }, revokeObjectURL: url => blobUrls.delete(url) },
     navigator: { clipboard: { writeText: async text => { h.copiedText = text; } }, mediaDevices: { getUserMedia: async () => { const track = { stopped: false, stop() { this.stopped = true; } }; tracks.push(track); return { getTracks: () => [track] }; } } },
     Option: function(text, value) { const option = new Element('option'); option.textContent = text; option.value = value; return option; },
     confirm: () => true, setTimeout: (fn, ms) => { const id = nextTimer++; timers.set(id, { fn, ms }); return id; }, clearTimeout: id => timers.delete(id), setInterval: fn => { const id = nextTimer++; intervals.set(id, fn); return id; }, clearInterval: id => intervals.delete(id),
@@ -94,7 +98,7 @@ function harness(shared, options = {}) {
     } });
   window.crypto = { randomUUID }; window.localStorage = localStorage;
   for (const file of ['scanner-photo-storage.js', 'scan-action-photos.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '../public', file), 'utf8'), context);
-  const exportCode = 'window.__test = { photoArchive, flushPhotos, localPending, authenticate, loadShipments, openCamera, closeCamera, capture, resolveRead, refreshIdentifications, activeReads, scansPayload, contextChanged, storeChanged, prepare, confirmAction, persist, signature, flushSync, queueSync, recoverDrafts, reconcileConflictsFromServer, startNewLot, loadHistory, showHistoryDetail, copyHistory, syncPayload, historyFilters, state:()=>({actor,currentDraft,preview,cameraRead,cameraRetry,busy,stream,scanner,generation,syncJobs,historyData,historyPage,historyMode}) };';
+  const exportCode = 'window.__test = { photoArchive, flushPhotos, showScanPhotos, localPending, authenticate, loadShipments, openCamera, closeCamera, capture, resolveRead, refreshIdentifications, activeReads, scansPayload, contextChanged, storeChanged, prepare, confirmAction, persist, signature, flushSync, queueSync, recoverDrafts, reconcileConflictsFromServer, startNewLot, loadHistory, showHistoryDetail, copyHistory, syncPayload, historyFilters, state:()=>({actor,currentDraft,preview,cameraRead,cameraRetry,busy,stream,scanner,generation,syncJobs,historyData,historyPage,historyMode}) };';
   assert.ok(source.endsWith('})();\n') || source.trimEnd().endsWith('})();'));
   vm.runInContext(source.replace(/\}\)\(\);\s*$/, exportCode + '\n})();'), context, { filename: 'public/bipar-actions.js' });
   h.api = window.__test; h.window = window; h.boot = () => h.api.authenticate();
@@ -1131,5 +1135,29 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
     h.photoHandler = null; await h.api.flushPhotos(); assert.equal(item.photoArchived, true); assert.equal(h.api.activeReads().length, 1);
     assert.equal((await h.api.photoArchive.rows(draft.sessionId, item.clientScanId)).length, 2);
   });
-  console.log('PASS: 85 action UI regression groups; isolated DOM, camera and network mocks only.');
+  await test('history viewer requests each exact scan photo, shows OCR and releases images on logout', async () => {
+    const h = harness(); await h.boot(); const lot = randomUUID(), scan = randomUUID();
+    const photos = [1, 2].map(n => ({ id: randomUUID(), barcode: product.barcode, capturedAt: new Date().toISOString(), ocrText: 'Etiqueta ' + n }));
+    h.historyHandler = request => { const match = photos.find(p => request.url === '/api/scan-transfers/actions/history/' + lot + '/scans/' + scan + '/photos/' + p.id); assert.ok(match); assert.equal(request.auth, 'Bearer isolated-token'); return { ok: true, blob: async () => match.id }; };
+    await h.api.showScanPhotos(lot, scan, photos);
+    const viewer = h.get('action-photo-viewer'); assert.ok(viewer.open);
+    assert.equal(viewer.children.filter(n => n.tagName === 'IMG').length, 2); assert.equal(viewer.children.filter(n => n.tagName === 'PRE').length, 2);
+    assert.deepEqual([...h.blobUrls.values()], photos.map(p => p.id));
+    h.get('action-switch-user').onclick(); assert.equal(h.get('action-photo-viewer'), undefined); assert.equal(h.blobUrls.size, 0);
+  });
+  await test('history viewer cannot show an image whose download finishes after logout', async () => {
+    const h = harness(); await h.boot(); const late = deferred();
+    h.historyHandler = () => ({ ok: true, blob: () => late.promise });
+    const opening = h.api.showScanPhotos(randomUUID(), randomUUID(), [{ id: randomUUID(), barcode: product.barcode, capturedAt: new Date().toISOString() }]);
+    await flush(); assert.ok(h.get('action-photo-viewer')); h.get('action-switch-user').onclick(); late.resolve('old account bytes'); await opening;
+    assert.equal(h.get('action-photo-viewer'), undefined); assert.equal(h.blobUrls.size, 0);
+  });
+  await test('locally preserved image can be opened before uploading and stays labeled pending', async () => {
+    const h = harness(); await h.boot(); await h.scan(product.barcode); const draft = h.api.state().currentDraft, item = h.api.activeReads()[0];
+    await h.api.photoArchive.capture(draft, item, testFrame()); await h.api.showScanPhotos(draft.sessionId, item.clientScanId, []);
+    const viewer = h.get('action-photo-viewer'), image = viewer.children.find(n => n.tagName === 'IMG');
+    assert.equal(image.src, testFrame().toDataURL()); assert.ok(viewer.children.some(n => n.textContent.includes('aguardando arquivamento')));
+    assert.equal(item.photoArchived, false);
+  });
+  console.log('PASS: 88 action UI regression groups; isolated DOM, camera and network mocks only.');
 })().catch(error => { console.error(error.stack || error); process.exitCode = 1; });

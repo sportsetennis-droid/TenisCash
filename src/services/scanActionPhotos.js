@@ -24,6 +24,10 @@ async function decode(input) {
   try { metadata = await sharp(image, { limitInputPixels: 16000000 }).metadata(); }
   catch (_) { fail('Não foi possível ler a imagem enviada.'); }
   if (!metadata.width || !metadata.height || metadata.width * metadata.height > 16000000 || (metadata.pages || 1) > 1 || 'image/' + metadata.format !== match[1]) fail('A imagem da etiqueta deve ser uma foto estática válida.');
+  // A readable header does not prove the pixels arrived intact (e.g. half a JPEG).
+  // Decode all pixels before acknowledging archival; keep the original bytes.
+  try { await sharp(image, { limitInputPixels: 16000000, failOn: 'warning' }).stats(); }
+  catch (_) { fail('A imagem chegou incompleta ou corrompida. Reenvie a foto desta mesma peça.'); }
   const capturedAt = new Date(input.capturedAt);
   if (typeof input.capturedAt !== 'string' || !Number.isFinite(capturedAt.getTime()) || capturedAt < new Date('2020-01-01') || capturedAt > new Date(Date.now() + 300000)) fail('Horário da captura inválido.');
   const barcode = String(input.barcode || '').trim();
