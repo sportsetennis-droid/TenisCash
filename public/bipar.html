@@ -815,8 +815,8 @@
   };
 
   // ===== 📷 SCANNER DE ETIQUETAS AO VIVO (Nike/FIBER) =====
-  // Automatic reading persists scan metadata only. Photographs are saved only
-  // by an explicit manual tap; recognition frames stay in memory for local OCR.
+  // Every decoded camera frame is durably saved with its piece. Upload and
+  // identification run behind the operator's explicit Next click.
   let etiqFila = [], etiqStorageReady = false;
   const etiqPhotoStorage = window.ScannerPhotoStorage?.create();
   let etiqStorageFailed = false;
@@ -881,6 +881,9 @@
           const current = etiqFila.find(row => etiqIdentity(row) === identity);
           if (current?.photoRevision === frame.photoRevision && current.b64 === frame.b64 && saved.photoRef) current.photoRef = saved.photoRef;
           etiqPendingFrames.shift();
+          // The frame transaction has committed. Do not wait for the whole
+          // queue refresh or the network before offering Next for this piece.
+          renderEtiqCaptureState();
         }
         const snapshot = etiqFila.map(etiqCopy);
         for (const item of snapshot) {
@@ -1021,11 +1024,13 @@
     const ov = document.getElementById('etiq-overlay'); if (ov) ov.remove();
   };
 
-  // Mesma peça até o servidor confirmar código, produto e variante. Foto salva não libera Próxima.
+  // Código e foto salvos no aparelho liberam Próximo; servidor confere em segundo plano.
   let etiqPausado = true, etiqLeituraArmada = false, etiqWatch = null, etiqAtivo = null, etiqRetryAt = 0, etiqIgnoredCode = '', etiqIgnoreUntil=0;
   function etiqPhotoDurable(item) {
     const saved = item && etiqSave.baseline.get(etiqIdentity(item));
-    return !!(item?.b64 && saved && Number(saved.photoRevision || 0) === Number(item.photoRevision || 0) && saved.b64 === item.b64);
+    return !!(item?.b64 && saved && Number(saved.photoRevision || 0) === Number(item.photoRevision || 0) &&
+      (saved.b64 === item.b64 || (item.photoRef && saved.photoRef === item.photoRef)) &&
+      String(saved.ean || '') === String(item.ean || ''));
   }
   function renderEtiqCaptureState() {
     const it = etiqFila.find(item => item.lid === etiqAtivo), panel = document.getElementById('etiq-confirm');
@@ -1080,11 +1085,11 @@
     status.textContent = saved ? '✓ FOTO SALVA' : etiqStorageFailed ? 'FOTO AGUARDANDO SALVAMENTO' : '⏳ SALVANDO FOTO…';
     const uploaded = it.capId && Number(it.capIdPhotoRevision || 0) === Number(it.photoRevision || 0);
     const progress = !saved ? 'Mantenha esta página aberta. A imagem está preservada nesta sessão.' : !uploaded ? 'Imagem salva neste aparelho; envio ao sistema em andamento.' : 'Imagem salva no sistema.';
-    detail.textContent = progress + (it.ean ? ' Código: ' + it.ean + '. Conferindo produto e tamanho.' : ' Falta identificar o código. Você pode fotografar a mesma etiqueta novamente ou fechar mantendo a pendência.');
-    if (hint) hint.textContent = it.ean ? 'Código lido. Conferindo esta peça.' : 'Foto preservada. Aproxime o código da mesma etiqueta ou fotografe novamente.';
-    const queued = !!uploaded && !!it.ean && it.st !== 'revisao';
-    next.disabled = !queued; next.hidden = !queued;
-    next.textContent = 'PRÓXIMO — PENDENTE EM SEGUNDO PLANO'; next.style.background = '#a65b00';
+    detail.textContent = progress + (it.ean ? ' Código: ' + it.ean + '. Produto e tamanho serão conferidos em segundo plano.' : ' Falta identificar o código. Você pode fotografar a mesma etiqueta novamente ou fechar mantendo a pendência.');
+    const queued = saved && !!it.ean && !etiqStorageFailed && it.st !== 'revisao';
+    if (hint) hint.textContent = queued ? 'Leitura guardada. Toque em Próximo para outra peça; a conferência continua.' : it.ean ? 'Guardando código e foto neste aparelho.' : 'Foto preservada. Aproxime o código da mesma etiqueta ou fotografe novamente.';
+    next.disabled = !queued; next.hidden = !it.ean;
+    next.textContent = queued ? 'PRÓXIMO — CONFERÊNCIA EM SEGUNDO PLANO' : 'AGUARDE SALVAR NO APARELHO'; next.style.background = queued ? '#a65b00' : '#555';
   }
   window.capturaAutomatica = function (prepared) {
     if (window.BiparActions && !window.BiparActions.isInventory()) return;
@@ -1147,9 +1152,11 @@
   };
   window.proximaEtiqueta = function () {
     const current=etiqFila.find(x=>x.lid===etiqAtivo);
+    if (etiqStorageFailed) return;
     const queuedAuto = current?.autoRecognition && !current.manualPhoto && current.bipeId && current.ean && current.st !== 'revisao';
-    const savedManualPhoto = current?.manualPhoto && current.b64 && !current.ean && current.st !== 'revisao';
-    if(current && !current.complete && !queuedAuto && !savedManualPhoto && !(current?.capId && Number(current.capIdPhotoRevision || 0) === Number(current.photoRevision || 0) && current?.ean && current.st!=='revisao'))return;
+    const queuedPhoto = etiqPhotoDurable(current) && !!current.ean && current.st !== 'revisao';
+    const savedManualPhoto = current?.manualPhoto && etiqPhotoDurable(current) && !current.ean && current.st !== 'revisao';
+    if(current && !current.complete && !queuedAuto && !savedManualPhoto && !queuedPhoto)return;
     clearInterval(etiqWatch);etiqRetryAt=0;
     if (!savedManualPhoto) etiqAtivo=null;
     const pane=document.getElementById('etiq-confirm');if(pane)pane.style.display='none';

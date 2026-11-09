@@ -1,7 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict'), fs = require('node:fs'), vm = require('node:vm');
 const html = fs.readFileSync(require('node:path').join(__dirname, '../public/bipar.html'), 'utf8');
-const source = html.slice(html.indexOf('  function etiqInventoryContext()'), html.indexOf('  // Mesma peça até o servidor confirmar'));
+const source = html.slice(html.indexOf('  function etiqInventoryContext()'), html.indexOf('  let etiqPausado ='));
 function deferred() { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; }
 function harness({ slowPlay = false } = {}) {
   const nodes = new Map(), cameras = [], engines = [], captures = [], alerts = [], timers = new Map();

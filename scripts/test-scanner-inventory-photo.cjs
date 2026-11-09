@@ -3,8 +3,9 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), vm = require('node:vm'), { randomUUID } = require('node:crypto');
 const html = fs.readFileSync(require('node:path').join(__dirname, '../public/bipar.html'), 'utf8');
 const captureCode = html.slice(html.indexOf('  window.capturaAutomatica ='), html.indexOf('  function etiqStartOcr('));
+const durableCode = html.slice(html.indexOf('  function etiqPhotoDurable('), html.indexOf('  function renderEtiqCaptureState('));
 const nodes = new Map(['loja', 'vendedor', 'etiq-video', 'etiq-hint', 'etiq-confirm'].map(id => [id, { value: id + '-original', videoWidth: 400, videoHeight: 800, style: {} }]));
-const saved = [], uploads = []; let fail = false;
+const saved = [], uploads = []; let fail = false, holdSave = false, releaseSave;
 const state = { window: { BiparActions: { isInventory: () => true }, ScannerRound: { requireRound: () => 'round-original' }, ScannerTransfer: { start() {} } },
   document: { getElementById: id => nodes.get(id), createElement: () => { let source; return { width: 0, height: 0, getContext: () => ({ drawImage: frame => { source = frame; } }), toDataURL: () => 'data:image/jpeg;base64,' + Buffer.from(source.marker || 'LIVE-VIDEO').toString('base64') }; } },
   localStorage: { getItem: () => 'Original operator' }, STORAGE_VENDNAME: 'operator', genClientScanId: randomUUID,
@@ -12,19 +13,35 @@ const state = { window: { BiparActions: { isInventory: () => true }, ScannerRoun
   etiqFila: [], etiqAtivo: null, etiqRetryAt: 0, etiqStorageReady: true, etiqStorageFailed: false,
   etiqAutoFrames: new Map(), etiqAuto: { stop() {}, reset(value) {state.lastReset=value;} }, etiqWatch: null,
   renderEtiqCaptureState() {}, renderEtiqLista() {}, etiqBeep() {}, clearInterval() {}, setInterval() {}, alert() {},
-  etiqSave: async item => { if (fail) { state.etiqStorageFailed = true; return false; } saved.push(structuredClone(item)); return true; },
+  etiqSave: async item => {
+    if (holdSave) await new Promise(resolve => { releaseSave = resolve; });
+    if (fail) { state.etiqStorageFailed = true; return false; }
+    if (!item) return true;
+    saved.push(structuredClone(item));
+    const record = { ...item, photoRef: 'committed-photo-' + saved.length }; delete record.b64;
+    state.etiqSave.baseline.set('id:' + item.roundId + ':' + item.clientScanId, record);
+    item.photoRef = record.photoRef;
+    return true;
+  },
+  etiqIdentity: item => 'id:' + item.roundId + ':' + item.clientScanId,
   enviarFila: async () => { if (!state.etiqStorageFailed) uploads.push(...saved.slice(uploads.length)); }, etiqStorageNotice() {},
 };
-vm.createContext(state); vm.runInContext(captureCode, state);
+state.etiqSave.baseline = new Map();
+vm.createContext(state); vm.runInContext(durableCode + captureCode, state);
 const settle = () => new Promise(setImmediate);
 (async () => {
   const frame = { width: 800, height: 1200, marker: 'EXACT-DECODED-LABEL' };
+  holdSave = true;
   state.window.capturaAutomatica({ ean: '4006381333931', frame }); await settle();
+  state.window.proximaEtiqueta(); assert.equal(state.etiqAtivo, state.etiqFila[0].lid, 'Local photo commit is required');
+  holdSave = false; releaseSave(); await settle();
   assert.equal(saved.length, 1); assert.equal(uploads.length, 1); const item = state.etiqFila[0], id = item.clientScanId;
   assert.equal(item.b64, 'data:image/jpeg;base64,' + Buffer.from(frame.marker).toString('base64'));
   assert.equal(item.autoRecognition, false); assert.equal(item.autoPhoto, true); assert.equal(item.manualPhoto, false);
   assert.equal(item.storeId, 'loja-original'); assert.equal(item.roundId, 'round-original');
-  state.window.proximaEtiqueta(); assert.equal(state.etiqAtivo, item.lid, 'No next piece before archive acknowledgement');
+  assert.equal(item.capId, undefined); assert.equal(item.bipeId, undefined);
+  state.window.proximaEtiqueta(); assert.equal(state.etiqAtivo, null, 'Next never waits for upload or identification');
+  state.window.ScannerRound.id=()=>item.roundId;state.window.relerEtiqueta(item.lid);
   // Retake after a transient identification error, keeping this physical piece.
   item.st = 'pendente'; state.etiqPausado = false; state.etiqLeituraArmada = true;
   state.window.capturaAutomatica({ ean: item.ean, frame: { ...frame, marker: 'SECOND-FRAME' } }); await settle();
@@ -39,8 +56,10 @@ const settle = () => new Promise(setImmediate);
   const pending = state.etiqFila[1]; assert.ok(pending.b64); assert.notEqual(pending.clientScanId, id);
   state.window.proximaEtiqueta(); assert.equal(state.etiqAtivo, pending.lid);
   fail=false;state.etiqStorageFailed=false;pending.manualPhoto=true;pending.capId='saved-second';pending.capIdPhotoRevision=pending.photoRevision;pending.st='pendente';
+  state.window.proximaEtiqueta();assert.equal(state.etiqAtivo,pending.lid,'Server acknowledgement never replaces an uncommitted local photo');
+  await state.etiqSave(pending);
   state.window.proximaEtiqueta();assert.equal(state.etiqAtivo,null,'Archived manual photo with known code advances to a NEW piece');
   state.window.capturaAutomatica({ean:pending.ean,frame});await settle();assert.equal(state.etiqFila.length,3);assert.notEqual(state.etiqFila[2].clientScanId,pending.clientScanId);
   state.window.ScannerRound.id=()=>pending.roundId;state.window.relerEtiqueta(pending.lid);assert.equal(state.etiqAtivo,pending.lid);state.window.capturaAutomatica({ean:pending.ean,frame});await settle();assert.equal(state.etiqFila.length,3);assert.equal(state.etiqFila[1].clientScanId,pending.clientScanId);
-  console.log('PASS: inventory automatic read saves exact decoded frame, preserves context and recapture ID, waits for photo acknowledgement, and retains failed storage as pending.');
+  console.log('PASS: local photo/code commit enables Next before server acknowledgement; exact frame, recapture identity, repeated physical codes and failed-storage protection preserved.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
