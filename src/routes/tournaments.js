@@ -160,6 +160,22 @@ router.post('/:id/teams/:entryId/trainings', authMiddleware, async (req, res) =>
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Cria uma SÉRIE recorrente de treinos (ex: toda terça/quinta por N semanas). TRAIN.
+// body { title, focus, location, weekdays:[1,3], time:'19:00', weeks:8 }
+router.post('/:id/teams/:entryId/trainings/recurring', authMiddleware, async (req, res) => {
+  try {
+    const entry = await roles.entryContext(req.params.entryId);
+    if (!entry || entry.tournamentId !== req.params.id) return res.status(404).json({ error: 'time não encontrado' });
+    if (!(await roles.can(req.userId, req.userRole, req.params.id, 'TRAIN', { entryId: entry.id }))) {
+      return res.status(403).json({ error: 'sem permissão (coordenador, admin ou treinador do time)' });
+    }
+    const b = req.body || {};
+    const r = await training.createRecurring({ tournamentId: req.params.id, entryId: req.params.entryId, createdByUserId: req.userId, title: b.title, focus: b.focus, location: b.location, weekdays: b.weekdays, time: b.time, weeks: b.weeks, startDate: b.startDate });
+    if (!r.ok) return res.status(r.code || 400).json(r);
+    res.status(201).json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Lista treinos do clube (histórico). Gestor do treino OU atleta vinculado.
 router.get('/:id/teams/:entryId/trainings', authMiddleware, async (req, res) => {
   try {
@@ -210,17 +226,29 @@ router.post('/trainings/:sid/remove', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Atleta confirma presença (RSVP). body { confirmed: true|false }.
+// Atleta responde o RSVP. body { rsvp: 'GOING'|'MAYBE'|'DECLINED' } (ou { confirmed }).
 router.post('/trainings/:sid/confirm', authMiddleware, async (req, res) => {
   try {
     const s = await training.sessionClub(req.params.sid);
     if (!s) return res.status(404).json({ error: 'treino não encontrado' });
     if (!(await isActiveMember(s.tournamentId, s.clubName, req.userId)) && !roles.isGlobalAdmin(req.userRole)) {
-      return res.status(403).json({ error: 'só atleta vinculado ao time confirma presença' });
+      return res.status(403).json({ error: 'só atleta vinculado ao time responde o treino' });
     }
-    const r = await training.confirm(req.params.sid, req.userId, (req.body || {}).confirmed !== false);
+    const b = req.body || {};
+    const val = b.rsvp !== undefined ? b.rsvp : (b.confirmed !== false);
+    const r = await training.confirm(req.params.sid, req.userId, val);
     if (!r.ok) return res.status(r.code || 400).json(r);
     res.json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Treinador lembra quem ainda não respondeu o RSVP (aviso in-app). TRAIN.
+router.post('/trainings/:sid/remind', authMiddleware, async (req, res) => {
+  try {
+    const s = await training.sessionClub(req.params.sid);
+    if (!s) return res.status(404).json({ error: 'treino não encontrado' });
+    if (!(await canTrainClub(req, s.tournamentId, s.clubName))) return res.status(403).json({ error: 'sem permissão' });
+    res.json(await training.remind(req.params.sid, req.userId));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

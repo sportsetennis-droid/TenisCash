@@ -154,6 +154,11 @@ const STATEMENTS = [
   `ALTER TABLE "TrainingAttendance" ADD COLUMN IF NOT EXISTS "passes" INTEGER`,
   `ALTER TABLE "TrainingAttendance" ADD COLUMN IF NOT EXISTS "efficiency" INTEGER`,
   `ALTER TABLE "TrainingAttendance" ADD COLUMN IF NOT EXISTS "rating" DOUBLE PRECISION`,
+  // RSVP 3 estados (Vou/Talvez/Não vou) — padrão Spond/TeamSnap. confirmed = (rsvp='GOING').
+  `ALTER TABLE "TrainingAttendance" ADD COLUMN IF NOT EXISTS "rsvp" TEXT`,
+  // Treino recorrente: agrupa a série (toda terça/quinta...).
+  `ALTER TABLE "TrainingSession" ADD COLUMN IF NOT EXISTS "recurrenceGroupId" TEXT`,
+  `CREATE INDEX IF NOT EXISTS "TrainingSession_recur_idx" ON "TrainingSession" ("recurrenceGroupId")`,
 ];
 
 async function ensureApexSchema(prisma) {
