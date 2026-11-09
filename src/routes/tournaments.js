@@ -18,6 +18,7 @@ const cash = require('../services/tournamentCash');
 const { importFutsalMasterCup } = require('../services/futsalMasterCupSeed');
 const sheet = require('../services/matchSheet');
 const roles = require('../services/tournamentRoles');
+const membership = require('../services/teamMembership');
 
 const router = express.Router();
 
@@ -47,6 +48,82 @@ router.get('/:id/my-team', authMiddleware, async (req, res) => {
   try {
     res.set('Cache-Control', 'no-store');
     const r = await roles.myTeam(req.userId, req.userRole, req.params.id);
+    res.json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// =====================================================================
+// VÍNCULO ATLETA ↔ TIME — convite/aceite nos dois sentidos. Requer login.
+// =====================================================================
+
+// Times do torneio (pra o atleta escolher onde pedir pra entrar).
+router.get('/:id/teams', authMiddleware, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json({ teams: await membership.listTeams(req.params.id) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ATLETA pede pra entrar num time (entryId identifica o clube).
+router.post('/:id/teams/:entryId/join', authMiddleware, async (req, res) => {
+  try {
+    const r = await membership.requestJoin({ tournamentId: req.params.id, entryId: req.params.entryId, userId: req.userId });
+    if (!r.ok) return res.status(r.code || 400).json(r);
+    res.json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// TIME convida um atleta (precisa de MANAGE_TEAM no clube). body {phone|username|userId}.
+router.post('/:id/teams/:entryId/invite', authMiddleware, async (req, res) => {
+  try {
+    const entry = await roles.entryContext(req.params.entryId);
+    if (!entry || entry.tournamentId !== req.params.id) return res.status(404).json({ error: 'time não encontrado' });
+    if (!(await roles.can(req.userId, req.userRole, req.params.id, 'MANAGE_TEAM', { entryId: entry.id }))) {
+      return res.status(403).json({ error: 'sem permissão (coordenador ou admin do time)' });
+    }
+    const b = req.body || {};
+    const r = await membership.inviteAthlete({ tournamentId: req.params.id, entryId: req.params.entryId, inviterUserId: req.userId, invitee: { userId: b.userId, username: b.username, phone: b.phone } });
+    if (!r.ok) return res.status(r.code || 400).json(r);
+    res.json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Lista do clube: atletas vinculados + pendências (admin/treinador do clube).
+router.get('/:id/teams/:entryId/members', authMiddleware, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const entry = await roles.entryContext(req.params.entryId);
+    if (!entry || entry.tournamentId !== req.params.id) return res.status(404).json({ error: 'time não encontrado' });
+    if (!(await roles.can(req.userId, req.userRole, req.params.id, 'MANAGE_TEAM', { entryId: entry.id }))) {
+      return res.status(403).json({ error: 'sem permissão' });
+    }
+    res.json(await membership.listForClub(req.params.id, req.params.entryId));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Do atleta: meus vínculos + convites de time pra aceitar.
+router.get('/:id/my-memberships', authMiddleware, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json(await membership.listForUser(req.params.id, req.userId));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// O outro lado responde o convite/pedido. body { action: accept | decline }.
+router.post('/:id/memberships/:mid/respond', authMiddleware, async (req, res) => {
+  try {
+    const action = String((req.body || {}).action || '').toLowerCase() === 'accept' ? 'accept' : 'decline';
+    const r = await membership.respond({ tournamentId: req.params.id, membershipId: req.params.mid, userId: req.userId, userRole: req.userRole, action });
+    if (!r.ok) return res.status(r.code || 400).json(r);
+    res.json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Desfaz o vínculo (atleta sai, ou gestor tira).
+router.post('/:id/memberships/:mid/remove', authMiddleware, async (req, res) => {
+  try {
+    const r = await membership.removeMembership({ tournamentId: req.params.id, membershipId: req.params.mid, userId: req.userId, userRole: req.userRole });
+    if (!r.ok) return res.status(r.code || 400).json(r);
     res.json(r);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1328,12 +1405,19 @@ router.post('/athletes/register', async (req, res) => {
       update: { avatarUrl: avatar || undefined, username: username || undefined },
     });
 
+    // Opcional: já pedir pra entrar num time na criação da conta (o time aceita depois).
+    let joinedTeam = null;
+    if (b.joinTournamentId && b.joinEntryId) {
+      const jr = await membership.requestJoin({ tournamentId: String(b.joinTournamentId), entryId: String(b.joinEntryId), userId: user.id }).catch(() => null);
+      if (jr && jr.ok) joinedTeam = { requested: !!jr.requested, active: !!jr.activated };
+    }
+
     const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: '30d' });
     res.status(201).json({
       token,
       user: { id: user.id, name: user.name, phone: user.phone, username, role: user.role },
       instagram: igHandle, instagramName: igName,
-      photoSource, hasPhoto: !!avatar,
+      photoSource, hasPhoto: !!avatar, joinedTeam,
     });
   } catch (err) {
     console.error('[tournaments] register athlete', err);
