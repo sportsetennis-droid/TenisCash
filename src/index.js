@@ -509,6 +509,8 @@ app.get('/api/health', (req, res) => {
     qrOffers,
     imageRepair,
     waHealth,
+    scannerPipeline: 'durable-queue-v1',
+    scannerRuntime: process.versions.node,
   });
 });
 
@@ -1766,7 +1768,7 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`TenisCash API rodando na porta ${PORT}`);
 
   // Migração aditiva/idempotente das colunas novas do APEX (o deploy não roda
@@ -1846,3 +1848,24 @@ app.listen(PORT, '0.0.0.0', () => {
     }
   }
 });
+
+// Stop accepting new uploads before retiring workers. Any unacknowledged
+// durable job remains in PostgreSQL for the next process to recover.
+let shuttingDown = false;
+async function shutdownScanner() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  const deadline = setTimeout(() => process.exit(1), 25000);
+  deadline.unref();
+  const drained = new Promise(resolve => server.close(resolve));
+  try {
+    await require('./services/stockReplacementQueue').stopAll();
+    await require('./services/scannerImageBroker').shutdown();
+    await drained;
+    await require('./middleware').prisma.$disconnect();
+    process.exitCode = 0;
+  } catch (_) { process.exitCode = 1; }
+  finally { clearTimeout(deadline); process.exit(process.exitCode || 0); }
+}
+process.once('SIGTERM', shutdownScanner);
+process.once('SIGINT', shutdownScanner);

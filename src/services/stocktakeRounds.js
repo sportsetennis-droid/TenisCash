@@ -19,7 +19,7 @@ async function roundForScan(db, storeId, roundId, lock = false) {
 async function createRoundBipe(db, input) {
   const {captureId,requireRepeatConfirmation,repeatConfirmedCount,...data}=input;
   return db.$transaction(async tx => {
-    await roundForScan(tx, data.storeId, data.roundId, true);
+    const round = await roundForScan(tx, data.storeId, data.roundId, true);
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${data.scanKey}))::text`;
     if (captureId) {
       const capture = await tx.productCapture.findUnique({ where: { id: captureId } });
@@ -30,8 +30,28 @@ async function createRoundBipe(db, input) {
     }
     const existing = await tx.stocktakeBipe.findUnique({ where: { scanKey: data.scanKey } });
     if (existing) {
-      if (existing.storeId !== data.storeId || existing.roundId !== data.roundId || existing.barcode !== data.barcode) fail('Conflito no identificador da leitura.');
+      if (existing.excludedAt || existing.storeId !== data.storeId || existing.roundId !== data.roundId ||
+          barcodePolicy.identity(existing.barcode) !== barcodePolicy.identity(data.barcode)) fail('Conflito no identificador da leitura.');
       return existing;
+    }
+    if (round.operationType === 'replacement' || requireRepeatConfirmation === true) {
+      // Serialize new pieces of this code across devices. The scan key already
+      // protects retries, while UPC/EAN aliases share this separate gate.
+      const identity = barcodePolicy.identity(data.barcode);
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${data.roundId + ':barcode:' + identity}))::text`;
+      const where = { roundId:data.roundId,storeId:data.storeId,excludedAt:null,
+        barcode:{in:barcodePolicy.variants(data.barcode)} };
+      const count = await tx.stocktakeBipe.count({where});
+      const confirmed = typeof repeatConfirmedCount === 'number' ? repeatConfirmedCount :
+        typeof repeatConfirmedCount === 'string' && /^\d+$/.test(repeatConfirmedCount) ? Number(repeatConfirmedCount) : NaN;
+      if (count > 0 && (!Number.isSafeInteger(confirmed) || confirmed !== count)) {
+        const previous = await tx.stocktakeBipe.findFirst({where,orderBy:{bipedAt:'desc'},
+          select:{productName:true,productSize:true}});
+        const error = new Error('Este código já foi contado nesta loja e rodada. Confirme que é outro par físico.');
+        error.status = 409;
+        error.repeat = {barcode:data.barcode,count,product:{name:previous?.productName||null,size:previous?.productSize||null}};
+        throw error;
+      }
     }
     return tx.stocktakeBipe.create({ data });
   });

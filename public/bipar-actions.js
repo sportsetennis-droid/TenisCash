@@ -683,7 +683,15 @@
       setOptions($('action-origin'), stores.filter(item => allowed.includes(item.id)).map(item => ({ id: item.id, label: storeName(item.id) })), 'Selecione a loja de origem', origin);
       settings.origin = origin; saveSettings(); contextChanged(); if (action === 'receipt') await loadShipments();
       setupHistory(); void loadHistory(1); schedulePhotos();
-    } catch (error) { if (token !== operationToken) return; actor = null; message(error.status === 401 ? 'Entre com sua conta pessoal para continuar.' : error.message, true); refresh(); }
+    } catch (error) {
+      if (token !== operationToken) return;
+      actor = null;
+      // An offline cold start has not verified an actor yet. Keep only the
+      // expected ID as an authentication retry hint, never as authorization.
+      // The online/foreground hooks will reverify /context before any upload.
+      if (expectedUserId && (!error.status || error.status === 401 || error.status >= 500)) expiredActor ||= { id: expectedUserId };
+      message(error.status === 401 ? 'Entre com sua conta pessoal para continuar.' : error.message, true); refresh();
+    }
   }
   async function loadShipments() {
     const request = ++shipmentRequest, selectedStore = $('loja').value, authToken = token, selectedShipment = $('action-shipment').value || settings.shipment;

@@ -50,6 +50,12 @@ const capture=code=>ctx.window.capturaAutomatica({ean:code,frame:{width:800,heig
  assert.equal(await uploads[4].form.get('file').text(),'second-physical-pair','Retry sends the original image for this same physical piece');
  uploads[4].reply.resolve({ok:true,status:200,json:async()=>({capId:'cap-second',bipeId:'bipe-second',photoSaved:true,photoRevision:1})});await recoveredSecond;await settle();
  assert.equal(second.bipeId,'bipe-second');assert.equal(ctx.etiqFila.length,3);
+ second.st='revisao';second.complete=false;second.repeatCancelPending=true;ctx.renderEtiqCaptureState();
+ assert.equal(node('etiq-confirm-btn').disabled,true);ctx.window.proximaEtiqueta();assert.equal(ctx.etiqAtivo,second.lid,'Cancellation awaiting ACK does not advance');
+ second.excluded=true;second.repeatCancelPending=false;await ctx.etiqSave();ctx.renderEtiqCaptureState();
+ assert.equal(node('etiq-confirm-btn').disabled,false);assert.match(node('etiq-confirm-status').textContent,/NÃO CONTADA/);
+ assert.equal(ctx.capturarFrame(second.ean,{width:800,height:1200},true),null,'An excluded original cannot be recaptured/resurrected');
+ ctx.window.proximaEtiqueta();assert.equal(ctx.etiqAtivo,null);assert.equal(ctx.etiqFila.length,3,'Confirmed cancellation permits manual Next without counting');
  console.log('PASS: one outbox sends all saved pieces fairly; a pending active piece backs off independently and retries the same ID/photo without blocking the other pairs.');
  ctx.etiqBusy=true; // Simulate a slow server for the entire burst, no uploads ACKed.
  for(let i=0;i<200;i++){

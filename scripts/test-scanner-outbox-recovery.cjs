@@ -24,7 +24,7 @@ function harness(rows,{authenticated=true,status=200}={}){
   etiqSave:async()=>{saved.push(JSON.parse(JSON.stringify(rows)));return true;},etiqReadPhoto:async()=>{await ctx.beforePhotoRead?.();return photo;},etiqStartOcr(){},etiqStartAutoOcr(){},
   renderEtiqLista(){},renderEtiqCaptureState(){},renderLista(){},consultarStatus:async()=>{ctx.statusPolls++;},statusPolls:0,
   fetch:async data=>{assert.equal(data,photo);return {blob:async()=>new Blob(['original'])};},
-  stocktakeFetch:async(url,options)=>{uploads.push({url,form:options.body,authorization:ctx.token});const status=ctx.responseStatus,id=typeof options.body==='string'?JSON.parse(options.body).clientScanId:options.body.get('clientScanId');await ctx.beforeResponse?.();return {status,ok:status===200,json:async()=>status===200?{capId:'capture-'+id,bipeId:'bipe-'+id,photoSaved:true,photoRevision:1}:{error:'HTTP '+status}};},responseStatus:status,
+  stocktakeFetch:async(url,options)=>{uploads.push({url,form:options.body,authorization:ctx.token});const status=ctx.responseStatus,id=typeof options.body==='string'?JSON.parse(options.body).clientScanId:options.body.get('clientScanId');await ctx.beforeResponse?.(options);return {status,ok:status===200,json:async()=>ctx.readResponseBody?ctx.readResponseBody(options):ctx.responseBody||(status===200?{capId:'capture-'+id,bipeId:'bipe-'+id,photoSaved:true,photoRevision:1}:{error:'HTTP '+status})};},responseStatus:status,
   setTimeout(fn,ms){const id=++timer;timers.set(id,{fn,ms});return id;},clearTimeout:id=>timers.delete(id),
   sellers:[],stores:[],retryStorageFailed:false,STORAGE_VENDNAME:'seller-name',localStorage:{setItem(){}},Option:function(text,value){this.text=text;this.value=value;},round:null,
   window:{addEventListener:(name,fn)=>events[name]=fn},document:{hidden:false,addEventListener:(name,fn)=>events[name]=fn,getElementById:element}};
@@ -72,6 +72,33 @@ function harness(rows,{authenticated=true,status=200}={}){
  const owner=harness([]);await settle();assert.equal(await owner.ctx.recoverStocktakeAuthentication('operator-b','Bearer token-a'),false);assert.equal(owner.ctx.expired,0);
  assert.equal(await owner.ctx.recoverStocktakeAuthentication('operator-a','Bearer stale-token'),false);assert.equal(owner.ctx.expired,0);
  owner.ctx.recover=true;assert.equal(await owner.ctx.recoverStocktakeAuthentication('operator-a','Bearer token-a'),true);assert.equal(owner.ctx.token,'new-token-a');assert.equal(owner.ctx.actor.id,'operator-a');
+ const duplicate=harness([],{status:409});await settle();const pair=read('repeat');duplicate.ctx.etiqFila.push(pair);duplicate.ctx.etiqAtivo=pair.lid;
+ let choose;duplicate.ctx.window.ScannerConfirm={ask:()=>new Promise(resolve=>{choose=resolve;})};
+ duplicate.ctx.responseBody={capId:'repeat-photo',photoSaved:true,photoRevision:1,repeat:{barcode:pair.ean,count:1,product:{name:'Tênis',size:'41'}}};
+ duplicate.ctx.window.ScannerInventoryOutbox.resume();await settle();assert.equal(pair.st,'revisao');assert.equal(pair.repeat.count,1);assert.equal(pair.capId,'repeat-photo');assert.equal(duplicate.uploads.length,1);
+ duplicate.ctx.responseStatus=200;duplicate.ctx.responseBody=null;choose(true);await settle();
+ assert.equal(duplicate.uploads.length,2);assert.equal(duplicate.uploads[1].form.get('repeatConfirmedCount'),'1');assert.equal(duplicate.uploads[1].form.get('clientScanId'),'repeat');assert.equal(pair.bipeId,'bipe-repeat');
+ const canceled=harness([],{status:409});await settle();const declined=read('declined');canceled.ctx.etiqFila.push(declined);canceled.ctx.etiqAtivo=declined.lid;
+ let cancel;canceled.ctx.window.ScannerConfirm={ask:()=>new Promise(resolve=>{cancel=resolve;})};canceled.ctx.responseBody={capId:'declined-photo',photoSaved:true,photoRevision:1,repeat:{barcode:declined.ean,count:2}};
+ canceled.ctx.window.ScannerInventoryOutbox.resume();await settle();assert.equal(declined.excluded,undefined);
+ canceled.ctx.responseStatus=200;canceled.ctx.responseBody={excluded:true,capId:'declined-photo'};cancel(false);await settle();
+ assert.equal(canceled.uploads.at(-1).url,'/api/stocktake/etiqueta/cancelar');assert.equal(JSON.parse(canceled.uploads.at(-1).form).clientScanId,'declined');assert.equal(JSON.parse(canceled.uploads.at(-1).form).photoRevision,1);assert.equal(declined.excluded,true);assert.equal(declined.bipeId,undefined);assert.equal(declined.photoRef,'photo-declined');
+ const stuck=harness([]);await settle();const stuckRead={...read('cancel-timeout'),capId:'photo-cancel-timeout',repeatCancelPending:true};stuck.ctx.etiqFila.push(stuckRead);
+ stuck.ctx.beforeResponse=options=>new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(Error('AbortError'))));
+ const timeoutResult=stuck.ctx.etiqCancelRepeat(stuckRead).then(()=>null,error=>error);await settle();
+ const cancelTimer=[...stuck.timers.values()].find(timer=>timer.ms===25000);assert.ok(cancelTimer);cancelTimer.fn();assert.match((await timeoutResult).message,/AbortError/);
+ assert.equal(stuckRead.excluded,undefined);assert.equal(stuckRead.repeatCancelPending,true);assert.equal(stuckRead.photoRef,'photo-cancel-timeout','Timeout preserves original and retryable cancellation without fake exclusion');
+ for(const kind of ['cancel','recognize','upload']){
+  const bodyWait=harness([]);await settle();const event={...read('body-'+kind),capId:'body-photo'};bodyWait.ctx.etiqFila.push(event);
+  bodyWait.ctx.readResponseBody=options=>new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(Error('AbortError'))));
+  if(kind==='recognize'){event.autoRecognition=true;event.manualPhoto=false;event.autoRevision=1;}
+  const pending=(kind==='cancel'?bodyWait.ctx.etiqCancelRepeat(event):kind==='recognize'?bodyWait.ctx.enviarReconhecimento(event,1):bodyWait.ctx.enviarFila()).then(()=>null,error=>error);
+  await settle();const bodyTimer=[...bodyWait.timers.values()].find(timer=>timer.ms===25000);assert.ok(bodyTimer,kind+' timeout remains active after headers');bodyTimer.fn();await pending;
+  assert.equal(event.excluded,undefined);assert.equal(event.bipeId,undefined);assert.equal(event.photoRef,'photo-body-'+kind);assert.equal(bodyWait.ctx.etiqBusy,false);
+ }
+ const stale=harness([],{status:409});await settle();const revised=read('revised');stale.ctx.etiqFila.push(revised);stale.ctx.etiqAtivo=revised.lid;
+ let answer;stale.ctx.window.ScannerConfirm={ask:()=>new Promise(resolve=>{answer=resolve;})};stale.ctx.responseBody={capId:'old-photo',photoSaved:true,photoRevision:1,repeat:{barcode:revised.ean,count:1}};stale.ctx.window.ScannerInventoryOutbox.resume();await settle();revised.photoRevision=2;answer(true);await settle();assert.equal(revised.repeatConfirmedCount,undefined);assert.equal(stale.uploads.length,1,'Old confirmation cannot authorize a recaptured revision');
+ const offline=harness([]);await settle();offline.ctx.navigator={onLine:false};offline.ctx.etiqFila.push(read('offline'));offline.events.online();await settle();assert.equal(offline.uploads.length,0);offline.ctx.navigator.onLine=true;offline.events.online();await settle();assert.equal(offline.uploads.length,1);
  const renderRows=[read('local'),{...read('current-photo'),capId:'cap-1',capIdPhotoRevision:1},
   {...read('photo-and-bipe'),capId:'cap-2',capIdPhotoRevision:1,bipeId:'bipe-2'},
   {...read('applied'),capId:'cap-3',capIdPhotoRevision:1,bipeId:'bipe-3',bipou:true,st:'pendente'},
@@ -83,11 +110,16 @@ function harness(rows,{authenticated=true,status=200}={}){
  const nodes={'etiq-contador':{textContent:''},'etiq-lista':{innerHTML:''}};
  const ui={etiqFila:renderRows,window:{ScannerRound:{id:()=> 'original-round'},BiparActions:{isInventory:()=>true,mode:()=> 'replacement'}},document:{getElementById:id=>nodes[id]},etiqPhotoDurable:()=>true};
  vm.runInNewContext(render+'\nrenderEtiqLista();',ui);
- const counted=nodes['etiq-contador'].textContent.match(/^total (\d+) · no aparelho\/aguardando envio (\d+) · recebidas\/em conferência (\d+) · aplicadas (\d+) · pendências\/erros (\d+)$/);
- assert.ok(counted);assert.deepEqual(counted.slice(1).map(Number),[9,2,3,1,3]);assert.equal(counted.slice(2).reduce((sum,n)=>sum+Number(n),0),Number(counted[1]),'Exclusive states sum to current non-excluded readings');
- assert.match(nodes['etiq-lista'].innerHTML,/ÚLTIMOS BIPES · 9/);assert.ok(renderRows.every(row=>row.ean===renderRows[0].ean),'Equal codes remain distinct physical IDs');
+ const counted=nodes['etiq-contador'].textContent.match(/^total (\d+) · no aparelho\/aguardando envio (\d+) · recebidas\/em conferência (\d+) · aplicadas (\d+) · pendências\/erros (\d+) · excluídas\/sem contagem (\d+)$/);
+ assert.ok(counted);assert.deepEqual(counted.slice(1).map(Number),[10,2,3,1,3,1]);assert.equal(counted.slice(2).reduce((sum,n)=>sum+Number(n),0),Number(counted[1]),'Exclusive states include excluded events separately and sum to current readings');
+ assert.match(nodes['etiq-lista'].innerHTML,/ÚLTIMOS BIPES · 10/);assert.ok(renderRows.every(row=>row.ean===renderRows[0].ean),'Equal codes remain distinct physical IDs');
  assert.equal(renderRows[8].bipou,undefined,'Identification/photo receipt never invents stock application');
  ui.window.ScannerRound.id=()=>null;renderRows.push({...read('missing-round'),roundId:null});vm.runInNewContext(render+'\nrenderEtiqLista();',ui);assert.match(nodes['etiq-contador'].textContent,/^total 0 /,'No current round never includes unknown-scope metadata');
+ const archiveNodes={'etiq-local-archive':{hidden:true},'etiq-local-count':{textContent:''},'etiq-local-list':{innerHTML:''}};
+ ui.document.getElementById=id=>archiveNodes[id];vm.runInNewContext(render+'\nrenderEtiqLista();',ui);
+ assert.equal(archiveNodes['etiq-local-archive'].hidden,false);assert.match(archiveNodes['etiq-local-list'].innerHTML,/Loja: store-a · Rodada: original-round · Operador: Original operator/);
+ assert.doesNotMatch(archiveNodes['etiq-local-list'].innerHTML,/exclude-recent-bipe|retry-label/,'Cold offline archive shows originals without activating camera or stock actions');
+ console.log('PASS: duplicate confirmation preserves exact scan/revision/count; cancel waits for server ACK and preserves photo; stale confirmation cannot authorize another revision; offline waits for online; cold archive keeps original contexts.');
  console.log('PASS: reload/round/auth/online/foreground restore original IDs/photos without camera; legacy scope waits for original round; identity switches and late401 stay isolated; concurrent wake events do not duplicate; photo/recognition401 wait for same-person auth; 400/403/409 stay in review; no tokens in scan metadata.');
- console.log('PASS: exclusive overlay states sum to current non-excluded scan IDs, repeated codes stay distinct, recapture waits for its own photo ACK, and received/identified never imply applied stock.');
+ console.log('PASS: exclusive overlay states sum to current scan IDs (including separately excluded), repeated codes stay distinct, recapture waits for its own photo ACK, and received/identified never imply applied stock.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

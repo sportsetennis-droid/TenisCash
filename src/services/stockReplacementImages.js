@@ -20,11 +20,11 @@ async function confirm(db,roundId,bipeId,input,actorId){return db.$transaction(a
  const imageReview={...description(size.product),fingerprint:fingerprint(size.product),status:'verified',source:'operator-visual-review',reviewedById:actorId,reviewedAt:new Date().toISOString(),reason:'Modelo e cor conferidos pelo operador identificado.'};
  await tx.stockReplacementCheck.update({where:{bipeId},data:{imageReview,checkedAt:new Date()}});return imageReview;
 });}
-const jobs=new Set();let working=false;
-function enqueue(db,bipeId){jobs.add(bipeId);if(working)return;working=true;setImmediate(async()=>{try{while(jobs.size){const id=jobs.values().next().value;jobs.delete(id);try{
- const check=await db.stockReplacementCheck.findUnique({where:{bipeId:id}});if(!check?.appliedAt||check.reversedAt)continue;
- const size=await db.productSize.findUnique({where:{id:check.appliedProductSizeId},include:{product:true}});if(!size)continue;if(matches(check.imageReview,size.product)){await db.stockReplacementCheck.update({where:{bipeId:id},data:{checkedAt:new Date()}});continue;}
+async function check(db,id){
+ const check=await db.stockReplacementCheck.findUnique({where:{bipeId:id}});if(!check?.appliedAt||check.reversedAt)return;
+ const size=await db.productSize.findUnique({where:{id:check.appliedProductSizeId},include:{product:true}});if(!size)return;if(matches(check.imageReview,size.product)){await db.stockReplacementCheck.update({where:{bipeId:id},data:{checkedAt:new Date()}});return;}
  const imageReview=await review(db,size.product);
  const fresh=await db.product.findUnique({where:{id:size.productId}});if(fresh&&fingerprint(fresh)===imageReview.fingerprint)await db.stockReplacementCheck.updateMany({where:{bipeId:id,reversedAt:null},data:{imageReview,checkedAt:new Date()}});
- }catch(e){console.warn('[replacement/image]',e.message)}}}finally{working=false}});}
-module.exports={description,fingerprint,matches,review,enqueue,confirm};
+}
+function enqueue(db,bipeId){return require('./stockReplacementQueue').enqueue(db,bipeId);}
+module.exports={description,fingerprint,matches,review,check,enqueue,confirm};

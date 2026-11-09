@@ -28,13 +28,13 @@ function sameCapture(a,b){
 // service tests; no route accepts a barcode/OCR verdict or recovery identity.
 function createRecovery({decode=photo=>require('./barcodeDecoder').decodeBarcodesFromDataUri(photo),enqueue=(db,id)=>require('./stockReplacement').enqueue(db,id)}={}){
  let running=false,lastId=null;
- async function recover(db,captureId){
+ async function recover(db,captureId,options={}){
   const original=await db.productCapture.findUnique({where:{id:captureId}});
   const originalRound=original?.roundId?await db.stocktakeRound.findUnique({where:{id:original.roundId}}):null;
   const early=eligible(original,originalRound);if(early)return {recovered:false,reason:early};
   if(!await authorized(db,original))return {recovered:false,reason:'operator_not_authorized'};
   let decoded;
-  try{decoded=await decode(original.photo)}catch(_){return {recovered:false,reason:'photo_decode_failed'}}
+  try{decoded=await decode(original.photo)}catch(error){const suffix={SCANNER_IMAGE_BUSY:'busy',SCANNER_IMAGE_TIMEOUT:'timeout',SCANNER_IMAGE_UNAVAILABLE:'unavailable',SCANNER_IMAGE_MEMORY_LIMIT:'memory_limit'}[error.code];return {recovered:false,reason:suffix?'photo_decode_'+suffix:'photo_decode_failed'}}
   if(decoded?.length!==1||barcodePolicy.identity(decoded[0])!==barcodePolicy.identity(original.barcode))return {recovered:false,reason:'photo_barcode_conflict'};
   const result=await db.$transaction(async tx=>{
    // New scanner writes hold FOR SHARE on this row. The short update lock
@@ -71,7 +71,7 @@ function createRecovery({decode=photo=>require('./barcodeDecoder').decodeBarcode
   },{timeout:20000});
   // Recovery only restores the same scan record. Normal photo/BR/reference
   // verification remains the sole path that can add its unit to stock.
-  if(result.recovered)enqueue(db,result.bipeId);
+  if(result.recovered&&options.enqueue!==false)await enqueue(db,result.bipeId);
   return result;
  }
  async function resume(db){
@@ -90,4 +90,4 @@ function createRecovery({decode=photo=>require('./barcodeDecoder').decodeBarcode
  }
  return {recover,resume};
 }
-module.exports={...createRecovery(),createRecovery};
+module.exports={...createRecovery(),createRecovery,authorized,eligible};

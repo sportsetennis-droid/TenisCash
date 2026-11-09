@@ -22,9 +22,10 @@ function local(){const m=new Map();return {get length(){return m.size},key:i=>[.
  vm.runInNewContext(source('scanner-photo-storage.js'),{window:root,setTimeout,clearTimeout,TextEncoder,Uint8Array});
  const storage=root.ScannerPhotoStorage.create(),originals=[];
  for(let i=0;i<80;i++){const row={clientScanId:'piece-'+i,roundId:'round',ean:'0196989405971',photoRevision:1,b64:'data:image/jpeg;base64,'+Buffer.from('original-'+i).toString('base64')};const saved=await storage.append(storage.identity(row),row);originals.push(saved);}
- const thin=await storage.read({includeImages:false});assert.equal(thin.length,80);assert.equal(indexed.gets.length,0);assert.ok(thin.every(r=>r.photoRef&&!r.b64));
+ const readbacks=indexed.gets.length;assert.equal(readbacks,80,'Every committed original was individually read back before acknowledgement');
+ const thin=await storage.read({includeImages:false});assert.equal(thin.length,80);assert.equal(indexed.gets.length,readbacks);assert.ok(thin.every(r=>r.photoRef&&!r.b64));
  for(let i=0;i<thin.length;i++)assert.equal(await storage.readPhoto(thin[i].photoRef),originals[i].b64);
- assert.equal(indexed.gets.length,80,'Only explicitly requested individual images are loaded');
+ assert.equal(indexed.gets.length-readbacks,80,'Only explicitly requested individual images are loaded after write verification');
  await storage.append(storage.identity(thin[0]),{photoRevision:2,b64:'data:image/jpeg;base64,TkVX'});
  assert.equal(await storage.readPhoto(originals[0].photoRef),originals[0].b64,'A recapture keeps its original');
  const fresh=root.ScannerPhotoStorage.create();const restored=await fresh.read({includeImages:false});assert.equal(restored.length,80);assert.equal(restored[0].photoRevision,2);assert.equal(indexed.data.photos.size,81);

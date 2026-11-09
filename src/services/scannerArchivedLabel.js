@@ -1,12 +1,9 @@
 'use strict';
-const path = require('path');
 const { createHash } = require('node:crypto');
-const sharp = require('sharp');
 const { canonicalProduct } = require('./scannerCatalog');
 const barcodePolicy = require('../../public/scanner-barcode-policy');
 const norm = value => String(value || '').normalize('NFKC').toUpperCase().replace(/[^A-Z0-9]/g, '');
 const sizeKey = value => String(value || '').replace(',', '.');
-let busy = false;
 
 function printedReferences(words) {
   const references = new Set(words.filter(w=>!/^(?:BR|BRA|USA?|UK|EUR|EU|CM|CHN|JP)\s*\d{1,2}(?:[.,]5)?$/i.test(w.text)).map(w => norm(w.text)).filter(x => /^\d{5,10}$/.test(x) ||
@@ -69,55 +66,12 @@ function readWords(data) {
 }
 
 async function readImage(image, barcode) {
-  if (busy) return { pending: true, retry: true, reason: 'ocr_busy' };
-  busy = true;
-  let worker, timer, expired = false;
-  const cleanup=async()=>{clearTimeout(timer);if(worker)await worker.terminate().catch(()=>{});busy=false;};
-  try {
-    const work = (async () => {
-      const codes = await require('./barcodeDecoder').decodeBarcodesFromDataUri('data:image/jpeg;base64,' + image.toString('base64'));
-      if (codes.length !== 1 || barcodePolicy.identity(codes[0]) !== barcodePolicy.identity(barcode)) return { pending: true, reason: 'photo_barcode_conflict' };
-      worker = await require('tesseract.js').createWorker('eng', 1, { langPath: path.join(__dirname, '../../public/vendor/ocr'), cacheMethod: 'none', errorHandler: () => {} });
-      if (expired) return null;
-      await worker.setParameters({ tessedit_pageseg_mode: '11', preserve_interword_spaces: '1' });
-      for (const angle of [0, 90, 270, 180]) {
-        if (expired) return null;
-        await worker.setParameters({ tessedit_pageseg_mode: '11' });
-        if(expired)return null;
-        const frame = angle ? await sharp(image).rotate(angle).png().toBuffer() : image;
-        if(expired)return null;
-        const { data } = await worker.recognize(frame, {}, { text: true, blocks: true });
-        if(expired)return null;
-        const read = readWords(data);
-        if (read) return { ...read, decodedBarcodes: codes };
-        if(expired)return null;
-        const metadata=await sharp(frame).metadata();
-        const enhanced=await sharp(frame).resize({width:Math.min(3000,metadata.width*2)}).greyscale().normalize().png().toBuffer();
-        if(expired)return null;
-        const improved=readWords((await worker.recognize(enhanced,{}, {text:true,blocks:true})).data);
-        if(expired)return null;
-        if(improved)return {...improved,decodedBarcodes:codes};
-        // Tables and mixed blocks can fail sparse-text segmentation while
-        // preserving all pixels. Try block segmentation on these same two
-        // frames before rotating; the exact BR/reference guards still apply.
-        await worker.setParameters({ tessedit_pageseg_mode: '6' });
-        if(expired)return null;
-        for(const blockFrame of [frame,enhanced]){
-          const blockRead=readWords((await worker.recognize(blockFrame,{}, {text:true,blocks:true})).data);
-          if(expired)return null;
-          if(blockRead)return {...blockRead,decodedBarcodes:codes};
-        }
-      }
-      return { pending: true, reason: 'photo_size_or_reference_pending' };
-    })();
-    // A timeout releases the caller, not the worker's ownership. Terminating
-    // during Tesseract's asynchronous image preparation can send to a closed
-    // worker and crash Node. Let the active call settle; never start another
-    // OCR call after expiry, and keep the single-worker guard until cleanup.
-    const settled=work.then(async result=>{await cleanup();return result;},async()=>{await cleanup();return {pending:true,retry:true,reason:'ocr_unavailable'};});
-    return await Promise.race([settled, new Promise(resolve => { timer = setTimeout(() => { expired = true; resolve({ pending: true, retry: true, reason: 'ocr_timeout' }); }, 16000); })]);
-  } catch (_) { return { pending: true, retry: true, reason: 'ocr_unavailable' }; }
-  // The settled task owns cleanup even when the deadline wins the race.
+  try { return await require('./scannerImageBroker').run('label', image, barcode); }
+  catch (error) {
+    const reasons = { SCANNER_IMAGE_BUSY: 'ocr_busy', SCANNER_IMAGE_TIMEOUT: 'ocr_timeout',
+      SCANNER_IMAGE_MEMORY_LIMIT: 'ocr_memory_limit', SCANNER_IMAGE_INVALID: 'photo_input_invalid' };
+    return { pending: true, retry: error.code !== 'SCANNER_IMAGE_INVALID', reason: reasons[error.code] || 'ocr_unavailable' };
+  }
 }
 
 async function fiscalRows(db, barcode) {

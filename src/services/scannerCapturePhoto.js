@@ -15,7 +15,7 @@ function normalizeRevision(value) {
   if (revision && !/^\d{1,30}$/.test(revision)) rounds.fail('Identificador de foto inválido.', 400);
   return revision ? BigInt(revision).toString() : '0';
 }
-async function savePhoto(db, data) {
+async function savePhoto(db, data, options = {}) {
   const { roundId, storeId, scanKey, photo, barcode, sellerId, sellerName } = data;
   const suppliedRevision = normalizeRevision(data.photoRevision);
   return db.$transaction(async tx => {
@@ -42,6 +42,7 @@ async function savePhoto(db, data) {
         ...(changed ? { status: 'pendente', resolvedAt: null } : {}) } })
       : await tx.productCapture.create({ data: { roundId, storeId, scanKey, sellerId: sellerId || null,
         sellerName: sellerName ? String(sellerName).slice(0, 80) : null, photo, photos, note, barcode: knownBarcode, status: 'pendente' } });
+    if (options.afterSave) await options.afterSave(tx, capture);
     return { capture, stale, photoRevision: revisionOf(capture.note), receivedPhotoRevision: revision };
   });
 }

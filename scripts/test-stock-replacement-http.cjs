@@ -2,6 +2,7 @@
 const assert=require('node:assert/strict'),{randomUUID}=require('node:crypto'),express=require('express'),jwt=require('jsonwebtoken');
 const url=process.env.ROUND_TEST_DATABASE_URL;if(!url?.startsWith('postgresql://roundtest@127.0.0.1:55329/stock_replacement_'))throw Error('Somente banco local isolado.');process.env.DATABASE_URL=url;
 const mw=require('../src/middleware'),db=mw.prisma,service=require('../src/services/stockReplacement');
+const queue=require('../src/services/stockReplacementQueue');queue.get(db,{work:false});
 const originalInterval=global.setInterval,originalTimeout=global.setTimeout;global.setInterval=global.setTimeout=()=>({unref(){}});const router=require('../src/routes/stocktake');global.setInterval=originalInterval;global.setTimeout=originalTimeout;
 const originalImmediate=global.setImmediate,background=new Set();
 global.setImmediate=(fn,...args)=>originalImmediate(()=>{const task=fn(...args);if(task?.then){background.add(task);task.then(()=>background.delete(task),()=>background.delete(task));}});
@@ -42,4 +43,4 @@ const app=express();app.use(express.json());app.use('/api/stocktake',router);
   assert.equal(await db.stocktakeBipe.count({where:{scanKey:id+':'+consolidatedRead.clientScanId}}),1);
   console.log('PASS HTTP: consolidated legacy barcode follows the exact product ID, creates the pending bipe and retries without another piece or premature stock.');
  }finally{await new Promise(r=>server.close(r));await new Promise(originalImmediate);while(background.size)await Promise.allSettled([...background]);global.setImmediate=originalImmediate;}
-})().catch(e=>{console.error(e);process.exitCode=1}).finally(()=>db.$disconnect());
+})().catch(e=>{console.error(e);process.exitCode=1}).finally(async()=>{await queue.stopAll();await db.$disconnect();});
