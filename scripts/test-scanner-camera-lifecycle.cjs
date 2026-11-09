@@ -32,6 +32,7 @@ function harness({ slowPlay = false } = {}) {
       const stream = { getTracks: () => [track], getVideoTracks: () => [track] }; cameras.push({ wait, stream, track }); return wait.promise; } } },
     localStorage: { getItem: () => mode.name }, STORAGE_VENDNAME:'name', alert: text => alerts.push(text),
     etiqRestorePromise: Promise.resolve(), etiqStorageReady:true, etiqStorageFailed:false, etiqSave:async()=>true, etiqReleasePhotos(){},
+    etiqPhotoStorage:{ status:async()=>({ persisted:null }) }, etiqStorageHealth:null, etiqStorageNotice(){},
     etiqCameraEpoch:0, etiqCameraContext:null, etiqStream:null, etiqReader:null, etiqAuto:null, etiqLoop:null, etiqPoll:null,
     etiqSendTimer:null, etiqWatch:null, etiqAtivo:null, etiqRetryAt:0, etiqIgnoredCode:'', etiqIgnoreUntil:0,
     etiqPausado:true, etiqLeituraArmada:false, etiqBusy:false, renderEtiqLista(){}, renderEtiqCaptureState(){}, consultarStatus(){}, enviarFila(){},
@@ -48,10 +49,24 @@ async function test(name, run) { await run(); passed++; console.log('PASS ' + na
     const h = harness(), opened = h.window.fotografarEtiqueta(); await flush();
     assert.equal(h.cameras.length, 1); h.mode.version++; h.mode.name = 'Nome hidratado';
     h.cameras[0].wait.resolve(h.cameras[0].stream); await opened;
-    assert.equal(h.engines.length, 1); assert.equal(h.captures.length, 0, 'opening the camera does not read before Próximo'); assert.equal(h.cameras[0].track.stopped, 0);
-    assert.equal(h.engines[0].options.canRead(), false);
-    assert.equal(h.captures.length, 0, 'opening the camera leaves scanning paused until Próximo');
-    h.context.etiqBusy = true; assert.equal(h.engines[0].options.canRead(), false, 'a slow upload never bypasses the explicit Próximo click');
+    assert.equal(h.engines.length, 1); assert.equal(h.captures.length, 0, 'opening alone does not invent a decoded frame'); assert.equal(h.cameras[0].track.stopped, 0);
+    assert.equal(h.engines[0].options.canRead(), true, 'the explicit camera opening authorizes the first piece without another Próximo');
+    h.context.etiqBusy = true; assert.equal(h.engines[0].options.canRead(), true, 'an older upload does not block the newly authorized first read');
+    h.engines[0].tick(); assert.equal(h.captures.length, 1, 'the first decoder tick can deliver the first piece');
+  });
+  await test('unavailable local storage blocks camera access even after a failed save retry', async () => {
+    const h = harness(); h.context.etiqStorageFailed = true; let notices = 0, saves = 0;
+    h.context.etiqStorageNotice = () => { notices++; };
+    h.context.etiqSave = async () => { saves++; return false; };
+    await h.window.fotografarEtiqueta();
+    assert.equal(saves, 1); assert.equal(notices, 1); assert.equal(h.cameras.length, 0); assert.equal(h.engines.length, 0);
+    assert(!h.nodes.has('etiq-overlay')); assert.equal(h.context.etiqLeituraArmada, false);
+  });
+  await test('storage must restore before the first camera permission is requested', async () => {
+    const h = harness(), restored = deferred(); h.context.etiqRestorePromise = restored.promise; h.context.etiqStorageReady = false;
+    const opened = h.window.fotografarEtiqueta(); await flush(); assert.equal(h.cameras.length, 0);
+    h.context.etiqStorageReady = true; restored.resolve(); await flush(); assert.equal(h.cameras.length, 1);
+    h.cameras[0].wait.resolve(h.cameras[0].stream); await opened; assert.equal(h.engines[0].options.canRead(), true);
   });
   for (const changed of ['store', 'round', 'seller']) await test('real ' + changed + ' change during camera permission stops the stale stream and removes overlay', async () => {
     const h = harness(), opened = h.window.fotografarEtiqueta(); await flush();

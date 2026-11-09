@@ -17,4 +17,8 @@ report.checks[0].reversedAt=at;r=build(report,{available:false,items:[]},new Dat
 assert.equal(r.counts.applied,0);assert.equal(r.counts.excluded,2);assert.equal(r.queue.available,false);
 assert.equal(r.scope,'server');assert.equal(r.counts.local,undefined,'server cannot invent phone-only photos');
 assert.equal(build({bipes:[],captures:[],checks:[],movements:[]}).totalRecords,0);
+const terminal=build({bipes:[{id:'late',applied:false}],captures:[{id:'late-photo',bipeId:'late',status:'processando'}],checks:[],movements:[]},
+ {available:true,items:[{jobId:'terminal',captureId:'late-photo',state:'completed',reason:'photo_barcode_conflict',attempts:1}]});
+assert.equal(terminal.counts.review,1);assert.equal(terminal.counts.processing,0);
+assert.equal(terminal.rows[0].reason,'A foto não permitiu confirmar um único código de barras.');
 console.log('PASS replacement diagnostics: linked events counted once, identical barcodes retained, reversal, queue attempts and server-only scope.');

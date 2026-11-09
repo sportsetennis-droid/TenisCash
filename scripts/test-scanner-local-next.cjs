@@ -29,7 +29,16 @@ const capture=code=>ctx.window.capturaAutomatica({ean:code,frame:{width:800,heig
  holdCommit.resolve();holdCommit=null;await settle();assert.equal(uploads.length,1);assert.equal(ocr.length,1);assert.equal(first.capId,undefined);assert.equal(first.complete,false);
  assert.equal(node('etiq-confirm-btn').disabled,false);assert.match(node('etiq-confirm-btn').textContent,/PRÓXIMO/);assert.match(node('etiq-confirm-det').textContent,/segundo plano/);
  ctx.window.proximaEtiqueta();assert.equal(ctx.etiqAtivo,null);assert.equal(ctx.etiqLeituraArmada,true);assert.equal(ctx.etiqBusy,true,'The first HTTP upload is still pending');
+ assert.equal(node('etiq-confirm').style.display,'none');
+ await ctx.etiqSave();ctx.renderEtiqCaptureState();
+ assert.equal(node('etiq-confirm').style.display,'none','A late storage/status render must not cover an already authorized next read');
+ assert.equal(node('etiq-confirm-btn').hidden,true);assert.equal(node('etiq-confirm-btn').disabled,true);assert.doesNotMatch(node('etiq-hint').textContent,/Próximo/i);
+ assert.equal(ctx.etiqLeituraArmada,true);assert.equal(ctx.etiqPausado,false);
+ first.complete=true;ctx.renderEtiqCaptureState();first.complete=false;
+ assert.equal(ctx.etiqLeituraArmada,true,'Completion of the previous inactive piece cannot pause the newly armed read');assert.equal(ctx.etiqPausado,false);
  frame='second-physical-pair';capture(first.ean);await settle();const second=ctx.etiqFila[1];assert.ok(second);assert.notEqual(second.clientScanId,first.clientScanId);assert.notEqual(second.b64,first.b64);assert.equal(second.capId,undefined);assert.equal(node('etiq-confirm-btn').disabled,false);
+ assert.equal(ctx.etiqLeituraArmada,false);assert.equal(ctx.etiqPausado,true,'The second capture pauses until its own manual Next');
+ capture(first.ean);assert.equal(ctx.etiqFila.length,2,'A repeated decoder callback cannot create another pair before Next');
  assert.equal(rows.size,2,'Both original photos are durable before the first server response');assert.equal(uploads.length,1,'One upload does not block capturing the second pair');
  ocr[0].resolve('OCR ONLY FOR FIRST PIECE');await settle();assert.equal(first.ocrText,'OCR ONLY FOR FIRST PIECE');assert.equal(second.ocrText,'');assert.equal(ctx.etiqAtivo,second.lid);
  uploads[0].reply.resolve({ok:true,status:200,json:async()=>({capId:'cap-first',bipeId:'bipe-first',photoSaved:true,photoRevision:1,found:true})});await settle();assert.equal(first.capId,'cap-first');assert.equal(second.capId,undefined);assert.equal(ctx.etiqAtivo,second.lid);assert.equal(node('etiq-confirm-btn').disabled,false);

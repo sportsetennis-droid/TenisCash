@@ -12,9 +12,9 @@ function createProcessor(deps = {}) {
   const input = image => sharp(image, { limitInputPixels: 24000000 });
   async function label(image, barcode) {
     const codes = await decode(image);
-    if (codes.length !== 1 || barcodePolicy.identity(codes[0]) !== barcodePolicy.identity(barcode)) {
-      return { pending: true, reason: 'photo_barcode_conflict' };
-    }
+    if (!codes.length) return { pending: true, reason: 'photo_barcode_not_found' };
+    if (codes.length > 1) return { pending: true, reason: 'photo_barcode_conflict' };
+    if (barcodePolicy.identity(codes[0]) !== barcodePolicy.identity(barcode)) return { pending: true, reason: 'photo_barcode_mismatch' };
     if (!worker) worker = await createWorker('eng', 1, {
       langPath: path.join(__dirname, '../../public/vendor/ocr'), cacheMethod: 'none', errorHandler: () => {},
     });

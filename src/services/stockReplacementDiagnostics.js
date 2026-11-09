@@ -16,6 +16,7 @@ function build(report, queue = { available: false, items: [] }, now = new Date()
     const captures = event.captures;
     const captureIds = new Set(captures.map(p => p.id));
     const jobs = (queue.items || []).filter(j => (b && j.bipeId === b.id) || captureIds.has(j.captureId));
+    const terminalJob=[...jobs].filter(j=>j.reason&&['completed','failed','cancelled'].includes(j.state)).sort((a,b)=>new Date(b.createdAt||b.completedAt||0)-new Date(a.createdAt||a.completedAt||0))[0];
     const movements = (report.movements || []).filter(m => m.metadata?.bipeId === b?.id && !!b);
     const excluded = !!b?.excludedAt || !!c?.reversedAt || (!b && captures.every(p => p.excludedAt || p.status === 'descartado'));
     const applied = !!b?.applied && !!c?.appliedAt && !c.reversedAt;
@@ -26,7 +27,7 @@ function build(report, queue = { available: false, items: [] }, now = new Date()
     const state = excluded ? 'excluded' : applied ? 'applied' : active || (waiting && transient) ? 'processing' : 'review';
     counts[state]++;
     const reason = state === 'applied' ? null : state === 'excluded' ? (b?.exclusionReason || c?.reason || 'Leitura excluída ou estornada.')
-      : c?.reasonText || (failed ? 'Processamento interrompido; aguardando revisão ou nova tentativa.'
+      : c?.reasonText || (terminalJob?.reason?require('./stockReplacement').reasonText(terminalJob.reason):null) || (failed ? 'Processamento interrompido; aguardando revisão ou nova tentativa.'
         : state === 'processing' ? 'Arquivo no servidor; conferência em andamento.' : 'Arquivo/identificação aguardando conferência.');
     return { id, bipeId: b?.id || null, captureIds: [...captureIds], barcode: b?.barcode || captures.find(p => p.barcode)?.barcode || null,
       state, reason, capturedAt: b?.bipedAt || captures[0]?.createdAt || null, checkedAt: c?.checkedAt || null,

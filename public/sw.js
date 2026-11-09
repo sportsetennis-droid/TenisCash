@@ -4,14 +4,14 @@
 
 // Cache only the public scanner shell. Never cache APIs, authentication,
 // catalogue photos, captured photographs or other application pages.
-const SCANNER_CACHE = 'teniscash-scanner-shell-20261109-readback-1';
+const SCANNER_CACHE = 'teniscash-scanner-shell-20261109-edge-ready-1';
 const SCANNER_SHELL = [
   '/bipar.html', '/scanner-barcode-policy.js?v=20261027-internal-codes-1',
   '/scanner-confirm.js?v=20260915-resume-2', '/scanner-view.js?v=20261018-recent-reads-1',
   '/scanner-camera.js?v=20261018-live-fast-2', '/scanner-round.js?v=20261109-replacement-1',
   '/bipar-transfer.js?v=20261002-actions-1', '/scanner-photo-storage.js?v=20261109-readback-1',
   '/scan-action-photos.js?v=20261109-archive-1', '/bipar-actions.js?v=20261109-mobile-durable-1',
-  '/vendor/barcode/zxing-reader-3.1.4.js', '/scanner-auto.js?v=20261109-bounded-memory-1',
+  '/vendor/barcode/zxing-reader-3.1.4.js', '/scanner-auto.js?v=20261109-edge-ready-1',
   '/scanner-regions.js?v=20260914-worker-1', '/scanner-ocr.js?v=20261109-bounded-memory-1',
 ];
 const SCANNER_ALLOWED = new Set(SCANNER_SHELL.map(path => path.split('?')[0]).concat([
