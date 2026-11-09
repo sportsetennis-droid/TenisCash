@@ -159,6 +159,21 @@ const STATEMENTS = [
   // Treino recorrente: agrupa a série (toda terça/quinta...).
   `ALTER TABLE "TrainingSession" ADD COLUMN IF NOT EXISTS "recurrenceGroupId" TEXT`,
   `CREATE INDEX IF NOT EXISTS "TrainingSession_recur_idx" ON "TrainingSession" ("recurrenceGroupId")`,
+  // PLANO do treino em blocos cronometrados (aquecimento→técnico→tático→coletivo→...).
+  // plan = JSON array [{name, minutes, description}]. O atleta já sabe o que vai ser.
+  `ALTER TABLE "TrainingSession" ADD COLUMN IF NOT EXISTS "plan" JSONB`,
+  // Templates de plano reutilizáveis por clube (padrão Sportplan/Practice Plan).
+  `CREATE TABLE IF NOT EXISTS "TrainingTemplate" (
+     "id" TEXT NOT NULL,
+     "tournamentId" TEXT NOT NULL,
+     "clubName" TEXT NOT NULL,
+     "name" TEXT NOT NULL DEFAULT 'Modelo',
+     "plan" JSONB NOT NULL DEFAULT '[]',
+     "createdByUserId" TEXT,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "TrainingTemplate_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE INDEX IF NOT EXISTS "TrainingTemplate_club_idx" ON "TrainingTemplate" ("tournamentId", "clubName")`,
 ];
 
 async function ensureApexSchema(prisma) {

@@ -721,6 +721,16 @@ async function renderTreino(sid){
   html+='<div class="card"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><h2 style="margin:0;font-size:16px">'+esc(s.title)+'</h2><span class="pill '+st[1]+'">'+esc(st[0])+'</span></div>'+
     '<div class="muted" style="margin-top:6px;font-size:13px">'+(s.scheduledAt?fmtDate(s.scheduledAt):'sem data')+(s.location?' · '+esc(s.location):'')+'</div>'+
     (s.focus?'<div style="margin-top:6px;font-size:14px">🎯 <b>Foco:</b> '+esc(s.focus)+'</div>':'')+'</div>';
+  // Plano do treino (blocos) — atleta já sabe o que vai ser; treinador monta
+  const plan=Array.isArray(s.plan)?s.plan:[];const totalMin=plan.reduce((a,b)=>a+(Number(b.minutes)||0),0);
+  html+='<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="margin:0;font-size:14px">📋 Plano do treino'+(totalMin?' · '+totalMin+'min':'')+'</h2>'+
+    (canManage&&!done?'<button class="btn sm gho" data-act="plan-tpl" data-sid="'+sid+'">Modelos</button>':'')+'</div>';
+  if(!plan.length)html+='<div class="empty" style="padding:10px">'+(canManage&&!done?'Monte o plano em blocos (aquecimento → técnico → coletivo...). O atleta já vê o que vai ser.':'Sem plano definido ainda.')+'</div>';
+  else plan.forEach((b,i)=>{html+='<div class="listitem" style="padding:7px 0"><div class="av" style="font-size:12px;background:var(--soft);color:var(--orange-d);font-weight:800">'+(b.minutes||0)+"'"+'</div>'+
+    '<div class="grow"><div class="nm" style="font-size:14px">'+esc(b.name)+'</div>'+(b.description?'<div class="sub">'+esc(b.description)+'</div>':'')+'</div>'+
+    (canManage&&!done?'<button class="btn sm dang" data-act="plan-del" data-sid="'+sid+'" data-i="'+i+'">✕</button>':'')+'</div>';});
+  if(canManage&&!done)html+='<div style="height:8px"></div><div class="row"><button class="btn sm sec" data-act="plan-add" data-sid="'+sid+'">+ Bloco</button><button class="btn sm gho" data-act="plan-savetpl" data-sid="'+sid+'">Salvar como modelo</button></div>';
+  html+='</div>';
   // Chamada
   html+='<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="margin:0;font-size:14px">Chamada ('+d.roster.length+' atletas)</h2>'+(canManage&&!done?'<button class="btn sm gho" data-act="train-remind" data-sid="'+sid+'">🔔 Lembrar</button>':'')+'</div>';
   if(!d.roster.length)html+='<div class="empty" style="padding:12px">Nenhum atleta vinculado ainda. Vincule atletas ao time pra fazer a chamada.</div>';
@@ -787,6 +797,42 @@ async function trainRsvp(tid,sid,v){
 }
 async function trainRemind(sid){
   try{const r=await api('/trainings/'+sid+'/remind',{method:'POST'});toast(r.reminded?('Lembrete enviado a '+r.reminded+' atleta(s)'):'Todos já responderam');}catch(e){toast(e.message);}
+}
+// Plano do treino em blocos
+function curPlan(){return (TREINO&&TREINO.last&&Array.isArray(TREINO.last.session.plan))?TREINO.last.session.plan.slice():[];}
+async function planSave(sid,plan){try{await api('/trainings/'+sid,{method:'PATCH',body:{plan}});treinoReload();}catch(e){toast(e.message);}}
+function planAddSheet(sid){
+  const types=['Aquecimento','Técnico','Tático','Posse/Rondo','Coletivo','Finalização','Físico','Volta à calma','Outro'];
+  openSheet('<h3 style="margin:0 0 8px">Bloco do treino</h3>'+
+    '<label>Tipo</label><select id="bl-name">'+types.map(t=>'<option>'+t+'</option>').join('')+'</select>'+
+    '<label>Minutos</label><input id="bl-min" type="number" inputmode="numeric" value="15">'+
+    '<label>Exercício / objetivo</label><textarea id="bl-desc" placeholder="ex: rondo 4v2, 2 toques; ou saída de bola 3-1"></textarea>'+
+    '<div style="height:12px"></div><button class="btn" data-act="bl-save" data-sid="'+sid+'">Adicionar bloco</button>');
+}
+function planAdd(sid){
+  const name=document.getElementById('bl-name').value;
+  const minutes=Number(document.getElementById('bl-min').value)||0;
+  const description=(document.getElementById('bl-desc').value||'').trim();
+  const plan=curPlan();plan.push({name,minutes,description});closeSheet();planSave(sid,plan);
+}
+function planDel(sid,i){const plan=curPlan();plan.splice(Number(i),1);planSave(sid,plan);}
+async function planTplSheet(sid){
+  let tpls=[];try{tpls=(await api('/trainings/'+sid+'/templates')).templates||[];}catch(e){toast(e.message);return;}
+  const list=tpls.length?tpls.map(t=>{const mins=(Array.isArray(t.plan)?t.plan:[]).reduce((a,b)=>a+(Number(b.minutes)||0),0);
+    return '<div class="listitem"><div class="grow" data-act="tpl-apply" data-sid="'+sid+'" data-tid="'+t.id+'" style="cursor:pointer"><div class="nm" style="font-size:14px">'+esc(t.name)+'</div><div class="sub">'+(Array.isArray(t.plan)?t.plan.length:0)+' blocos · '+mins+'min</div></div>'+
+      '<button class="btn sm dang" data-act="tpl-del" data-sid="'+sid+'" data-tplid="'+t.id+'" data-tourn="'+esc((TREINO&&TREINO.last&&TREINO.last.session.tournamentId)||'')+'">✕</button></div>';}).join(''):'<div class="empty" style="padding:12px">Nenhum modelo salvo. Monte um plano e use "Salvar como modelo".</div>';
+  openSheet('<h3 style="margin:0 0 8px">Modelos de plano</h3>'+list);
+}
+async function tplApply(sid,tplId){try{await api('/trainings/'+sid+'/apply-template',{method:'POST',body:{templateId:tplId}});closeSheet();toast('Modelo aplicado');treinoReload();}catch(e){toast(e.message);}}
+async function tplDel(sid,tplId,tourn){if(!confirm('Apagar este modelo?'))return;try{await api('/'+tourn+'/training-templates/'+tplId,{method:'DELETE'});toast('Apagado');planTplSheet(sid);}catch(e){toast(e.message);}}
+function planSaveTplSheet(sid){
+  openSheet('<h3 style="margin:0 0 8px">Salvar como modelo</h3><p class="muted" style="margin:0 0 10px;font-size:12px">Guarda o plano atual pra reusar em outros treinos.</p>'+
+    '<label>Nome do modelo</label><input id="tpl-name" placeholder="ex: Treino tático padrão">'+
+    '<div style="height:12px"></div><button class="btn" data-act="tpl-save" data-sid="'+sid+'">Salvar modelo</button>');
+}
+async function planSaveTpl(sid){
+  const name=(document.getElementById('tpl-name').value||'').trim();
+  try{await api('/trainings/'+sid+'/save-template',{method:'POST',body:{name}});closeSheet();toast('Modelo salvo');}catch(e){toast(e.message);}
 }
 // Produção do atleta no treino (prontuário): gols/passes/eficiência/nota/obs.
 function sheetProd(ds){
@@ -1508,6 +1554,14 @@ document.addEventListener('click',async(ev)=>{
   if(a==='train-finalize'){trainFinalize(el.dataset.sid);return;}
   if(a==='train-rsvp'){trainRsvp(el.dataset.tid,el.dataset.sid,el.dataset.v);return;}
   if(a==='train-remind'){trainRemind(el.dataset.sid);return;}
+  if(a==='plan-add'){planAddSheet(el.dataset.sid);return;}
+  if(a==='bl-save'){planAdd(el.dataset.sid);return;}
+  if(a==='plan-del'){planDel(el.dataset.sid,el.dataset.i);return;}
+  if(a==='plan-tpl'){planTplSheet(el.dataset.sid);return;}
+  if(a==='tpl-apply'){tplApply(el.dataset.sid,el.dataset.tid);return;}
+  if(a==='tpl-del'){tplDel(el.dataset.sid,el.dataset.tplid,el.dataset.tourn);return;}
+  if(a==='plan-savetpl'){planSaveTplSheet(el.dataset.sid);return;}
+  if(a==='tpl-save'){planSaveTpl(el.dataset.sid);return;}
   if(a==='train-prod'){sheetProd(el.dataset);return;}
   if(a==='prod-save'){saveProd(el.dataset.sid,el.dataset.uid);return;}
   if(a==='open-prontuario'){go('prontuario/'+el.dataset.tid+'/'+el.dataset.uid);return;}
