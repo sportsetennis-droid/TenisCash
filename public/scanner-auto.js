@@ -16,10 +16,11 @@
     const ctx=c.getContext('2d',{willReadFrequently:true});
     ctx.drawImage(canvas,canvas.width*.15,canvas.height*.15,canvas.width*.7,canvas.height*.7,0,0,24,24);
     const pixels=ctx.getImageData(0,0,24,24).data;
+    c.width=0;c.height=0;
     return Array.from({length:576},(_,i)=>(pixels[i*4]+pixels[i*4+1]+pixels[i*4+2])/3);
   }
   function distance(a,b){return a.reduce((sum,v,i)=>sum+Math.abs(v-b[i]),0)/a.length;}
-  function create({snapshot,decode,recognize,canRead,onCapture,onHint,now=Date.now,recognizeMissing=true}) {
+  function create({snapshot,decode,recognize,canRead,onCapture,onHint,now=Date.now,recognizeMissing=true,releaseSnapshots=false}) {
     let epoch=0,locked=false,busy=false,lastCode='',hits=0,lastOcr=0,previous=null,stableSince=0,afterCode='',clearFrames=0,ocrJob=null;
     let confirmedCode='',confirmedSignature=null,afterSignature=null;
     function reset(options={}){epoch++;busy=false;locked=false;lastCode='';hits=0;previous=null;stableSince=now();afterCode=barcodeIdentity(options.afterCode);afterSignature=afterCode&&afterCode===confirmedCode?confirmedSignature:null;clearFrames=0;}
@@ -68,7 +69,12 @@
         }).catch(()=>{if(stamp===epoch&&!locked&&!lastCode)onHint('Leitura automática ativa. Centralize o código de barras.');})
           .finally(()=>{if(ocrJob===job)ocrJob=null;});
       } catch (error) {if(stamp===epoch&&!locked)onHint(error?.code==='SCANNER_DECODER_UNAVAILABLE'?'O leitor automático está tentando se recuperar. Mantenha a etiqueta na câmera.':'Centralize a etiqueta inteira e mantenha parada.');}
-      finally{if(stamp===epoch)busy=false;}
+      finally{
+        // Opt-in only for synchronous capture consumers which already copied
+        // the exact frame. Safari retains large canvas backing stores otherwise.
+        if(releaseSnapshots&&!recognizeMissing){frame.width=0;frame.height=0;}
+        if(stamp===epoch)busy=false;
+      }
     }
     return {tick,reset,stop};
   }

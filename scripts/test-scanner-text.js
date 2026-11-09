@@ -59,11 +59,11 @@ for (const file of ['../public/bipar.html', '../public/identificar.html']) {
   assert.equal(await browser.window.ScannerOCR.readForScan('image', ''), '', 'OCR failure preserves photo upload');
 
   const html = fs.readFileSync(require.resolve('../public/bipar.html'), 'utf8');
-  const code = html.slice(html.indexOf('  async function enviarFila()'), html.indexOf('  async function consultarStatus()'));
+  const code = html.slice(html.indexOf('  function etiqIdentity('), html.indexOf('  function etiqCopy(')) + html.slice(html.indexOf('  async function enviarFila()'), html.indexOf('  async function consultarStatus()'));
   let posted = false;
   const item = {roundId:'round-original',st:'fila',b64:'data:image/jpeg;base64,AA==',ean:'196153346321',storeId:'LOJA04',sellerId:'douglas',sellerName:'Douglas',clientScanId:'same-scan',
     manualPhoto:true,photoRevision:1,ocrDone:true,ocrText:'NIKE\nDQ5471-113\nL'};
-  const queue = {etiqBusy:false,etiqAtivo:null,etiqFila:[item],etiqRestorePromise:Promise.resolve(),STORAGE_VENDNAME:'name',FormData,AbortController,setTimeout:()=>0,clearTimeout:()=>{},
+  const queue = {etiqBusy:false,etiqStorageFailed:false,etiqAtivo:null,etiqFila:[item],etiqRestorePromise:Promise.resolve(),STORAGE_VENDNAME:'name',FormData,AbortController,setTimeout:()=>0,clearTimeout:()=>{},
     document:{getElementById:()=>({value:'LOJA05'})},localStorage:{getItem:()=> 'Someone else'},
     window:{ScannerOCR:{readForScan:async()=> 'NIKE\nDQ5471-113\nL'}},
     etiqSave:async()=>true,etiqStartOcr:()=>{},renderEtiqLista:()=>{},renderLista:()=>{},
@@ -75,6 +75,7 @@ for (const file of ['../public/bipar.html', '../public/identificar.html']) {
       assert.equal(options.body.get('clientScanId'),'same-scan'); assert.ok(options.body.get('ocrText').includes('DQ5471-113'));
       return {ok:true,json:async()=>({capId:'saved',photoSaved:true,photoRevision:1,appliedToStock:false})};
     }};
+  queue.stocktakeFetch=queue.fetch;queue.etiqReadPhoto=async item=>item.b64;
   vm.createContext(queue); await vm.runInContext(code+'\nenviarFila()',queue);
   assert.ok(posted);assert.equal(item.st,'salvo');
   console.log('PASS: free OCR parsing, known-code fast path, device failure fallback, capture store isolation, no paid scanner API, page syntax');

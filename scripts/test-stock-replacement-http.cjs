@@ -3,6 +3,8 @@ const assert=require('node:assert/strict'),{randomUUID}=require('node:crypto'),e
 const url=process.env.ROUND_TEST_DATABASE_URL;if(!url?.startsWith('postgresql://roundtest@127.0.0.1:55329/stock_replacement_'))throw Error('Somente banco local isolado.');process.env.DATABASE_URL=url;
 const mw=require('../src/middleware'),db=mw.prisma,service=require('../src/services/stockReplacement');
 const originalInterval=global.setInterval,originalTimeout=global.setTimeout;global.setInterval=global.setTimeout=()=>({unref(){}});const router=require('../src/routes/stocktake');global.setInterval=originalInterval;global.setTimeout=originalTimeout;
+const originalImmediate=global.setImmediate,background=new Set();
+global.setImmediate=(fn,...args)=>originalImmediate(()=>{const task=fn(...args);if(task?.then){background.add(task);task.then(()=>background.delete(task),()=>background.delete(task));}});
 const app=express();app.use(express.json());app.use('/api/stocktake',router);
 (async()=>{const u=randomUUID(),s=await db.store.create({data:{code:'HTTP-'+u,name:'Teste HTTP'}}),other=await db.store.create({data:{code:'HTTP-OTHER-'+u,name:'Outra loja HTTP'}});
  const users={};for(const [key,role,storeId] of [['admin','admin',null],['seller','seller',s.id],['other','seller',other.id]])users[key]=await db.user.create({data:{name:key,role,storeId,phone:'test-'+key+'-'+u,pin:'test-only'}});
@@ -24,5 +26,20 @@ const app=express();app.use(express.json());app.use('/api/stocktake',router);
   assert.equal((await call('/rounds/'+id+'/cancel',{})).status,409);assert.equal((await call('/rounds/'+id+'/seal',{})).status,409);assert.equal((await call('/rounds/'+id+'/finish',{fullStoreConfirmed:true})).status,409);assert.equal((await call('/replacements/'+id+'/finish',{})).status,409);
   const live=await call('/rounds/current?storeId='+s.id+'&operation=replacement');assert.equal(live.data.round.id,id);assert.equal((await call('/rounds/current?storeId='+s.id)).data.round,null);
   assert.equal(await db.stocktakeBipe.count({where:{roundId:id}}),1);console.log('PASS HTTP: autenticação, loja, operador real, prévia/início, foto original, idempotência, pendência, consulta protegida e separação do inventário');
- }finally{await new Promise(r=>server.close(r));}
+  const prefix='8'+randomUUID().replace(/\D/g,'').padEnd(11,'0').slice(0,11);
+  const code=prefix+((10-[...prefix].reduce((sum,n,i)=>sum+Number(n)*(i%2?3:1),0)%10)%10);
+  const target=await db.productSize.create({data:{productId:p.id,size:'42',barcode:null,stock:0}});
+  const legacy=await db.product.create({data:{sku:'OLD-'+u,name:'Cadastro unificado',brand:'PUMA',category:'Tênis',active:false,price:100,aiContext:{consolidatedInto:p.id}}});
+  await db.productSize.create({data:{productId:legacy.id,size:'42',barcode:code,stock:0}});
+  const consolidatedRead={...read,clientScanId:randomUUID(),eanLocal:code,photoRevision:1};
+  let firstId;
+  for(let attempt=0;attempt<2;attempt++){
+   const fd=new FormData();fd.append('file',new Blob([png],{type:'image/png'}),'same-original.png');for(const [k,v]of Object.entries(consolidatedRead))fd.append(k,String(v));
+   const response=await fetch(base+'/etiqueta',{method:'POST',headers:{Authorization:'Bearer '+jwt.sign({userId:users.seller.id},mw.JWT_SECRET)},body:fd});const result=await response.json();
+   assert.equal(response.status,200);assert.ok(result.bipeId,JSON.stringify(result));firstId??=result.bipeId;assert.equal(result.bipeId,firstId);
+  }
+  const linked=await db.stocktakeBipe.findUnique({where:{id:firstId}});assert.equal(linked.productSizeId,target.id);assert.equal(linked.barcode,code);assert.equal(linked.applied,false);
+  assert.equal(await db.stocktakeBipe.count({where:{scanKey:id+':'+consolidatedRead.clientScanId}}),1);
+  console.log('PASS HTTP: consolidated legacy barcode follows the exact product ID, creates the pending bipe and retries without another piece or premature stock.');
+ }finally{await new Promise(r=>server.close(r));await new Promise(originalImmediate);while(background.size)await Promise.allSettled([...background]);global.setImmediate=originalImmediate;}
 })().catch(e=>{console.error(e);process.exitCode=1}).finally(()=>db.$disconnect());

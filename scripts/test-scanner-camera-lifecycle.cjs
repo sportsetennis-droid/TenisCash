@@ -31,7 +31,7 @@ function harness({ slowPlay = false } = {}) {
     navigator: { mediaDevices: { getUserMedia() { const wait = deferred(), track = { stopped:0, stop() { this.stopped++; }, getCapabilities: () => ({}) };
       const stream = { getTracks: () => [track], getVideoTracks: () => [track] }; cameras.push({ wait, stream, track }); return wait.promise; } } },
     localStorage: { getItem: () => mode.name }, STORAGE_VENDNAME:'name', alert: text => alerts.push(text),
-    etiqRestorePromise: Promise.resolve(), etiqStorageReady:true, etiqStorageFailed:false, etiqSave:async()=>true,
+    etiqRestorePromise: Promise.resolve(), etiqStorageReady:true, etiqStorageFailed:false, etiqSave:async()=>true, etiqReleasePhotos(){},
     etiqCameraEpoch:0, etiqCameraContext:null, etiqStream:null, etiqReader:null, etiqAuto:null, etiqLoop:null, etiqPoll:null,
     etiqSendTimer:null, etiqWatch:null, etiqAtivo:null, etiqRetryAt:0, etiqIgnoredCode:'', etiqIgnoreUntil:0,
     etiqPausado:true, etiqLeituraArmada:false, etiqBusy:false, renderEtiqLista(){}, renderEtiqCaptureState(){}, consultarStatus(){}, enviarFila(){},

@@ -9,7 +9,7 @@
     "dev": "node src/index.js",
     "db:push": "npx prisma db push",
     "db:generate": "npx prisma generate",
-    "test:scanner": "node scripts/test-scanner-barcode-policy.js && node scripts/test-scanner-auto.js && node scripts/test-scanner-auto-recognition.js && node scripts/test-scanner-capture-photo.js && node scripts/test-scanner-inventory-photo.cjs && node scripts/test-scanner-local-next.cjs && node scripts/test-scan-photo-integrity.cjs && node scripts/test-scanner-archived-label.cjs && node scripts/test-bipar-actions-ui.cjs",
+    "test:scanner": "node scripts/test-scanner-barcode-policy.js && node scripts/test-scanner-auto.js && node scripts/test-scanner-auto-recognition.js && node scripts/test-scanner-capture-photo.js && node scripts/test-scanner-inventory-photo.cjs && node scripts/test-scanner-local-next.cjs && node scripts/test-scanner-memory.cjs && node scripts/test-scan-photo-integrity.cjs && node scripts/test-scanner-archived-label.cjs && node scripts/test-bipar-actions-ui.cjs",
     "test:tournament": "node scripts/test-tournament-engine.js",
     "db:seed": "node src/seed.js",
     "agents:daily": "node scripts/run-daily-agents.js",

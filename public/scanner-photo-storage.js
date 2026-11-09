@@ -202,7 +202,7 @@
       const tx = await beginTransaction('events', 'readonly'), done = completed(tx, timeoutMs);
       const [events] = await Promise.all([request(tx.objectStore('events').getAll()), done]);
       const merged = merge(events).filter(filter);
-      if (options.includeImages === false) return merged;
+      if (options.includeImages === false) { writeMirror(merged); return merged; }
       const needed = [...new Set(merged.map(row => row.photoRef).filter(Boolean))];
       // Retain every original on disk without loading superseded recaptures
       // into RAM on each queue poll. Only the current row images are hydrated.
@@ -221,6 +221,14 @@
         return row;
       });
       writeMirror(rows); return rows;
+    }
+
+    async function readPhoto(ref) {
+      if (!ref || fallback) throw Error('Foto local indisponível para esta referência');
+      const tx = await beginTransaction('photos', 'readonly'), done = completed(tx, timeoutMs);
+      const [photo] = await Promise.all([request(tx.objectStore('photos').get(ref)), done]);
+      if (!photo?.b64) throw Error('Uma foto salva não foi encontrada; a leitura foi preservada para recuperação');
+      return photo.b64;
     }
 
     async function append(id, fields) {
@@ -245,7 +253,7 @@
       return { ...copy(fields), ...(prepared.fields.photoRef ? { photoRef: prepared.fields.photoRef } : {}) };
     }
 
-    return { read, append, migrateLegacy, identity, backend: fallback ? 'localStorage' : 'IndexedDB' };
+    return { read, readPhoto, append, migrateLegacy, identity, backend: fallback ? 'localStorage' : 'IndexedDB' };
   }
   root.ScannerPhotoStorage = { create, identity };
 })(typeof window !== 'undefined' ? window : globalThis);
