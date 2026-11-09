@@ -97,9 +97,9 @@ const GAMES = [
   [48, '21', '19:40', M, '55+', 'SF', null, X, X],
   [49, '21', '20:30', M, '55+', 'SF', null, X, X],
   [50, '21', '08:00', R, '40+', 'G', 'A', 'Sport - PE', 'Brasil Sertão - RN'],
-  // 51: 40+ B "EBN x Brasil Sertão" — Brasil Sertão é do grupo A (provável erro,
-  // faltou EBN x Santa Cruz). A confirmar.
-  [51, '21', '08:50', R, '40+', 'G', 'B', X, X],
+  // 51: a tabela trazia "EBN x Brasil Sertão", mas Brasil Sertão é do grupo A.
+  // Grupo B do 40+ é round-robin (4 times); o ÚNICO par que faltava é EBN x Santa Cruz.
+  [51, '21', '08:50', R, '40+', 'G', 'B', 'EBN - PB', 'Santa Cruz - PE'],
   [52, '21', '09:40', R, '40+', 'G', 'A', 'EPCF/Guarabira', 'Bola no Pé - PB'],
   [53, '21', '10:30', R, '40+', 'G', 'B', 'AAPB - PB', 'Cabo Branco - PB'],
   [54, '21', '11:20', R, '45+', 'G', 'A', 'Cabo Branco - PB', 'Brasil Sertão - RN'],
@@ -217,6 +217,17 @@ async function importFutsalMasterCup(ownerId) {
       },
     });
     created += 1;
+  }
+
+  // 3b) Jogos de GRUPO que dependem de RESULTADO de outro jogo (tabela oficial):
+  // 45+ #30 = EPCF × PERDEDOR do Jogo 8 · #56 = EPCF × VENCEDOR do Jogo 8.
+  // Não é "a definir" por erro — depende do J8. Mostra o rótulo em vez de vazio.
+  const RESULT_LABELS = { 30: 'Perdedor do Jogo 8', 56: 'Vencedor do Jogo 8' };
+  for (const [ord, label] of Object.entries(RESULT_LABELS)) {
+    const m = await prisma.tournamentMatch.findFirst({ where: { tournamentId: t.id, ordering: Number(ord) } });
+    if (m && m.status === 'SCHEDULED' && !m.awayEntryId && !m.awaySourceLabel) {
+      await prisma.tournamentMatch.update({ where: { id: m.id }, data: { awaySourceLabel: label } }).catch(() => {});
+    }
   }
 
   // 4) Mata-mata: rótulos da vaga LIDOS DA TABELA OFICIAL (não é chute) + ligar
