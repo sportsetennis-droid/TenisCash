@@ -161,7 +161,7 @@ function createAutomaticRecognizer({ db, normalizeScannedSize, needsManualSize,
       found: resolved.matched, duplicate: Boolean(resolved.bipe.duplicate), needsSize,
       product, pending: !complete, photoSaved: false,
       appliedToStock: Boolean(resolved.bipe.applied), blockedReason: resolved.bipe.applied ? null : 'round_count_only',
-      sizeOptions: needsSize ? await sizeOptionsForBipe(resolved.size.product.name, barcode) : undefined,
+      sizeOptions: needsSize ? await sizeOptionsForBipe(resolved.size.product.name, barcode, resolved.size.size) : undefined,
       message: complete ? '✓ ' + product.name + ' — tamanho ' + product.size : needsSize
         ? 'Código e produto reconhecidos. Falta conferir o tamanho da caixa.' : pendingMessage(match.reason),
     };

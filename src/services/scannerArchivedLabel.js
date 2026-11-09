@@ -3,7 +3,43 @@ const { createHash } = require('node:crypto');
 const { canonicalProduct } = require('./scannerCatalog');
 const barcodePolicy = require('../../public/scanner-barcode-policy');
 const norm = value => String(value || '').normalize('NFKC').toUpperCase().replace(/[^A-Z0-9]/g, '');
-const sizeKey = value => String(value || '').replace(',', '.');
+const sizeKey = value => String(value || '').replace(',', '.').replace(/\s*\/\s*/g, '/');
+const sizeToken = /^\d{2}(?:[.,]5|\/\d{2})?$/;
+const pairedSize=value=>/^\d{2}\/\d{2}$/.test(value)&&Number(value.slice(3))===Number(value.slice(0,2))+1;
+// A printed paired size is one variant. Reassemble only adjacent OCR words
+// containing a literal slash; never infer a pair from two nearby numbers.
+function sizeWords(words) {
+  const text=w=>String(w.text||'').normalize('NFKC').trim().replace(/\s*\/\s*/g,'/');
+  const reliable=w=>w.confidence>=75;
+  const all=words.filter(w=>w.bbox),consumed=new Set(),paired=[];
+  const adjacent=(a,b)=>{
+    const ah=a.bbox.y1-a.bbox.y0,bh=b.bbox.y1-b.bbox.y0;
+    return Math.abs((a.bbox.y0+a.bbox.y1-b.bbox.y0-b.bbox.y1)/2)<=Math.max(ah,bh)*.35&&
+      b.bbox.x0>=a.bbox.x1-Math.max(ah,bh)*.1&&b.bbox.x0-a.bbox.x1<=Math.max(ah,bh)*.75;
+  };
+  const next=a=>all.filter(b=>b!==a&&adjacent(a,b)).sort((x,y)=>x.bbox.x0-y.bbox.x0)[0];
+  for(const first of all.filter(w=>reliable(w)&&/^\d{2}\/?$/.test(text(w)))){
+    const second=next(first);if(!second)continue;
+    let members=[first,second];
+    if(/^\d{2}$/.test(text(first))&&text(second)==='/'){
+      const third=next(second);if(!third)continue;members.push(third);
+    }
+    const joined=members.map(text).join('');
+    if(!pairedSize(joined)||members.some(w=>!reliable(w)))continue;
+    members.forEach(w=>consumed.add(w));
+    paired.push({members,word:{text:joined,confidence:Math.min(...members.map(w=>w.confidence)),bbox:{
+      x0:Math.min(...members.map(w=>w.bbox.x0)),y0:Math.min(...members.map(w=>w.bbox.y0)),
+      x1:Math.max(...members.map(w=>w.bbox.x1)),y1:Math.max(...members.map(w=>w.bbox.y1))}}});
+  }
+  const continuation=w=>/^[\d/.,]+[A-Z]*$/i.test(text(w))&&(/[\/]/.test(text(w))||/^[.,]/.test(text(w)));
+  const candidates=[...paired,...all.filter(w=>reliable(w)&&!consumed.has(w)&&sizeToken.test(text(w))&&(!text(w).includes('/')||pairedSize(text(w))))
+    .map(w=>({members:[w],word:{...w,text:text(w)}}))];
+  // Consume the complete printed chain, including weak/invalid fragments.
+  // Neither "40/" + "41/42" nor "39/40" + "/41" is a two-number size.
+  // This veto applies to composed candidates as well as isolated endpoints.
+  return candidates.filter(({members})=>!all.some(other=>!members.includes(other)&&continuation(other)&&
+    members.some(member=>adjacent(other,member)||adjacent(member,other)))).map(candidate=>candidate.word);
+}
 // Only complete printed identity shapes take part in the conflict veto.
 // Bare numeric fragments can also be manufacturing codes and are not joined.
 function identityReferences(words,references){
@@ -13,7 +49,7 @@ function identityReferences(words,references){
   return references.filter(ref=>/^\d{9}[A-Z]{2,8}(?:\d{1,3})?$/.test(ref)||literal.has(ref));
 }
 function printedReferences(words) {
-  const references = new Set(words.filter(w=>!/^(?:BR|BRA|USA?|UK|EUR|EU|CM|CHN|JP)\s*\d{1,2}(?:[.,]5)?$/i.test(w.text)).map(w => norm(w.text)).filter(x => /^\d{5,10}$/.test(x) ||
+  const references = new Set(words.filter(w=>!/^(?:BR|BRA|USA?|UK|EUR|EU|F|CM|CHN|JP|J)\s*\d{1,2}(?:[.,]5|\s*\/\s*\d{2})?$/i.test(w.text)).map(w => norm(w.text)).filter(x => /^\d{5,10}$/.test(x) ||
     (x.length >= 5 && x.length <= 25 && /[A-Z]/.test(x) && /\d/.test(x))));
   // Model and colour can be separate OCR words: "220644 / BKW". Keep
   // their printed spatial relationship; never attach a colour from another row.
@@ -50,7 +86,13 @@ function printedReferences(words) {
 // Keep geometry: in a multiscale label "43 BR" is not "11 USA".
 function readParts(data) {
   const words = (data.blocks || []).flatMap(b => (b.paragraphs || []).flatMap(p => (p.lines || []).flatMap(l => l.words || [])));
+  // Some OCR passes retain BRA40/41 as one word. The scale and the complete
+  // literal pair share that word's bounds; no catalog or foreign scale is used.
+  const joinedBr=words.filter(w=>w.confidence>=75&&w.bbox&&/^(BRA?)\s*[: -]?\s*\d{2}\s*\/\s*\d{2}$/i.test(w.text));
+  for(const w of joinedBr){const match=w.text.match(/^(BRA?)\s*[: -]?\s*(\d{2}\s*\/\s*\d{2})$/i);
+    words.push({...w,text:match[1]}, {...w,text:sizeKey(match[2])});}
   const reliable = words.filter(w => w.confidence >= 75 && w.bbox);
+  const numericWords=sizeWords(words);
   const sizes = new Set();
   const brLabels=reliable.filter(w => /^(BR|BRA)$/i.test(w.text));
   // Two printed Brazilian scales may belong to two boxes, even when their
@@ -72,7 +114,7 @@ function readParts(data) {
       const pairs=scales.filter(s=>s!==label&&nums.some(w=>cy(w)>cy(s)&&w.bbox.y0-s.bbox.y1<=Math.max(s.bbox.y1-s.bbox.y0,w.bbox.y1-w.bbox.y0)*1.5&&!scales.some(t=>cy(t)>cy(s)&&cy(t)<cy(w))));
       belowOnly=!before&&pairs.length>=2;
     }
-    const nearby = reliable.filter(w => /^\d{2}(?:[.,]5)?$/.test(w.text) && w !== label).filter(w => {
+    const nearby = numericWords.filter(w => w !== label).filter(w => {
       const a = w.bbox, ah = a.y1 - a.y0;
       const sameRow = Math.abs((a.y0 + a.y1 - b.y0 - b.y1) / 2) <= Math.max(h, ah) * .6
         && Math.max(0, a.x0 - b.x1, b.x0 - a.x1) <= Math.max(h, ah) * 5;
@@ -130,7 +172,7 @@ async function target(db, barcode, evidence) {
     || photo.scan.removed || photo.scan.lot.status !== 'open' || barcodePolicy.identity(photo.scan.barcode) !== barcodePolicy.identity(barcode)
     || barcodePolicy.identity(photo.barcode) !== barcodePolicy.identity(barcode) || evidence.source !== 'archived-photo-local-ocr-v1'
     || evidence.decodedBarcodes?.length !== 1 || barcodePolicy.identity(evidence.decodedBarcodes[0]) !== barcodePolicy.identity(barcode)
-    || !/^\d{2}(?:\.5)?$/.test(evidence.size)) return { reason: 'photo_evidence_conflict' };
+    || !(/^\d{2}(?:\.5)?$/.test(evidence.size)||pairedSize(evidence.size))) return { reason: 'photo_evidence_conflict' };
   const rows = await fiscalRows(db, barcode);
   if (!rows.length || rows.length > 50) return { reason: 'reference_conflict' };
   const targets = [];
@@ -146,7 +188,7 @@ async function target(db, barcode, evidence) {
     const reebokRef = reebok && evidence.references.includes(reebok[1]);
     if (reebokRef && reebok[3] !== evidence.size) return { reason: 'size_conflict' };
     if (!printed && !reebokRef) return { reason: 'reference_conflict' };
-    const literalBr = String(row.description).match(/\bBR\s*[: -]?\s*(\d{2}(?:[.,]5)?)(?!\d)/i);
+    const literalBr = String(row.description).match(/\bBRA?\s*[: -]?\s*(\d{2}(?:\s*\/\s*\d{2}|[.,]5)?)(?![\d/.,])/i);
     if (literalBr && sizeKey(literalBr[1]) !== evidence.size) return { reason: 'size_conflict' };
     const brands = [...String(evidence.text).matchAll(/\b(REEBOK|NIKE|ADIDAS|PUMA|FILA|ASICS|SKECHERS|MIZUNO|OLYMPIKUS)\b/gi)].map(m => norm(m[1]));
     if (brands.some(b => b !== norm(product.brand))) return { reason: 'brand_conflict' };

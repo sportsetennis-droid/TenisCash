@@ -11,6 +11,7 @@ function parseScannerText(value) {
   const codes = new Set();
   const gtins = new Set();
   const sizes = new Set();
+  let brOccurrences = 0, hasPairedSize = false;
   const add = code => { if (code && code.length <= 50) codes.add(code); };
   for (const line of text.split('\n')) {
     const clean = line.trim();
@@ -28,11 +29,21 @@ function parseScannerText(value) {
     }
     const clothing = clean.match(/^(?:(?:SIZE|TAM(?:ANHO)?\.?)[ :]+)?(XXXL|XXL|XL|XS|PP|GGG|GG|P|M|G|S|L|U)$/);
     if (clothing) sizes.add(clothing[1]);
-    for (const match of clean.matchAll(/\bBRA?\s*[:\-]?\s*(\d{2}(?:[.,]5)?)(?!\d)/g)) sizes.add('BR ' + match[1].replace(',', '.'));
+    for (const match of clean.matchAll(/\bBRA?\s*[:\-]?\s*([0-9][A-Z0-9.,]*(?:\s*\/\s*[A-Z0-9.,]*)*)/g)) {
+      brOccurrences++;
+      const size = match[1].replace(/\s/g, '').replace(/,/g, '.');
+      // Douglas confirmed Fiber paired values as one size. Consume the
+      // entire literal; neither endpoint alone identifies that variant.
+      if (size.includes('/')) {
+        if (!/^\d{2}\/\d{2}$/.test(size) || +size.slice(3) !== +size.slice(0, 2) + 1) return null;
+        hasPairedSize = true;
+      } else if (!/^\d{2}(?:\.5)?$/.test(size)) return null;
+      sizes.add('BR ' + size);
+    }
   }
   const brands = [...text.matchAll(/\b(SKECHERS|NIKE|ADIDAS|FIBER|TOPPER|MIZUNO|ASICS|PUMA|FILA|REEBOK|OLYMPIKUS|UMBRO|EVERLAST|NEW BALANCE|UNDER ARMOUR)\b/g)].map(m => m[1]);
   // Several sizes/barcodes/brands can mean several labels: require review.
-  if (gtins.size > 1 || sizes.size > 1 || new Set(brands).size > 1) return null;
+  if (gtins.size > 1 || sizes.size > 1 || new Set(brands).size > 1 || (hasPairedSize && brOccurrences > 1)) return null;
   const codigos = [...codes].slice(0, 12);
   if (!codigos.length && !gtins.size) return null;
   return { codigos, sku: codigos[0] || null, ean: [...gtins][0] || null,
