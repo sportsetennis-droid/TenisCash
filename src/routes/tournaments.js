@@ -103,6 +103,19 @@ router.post('/:id/people', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Clubes distintos do torneio (pra o seletor ao nomear admin/treinador do time).
+router.get('/:id/clubs', authMiddleware, async (req, res) => {
+  try {
+    if (!(await roles.can(req.userId, req.userRole, req.params.id, 'MANAGE_TOURNAMENT'))) {
+      return res.status(403).json({ error: 'sem permissão' });
+    }
+    const entries = await prisma.tournamentEntry.findMany({ where: { tournamentId: req.params.id }, select: { id: true, name: true }, orderBy: { name: 'asc' } });
+    const seen = {}; const clubs = [];
+    for (const e of entries) { if (!seen[e.name]) { seen[e.name] = true; clubs.push({ name: e.name, entryId: e.id }); } }
+    res.json({ clubs });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Torneios onde EU tenho papel (fundador ou nomeado) — pra home rotear. Requer login.
 router.get('/my-tournaments', authMiddleware, async (req, res) => {
   try {
