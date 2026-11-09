@@ -183,6 +183,7 @@ function route(){
   if(view==='ranking')return renderRankings();
   if(view==='avisos')return renderNotifications();
   if(view==='sumula'&&arg)return renderSumula(arg);
+  if(view==='treino'&&arg)return renderTreino(arg);
   return renderHome();
 }
 
@@ -352,6 +353,7 @@ async function renderTournament(id){
     if(rset.has('REFEREE'))html+='<div class="card"><h2 style="margin:0 0 6px">🧑‍⚖️ Minha arbitragem</h2><div id="my-matches"><div class="spin"></div></div></div>';
     if(rset.has('TEAM_ADMIN')||rset.has('COACH'))html+='<div class="card"><h2 style="margin:0 0 6px">🛡️ Meu time</h2><div id="my-team"><div class="spin"></div></div></div>';
     html+='<div class="card"><h2 style="margin:0 0 6px">⚽ Meu time no torneio</h2><div id="my-membership"><div class="spin"></div></div></div>';
+    html+='<div class="card"><h2 style="margin:0 0 6px">🏋️ Treinos do meu time</h2><div id="my-trainings"><div class="spin"></div></div></div>';
     if(canRegister){
       html+='<div class="card" style="background:var(--soft)"><h2 style="margin:0 0 6px">Quer jogar?</h2>'+
         '<p class="muted" style="margin:0 0 10px">Peça sua inscrição neste torneio. O organizador aprova.</p>'+
@@ -365,6 +367,7 @@ async function renderTournament(id){
     if(rset.has('REFEREE'))loadMyMatches(t.id);
     if(rset.has('TEAM_ADMIN')||rset.has('COACH'))loadMyTeam(t.id,rset.has('TEAM_ADMIN'));
     loadMyMembership(t.id);
+    loadMyTrainings(t.id);
     return;
   }
 
@@ -509,6 +512,7 @@ async function loadMyTeam(tid,canLogo){
       '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'+logo+'<div class="grow"><div class="nm" style="font-weight:800">'+esc(c.name)+'</div><div class="sub">'+(c.entries||[]).length+' categoria(s)</div></div>'+
       (canLogo?'<button class="btn sm gho" data-act="team-logo-club" data-eid="'+first+'">Escudo</button>':'')+'</div>'+
       '<button class="btn sm gho" data-act="team-members" data-eid="'+first+'" style="width:100%;margin-bottom:6px">👥 Atletas vinculados ›</button><div id="members-'+first+'"></div>'+
+      '<button class="btn sm gho" data-act="team-trainings" data-eid="'+first+'" style="width:100%;margin-bottom:6px">🏋️ Treinos ›</button><div id="trainings-'+first+'"></div>'+
       ent+'</div>';
   }).join('');
 }
@@ -643,6 +647,105 @@ async function doInvite(eid){
 async function memRemoveTeam(tid,mid,eid){
   if(!confirm('Tirar o atleta do time?'))return;
   try{await api('/'+tid+'/memberships/'+mid+'/remove',{method:'POST'});toast('Removido');renderMembers(eid);}catch(e){toast(e.message);}
+}
+
+// ---------- TREINO: atividade oficial do time (treinador) ----------
+const TRAIN_ST={SCHEDULED:['Agendado','w'],DONE:['Realizado','ok'],CANCELED:['Cancelado','g']};
+async function toggleTrainings(eid){
+  const box=document.getElementById('trainings-'+eid);if(!box)return;
+  if(box.dataset.open==='1'){box.innerHTML='';box.dataset.open='';return;}
+  box.dataset.open='1';box.innerHTML='<div class="spin"></div>';await renderTrainings(eid);
+}
+async function renderTrainings(eid){
+  const box=document.getElementById('trainings-'+eid);if(!box||!TEAM_CTX.tid)return;const tid=TEAM_CTX.tid;
+  let d={sessions:[]};try{d=await api('/'+tid+'/teams/'+eid+'/trainings');}catch(e){box.innerHTML='<div class="empty" style="padding:10px">'+esc(e.message)+'</div>';return;}
+  let h='<div style="background:var(--soft);border-radius:10px;padding:8px;margin:4px 0 8px">';
+  if(!d.sessions.length)h+='<div class="empty" style="padding:10px">Nenhum treino ainda.</div>';
+  else d.sessions.forEach(s=>{const st=TRAIN_ST[s.status]||['',''];const c=s.counts||{};
+    h+='<div class="listitem" style="padding:7px 4px;cursor:pointer" data-act="open-treino" data-sid="'+s.id+'"><div class="grow"><div class="nm" style="font-size:14px">'+esc(s.title)+'</div>'+
+      '<div class="sub">'+(s.scheduledAt?fmtDate(s.scheduledAt):'sem data')+(s.location?' · '+esc(s.location):'')+' · ✔️'+(c.confirmed||0)+' 🟢'+(c.present||0)+'</div></div>'+
+      '<span class="pill '+st[1]+'">'+esc(st[0])+'</span><span style="color:var(--mut);font-size:12px;margin-left:6px">›</span></div>';});
+  h+='<div style="height:6px"></div><button class="btn sm sec" data-act="train-new" data-eid="'+eid+'" style="width:100%">+ Agendar treino</button></div>';
+  box.innerHTML=h;
+}
+function sheetScheduleTraining(eid){
+  openSheet('<h3 style="margin:0 0 4px">Agendar treino</h3><p class="muted" style="margin:0 0 10px;font-size:12px">Atividade oficial do time. Os atletas vinculados são avisados.</p>'+
+    '<label>Título</label><input id="tr-title" placeholder="Ex: Treino tático" value="Treino">'+
+    '<label>Foco (o que vai treinar)</label><input id="tr-focus" placeholder="físico, tático, finalização...">'+
+    '<label>Data e hora</label><input id="tr-when" type="datetime-local">'+
+    '<label>Local</label><input id="tr-loc" placeholder="quadra / ginásio">'+
+    '<div style="height:12px"></div><button class="btn" data-act="train-save" data-eid="'+eid+'">Agendar</button>');
+}
+async function saveTraining(eid){
+  if(!TEAM_CTX.tid)return;const tid=TEAM_CTX.tid;
+  const title=(document.getElementById('tr-title').value||'').trim()||'Treino';
+  const focus=(document.getElementById('tr-focus').value||'').trim();
+  const when=document.getElementById('tr-when').value;
+  const location=(document.getElementById('tr-loc').value||'').trim();
+  try{await api('/'+tid+'/teams/'+eid+'/trainings',{method:'POST',body:{title,focus,scheduledAt:when||undefined,location}});
+    closeSheet();toast('Treino agendado');renderTrainings(eid);}catch(e){toast(e.message);}
+}
+// Súmula do treino (chamada) — tela cheia, estilo súmula do jogo.
+let TREINO=null;
+async function renderTreino(sid){
+  loading();
+  let d;try{d=await api('/trainings/'+sid);}catch(e){app.innerHTML=topbar('Treino',true)+'<div class="wrap"><div class="card"><div class="empty">'+esc(e.message)+'</div></div></div>';return;}
+  TREINO={sid,last:d};const s=d.session;const done=s.status==='DONE';
+  // posso gerir? (treinador/admin/coord) — pelo meu papel neste torneio.
+  let canManage=false;
+  try{const mr=await api('/'+s.tournamentId+'/my-roles');canManage=!!(mr.caps&&mr.caps.manageTournament)||(mr.roles||[]).some(r=>r.role==='COACH'||r.role==='TEAM_ADMIN');}catch(e){}
+  const st=TRAIN_ST[s.status]||['',''];
+  let html=topbar('Treino',true)+'<div class="wrap">';
+  html+='<div class="card"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><h2 style="margin:0;font-size:16px">'+esc(s.title)+'</h2><span class="pill '+st[1]+'">'+esc(st[0])+'</span></div>'+
+    '<div class="muted" style="margin-top:6px;font-size:13px">'+(s.scheduledAt?fmtDate(s.scheduledAt):'sem data')+(s.location?' · '+esc(s.location):'')+'</div>'+
+    (s.focus?'<div style="margin-top:6px;font-size:14px">🎯 <b>Foco:</b> '+esc(s.focus)+'</div>':'')+'</div>';
+  // Chamada
+  html+='<div class="card"><h2 style="margin:0 0 6px;font-size:14px">Chamada ('+d.roster.length+' atletas)</h2>';
+  if(!d.roster.length)html+='<div class="empty" style="padding:12px">Nenhum atleta vinculado ainda. Vincule atletas ao time pra fazer a chamada.</div>';
+  else d.roster.forEach(p=>{
+    const badge=p.present===true?'<span class="pill ok">presente</span>':(p.present===false?'<span class="pill dang" style="background:#fde8e8;color:#c0392b">faltou</span>':(p.confirmed?'<span class="pill w">confirmou</span>':'<span class="pill g">—</span>'));
+    html+='<div class="listitem"><div class="av" style="font-size:13px">'+initials(p.name)+'</div>'+
+      '<div class="grow"><div class="nm" style="font-size:14px">'+esc(p.name)+'</div><div class="sub">'+(p.confirmed?'confirmou presença':'sem confirmar')+'</div></div>'+badge+
+      (canManage&&!done?'<div style="display:flex;gap:4px;margin-left:6px"><button class="btn sm '+(p.present===true?'':'sec')+'" data-act="train-mark" data-sid="'+sid+'" data-uid="'+p.userId+'" data-v="1">✓</button>'+
+        '<button class="btn sm '+(p.present===false?'dang':'sec')+'" data-act="train-mark" data-sid="'+sid+'" data-uid="'+p.userId+'" data-v="0">✕</button></div>':'')+'</div>';});
+  html+='</div>';
+  // O que foi feito (notas) — gestor edita
+  if(canManage){
+    html+='<div class="card"><h2 style="margin:0 0 6px;font-size:14px">O que foi feito</h2>'+
+      '<textarea id="tr-notes" placeholder="Atividades, observações do treino...">'+esc(s.notes||'')+'</textarea>'+
+      '<div style="height:10px"></div><button class="btn sm sec" data-act="train-notes" data-sid="'+sid+'">Salvar o que foi feito</button></div>';
+    if(!done)html+='<button class="btn" data-act="train-finalize" data-sid="'+sid+'">🏁 Encerrar treino</button>';
+    else html+='<div class="card"><div class="muted" style="text-align:center">Treino encerrado.</div></div>';
+  }else if(s.notes){
+    html+='<div class="card"><h2 style="margin:0 0 6px;font-size:14px">O que foi feito</h2><div style="font-size:14px;white-space:pre-wrap">'+esc(s.notes)+'</div></div>';
+  }
+  html+='</div>';app.innerHTML=html;
+}
+function treinoReload(){if(TREINO)renderTreino(TREINO.sid);}
+async function trainMark(sid,uid,v){
+  try{await api('/trainings/'+sid+'/mark',{method:'POST',body:{userId:uid,present:v==='1'}});treinoReload();}catch(e){toast(e.message);}
+}
+async function trainSaveNotes(sid){
+  const notes=(document.getElementById('tr-notes').value||'');
+  try{await api('/trainings/'+sid,{method:'PATCH',body:{notes}});toast('Salvo');}catch(e){toast(e.message);}
+}
+async function trainFinalize(sid){
+  if(!confirm('Encerrar o treino? Fecha a chamada.'))return;
+  try{await api('/trainings/'+sid,{method:'PATCH',body:{status:'DONE'}});toast('Treino encerrado');treinoReload();}catch(e){toast(e.message);}
+}
+// Lado do ATLETA: treinos dos meus times + confirmar presença.
+async function loadMyTrainings(tid){
+  const box=document.getElementById('my-trainings');if(!box)return;
+  let d={sessions:[]};try{d=await api('/'+tid+'/my-trainings');}catch(e){box.innerHTML='';return;}
+  if(!d.sessions.length){box.closest('.card').style.display='none';return;}
+  box.innerHTML=d.sessions.map(s=>{const st=TRAIN_ST[s.status]||['',''];const done=s.status!=='SCHEDULED';
+    return '<div class="listitem"><div class="grow" data-act="open-treino" data-sid="'+s.id+'" style="cursor:pointer"><div class="nm" style="font-size:14px">'+esc(s.title)+'</div>'+
+      '<div class="sub">'+(s.scheduledAt?fmtDate(s.scheduledAt):'sem data')+(s.location?' · '+esc(s.location):'')+'</div></div>'+
+      (done?'<span class="pill '+st[1]+'">'+esc(st[0])+'</span>':
+        '<button class="btn sm '+(s.myConfirmed?'ok':'sec')+'" data-act="train-confirm" data-sid="'+s.id+'" data-v="'+(s.myConfirmed?'0':'1')+'" data-tid="'+tid+'">'+(s.myConfirmed?'✓ vou':'Confirmar')+'</button>')+'</div>';}).join('');
+}
+async function trainConfirm(sid,confirmed,tid){
+  try{await api('/trainings/'+sid+'/confirm',{method:'POST',body:{confirmed:confirmed==='1'}});toast(confirmed==='1'?'Presença confirmada':'Desmarcado');loadMyTrainings(tid);}catch(e){toast(e.message);}
 }
 
 // Mural/avisos do torneio (texto). isOwner mostra o compositor + remover.
@@ -1312,6 +1415,14 @@ document.addEventListener('click',async(ev)=>{
   if(a==='team-members'){toggleMembers(el.dataset.eid);return;}
   if(a==='invite-athlete'){sheetInvite(el.dataset.eid);return;}
   if(a==='do-invite'){doInvite(el.dataset.eid);return;}
+  if(a==='team-trainings'){toggleTrainings(el.dataset.eid);return;}
+  if(a==='train-new'){sheetScheduleTraining(el.dataset.eid);return;}
+  if(a==='train-save'){saveTraining(el.dataset.eid);return;}
+  if(a==='open-treino'){go('treino/'+el.dataset.sid);return;}
+  if(a==='train-mark'){trainMark(el.dataset.sid,el.dataset.uid,el.dataset.v);return;}
+  if(a==='train-notes'){trainSaveNotes(el.dataset.sid);return;}
+  if(a==='train-finalize'){trainFinalize(el.dataset.sid);return;}
+  if(a==='train-confirm'){trainConfirm(el.dataset.sid,el.dataset.v,el.dataset.tid);return;}
   if(a==='add-role'){sheetAddRole(el.dataset.tid);return;}
   if(a==='save-role'){saveAddRole(el.dataset.tid);return;}
   if(a==='del-role'){if(confirm('Remover esta pessoa do papel?')){try{await api('/'+el.dataset.tid+'/roles/'+el.dataset.rid,{method:'DELETE'});toast('Removido');loadRoles(el.dataset.tid);}catch(e){toast(e.message);}}return;}

@@ -19,6 +19,7 @@ const { importFutsalMasterCup } = require('../services/futsalMasterCupSeed');
 const sheet = require('../services/matchSheet');
 const roles = require('../services/tournamentRoles');
 const membership = require('../services/teamMembership');
+const training = require('../services/trainingSession');
 
 const router = express.Router();
 
@@ -125,6 +126,124 @@ router.post('/:id/memberships/:mid/remove', authMiddleware, async (req, res) => 
     const r = await membership.removeMembership({ tournamentId: req.params.id, membershipId: req.params.mid, userId: req.userId, userRole: req.userRole });
     if (!r.ok) return res.status(r.code || 400).json(r);
     res.json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// =====================================================================
+// TREINO — atividade OFICIAL do time (criado pelo treinador). Requer login.
+// =====================================================================
+
+// Pode gerir treino do clube? coordenador/fundador/admin OU treinador/admin do time.
+async function canTrainClub(req, tournamentId, clubName) {
+  if (await roles.can(req.userId, req.userRole, tournamentId, 'MANAGE_TOURNAMENT')) return true;
+  const entries = await prisma.tournamentEntry.findMany({ where: { tournamentId, name: clubName }, select: { id: true } });
+  for (const e of entries) if (await roles.can(req.userId, req.userRole, tournamentId, 'TRAIN', { entryId: e.id })) return true;
+  return false;
+}
+async function isActiveMember(tournamentId, clubName, userId) {
+  const m = await prisma.teamMembership.findFirst({ where: { tournamentId, clubName, userId, status: 'ACTIVE' }, select: { id: true } });
+  return !!m;
+}
+
+// Cria treino pro clube (entryId identifica o clube). TRAIN.
+router.post('/:id/teams/:entryId/trainings', authMiddleware, async (req, res) => {
+  try {
+    const entry = await roles.entryContext(req.params.entryId);
+    if (!entry || entry.tournamentId !== req.params.id) return res.status(404).json({ error: 'time não encontrado' });
+    if (!(await roles.can(req.userId, req.userRole, req.params.id, 'TRAIN', { entryId: entry.id }))) {
+      return res.status(403).json({ error: 'sem permissão (coordenador, admin ou treinador do time)' });
+    }
+    const b = req.body || {};
+    const r = await training.create({ tournamentId: req.params.id, entryId: req.params.entryId, createdByUserId: req.userId, title: b.title, focus: b.focus, scheduledAt: b.scheduledAt, location: b.location });
+    if (!r.ok) return res.status(r.code || 400).json(r);
+    res.status(201).json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Lista treinos do clube (histórico). Gestor do treino OU atleta vinculado.
+router.get('/:id/teams/:entryId/trainings', authMiddleware, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const clubName = await training.clubOfEntry(req.params.entryId, req.params.id);
+    if (!clubName) return res.status(404).json({ error: 'time não encontrado' });
+    if (!(await canTrainClub(req, req.params.id, clubName)) && !(await isActiveMember(req.params.id, clubName, req.userId)) && !roles.isGlobalAdmin(req.userRole)) {
+      return res.status(403).json({ error: 'sem permissão' });
+    }
+    res.json(await training.list(req.params.id, req.params.entryId));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Súmula do treino (chamada). Gestor OU atleta vinculado do clube.
+router.get('/trainings/:sid', authMiddleware, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const s = await training.sessionClub(req.params.sid);
+    if (!s) return res.status(404).json({ error: 'treino não encontrado' });
+    if (!(await canTrainClub(req, s.tournamentId, s.clubName)) && !(await isActiveMember(s.tournamentId, s.clubName, req.userId)) && !roles.isGlobalAdmin(req.userRole)) {
+      return res.status(403).json({ error: 'sem permissão' });
+    }
+    const out = await training.get(req.params.sid);
+    if (!out) return res.status(404).json({ error: 'treino não encontrado' });
+    res.json(out);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Edita/finaliza o treino (status, foco, notas do que foi feito). TRAIN.
+router.patch('/trainings/:sid', authMiddleware, async (req, res) => {
+  try {
+    const s = await training.sessionClub(req.params.sid);
+    if (!s) return res.status(404).json({ error: 'treino não encontrado' });
+    if (!(await canTrainClub(req, s.tournamentId, s.clubName))) return res.status(403).json({ error: 'sem permissão' });
+    const r = await training.update(req.params.sid, req.body || {});
+    if (!r.ok) return res.status(r.code || 400).json(r);
+    res.json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Remove/cancela o treino. TRAIN.
+router.post('/trainings/:sid/remove', authMiddleware, async (req, res) => {
+  try {
+    const s = await training.sessionClub(req.params.sid);
+    if (!s) return res.json({ ok: true });
+    if (!(await canTrainClub(req, s.tournamentId, s.clubName))) return res.status(403).json({ error: 'sem permissão' });
+    res.json(await training.remove(req.params.sid));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Atleta confirma presença (RSVP). body { confirmed: true|false }.
+router.post('/trainings/:sid/confirm', authMiddleware, async (req, res) => {
+  try {
+    const s = await training.sessionClub(req.params.sid);
+    if (!s) return res.status(404).json({ error: 'treino não encontrado' });
+    if (!(await isActiveMember(s.tournamentId, s.clubName, req.userId)) && !roles.isGlobalAdmin(req.userRole)) {
+      return res.status(403).json({ error: 'só atleta vinculado ao time confirma presença' });
+    }
+    const r = await training.confirm(req.params.sid, req.userId, (req.body || {}).confirmed !== false);
+    if (!r.ok) return res.status(r.code || 400).json(r);
+    res.json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Treinador faz a chamada: marca um atleta. body { userId, present:true|false|null, note }.
+router.post('/trainings/:sid/mark', authMiddleware, async (req, res) => {
+  try {
+    const s = await training.sessionClub(req.params.sid);
+    if (!s) return res.status(404).json({ error: 'treino não encontrado' });
+    if (!(await canTrainClub(req, s.tournamentId, s.clubName))) return res.status(403).json({ error: 'sem permissão (arbitragem do treino é o treinador)' });
+    const b = req.body || {};
+    if (!b.userId) return res.status(400).json({ error: 'userId do atleta obrigatório' });
+    const present = b.present === null || b.present === 'null' ? null : b.present;
+    const r = await training.mark(req.params.sid, b.userId, present, b.note);
+    if (!r.ok) return res.status(r.code || 400).json(r);
+    res.json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Treinos dos times do atleta (pra ele ver/confirmar).
+router.get('/:id/my-trainings', authMiddleware, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json(await training.forUser(req.params.id, req.userId));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
