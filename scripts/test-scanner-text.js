@@ -59,7 +59,7 @@ for (const file of ['../public/bipar.html', '../public/identificar.html']) {
   assert.equal(await browser.window.ScannerOCR.readForScan('image', ''), '', 'OCR failure preserves photo upload');
 
   const html = fs.readFileSync(require.resolve('../public/bipar.html'), 'utf8');
-  const code = html.slice(html.indexOf('  function etiqIdentity('), html.indexOf('  function etiqCopy(')) + html.slice(html.indexOf('  async function enviarFila()'), html.indexOf('  async function consultarStatus()'));
+  const code = html.slice(html.indexOf('  function etiqIdentity('), html.indexOf('  function etiqCopy(')) + html.slice(html.indexOf('  const etiqRejectedAuthorizations'), html.indexOf('  async function consultarStatus()'));
   let posted = false;
   const item = {roundId:'round-original',st:'fila',b64:'data:image/jpeg;base64,AA==',ean:'196153346321',storeId:'LOJA04',sellerId:'douglas',sellerName:'Douglas',clientScanId:'same-scan',
     manualPhoto:true,photoRevision:1,ocrDone:true,ocrText:'NIKE\nDQ5471-113\nL'};

@@ -55,7 +55,14 @@ async function authorizeReplacement(req,res,roundId=req.body?.roundId){
   req.body=req.body||{};req.body.sellerId=actor.id;req.body.sellerName=actor.name;
   return true;
 }
-const replacementRecovery=setInterval(()=>ensureReconstructionSchema().then(()=>replacement.resume(prisma)).catch(e=>console.warn('[replacement/recovery]',e.message)),30000);
+const replacementCaptures=require('../services/stockReplacementCaptureRecovery');
+let replacementRecoveryRunning=false;
+const replacementRecovery=setInterval(async()=>{
+  if(replacementRecoveryRunning)return;replacementRecoveryRunning=true;
+  try{await ensureReconstructionSchema();await replacementCaptures.resume(prisma);await replacement.resume(prisma);}
+  catch(e){console.warn('[replacement/recovery]',e.message);}
+  finally{replacementRecoveryRunning=false;}
+},30000);
 replacementRecovery.unref();
 
 

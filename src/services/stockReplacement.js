@@ -68,16 +68,32 @@ function validateRead(c,read){
 }
 async function referenceMatches(db,c,read){
  const p=c.size.product;let ctx=p.aiContext||{};if(typeof ctx==='string'){try{ctx=JSON.parse(ctx)}catch(_){ctx={}}}
- const refs=[p.sku,ctx.supplierRef,...(Array.isArray(ctx.scannerReferences)?ctx.scannerReferences:[])].map(normalized).filter(Boolean);
+ const catalogRefs=[p.sku,ctx.supplierRef].map(normalized).filter(Boolean);
+ const refs=[...catalogRefs,...(Array.isArray(ctx.scannerReferences)?ctx.scannerReferences:[]).map(normalized)].filter(Boolean);
  const fiscal=await require('./scannerArchivedLabel').fiscalRows(db,c.bipe.barcode);
  for(const row of fiscal.filter(r=>r.productId===p.id)){
   refs.push(normalized(row.supplierCode));
+  catalogRefs.push(normalized(row.supplierCode));
   const reebok=normalized(p.brand)==='REEBOK'&&normalized(row.supplierCode).match(/^(\d{9})[A-Z]{2,12}\d{2}$/);
   if(reebok)refs.push(reebok[1]);
  }
+ let match;
+ if(normalized(p.brand)==='SKECHERS'){
+  // These catalog prefixes do not appear on the box. Keep the complete
+  // printed model AND colour; never match a model-only or historical colour.
+  const printedRef=value=>normalized(value).match(/^(?:GTM|GTW|T|R)?(\d{5,6}(?:BR)?[A-Z]{2,6})$/)?.[1];
+  const expected=new Set(catalogRefs.map(printedRef).filter(Boolean));
+  if(expected.size){
+   if(expected.size!==1)return null;
+   const candidates=(read.references||[]).map(ref=>({ref,key:printedRef(ref)})).filter(item=>item.key);
+   if(candidates.some(item=>!expected.has(item.key)))return null;
+   match=candidates.find(item=>expected.has(item.key))?.ref;
+   if(!match)return null;
+  }
+ }
  // SKU prefixes used by the existing catalog are identifiers, not new models.
  for(const ref of [...refs])if(ref.startsWith('T')&&ref.length>5)refs.push(ref.slice(1));
- const match=(read.references||[]).find(ref=>refs.includes(normalized(ref)));
+ match=match||(read.references||[]).find(ref=>refs.includes(normalized(ref)));
  const brands=[...String(read.text||'').matchAll(/\b(REEBOK|NIKE|ADIDAS|PUMA|FILA|ASICS|SKECHERS|MIZUNO|OLYMPIKUS)\b/gi)].map(m=>normalized(m[1]));
  return match&&!brands.some(brand=>brand!==normalized(p.brand))?match:null;
 }

@@ -311,7 +311,7 @@
   </section>
   </details>
 
-<script src="/scanner-barcode-policy.js?v=20261027-internal-codes-1"></script><script src="/scanner-confirm.js?v=20260915-resume-2"></script><script src="/scanner-view.js?v=20261018-recent-reads-1"></script><script src="/scanner-camera.js?v=20261018-live-fast-2"></script><script src="/scanner-round.js?v=20261109-replacement-1"></script><script src="/bipar-transfer.js?v=20261002-actions-1"></script><script src="/scanner-photo-storage.js?v=20261109-bounded-memory-1"></script><script src="/scan-action-photos.js?v=20261109-archive-1"></script><script src="/bipar-actions.js?v=20261109-replacement-1"></script>
+<script src="/scanner-barcode-policy.js?v=20261027-internal-codes-1"></script><script src="/scanner-confirm.js?v=20260915-resume-2"></script><script src="/scanner-view.js?v=20261018-recent-reads-1"></script><script src="/scanner-camera.js?v=20261018-live-fast-2"></script><script src="/scanner-round.js?v=20261109-replacement-1"></script><script src="/bipar-transfer.js?v=20261002-actions-1"></script><script src="/scanner-photo-storage.js?v=20261109-bounded-memory-1"></script><script src="/scan-action-photos.js?v=20261109-archive-1"></script><script src="/bipar-actions.js?v=20261109-outbox-recovery-1"></script>
 <script src="/vendor/barcode/zxing-reader-3.1.4.js"></script><script src="/scanner-auto.js?v=20261109-bounded-memory-1"></script><script src="/scanner-regions.js?v=20260914-worker-1"></script><script src="/scanner-ocr.js?v=20261109-bounded-memory-1"></script>
 
 <script>
@@ -427,6 +427,7 @@
       input.placeholder = 'Aguardando loja/vendedor...';
     }
     window.ScannerTransfer?.refresh();
+    window.ScannerInventoryOutbox?.resume();
   }
 
   document.getElementById('loja').addEventListener('change', async (e) => {
@@ -1216,7 +1217,7 @@
     const item = existing || { lid, b64: null, ean, st: 'fila', clientScanId: genClientScanId(), roundId:window.ScannerRound.requireRound(document.getElementById('loja').value),
       storeId: document.getElementById('loja').value || '',
       sellerId: selectedSeller === '__manual__' ? '' : (selectedSeller || ''),
-      sellerName: localStorage.getItem(STORAGE_VENDNAME) || '' };
+      sellerName: localStorage.getItem(STORAGE_VENDNAME) || '', operationType: window.BiparActions?.mode?.() || 'inventory' };
     if (!existing) window.ScannerTransfer?.start(item);
     const source = capturedFrame || video;
     const width = source.width || video.videoWidth, height = source.height || video.videoHeight;
@@ -1292,12 +1293,33 @@
     }).finally(() => { if (etiqAutoFrames.get(item.clientScanId) === frame) etiqAutoFrames.delete(item.clientScanId); });
   }
 
+  // Tokens remain in memory, never in the persisted photograph/scan metadata.
+  const etiqRejectedAuthorizations = new Map();
+  function etiqCanUpload(item) {
+    if (window.BiparActions?.canUploadStocktake && !window.BiparActions.canUploadStocktake(item)) return false;
+    if (!item.authPending) return true;
+    const authorization = window.BiparActions?.headers?.().Authorization || '';
+    return !!authorization && authorization !== etiqRejectedAuthorizations.get(etiqIdentity(item));
+  }
+  async function etiqWaitForAuthentication(item, rejectedAuthorization) {
+    item.authPending = true;
+    etiqRejectedAuthorizations.set(etiqIdentity(item), rejectedAuthorization);
+    item.msg = 'Sessão expirada. Foto e código preservados; entre com a mesma conta para retomar o envio.';
+    await etiqSave(); renderEtiqLista();
+    if (item.sellerId && window.BiparActions?.recoverStocktakeAuthentication) {
+      try {
+        if (await window.BiparActions.recoverStocktakeAuthentication(item.sellerId, rejectedAuthorization))
+          etiqRejectedAuthorizations.delete(etiqIdentity(item));
+      } catch (_) {}
+    }
+  }
   async function enviarReconhecimento(item, captureMode) {
     const revision = item.autoRevision, sentOcr = item.ocrText || '';
     const current = () => item.autoRecognition && !item.manualPhoto && item.autoRevision === revision &&
       (!window.BiparActions || window.BiparActions.isInventory());
     const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 25000);
     let r;
+    const sentAuthorization = window.BiparActions?.headers?.().Authorization || '';
     try {
       const request = stocktakeFetch('/api/stocktake/recognize', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal,
         body: JSON.stringify({ storeId: item.storeId, roundId: item.roundId, sellerId: item.sellerId, sellerName: item.sellerName,
@@ -1309,11 +1331,13 @@
     // A manual tap may have promoted this exact scan while recognition ran.
     // Its photograph and state now belong only to the manual upload response.
     if (!current()) return false;
+    if (r.status === 401) { await etiqWaitForAuthentication(item, sentAuthorization); return false; }
     if (!r.ok) {
       if (r.status >= 400 && r.status < 500) { item.st = 'revisao'; item.msg = d.error || 'Não foi possível registrar esta leitura.'; await etiqSave(); }
       return false;
     }
     if (!d.bipeId) { item.msg = d.error || 'Tentando registrar o código novamente.'; return false; }
+    item.authPending = false; etiqRejectedAuthorizations.delete(etiqIdentity(item));
     item.bipeId = d.bipeId; item.complete = d.complete === true; item.needsSize = !!d.needsSize;
     item.bipou = !!d.appliedToStock; item.product = d.product || null;
     item.msg = d.message || (item.complete ? [d.product?.name, d.product?.size ? 'tam. ' + d.product.size : ''].filter(Boolean).join(' · ') : 'Código registrado. Conferindo produto e tamanho.');
@@ -1344,7 +1368,7 @@
       const queued = x => x.st === 'fila' && (x.b64 || x.photoRef || (x.autoRecognition && x.ean));
       // One outbox for all captured pieces. A failed piece waits its own turn;
       // it never keeps the active camera item or the rest of the queue hostage.
-      const eligible = etiqFila.filter(x => queued(x) &&
+      const eligible = etiqFila.filter(x => queued(x) && etiqCanUpload(x) &&
         (attempts.get(etiqIdentity(x))?.retryAt || 0) <= Date.now());
       const item = eligible.reduce((first, x) => !first ||
         (attempts.get(etiqIdentity(x))?.order || 0) < (attempts.get(etiqIdentity(first))?.order || 0) ? x : first, null);
@@ -1368,6 +1392,8 @@
         const image = await etiqReadPhoto(item);
         const blob = await (await fetch(image)).blob();
         if (window.BiparActions && !window.BiparActions.isInventory()) return;
+        // Identity may have changed while IndexedDB/photo conversion awaited.
+        if (!etiqCanUpload(item)) return;
         if (Number(item.photoRevision || 0) !== revision) return;
         const fd = new FormData();
         fd.append('file', blob, 'etiqueta.jpg');
@@ -1382,6 +1408,7 @@
         fd.append('roundId',item.roundId);
         const uploadController = new AbortController();
         const uploadTimeout = setTimeout(() => uploadController.abort(), 25000);
+        const sentAuthorization = window.BiparActions?.headers?.().Authorization || '';
         let r;
         try {
           const upload = stocktakeFetch('/api/stocktake/etiqueta', { method: 'POST', body: fd, signal: uploadController.signal });
@@ -1394,6 +1421,8 @@
         const d = await r.json().catch(() => ({}));
         progressed = r.ok && !d.pending;
         if (Number(item.photoRevision || 0) !== revision) return;
+        if (r.status === 401) { await etiqWaitForAuthentication(item, sentAuthorization); return; }
+        if (r.ok) { item.authPending = false; etiqRejectedAuthorizations.delete(etiqIdentity(item)); }
         if (d.photoRevision != null && Number(d.photoRevision) !== revision) {
           // Another tab may already have uploaded a newer revision. This ACK
           // did not advance our queued photograph, so never retry it at 100ms.
@@ -1446,7 +1475,7 @@
         } else { attempt.delay = 0; attempt.retryAt = 0; }
       }
       const sameAction = !window.BiparActions || window.BiparActions.isInventory();
-      const waiting = etiqFila.filter(item => item.st === 'fila' && (item.b64 || item.photoRef || (item.autoRecognition && item.ean)));
+      const waiting = etiqFila.filter(item => item.st === 'fila' && etiqCanUpload(item) && (item.b64 || item.photoRef || (item.autoRecognition && item.ean)));
       if (sameAction && waiting.length) {
         // A second frame can arrive while the first HTTP request is pending.
         // Wake that queue after the request finishes even if the camera closed.
@@ -1509,17 +1538,24 @@
 
   function renderEtiqLista() {
     if (window.BiparActions && !window.BiparActions.isInventory()) return;
-    const currentItems=etiqFila.filter(x=>x.roundId===window.ScannerRound.id() && !x.excluded);
+    const currentRoundId = window.ScannerRound.id();
+    const currentItems=etiqFila.filter(x=>currentRoundId && x.roundId===currentRoundId && !x.excluded);
     const cont = document.getElementById('etiq-contador');
     const ul = document.getElementById('etiq-lista');
     if (!cont || !ul) return;
-    const nSalvo = currentItems.filter(x => x.manualPhoto && etiqPhotoDurable(x)).length;
-    const nEnviado = currentItems.filter(x => x.bipeId || (x.capId && Number(x.capIdPhotoRevision || 0) === Number(x.photoRevision || 0))).length;
-    const nVinc = currentItems.filter(x => x.complete === true).length;
-    const nFila = currentItems.filter(x => x.st === 'fila').length;
-    const nPendente = currentItems.filter(x => !x.complete && x.st !== 'revisao' && (x.bipeId || x.capId)).length;
-    cont.textContent = 'enviando ' + nFila + ' · leituras registradas ' + nEnviado + ' · ✓ identificadas ' + nVinc +
-      (nPendente ? ' · pra conferir ' + nPendente : '') + (nSalvo ? ' · fotos manuais ' + nSalvo : '');
+    const counts = { local: 0, received: 0, applied: 0, pending: 0 };
+    for (const item of currentItems) {
+      // bipou is assigned only from the server's appliedToStock response.
+      // Photo/code acknowledgement or complete identification is not stock.
+      const currentPhoto = item.capId && Number(item.capIdPhotoRevision || 0) === Number(item.photoRevision || 0);
+      const codeOnlyReceived = item.bipeId && !item.photoRevision && !item.photoRef && !item.b64;
+      const state = item.bipeId && item.bipou === true ? 'applied'
+        : item.authPending || item.st === 'revisao' || item.st === 'erro' || (!item.complete && (item.needsSize || item.alerta || item.st === 'pendente')) ? 'pending'
+        : currentPhoto || codeOnlyReceived ? 'received' : 'local';
+      counts[state]++;
+    }
+    cont.textContent = 'total ' + currentItems.length + ' · no aparelho/aguardando envio ' + counts.local +
+      ' · recebidas/em conferência ' + counts.received + ' · aplicadas ' + counts.applied + ' · pendências/erros ' + counts.pending;
     const esc = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const recent = (window.BiparActions?.mode()==='replacement' ? currentItems.filter(x=>!x.complete).concat(currentItems.filter(x=>x.complete).slice(-8)) : currentItems.slice(-8)).reverse();
     ul.innerHTML = '<div style="font-size:11px;font-weight:900;color:#aaa;margin-bottom:4px">ÚLTIMOS BIPES · ' + currentItems.length + '</div>' + recent.map(x => {
@@ -1528,7 +1564,14 @@
       const brand = p.brand || x.productBrand || x.brand || '';
       const size = p.size || x.productSize || x.size || '';
       const reference = p.sku || p.reference || x.sku || x.reference || '';
-      const status = x.complete ? '✓ IDENTIFICADO' : x.needsSize ? '⚠ CONFERIR TAMANHO' : x.bipeId ? '⏳ PENDENTE' : etiqPhotoDurable(x) ? '📷 FOTO SALVA · AGUARDANDO CÓDIGO' : '⏳ LENDO';
+      const replacement = window.BiparActions?.mode()==='replacement';
+      const currentPhoto = x.capId && Number(x.capIdPhotoRevision || 0) === Number(x.photoRevision || 0);
+      const codeOnlyReceived = x.bipeId && !x.photoRevision && !x.photoRef && !x.b64;
+      const status = replacement && x.bipeId && x.bipou === true ? '✓ APLICADA NO ESTOQUE'
+        : x.complete && !replacement ? '✓ IDENTIFICADO' : x.needsSize ? '⚠ CONFERIR TAMANHO'
+        : x.ean && (currentPhoto || codeOnlyReceived) ? '⏳ RECEBIDA · EM CONFERÊNCIA'
+        : etiqPhotoDurable(x) ? (x.ean ? '📷 NO APARELHO · AGUARDANDO ENVIO' : '📷 FOTO SALVA · AGUARDANDO CÓDIGO')
+        : x.bipeId ? '⏳ PENDENTE' : '⏳ LENDO';
       const details = [brand, size ? 'Tam. ' + size : '', reference ? 'Ref. ' + reference : ''].filter(Boolean).join(' · ');
       return '<div style="padding:5px 0;border-top:1px solid #444;display:flex;align-items:center;gap:8px">' +
         '<div style="flex:1;min-width:0">' +
@@ -2007,6 +2050,19 @@
       'confirm-size':()=>window.confirmarTamanho(b.dataset.size)};
     actions[b.dataset.click]?.();
   });
+  // Restoring the durable outbox never opens the camera, captures a new piece
+  // or changes the original store/round/operator of a saved reading.
+  async function resumeInventoryOutbox() {
+    if (window.BiparActions && !window.BiparActions.isInventory()) return;
+    await etiqRestorePromise;
+    if (!etiqStorageReady) return;
+    await enviarFila();
+    await consultarStatus();
+  }
+  window.ScannerInventoryOutbox = { resume: () => { void resumeInventoryOutbox().catch(() => {}); } };
+  window.addEventListener('online', window.ScannerInventoryOutbox.resume);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) window.ScannerInventoryOutbox.resume(); });
+  etiqRestorePromise.then(window.ScannerInventoryOutbox.resume);
   carregarLojas();
   // Recover pending readings only; completed camera history is not a new transfer sequence.
   loadRetryQueue().forEach(item => window.ScannerTransfer?.start(item));

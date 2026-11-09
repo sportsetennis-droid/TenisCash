@@ -36,3 +36,15 @@ Testes usam exclusivamente PostgreSQL `127.0.0.1:55329`, banco cujo nome começa
 - Fotos reais antigas da Loja04 foram verificadas **somente localmente**, sem gerar bipes novos. Uma das seis permitiu confirmar código, referência e BR; cinco permaneceram pendentes (desfoque/OCR/código). Não se declara que qualquer foto pode ser lida, nem se substitui evidência por cadastro antigo. Relatório privado: `output/inventario-calcados-20261109/real-photo-local-check.json` no projeto de trabalho.
 
 Estado de publicação e verificações da versão em produção serão registrados em `output/inventario-calcados-20261109/STATUS.md` do projeto. Este documento não prova que uma loja já começou ou que uma contagem física foi concluída.
+
+## Recuperação de captura arquivada sem bipe — 09/11/2026
+
+`stockReplacementCaptureRecovery` recupera o registro do mesmo evento quando a foto original já chegou ao servidor, mas ainda não existe a associação com `StocktakeBipe`. Não importa fotos soltas, notas fiscais ou contagens históricas. Exige rodada de substituição ativa em `counting`, loja correspondente, `scanKey` e revisão válidos, código presente, operador original ativo/autorizado e data da captura posterior ao início da rodada. O código é novamente decodificado da imagem arquivada; não é obtido por OCR nem inventado.
+
+A decodificação ocorre fora da transação. A gravação trava a rodada e a chave da leitura, revalida foto/revisão/contexto e preserva autoria, `capture.createdAt` como horário do bipe, código e foto. Bipe existente na mesma chave é somente vinculado. Outro evento ativo com o mesmo código exige confirmação de repetição; a recuperação não a presume. Produto desconhecido permanece pendente; conflito de variantes não escolhe o primeiro cadastro. A resolução reutiliza os vínculos canônicos e aliases exatos do catálogo.
+
+O serviço não aplica saldo: após o commit, encaminha o bipe para a verificação normal de código, BR e referência. O timer executa uma varredura de cada vez, carrega uma foto por vez e percorre páginas de IDs para que uma pendência permanente não impeça as posteriores. Nenhuma foto original é substituída ou apagada.
+
+No mesmo ajuste, a confirmação Skechers reconhece os prefixos internos `GTM`, `GTW`, `T` e `R`, conservando modelo e cor completos. Referência só de modelo ou alias antigo de outra cor não autoriza confirmação. Classificação ACTVITTA com evidências divergentes permaneceu inalterada e pendente.
+
+Testes adicionados a `npm run test:stock-replacement`: `test-stock-replacement-reference.cjs` e `test-stock-replacement-capture-recovery.cjs`. O segundo usa apenas PostgreSQL local `roundtest@127.0.0.1:55329/stock_replacement_*`, inclusive `stock_replacement_ci`. Cobrem reenvios concorrentes, eventos repetidos, vínculo existente, catálogo desconhecido/ambíguo/consolidado/alias, captura excluída, loja/rodada/operador inválidos, revisão/foto alteradas durante a decodificação, autorização revogada, foto inválida/código divergente, preservação da imagem e saldo zero antes da verificação. Implementação e testes locais não comprovam publicação nem recuperação das fotos do telefone.

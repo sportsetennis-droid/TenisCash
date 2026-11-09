@@ -596,6 +596,7 @@
     $('action-result').hidden = true;
     message('');
     currentDraft = getDraft(); renderReadings(); refresh(); refreshLegacyReads();
+    window.ScannerInventoryOutbox?.resume();
   }
   async function api(path, body, authToken = token) {
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 30000);
@@ -627,6 +628,29 @@
     const expectedUserId = expiredActor.id;
     authenticationRecovery = authenticate({ expectedUserId });
     try { await authenticationRecovery; } finally { authenticationRecovery = null; }
+  }
+  function canUploadStocktake(item) {
+    if (!isInventory()) return false;
+    let operation = item.operationType;
+    if (!operation) {
+      // Older saved reads predate operationType. Resolve their original round
+      // before allowing public inventory rules, never infer it from the screen.
+      const round = window.ScannerRound?.current?.();
+      if (!round || round.id !== item.roundId || round.storeId !== item.storeId) return false;
+      operation = round.operationType || 'inventory';
+    }
+    if (operation !== 'inventory' && operation !== 'replacement') return false;
+    // Legacy public inventory keeps its existing operator selection. A
+    // replacement/auth-waiting read belongs to its original identified person.
+    if (action !== 'replacement' && !item.authPending && operation !== 'replacement') return true;
+    return !!actor && !!token && !!item.sellerId && actor.id === item.sellerId && allowed.includes(item.storeId);
+  }
+  async function recoverStocktakeAuthentication(expectedUserId, rejectedAuthorization) {
+    if (!token || rejectedAuthorization !== 'Bearer ' + token || !expectedUserId ||
+        (actor?.id || tokenSubject(token)) !== expectedUserId) return false;
+    expireAuthentication(token, false);
+    await resumeAuthentication();
+    return actor?.id === expectedUserId;
   }
   async function authenticate(options = {}) {
     const authToken = token, expectedUserId = options.expectedUserId || actor?.id || tokenSubject(authToken);
@@ -1190,6 +1214,6 @@
       invalidate(); renderReadings(); refresh(); refreshLegacyReads();
     }
   });
-  window.BiparActions = { mode: () => action, operator:()=>actor, version: () => generation, isInventory, headers:()=>token?{Authorization:'Bearer '+token}:{}, replacementReady:()=>!!actor&&allowed.includes($('loja').value), refresh, scan, openCamera, closeCamera, storesReady, storeChanged, recoveryInventory: () => canRecoverOthers() ? legacyRecoveryInventory.map(item => ({ ...item })) : [], hasFocus: () => interaction };
+  window.BiparActions = { mode: () => action, operator:()=>actor, version: () => generation, isInventory, headers:()=>token?{Authorization:'Bearer '+token}:{}, canUploadStocktake, recoverStocktakeAuthentication, replacementReady:()=>!!actor&&allowed.includes($('loja').value), refresh, scan, openCamera, closeCamera, storesReady, storeChanged, recoveryInventory: () => canRecoverOthers() ? legacyRecoveryInventory.map(item => ({ ...item })) : [], hasFocus: () => interaction };
   refresh();
 })();
