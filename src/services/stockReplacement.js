@@ -145,7 +145,7 @@ async function report(db,id){
  if(!active.length)blockers.push('Nenhuma peça foi contada.');
  const reviewToken=hash({id,status:round.status,bipes,checks,current:current.map(s=>[s.productSizeId,s.stock]),movements:movements.map(m=>m.id)});
  return {round,store,totals:{reads:active.length,applied:applied.length,pending:pendingReads.length+orphanPhotos.length,photos:captures.filter(c=>!c.excludedAt).length,imagePending:imagePending.length,stockUnits:current.reduce((n,s)=>n+s.stock,0)},
-  bipes,captures,checks:checks.map(c=>({...c,reasonText:reasonText(c.reason)})),current:current.map(s=>({productSizeId:s.productSizeId,stock:s.stock,size:s.productSize.size,name:s.productSize.product.name,brand:s.productSize.product.brand,sku:s.productSize.product.sku,imageUrl:s.productSize.product.imageUrl})),movements,blockers,reviewToken,canFinish:!blockers.length};
+  bipes,captures,checks:checks.map(c=>({...c,reasonText:reasonText(c.reason),imageCurrentVerified:!!productsBySize.has(c.appliedProductSizeId)&&images.matches(c.imageReview,productsBySize.get(c.appliedProductSizeId)),imageFingerprint:productsBySize.has(c.appliedProductSizeId)?images.fingerprint(productsBySize.get(c.appliedProductSizeId)):null})),current:current.map(s=>({productSizeId:s.productSizeId,stock:s.stock,size:s.productSize.size,name:s.productSize.product.name,brand:s.productSize.product.brand,sku:s.productSize.product.sku,imageUrl:s.productSize.product.imageUrl})),movements,blockers,reviewToken,canFinish:!blockers.length};
 }
 async function exclude(tx,bipe,reason){
  const check=await tx.stockReplacementCheck.findUnique({where:{bipeId:bipe.id}});

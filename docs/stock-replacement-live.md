@@ -20,9 +20,11 @@ O arquivo é uma fotografia do saldo no início, não cópia destrutiva de cadas
 
 ## Conferência das imagens de catálogo
 
-O código de barras e o OCR das etiquetas continuam locais, sem API paga. O reuso do serviço visual de catálogo foi preparado, mas depende da resposta expressa à pergunta enviada a Douglas sobre cobrança. Sem autorização, `Config.key=stock_replacement_catalog_vision` não é habilitado e **nenhuma chamada paga é feita por este recurso**.
+Douglas respondeu à pergunta sobre uso do serviço visual com cobrança: **“Não, manter tudo sem API paga”**. Fonte: resposta explícita neste chat, 09/11/2026; horário exato indisponível. A implementação não consulta configuração de serviço pago, não importa o validador pago e não faz chamadas externas para análise de imagens.
 
-Quando autorizado, o valor JSON `{ "enabled": true }` permite o validador de catálogo já existente, separado da leitura das etiquetas. Aceitação exige produto correto, cor correta e nota >=9. O resultado registra método, fornecedor, custo, instante, modelo/cor/URL e impressão digital desses dados. Só a mesma identidade de produto/imagem pode reutilizar a conferência. Imagem ausente, serviço indisponível, resposta incerta ou mudança de modelo/cor/URL permanecem pendentes e impedem declarar a conferência final concluída. Aprovação automática não equivale a aprovação visual pessoal de Douglas.
+O scanner decodifica código e lê BR/referência localmente. A conferência do catálogo detecta imagem ausente e uso da mesma imagem por outros cadastros, mantendo esses casos visíveis. Só reutiliza uma conferência visual explicitamente registrada por operador identificado para o mesmo produto, referência, cor e URL. Nome, modelo, cor ou URL diferentes invalidam esse reuso.
+
+Sem evidência visual anterior, a imagem permanece pendente. A tela mostra a foto original da etiqueta, os dados do produto e a imagem cadastrada para conferência. O operador pode registrar que conferiu modelo e cor; isso não altera a imagem, o preço ou o estoque. A confirmação tem autoria e data, é ligada à identidade exata do cadastro e pode ser reaproveitada nas demais peças do mesmo cadastro. Nenhuma conferência visual humana é presumida ou registrada pelo agente sem examinar a imagem. A rotina gratuita não consegue provar automaticamente a identidade visual de todos os modelos; a pendência não é sucesso e bloqueia declarar a conferência final concluída.
 
 ## Verificação
 
