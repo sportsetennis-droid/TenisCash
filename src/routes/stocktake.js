@@ -85,11 +85,11 @@ function inferSizeFromDescription(description) {
   // Padrao: "TAMANHO:38;COR:..."
   const mTamCol = d.match(/TAMANHO:\s*([A-Z0-9]+)\s*[;,]/);
   if (mTamCol) return mTamCol[1];
-  const mTam = d.match(/\bTAM\.?\s*(\d{2})\b/);
+  const mTam = d.match(/\bTAM\.?\s*(\d{2})\b(?!\s*\/)/);
   if (mTam) return mTam[1];
   const mTamL = d.match(/\bTAM\.?\s*(PP|P|M|G|GG|XGG|XG)\b/);
   if (mTamL) return mTamL[1];
-  if (/\b\d{2}[\/\-A]\s*\d{2}\b/.test(d) || /\b\d{2}\s+A\s+\d{2}\b/.test(d)) return '?';
+  if (/\b\d{2}\s*[\/\-A]\s*\d{2}\b/.test(d) || /\b\d{2}\s+A\s+\d{2}\b/.test(d)) return '?';
   const mEnd = d.match(/\s(\d{2})\s*$/);
   if (mEnd) return mEnd[1];
   if (/\b(PP|XGG|XG|GG|G|M|P)\b\s*$/.test(d)) {
@@ -101,15 +101,22 @@ function inferSizeFromDescription(description) {
 
 // Tamanho lido da ETIQUETA pela VISÃO (foto). A caixa de tênis mostra US/UK/EUR/CM/BR ao
 // mesmo tempo → número solto é AMBÍGUO. Regra do dono: NUNCA chutar/converter tamanho.
-// Então SÓ aceita: número marcado "BR" (ex "BR 38", "BR 39.5") no range 16–48; letra
+// Então SÓ aceita: número marcado BR/BRA (ex "BR 38", "BR 39.5") no range 16–48,
+// par consecutivo literal (ex "BR 40/41"); letra
 // (PP..XGG); ou Único. Qualquer outra coisa (US/UK/CM, número sem BR, "10/11.5", "9.5"
 // que viraria "95") → null = placeholder T-<EAN> (confirma na CAIXA ao bipar).
 function normalizeScannedSize(raw) {
   if (!raw) return null;
   const s = String(raw).toUpperCase().replace(',', '.').trim();
   if (/^(U|UNICO|ÚNICO)$/.test(s)) return 'Único';
-  const mBR = s.match(/\bBR\s*0*(\d{2})(\.5)?\b/); // só número EXPLICITAMENTE BR
-  if (mBR) { const n = +mBR[1]; if (n >= 16 && n <= 48) return mBR[1] + (mBR[2] || ''); }
+  // Consume the whole printed token before validating; an invalid suffix
+  // such as 40/411 or 40/41X must never backtrack to the first endpoint.
+  const brValues = [...s.matchAll(/\bBRA?\s*[:\-]?\s*0*([0-9][A-Z0-9.,]*(?:\s*\/\s*[A-Z0-9.,]*)*)/g)];
+  if (brValues.length === 1) {
+    const size = brValues[0][1].replace(/\s/g, '');
+    if (/^\d{2}\/\d{2}$/.test(size) && +size.slice(3) === +size.slice(0, 2) + 1 && size.split('/').every(n => +n >= 16 && +n <= 48)) return size;
+    if (/^\d{2}(?:\.5)?$/.test(size)) { const n = +size; if (n >= 16 && n <= 48) return size; }
+  }
   const mL = s.match(/^(XXS|XS|S|L|XL|XXL|XXXL|PP|XGG|XG|GG|G|M|P)$/); // letra é universal (roupa)
   if (mL) return mL[1];
   return null; // US/UK/CM/número-sem-BR/multi-valor/lixo → placeholder, nunca chuta
@@ -195,7 +202,7 @@ async function applyBipeIfReady(tx, bipeId) {
 }
 
 // Normaliza/valida o tamanho digitado. Aceita:
-//   calçado: 15–50, meio tamanho com .5 (ex "38.5", "41")
+//   calçado: 15–50, meio tamanho com .5 (ex "38.5", "41"), par consecutivo ("40/41")
 //   vestuário: PP P M G GG XG XGG EG EGG
 //   infantil por idade: 2A–16A (ex "8A", "14A")
 //   acessório sem tamanho: U / UNICO / ÚNICO → 'Único'
@@ -203,6 +210,7 @@ async function applyBipeIfReady(tx, bipeId) {
 function normalizeManualSize(raw) {
   let s = String(raw || '').trim().toUpperCase().replace(',', '.').replace(/\s+/g, '');
   if (!s) return null;
+  if (/^\d{2}\/\d{2}$/.test(s) && +s.slice(3) === +s.slice(0, 2) + 1 && s.split('/').every(n => +n >= 15 && +n <= 50)) return s;
   if (/^\d{2}(\.5)?$/.test(s)) {
     const n = parseFloat(s);
     return n >= 15 && n <= 50 ? s : null;
@@ -250,7 +258,12 @@ function extractSizeOptions(text) {
 
 // Opções de tamanho pro bipe: tenta o nome do card; se não tiver faixa,
 // tenta a descrição da NFe de entrada do próprio código bipado.
-async function sizeOptionsForBipe(productName, code) {
+async function sizeOptionsForBipe(productName, code, knownSize) {
+  // A confirmed catalog variant is one choice, even when its literal size
+  // contains a slash. Without that evidence, existing NF-e grade ranges stay
+  // ranges; do not reinterpret every "NN/NN" as a paired size.
+  const pairedSize = normalizeManualSize(knownSize);
+  if (/^\d{2}\/\d{2}$/.test(pairedSize || '')) return [pairedSize];
   let opts = extractSizeOptions(productName);
   if (opts) return opts;
   try {
@@ -351,7 +364,7 @@ router.post('/bipe', async (req, res) => {
             try {
               const psNow = await prisma.productSize.findUnique({ where: { id: existing.productSizeId }, select: { size: true, sizeConfirmedAt: true } });
               needsSizeIdem = needsManualSize(existing.productBrand, psNow);
-              if (needsSizeIdem) sizeOptionsIdem = await sizeOptionsForBipe(existing.productName, code);
+              if (needsSizeIdem) sizeOptionsIdem = await sizeOptionsForBipe(existing.productName, code, psNow?.size);
             } catch (_) {}
           }
           return res.json({
@@ -554,7 +567,7 @@ router.post('/bipe', async (req, res) => {
       barcode: s.barcode,
     })) || [];
     const sizeOptionsResp = needsSizeResp
-      ? (internalSizeOptions.length ? internalSizeOptions : await sizeOptionsForBipe(chosen.product.name, code))
+      ? (internalSizeOptions.length ? internalSizeOptions : await sizeOptionsForBipe(chosen.product.name, code, chosen.size))
       : null;
 
     // CHECAGEM INTELIGENTE (dono 2026-06-11): contraprova pelo COMPRADO — Σbipes do código
@@ -608,7 +621,7 @@ router.post('/bipe/:id/size', async (req, res) => {
   try {
     const size = normalizeManualSize(req.body?.size);
     if (!size) {
-      return res.status(400).json({ error: 'Tamanho inválido. Use número (ex: 41, 38.5), letra (P, M, G, GG) ou idade (8A).' });
+      return res.status(400).json({ error: 'Tamanho inválido. Use número (ex: 41, 38.5), tamanho duplo (40/41, 42/43), letra (P, M, G, GG) ou idade (8A).' });
     }
     const bipe = await prisma.stocktakeBipe.findUnique({ where: { id: req.params.id } });
     if (!bipe) return res.status(404).json({ error: 'Bipe não encontrado' });
@@ -856,11 +869,22 @@ async function processarEtiqueta(capId, photo, eanLocal, meta) {
     const current=await tx.productCapture.findUnique({where:{id:capId}});
     if(!current||current.excludedAt||current.status==='descartado')return null;
     if(['roundId','storeId','scanKey','barcode','sellerId'].some(key=>current[key]!==capture[key]))return null;
+    let replacementRound=false;
     if(capture.roundId){
-      const round=await tx.stocktakeRound.findUnique({where:{id:capture.roundId},select:{status:true,storeId:true}});
+      const round=await tx.stocktakeRound.findUnique({where:{id:capture.roundId},select:{status:true,storeId:true,operationType:true}});
       if(!round||!['counting','review'].includes(round.status)||round.storeId!==current.storeId)return null;
+      replacementRound=round.operationType==='replacement';
     }
     if(meta?.photoRevision&&(capturePhotos.revisionOf(current.note)!==meta.photoRevision||current.photo!==photo))return null;
+    // A manual/verified application can finish while this older OCR is still
+    // running, without changing the photo revision. Re-read under the same
+    // round -> capture -> bipe lock order before touching its saved snapshot.
+    if(current.bipeId){
+      await tx.$queryRaw`SELECT id FROM "StocktakeBipe" WHERE id=${current.bipeId} FOR UPDATE`;
+      const currentBipe=await tx.stocktakeBipe.findUnique({where:{id:current.bipeId},select:{applied:true}});
+      const currentCheck=replacementRound?await tx.stockReplacementCheck.findUnique({where:{bipeId:current.bipeId},select:{appliedAt:true,reversedAt:true}}):null;
+      if(currentBipe?.applied||(currentCheck?.appliedAt&&!currentCheck.reversedAt))return {bipeId:current.bipeId,preservedApplied:true};
+    }
     const data={
       barcode:ean||null,
       note:capturePhotos.photoNote(current.note,'etiqueta '+mensagem+' '+JSON.stringify(savedRead)),
@@ -870,6 +894,7 @@ async function processarEtiqueta(capId, photo, eanLocal, meta) {
     return saved.count===1?{bipeId:current.bipeId}:null;
   });
   if(!finalCapture)return;
+  if(finalCapture.preservedApplied)return {vinculado:true,mensagem:'Leitura já aplicada; vínculo preservado.'};
   if(!meta?.serverRead)await replacement.enqueue(prisma,finalCapture?.bipeId);
   return { vinculado, mensagem };
 }
@@ -972,7 +997,7 @@ router.post('/etiqueta',
             appliedToStock: applied.applied,
             blockedReason: applied.applied ? null : applied.reason,
             needsSize,
-            sizeOptions: needsSize ? await sizeOptionsForBipe(ps.product.name, eanCam) : null,
+            sizeOptions: needsSize ? await sizeOptionsForBipe(ps.product.name, eanCam, ps.size) : null,
             product: ps ? { name: ps.product.name, brand: ps.product.brand, size: ps.size, sku: null, imageUrl: null, active: ps.product.active } : null,
           };
           // CHECAGEM INTELIGENTE: Σbipes do código não pode passar do COMPRADO — passou => alerta (registro fica)
@@ -1137,7 +1162,7 @@ router.get('/etiqueta-status', async (req, res) => {
         bipeId: bipe?.id || null,
         appliedToStock: Boolean(bipe?.applied),
         needsSize,
-        sizeOptions: needsSize ? await sizeOptionsForBipe(ps.product.name, bipe.barcode) : undefined,
+        sizeOptions: needsSize ? await sizeOptionsForBipe(ps.product.name, bipe.barcode, ps.size) : undefined,
         product: ps ? { name: ps.product.name, brand: ps.product.brand, size: ps.size, active: ps.product.active } : undefined,
       };
     }));
