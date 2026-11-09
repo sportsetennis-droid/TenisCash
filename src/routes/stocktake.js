@@ -755,9 +755,16 @@ router.post('/capture',
 async function garantirBipeDaCaptura(capId, pid, psId, barcodePref, expectedPhoto) {
   try {
     return await prisma.$transaction(async tx => {
+      // Recovery and scanner writes lock the round before a capture. Read its
+      // context without a lock, then revalidate after acquiring that order.
+      const initial = await tx.productCapture.findUnique({ where: { id: capId } });
+      if (!initial) return null;
+      if (initial.roundId) await tx.$queryRaw`SELECT id FROM "StocktakeRound" WHERE id = ${initial.roundId} FOR SHARE`;
       await tx.$queryRaw`SELECT id FROM "ProductCapture" WHERE id = ${capId} FOR UPDATE`;
       const cap = await tx.productCapture.findUnique({ where: { id: capId } });
       if (!cap || cap.excludedAt || cap.status==='descartado') return null;
+      if (['roundId','storeId','scanKey','barcode','sellerId','sellerName','photo'].some(key=>cap[key]!==initial[key]) ||
+          capturePhotos.revisionOf(cap.note)!==capturePhotos.revisionOf(initial.note)) return null;
       // New manual captures acquire their first bipe through a camera request
       // with a decoded barcode, never through OCR or the background status job.
       if (capturePhotos.revisionOf(cap.note) && !cap.bipeId) return null;
@@ -765,7 +772,6 @@ async function garantirBipeDaCaptura(capId, pid, psId, barcodePref, expectedPhot
       // A reference/size or a saved photograph is not an actually read barcode.
       if (!cap.barcode || !barcodePref || !barcodeVariants(cap.barcode).includes(barcodePref)) return null;
       if (cap.roundId) {
-        await tx.$queryRaw`SELECT id FROM "StocktakeRound" WHERE id = ${cap.roundId} FOR SHARE`;
         const round=await tx.stocktakeRound.findUnique({where:{id:cap.roundId}});
         if(!round||!['counting','review'].includes(round.status)||round.storeId!==cap.storeId)return null;
       }

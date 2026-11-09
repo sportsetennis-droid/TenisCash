@@ -124,6 +124,9 @@ async function check(db,bipeId){
  if(early!=='aguardando_conferencia_da_etiqueta'){await pending(db,c,early);return {applied:false,reason:early};}
  const bytes=Buffer.from(c.capture.photo.slice(c.capture.photo.indexOf(',')+1),'base64');
  const read=await require('./scannerArchivedLabel').readImage(bytes,c.bipe.barcode);
+ // A busy worker has not examined this piece. Keep its queue age so an older
+ // timed-out image cannot repeatedly push every untouched piece behind itself.
+ if(read?.reason==='ocr_busy')return {applied:false,reason:'ocr_busy'};
  const reason=validateRead(c,read);if(reason){await pending(db,c,reason,{captureId:c.capture.id,photoSha256:photoDigest(c.capture.photo)});return {applied:false,reason};}
  const reference=await referenceMatches(db,c,read);
  if(!reference){await pending(db,c,'referencia_ou_marca_divergente',{captureId:c.capture.id,photoSha256:photoDigest(c.capture.photo)});return {applied:false,reason:'referencia_ou_marca_divergente'};}

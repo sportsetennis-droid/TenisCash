@@ -13,6 +13,16 @@ const evidence=(references,text='SKECHERS')=>({source:'archived-photo-local-ocr-
 const db={async $queryRaw(){return []}};
 
 (async()=>{
+ const reader=require('../src/services/scannerArchivedLabel'),originalRead=reader.readImage;
+ const queued=context();queued.bipe.id='busy-test';queued.bipe.productSizeId=queued.size.id;queued.bipe.roundId='round-test';queued.round.id='round-test';queued.round.operationType='replacement';queued.capture.id='photo-test';
+ let pendingWrites=0;
+ const busyDb={stocktakeBipe:{findUnique:async()=>queued.bipe},stocktakeRound:{findUnique:async()=>queued.round},
+  productCapture:{findFirst:async()=>queued.capture},productSize:{findUnique:async()=>queued.size},
+  stockReplacementCheck:{findUnique:async()=>null,createMany:async()=>{pendingWrites++},updateMany:async()=>{pendingWrites++}}};
+ try{reader.readImage=async()=>({pending:true,retry:true,reason:'ocr_busy'});
+  assert.equal((await service.check(busyDb,queued.bipe.id)).reason,'ocr_busy');
+  assert.equal(pendingWrites,0,'A busy worker did not inspect the piece; preserve its queue age for the next recovery sweep');
+ }finally{reader.readImage=originalRead;}
  for(const [sku,printed] of [
   ['GTM-220644-BKW','220644BKW'],['GTW-129627-ORG','129627ORG'],
   ['GTM-894339BR-LIME','894339BRLIME'],['T-894294BR-NVY','894294BRNVY'],
