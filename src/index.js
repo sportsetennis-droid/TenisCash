@@ -485,6 +485,41 @@ app.use('/api', creationCampaignsRoutes);
 app.use('/api', cashbackRedeemRoutes);
 
 // Health check
+// =====================================================================
+// Ponte WhatsApp (não-oficial): fila de saída puxada pela ponte externa.
+// Protegido pela WA_BRIDGE_KEY (sem a chave configurada, 503 — desligado).
+// =====================================================================
+function waAuth(req) {
+  const key = process.env.WA_BRIDGE_KEY;
+  if (!key) return false;
+  const got = (req.query && req.query.key) || (req.body && req.body.key) || '';
+  return String(got) === String(key);
+}
+app.get('/api/wa/pending', async (req, res) => {
+  try {
+    if (!process.env.WA_BRIDGE_KEY) return res.status(503).json({ error: 'whatsapp desligado' });
+    if (!waAuth(req)) return res.status(401).json({ error: 'chave inválida' });
+    const { prisma } = require('./middleware');
+    const limit = Math.min(Number(req.query.limit) || 20, 50);
+    const rows = await prisma.whatsAppOutbox.findMany({ where: { status: 'PENDING' }, orderBy: { createdAt: 'asc' }, take: limit });
+    res.json({ messages: rows.map((r) => ({ id: r.id, phone: r.phone, body: r.body })) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/wa/sent', async (req, res) => {
+  try {
+    if (!process.env.WA_BRIDGE_KEY) return res.status(503).json({ error: 'whatsapp desligado' });
+    if (!waAuth(req)) return res.status(401).json({ error: 'chave inválida' });
+    const { prisma } = require('./middleware');
+    const b = req.body || {};
+    if (!b.id) return res.status(400).json({ error: 'id obrigatório' });
+    await prisma.whatsAppOutbox.updateMany({
+      where: { id: String(b.id) },
+      data: b.ok ? { status: 'SENT', sentAt: new Date(), error: null } : { status: 'FAILED', error: b.error ? String(b.error).slice(0, 300) : 'falhou' },
+    });
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/health', (req, res) => {
   let nuvemshopCatalog = null;
   try {

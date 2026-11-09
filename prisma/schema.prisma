@@ -4071,6 +4071,20 @@ model TrainingSession {
   @@index([recurrenceGroupId])
 }
 
+// Fila de saída do WhatsApp (ponte não-oficial via QR). Alimentada só se WA_BRIDGE_KEY.
+model WhatsAppOutbox {
+  id        String    @id @default(cuid())
+  phone     String
+  body      String
+  status    String    @default("PENDING") // PENDING | SENT | FAILED
+  error     String?
+  userId    String?
+  createdAt DateTime  @default(now())
+  sentAt    DateTime?
+
+  @@index([status, createdAt])
+}
+
 // Avaliação do atleta (FA Four Corner Model) — alimenta a curva de evolução.
 model AthleteEvaluation {
   id            String    @id @default(cuid())

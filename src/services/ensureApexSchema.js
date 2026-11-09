@@ -195,6 +195,20 @@ const STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS "AthleteEvaluation_athlete_idx" ON "AthleteEvaluation" ("tournamentId", "userId")`,
   `CREATE INDEX IF NOT EXISTS "AthleteEvaluation_user_idx" ON "AthleteEvaluation" ("userId")`,
+  // Fila de saída do WhatsApp (ponte não-oficial via QR). A ponte externa puxa os
+  // PENDING, envia e marca SENT/FAILED. Só é alimentada se WA_BRIDGE_KEY existir.
+  `CREATE TABLE IF NOT EXISTS "WhatsAppOutbox" (
+     "id" TEXT NOT NULL,
+     "phone" TEXT NOT NULL,
+     "body" TEXT NOT NULL,
+     "status" TEXT NOT NULL DEFAULT 'PENDING',
+     "error" TEXT,
+     "userId" TEXT,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     "sentAt" TIMESTAMP(3),
+     CONSTRAINT "WhatsAppOutbox_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE INDEX IF NOT EXISTS "WhatsAppOutbox_status_idx" ON "WhatsAppOutbox" ("status", "createdAt")`,
 ];
 
 async function ensureApexSchema(prisma) {

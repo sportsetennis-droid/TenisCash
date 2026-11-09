@@ -1,0 +1,13 @@
+{
+  "name": "teniscash-whatsapp-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Ponte WhatsApp (nao-oficial) do TenisCash: mostra o QR, conecta e envia os avisos. Roda numa maquina ligada 24/7 (NAO no Railway).",
+  "main": "index.js",
+  "scripts": { "start": "node index.js" },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "qrcode-terminal": "0.12.0",
+    "whatsapp-web.js": "1.26.0"
+  }
+}
