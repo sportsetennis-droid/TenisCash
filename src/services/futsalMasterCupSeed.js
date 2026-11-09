@@ -32,7 +32,7 @@ const TEAMS = {
            B: ['Santa Cruz - PE', 'Brasil Sertão - RN', 'Amigos CG - PB', 'Real Madri - SE'] },
   '55+': { A: ['Amigos CG - PB', 'Foz Futsal - PR', 'Cristo Rei - PB'],
            B: ['Cabo Branco - PB', 'Santa Cruz - PE', 'Brasil Sertão - RN'] },
-  '60+': { U: ['Causos e Lendas - PB', 'Astrea - PB', 'Brasil Sertão - RN', 'Amigos CG - PB', 'Foz Futsal - PR'] },
+  '60+': { U: ['Causos e Lendas - PB', 'Astrea - PB', 'Brasil Sertão - RN', 'Amigos CG - PB', 'Foz Futsal - PR', 'Cabo Branco - PB'] },
 };
 
 // Formato por categoria (50+/40+/45+ grupos+mata-mata; 55+ cruzado A×B; 60+ pontos corridos)
@@ -72,7 +72,7 @@ const GAMES = [
   [27, '20', '11:30', R, '40+', 'G', 'B', 'Santa Cruz - PE', 'AAPB - PB'],
   [28, '20', '12:20', R, '45+', 'G', 'A', 'AAPB - PB', 'Brasil Sertão - RN'],
   [29, '20', '13:10', R, '45+', 'G', 'A', 'Santa Cruz - PE', 'Cabo Branco - PB'],
-  // 30: 45+ B "EPCF x PERDEDOR do J8" → visitante a confirmar (depende do jogo 8)
+  // 30: tabela = 45+ B "EPCF/GUARABIRA x PERD. J 01" → visitante = Perdedor do Jogo 01
   [30, '20', '14:00', R, '45+', 'G', 'B', 'EPCF/Guarabira', X],
   [31, '20', '14:50', R, '40+', 'G', 'A', 'Brasil Sertão - RN', 'EPCF/Guarabira'],
   [32, '20', '15:40', R, '40+', 'G', 'A', 'Bola no Pé - PB', 'Sport - PE'],
@@ -88,24 +88,22 @@ const GAMES = [
   [41, '21', '13:00', M, '55+', 'G', 'AxB', 'Foz Futsal - PR', 'Brasil Sertão - RN'],
   [42, '21', '13:50', M, '55+', 'G', 'AxB', 'Cristo Rei - PB', 'Cabo Branco - PB'],
   [43, '21', '14:40', M, '55+', 'G', 'AxB', 'Amigos CG - PB', 'Santa Cruz - PE'],
-  // 44: a tabela oficial trazia "Cabo Branco x Amigos CG", mas Cabo Branco NÃO é do 60+.
-  // O 60+ é round-robin (todos x todos); o ÚNICO par que faltava é Causos e Lendas x Amigos CG.
-  [44, '21', '15:30', M, '60+', 'G', 'U', 'Causos e Lendas - PB', 'Amigos CG - PB'],
+  // 44: tabela oficial = 60+ U "CABO BRANCO - PB x AMIGOS CG - PB" (transcrição literal)
+  [44, '21', '15:30', M, '60+', 'G', 'U', 'Cabo Branco - PB', 'Amigos CG - PB'],
   [45, '21', '16:20', M, '60+', 'G', 'U', 'Brasil Sertão - RN', 'Foz Futsal - PR'],
   [46, '21', '18:00', M, '50+', 'SF', null, X, X],
   [47, '21', '18:50', M, '50+', 'SF', null, X, X],
   [48, '21', '19:40', M, '55+', 'SF', null, X, X],
   [49, '21', '20:30', M, '55+', 'SF', null, X, X],
   [50, '21', '08:00', R, '40+', 'G', 'A', 'Sport - PE', 'Brasil Sertão - RN'],
-  // 51: a tabela trazia "EBN x Brasil Sertão", mas Brasil Sertão é do grupo A.
-  // Grupo B do 40+ é round-robin (4 times); o ÚNICO par que faltava é EBN x Santa Cruz.
-  [51, '21', '08:50', R, '40+', 'G', 'B', 'EBN - PB', 'Santa Cruz - PE'],
+  // 51: tabela oficial = 40+ B "EBN - PB x BRASIL SERTÃO - RN" (transcrição literal)
+  [51, '21', '08:50', R, '40+', 'G', 'B', 'EBN - PB', 'Brasil Sertão - RN'],
   [52, '21', '09:40', R, '40+', 'G', 'A', 'EPCF/Guarabira', 'Bola no Pé - PB'],
   [53, '21', '10:30', R, '40+', 'G', 'B', 'AAPB - PB', 'Cabo Branco - PB'],
   [54, '21', '11:20', R, '45+', 'G', 'A', 'Cabo Branco - PB', 'Brasil Sertão - RN'],
-  [55, '21', '12:10', R, '45+', 'G', 'A', 'AAPB - PB', 'Santa Cruz - PE'],
-  // 56: 45+ B "EPCF x VENCEDOR do J8" → visitante a confirmar (depende do jogo 8)
-  [56, '21', '13:00', R, '45+', 'G', 'B', 'EPCF/Guarabira', X],
+  [55, '21', '12:10', R, '45+', 'G', 'B', 'AAPB - PB', 'Santa Cruz - PE'],
+  // 56: tabela = 45+ A "EPCF/GUARABIRA x VENC. J 01" → visitante = Vencedor do Jogo 01
+  [56, '21', '13:00', R, '45+', 'G', 'A', 'EPCF/Guarabira', X],
   [57, '21', '18:00', R, '40+', 'SF', null, X, X],
   [58, '21', '18:50', R, '40+', 'SF', null, X, X],
   [59, '21', '19:40', R, '45+', 'SF', null, X, X],
@@ -189,7 +187,7 @@ async function importFutsalMasterCup(ownerId) {
   // 3) Jogos (idempotente por ordering = nº do jogo)
   let created = 0;
   let tbd = 0;
-  let backfilled = 0;
+  let reconciled = 0;
   for (const [n, day, time, venue, catName, stageCode, grp, home, away] of GAMES) {
     const cid = catId[catName];
     if (!cid) continue;
@@ -197,11 +195,15 @@ async function importFutsalMasterCup(ownerId) {
     const awayId = away ? entryId[catName + '|' + away] || null : null;
     const exists = await prisma.tournamentMatch.findFirst({ where: { tournamentId: t.id, ordering: n } });
     if (exists) {
-      // Jogo "a confirmar" que agora tem os dois times na tabela → preenche.
-      // Seguro: só mexe se ainda SCHEDULED e com algum slot vazio (nunca sobrescreve jogo já definido/jogado).
-      if (exists.status === 'SCHEDULED' && (!exists.homeEntryId || !exists.awayEntryId) && homeId && awayId) {
-        await prisma.tournamentMatch.update({ where: { id: exists.id }, data: { homeEntryId: homeId, awayEntryId: awayId } });
-        backfilled += 1;
+      // RECONCILIA o jogo de GRUPO com a TABELA OFICIAL: corrige times/grupo trocados
+      // (ex. erro de import anterior). Seguro: só jogo SCHEDULED e de fase regular —
+      // nunca mexe em jogo já jogado/finalizado nem em mata-mata.
+      if (exists.status === 'SCHEDULED' && (exists.stage === 'GROUP' || exists.stage === 'LEAGUE')) {
+        const data = {};
+        if ((exists.homeEntryId || null) !== homeId) data.homeEntryId = homeId;
+        if ((exists.awayEntryId || null) !== awayId) data.awayEntryId = awayId;
+        if ((exists.groupName || null) !== (grp || null)) data.groupName = grp || null;
+        if (Object.keys(data).length) { await prisma.tournamentMatch.update({ where: { id: exists.id }, data }); reconciled += 1; }
       }
       continue;
     }
@@ -220,12 +222,12 @@ async function importFutsalMasterCup(ownerId) {
   }
 
   // 3b) Jogos de GRUPO que dependem de RESULTADO de outro jogo (tabela oficial):
-  // 45+ #30 = EPCF × PERDEDOR do Jogo 8 · #56 = EPCF × VENCEDOR do Jogo 8.
-  // Não é "a definir" por erro — depende do J8. Mostra o rótulo em vez de vazio.
-  const RESULT_LABELS = { 30: 'Perdedor do Jogo 8', 56: 'Vencedor do Jogo 8' };
+  // 45+ #30 = EPCF × PERD. J 01 · #56 = EPCF × VENC. J 01. Não é "a definir" por erro —
+  // depende do Jogo 01. Mostra o rótulo no lugar do time (sobrescreve se mudou).
+  const RESULT_LABELS = { 30: 'Perdedor do Jogo 01', 56: 'Vencedor do Jogo 01' };
   for (const [ord, label] of Object.entries(RESULT_LABELS)) {
     const m = await prisma.tournamentMatch.findFirst({ where: { tournamentId: t.id, ordering: Number(ord) } });
-    if (m && m.status === 'SCHEDULED' && !m.awayEntryId && !m.awaySourceLabel) {
+    if (m && m.status === 'SCHEDULED' && !m.awayEntryId && m.awaySourceLabel !== label) {
       await prisma.tournamentMatch.update({ where: { id: m.id }, data: { awaySourceLabel: label } }).catch(() => {});
     }
   }
@@ -271,7 +273,7 @@ async function importFutsalMasterCup(ownerId) {
   return {
     ok: true, slug: t.slug, tournamentId: t.id,
     categories: Object.keys(TEAMS).length, teams: totalTeams,
-    matchesCreated: created, matchesTBD: tbd, matchesBackfilled: backfilled,
+    matchesCreated: created, matchesTBD: tbd, matchesReconciled: reconciled,
     publicUrl: '/t/' + t.slug,
   };
 }
