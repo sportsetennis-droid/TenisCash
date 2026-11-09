@@ -11,7 +11,7 @@ function scanKey(roundId, clientScanId) {
 async function roundForScan(db, storeId, roundId, lock = false) {
   if (!storeId || !roundId) fail('Nenhuma rodada selecionada. Abra o scanner atualizado e escolha a loja. Os bipes antigos não entram na nova contagem.');
   if (lock) await db.$queryRaw`SELECT id FROM "StocktakeRound" WHERE id = ${roundId} FOR SHARE`;
-  const round = await db.stocktakeRound.findUnique({ where: { id: roundId } });
+  const round = await db.stocktakeRound.findUnique({ where: { id: roundId }, select: { id:true,storeId:true,status:true,operationType:true } });
   if (!round || round.storeId !== storeId) fail('A rodada não pertence à loja selecionada.');
   if (round.status !== 'counting') fail('A coleta desta rodada está encerrada. Esta leitura não foi transferida para outra rodada.');
   return round;

@@ -1,0 +1,39 @@
+'use strict';
+const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict'),crypto=require('node:crypto');
+const source=path.resolve(__dirname,'../public/bipar.html');
+const html=fs.readFileSync(source,'utf8'), chunk=(a,b)=>html.slice(html.indexOf(a),html.indexOf(b));
+const code=chunk('  function etiqReleasePhotos(', '  async function etiqReadPhoto(')+chunk('  function etiqPhotoDurable(', '  let etiqOcrBusy =');
+const results=[];
+function harness(){
+ const nodes=new Map();const node=id=>{if(!nodes.has(id))nodes.set(id,{id,value:id==='loja'?'store-test':'operator-test',textContent:'',style:{},hidden:false,disabled:false,setAttribute(){},insertBefore(n){nodes.set(n.id,n);},removeAttribute(k){delete this[k];}});return nodes.get(id);};
+ const video=node('etiq-video');Object.assign(video,{videoWidth:1920,videoHeight:1080,width:0,height:0,marker:'FRAME-A',code:'4006381333931',readyState:4,paused:false,ended:false,getBoundingClientRect:()=>({width:390,height:600})});
+ let seq=0;const draws=[],saved=[],decoded=[];let hold=false,fail=false;
+ const ctx={window:{BiparActions:{isInventory:()=>true,mode:()=> 'replacement'},ScannerRound:{requireRound:()=> 'round-test',id:()=> 'round-test'},ScannerTransfer:{start(){}},getComputedStyle:()=>({objectFit:'cover'})},
+ document:{getElementById:id=>node(id),createElement:tag=>tag==='canvas'?(()=>{const c={width:0,height:0,getContext:()=>({drawImage(source,...args){c.marker=source.marker;c.code=source.code;draws.push({marker:c.marker,args});}}),toDataURL:()=> 'data:image/jpeg;base64,'+Buffer.from(c.marker).toString('base64')};return c;})():({style:{},hidden:false,removeAttribute(k){delete this[k];}})},
+ navigator:{onLine:false},localStorage:{getItem:()=> 'Operator test'},STORAGE_VENDNAME:'operator',genClientScanId:()=> 'physical-'+(++seq),
+ etiqCameraContext:null,etiqLeituraArmada:true,etiqPausado:false,etiqIgnoredCode:'',etiqIgnoreUntil:0,etiqFila:[],etiqAtivo:null,etiqRetryAt:0,etiqStorageReady:true,etiqStorageFailed:false,etiqStorageHealth:null,
+ etiqAutoFrames:new Map(),etiqAuto:{stop(){},reset(){}},etiqWatch:null,etiqUltimo:'HISTORICAL-SKU',etiqUltimoTs:123,bipes:[{code:'1234567890123',image:'HISTORICAL-PHOTO'}],
+ renderEtiqLista(){},etiqBeep(){},etiqStorageNotice(){},clearInterval(){},setInterval(){return 1;},alert(){},enviarFila:async()=>{},
+ etiqIdentity:item=>'id:'+item.roundId+':'+item.clientScanId,
+ etiqSave:async item=>{if(fail){ctx.etiqStorageFailed=true;return false;}for(const row of item?[item]:ctx.etiqFila){ctx.etiqSave.baseline.set(ctx.etiqIdentity(row),structuredClone(row));saved.push(structuredClone(row));}return true;},Date,console};
+ ctx.etiqSave.baseline=new Map();ctx.window.ScannerAuto={stopDecoder(){},decodeInWorker:frame=>{decoded.push(frame);return hold?new Promise(resolve=>{decoded.at(-1).resolve=resolve;}):Promise.resolve(frame.code||'');}};
+ vm.createContext(ctx);vm.runInContext(fs.readFileSync(path.resolve(__dirname,'../public/scanner-camera.js'),'utf8'),ctx);vm.runInContext(code,ctx);
+ return {ctx,node,video,draws,saved,decoded,setHold:value=>{hold=value;},setFail:value=>{fail=value;}};
+}
+const settle=async()=>{await new Promise(setImmediate);await new Promise(setImmediate);};
+const photo=marker=>'data:image/jpeg;base64,'+Buffer.from(marker).toString('base64');
+(async()=>{
+ const a=harness();a.ctx.window.capturaManual();await settle();const first=a.ctx.etiqFila[0];
+ assert.equal(first.ean,'4006381333931');assert.equal(first.b64,photo('FRAME-A'));assert.equal(first.manualDecodePending,false);assert.equal(a.node('etiq-confirm-btn').disabled,false);assert.equal(a.ctx.etiqPausado,true);assert.equal(a.ctx.etiqLeituraArmada,false);
+ assert.deepEqual(a.draws[0].args,[609,0,702,1080,0,0,702,1080]);results.push('manual captures visible current frame, decodes that frame, ignores history, pauses for explicit Next');
+ const id=first.clientScanId;a.video.marker='BOX-B';a.video.code='5901234123457';a.ctx.window.capturaManual();await settle();
+ assert.equal(first.ean,'');assert.equal(first.st,'revisao');assert.equal(first.captureExpectedBarcode,'4006381333931');assert.equal(first.captureConflictBarcode,'5901234123457');assert.equal(first.b64,photo('BOX-B'));assert.equal(first.photoRevision,2);assert.equal(first.clientScanId,id);assert.equal(a.ctx.etiqFila.length,1);assert(a.saved.some(x=>x.b64===photo('FRAME-A')));assert.equal(a.node('etiq-confirm-btn').disabled,true);results.push('retake B cannot inherit A; conflict stays local under same ID while original A is preserved');
+ a.ctx.window.relerEtiqueta(first.lid);a.ctx.window.capturaAutomatica({ean:'5901234123457',frame:{width:800,height:1200,marker:'BOX-B'}});assert.equal(first.photoRevision,2);assert.equal(first.ean,'');
+ a.ctx.window.capturaAutomatica({ean:'4006381333931',frame:{width:800,height:1200,marker:'BOX-A-RECHECKED'}});await settle();assert.equal(first.photoRevision,3);assert.equal(first.b64,photo('BOX-A-RECHECKED'));assert.equal(first.ean,'4006381333931');assert.equal(first.clientScanId,id);results.push('explicit reread rejects wrong code and archives correctly decoded replacement frame as revision 3 of same piece');
+ const b=harness();b.video.code='';b.ctx.window.capturaManual();await settle();const unknown=b.ctx.etiqFila[0];assert.equal(unknown.ean,'');assert.equal(unknown.st,'fila');assert.equal(b.node('etiq-confirm-btn').hidden,true);assert.equal(b.decoded.length,1);assert.match(b.node('etiq-hint').textContent,/Reler esta peça/);
+ b.ctx.window.relerEtiqueta(unknown.lid);b.ctx.window.capturaAutomatica({ean:'5901234123457',frame:{width:800,height:1200,marker:'BOX-B-DECODED'}});await settle();assert.equal(unknown.photoRevision,2);assert.equal(unknown.ean,'5901234123457');assert.equal(unknown.b64,photo('BOX-B-DECODED'));assert(b.saved.some(x=>x.b64===photo('FRAME-A')));assert.equal(b.ctx.etiqFila.length,1);results.push('no-EAN manual photo is decoded once, remains pending without Next, and later code receives its own archived frame');
+ b.ctx.window.proximaEtiqueta();b.video.marker='NEW-PHYSICAL-B';b.video.code='5901234123457';b.ctx.window.capturaManual();await settle();assert.equal(b.ctx.etiqFila.length,2);assert.notEqual(b.ctx.etiqFila[1].clientScanId,unknown.clientScanId);results.push('explicit Next permits another physical pair with repeated code under a new ID');
+ const c=harness();c.video.paused=true;c.ctx.window.capturaManual();assert.equal(c.ctx.etiqFila.length,0);c.video.paused=false;c.video.readyState=1;c.ctx.window.capturaManual();assert.equal(c.ctx.etiqFila.length,0);c.video.readyState=4;c.setFail(true);c.ctx.window.capturaManual();await settle();assert.equal(c.ctx.etiqStorageFailed,true);assert.equal(c.node('etiq-confirm-btn').disabled,true);results.push('paused/unready video is rejected and failed local persistence cannot enable Next');
+ const d=harness();d.setHold(true);d.ctx.window.capturaManual();await settle();const old=d.decoded[0];d.video.marker='NEW-REVISION';d.video.code='5901234123457';d.ctx.window.capturaManual();await settle();const fresh=d.decoded[1];old.resolve('4006381333931');await settle();assert.equal(d.ctx.etiqFila[0].ean,'');assert.equal(d.ctx.etiqFila[0].photoRevision,2);fresh.resolve('5901234123457');await settle();assert.equal(d.ctx.etiqFila[0].ean,'5901234123457');assert.equal(d.ctx.etiqFila[0].b64,photo('NEW-REVISION'));assert.equal(old.width,0);assert.equal(fresh.width,0);results.push('late decode from previous manual revision cannot overwrite newer image/code; temporary canvases released');
+ const out={generatedAt:new Date().toISOString(),sourceSha256:crypto.createHash('sha256').update(html).digest('hex'),scope:'Node VM actual UI functions and controlled camera/decode/storage; no physical camera or production requests.',tests:results};for(const r of results)console.log('PASS '+r);
+})().catch(error=>{console.error(error);process.exitCode=1;});

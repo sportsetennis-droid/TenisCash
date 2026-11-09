@@ -312,7 +312,7 @@
   }
   function ensureDecoderWorker(){
     if(decoderWorker)return decoderWorker;
-    const worker=decoderWorker=new Worker('/scanner-barcode-worker.js?v=20261109-edge-ready-1');
+    const worker=decoderWorker=new Worker('/scanner-barcode-worker.js?v=20261109-parallel-1');
     worker.onmessage=({data})=>{
       if(decoderWorker!==worker)return;
       if(data?.ready){decoderState={method:'worker',ready:true,error:null};finishWarmup(true);return;}

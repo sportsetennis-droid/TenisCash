@@ -4,15 +4,15 @@
 
 // Cache only the public scanner shell. Never cache APIs, authentication,
 // catalogue photos, captured photographs or other application pages.
-const SCANNER_CACHE = 'teniscash-scanner-shell-20261109-edge-ready-1';
+const SCANNER_CACHE = 'teniscash-scanner-shell-20261109-parallel-1';
 const SCANNER_SHELL = [
-  '/bipar.html', '/scanner-barcode-policy.js?v=20261027-internal-codes-1',
+  '/bipar.html', '/scanner-barcode-policy.js?v=20261109-parallel-1',
   '/scanner-confirm.js?v=20260915-resume-2', '/scanner-view.js?v=20261018-recent-reads-1',
   '/scanner-camera.js?v=20261018-live-fast-2', '/scanner-round.js?v=20261109-replacement-1',
-  '/bipar-transfer.js?v=20261002-actions-1', '/scanner-photo-storage.js?v=20261109-readback-1',
+  '/bipar-transfer.js?v=20261002-actions-1', '/scanner-photo-storage.js?v=20261109-parallel-1',
   '/scan-action-photos.js?v=20261109-archive-1', '/bipar-actions.js?v=20261109-mobile-durable-1',
-  '/vendor/barcode/zxing-reader-3.1.4.js', '/scanner-auto.js?v=20261109-edge-ready-1',
-  '/scanner-regions.js?v=20260914-worker-1', '/scanner-ocr.js?v=20261109-bounded-memory-1',
+  '/vendor/barcode/zxing-reader-3.1.4.js', '/scanner-auto.js?v=20261109-parallel-1',
+  '/scanner-regions.js?v=20260914-worker-1', '/scanner-ocr.js?v=20261109-parallel-1',
 ];
 const SCANNER_ALLOWED = new Set(SCANNER_SHELL.map(path => path.split('?')[0]).concat([
   '/scanner-barcode-worker.js', '/vendor/barcode/zxing_reader.wasm',
@@ -55,8 +55,14 @@ self.addEventListener('fetch', event => {
     try {
       const response = await fetch(event.request);
       if (!response.ok || response.redirected || response.type === 'opaque') throw Error('Scanner shell unavailable');
+      // Keep the HTML installed with this complete shell. An active older
+      // worker may receive a new deployment's HTML before its scripts arrive;
+      // caching that response would break the previous offline fallback.
+      // Online navigation still receives the fresh response below.
       // Cache quota failure must not turn a successful network read into error.
-      try { await cache.put(key, response.clone()); } catch (_) {}
+      if (new URL(event.request.url).pathname !== '/bipar.html') {
+        try { await cache.put(key, response.clone()); } catch (_) {}
+      }
       return response;
     } catch (error) {
       const saved = await cache.match(key);

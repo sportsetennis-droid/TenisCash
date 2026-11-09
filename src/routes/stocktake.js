@@ -44,7 +44,7 @@ router.use('/replacements', require('./stockReplacement'));
 const replacement=require('../services/stockReplacement');
 async function authorizeReplacement(req,res,roundId=req.body?.roundId){
   if(!roundId)return true;
-  const round=await prisma.stocktakeRound.findUnique({where:{id:roundId}});
+  const round=await prisma.stocktakeRound.findUnique({where:{id:roundId},select:{id:true,storeId:true,operationType:true}});
   if(round?.operationType!=='replacement')return true;
   let authenticated=false;await authMiddleware(req,res,()=>{authenticated=true});
   if(!authenticated)return false;
@@ -189,7 +189,7 @@ async function applyBipeIfReady(tx, bipeId) {
 
   if (!bipe) return { applied: false, reason: 'bipe_not_found' };
   if (bipe.applied) return { applied:true,idempotent:true,reason:'already_applied' };
-  if(bipe.roundId&&(await tx.stocktakeRound.findUnique({where:{id:bipe.roundId}}))?.operationType==='replacement')return {applied:false,reason:'replacement_validation_pending'};
+  if(bipe.roundId&&(await tx.stocktakeRound.findUnique({where:{id:bipe.roundId},select:{operationType:true}}))?.operationType==='replacement')return {applied:false,reason:'replacement_validation_pending'};
   return { applied:false,reason:bipe.roundId ? 'round_count_only' : 'historical_read_only' };
 
 }
@@ -848,19 +848,28 @@ async function processarEtiqueta(capId, photo, eanLocal, meta) {
     : scannerPendingMessage(meta?.ocrText, lido, match.reason);
   const savedRead = lido || { ocrStatus: meta?.ocrText ? 'validation_rejected' : 'no_text',
     preview: String(meta?.ocrText || '').slice(0, 120) };
-  const current = await prisma.productCapture.findUnique({ where: { id: capId } });
-  if (meta?.photoRevision && (capturePhotos.revisionOf(current?.note) !== meta.photoRevision || current?.photo !== photo)) return;
-  const data = {
-    barcode: ean || null,
-    note: capturePhotos.photoNote(current?.note, 'etiqueta ' + mensagem + ' ' + JSON.stringify(savedRead)),
-    status: vinculado ? 'vinculado' : 'pendente',
-    matchedProductId: matchedProductId || null,
-    resolvedAt: new Date(),
-  };
-  // Compare-and-set protects a newer frame accepted while this OCR ran.
-  if (meta?.photoRevision) await prisma.productCapture.updateMany({ where: { id: capId, photo, note: current.note }, data });
-  else await prisma.productCapture.update({ where: { id: capId }, data });
-  const finalCapture=await prisma.productCapture.findUnique({where:{id:capId},select:{bipeId:true}});
+  const finalCapture=await prisma.$transaction(async tx=>{
+    // Exclusion locks the round first. A late recognition result must either
+    // finish before that correction or observe the excluded/closed state.
+    if(capture.roundId)await tx.$queryRaw`SELECT id FROM "StocktakeRound" WHERE id=${capture.roundId} FOR SHARE`;
+    await tx.$queryRaw`SELECT id FROM "ProductCapture" WHERE id=${capId} FOR UPDATE`;
+    const current=await tx.productCapture.findUnique({where:{id:capId}});
+    if(!current||current.excludedAt||current.status==='descartado')return null;
+    if(['roundId','storeId','scanKey','barcode','sellerId'].some(key=>current[key]!==capture[key]))return null;
+    if(capture.roundId){
+      const round=await tx.stocktakeRound.findUnique({where:{id:capture.roundId},select:{status:true,storeId:true}});
+      if(!round||!['counting','review'].includes(round.status)||round.storeId!==current.storeId)return null;
+    }
+    if(meta?.photoRevision&&(capturePhotos.revisionOf(current.note)!==meta.photoRevision||current.photo!==photo))return null;
+    const data={
+      barcode:ean||null,
+      note:capturePhotos.photoNote(current.note,'etiqueta '+mensagem+' '+JSON.stringify(savedRead)),
+      status:vinculado?'vinculado':'pendente',matchedProductId:matchedProductId||null,resolvedAt:new Date(),
+    };
+    const saved=await tx.productCapture.updateMany({where:{id:capId,excludedAt:null,status:{not:'descartado'},photo:current.photo,note:current.note},data});
+    return saved.count===1?{bipeId:current.bipeId}:null;
+  });
+  if(!finalCapture)return;
   if(!meta?.serverRead)await replacement.enqueue(prisma,finalCapture?.bipeId);
   return { vinculado, mensagem };
 }
@@ -1093,6 +1102,11 @@ router.get('/etiqueta-status', async (req, res) => {
       where: { id: { in: ids }, AND: [{ photo: { not: null } }, { photo: { not: '' } }] }, select: { id: true } })).map(row => row.id));
     const bipeIds = rows.map((row) => row.bipeId).filter(Boolean);
     const bipeRows = bipeIds.length ? await prisma.stocktakeBipe.findMany({ where: { id: { in: bipeIds } } }) : [];
+    const liveBipeIds = [...new Set(rows.filter(row => replacementIds.has(row.roundId) && row.bipeId).map(row => row.bipeId))];
+    const checks = liveBipeIds.length ? await prisma.stockReplacementCheck.findMany({
+      where: { bipeId: { in: liveBipeIds } }, select: { bipeId:true,appliedAt:true,reversedAt:true,reason:true },
+    }) : [];
+    const checkMap = new Map(checks.map(check => [check.bipeId, check]));
     const sizeIds = bipeRows.map((row) => row.productSizeId).filter(Boolean);
     const sizeRows = sizeIds.length ? await prisma.productSize.findMany({
       where: { id: { in: sizeIds } },
@@ -1105,7 +1119,7 @@ router.get('/etiqueta-status', async (req, res) => {
       const ps = bipe?.productSizeId ? sizeMap[bipe.productSizeId] : null;
       const needsSize = Boolean(bipe && ps && needsManualSize(ps.product.brand, ps));
       const live=replacementIds.has(row.roundId);
-      const check=live&&bipe?await prisma.stockReplacementCheck.findUnique({where:{bipeId:bipe.id}}):null;
+      const check=live&&bipe?checkMap.get(bipe.id)||null:null;
       const outcome=outcomeMap.get(row.id);
       const reasonCode=live?(['completed','failed','cancelled'].includes(outcome?.state)&&outcome.reason||replacementQueue.pendingReason(row.note)||check?.reason||null):null;
       const excludedAt=row.excludedAt||bipe?.excludedAt||null;

@@ -7,7 +7,13 @@ const instances=new Map();
 const transient=new Set(['ocr_busy','ocr_timeout','ocr_unavailable','ocr_memory_limit','photo_decode_busy','photo_decode_timeout','photo_decode_unavailable','photo_decode_memory_limit']);
 const fingerprint=photo=>createHash('sha256').update(String(photo||'')).digest('hex');
 function adapter(tx){return {executeSql:async(text,values=[])=>({rows:await tx.$queryRawUnsafe(text,...values)})};}
-function failure(code){const e=new Error(code);e.code=code;return e;}
+function failure(code){const e=new Error(code);e.code=code;if(transient.has(code))e.reason=code;return e;}
+// Older pg-boss failures stored Error.code/message rather than reason. Accept
+// only our known transient codes from those fields, never arbitrary messages.
+function outcomeReasonSql(column){const known=[...transient].map(code=>`'${code}'`).join(',');return `CASE
+ WHEN ${column}->>'reason' ~ '^[a-z_]{1,80}$' THEN ${column}->>'reason'
+ WHEN ${column}->>'code' IN (${known}) THEN ${column}->>'code'
+ WHEN ${column}->>'message' IN (${known}) THEN ${column}->>'message' ELSE NULL END`;}
 function snapshot(capture){return {captureId:capture.id,roundId:capture.roundId,storeId:capture.storeId,scanKey:capture.scanKey,
  revision:photos.revisionOf(capture.note),photoHash:fingerprint(capture.photo),sellerId:capture.sellerId,barcodeHash:fingerprint(policy.identity(capture.barcode))};}
 function matches(capture,data){return !!capture&&capture.id===data.captureId&&capture.roundId===data.roundId&&capture.storeId===data.storeId&&
@@ -66,8 +72,10 @@ function createQueue(db,options={}){
     await boss.createQueue(QUEUE,{policy:'exclusive',retryLimit:8,retryDelay:15,retryBackoff:true,retryDelayMax:300,
      expireInSeconds:120,heartbeatSeconds:15,retentionSeconds:604800,deleteAfterSeconds:2592000,...options.queueOptions});
     await db.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS replacement_capture_job_age ON ${SCHEMA}.job (name,(data->>'captureId'),created_on)`);
+    // Drain known backlog without an idle second between cheap jobs. This
+    // retains one handler/photo at a time and returns to polling when empty.
     if(options.work!==false)workerId=await boss.work(QUEUE,{batchSize:1,localConcurrency:options.localConcurrency||1,
-     pollingIntervalSeconds:1,...options.workerOptions},async jobs=>processJob(jobs[0]));
+     pollingIntervalSeconds:1,burstWhenReadyExceeds:1,...options.workerOptions},async jobs=>processJob(jobs[0]));
     ready=true;lastErrorCode=null;return api;
    }catch(error){lastErrorCode='queue_start_failed';try{await boss.stop({graceful:false})}catch(_){}throw error;}
    finally{starting=null;}
@@ -133,6 +141,8 @@ function createQueue(db,options={}){
   await start();
   // Recovery only schedules stored events. It does not decode, create bipes,
   // or alter balances. A pending piece is retried on its own schedule.
+  // Applied pieces still need catalog-image review refresh; processJob skips
+  // OCR for those and never applies their unit again.
   const select=()=>db.$queryRawUnsafe(`SELECT c.id FROM "ProductCapture" c JOIN "StocktakeRound" r ON r.id=c."roundId"
    LEFT JOIN "StocktakeBipe" b ON b.id=c."bipeId" LEFT JOIN "StockReplacementCheck" v ON v."bipeId"=b.id
    WHERE c."excludedAt" IS NULL AND c.status<>'descartado' AND c.photo IS NOT NULL AND c.barcode IS NOT NULL
@@ -163,7 +173,7 @@ async function health(db,{roundId,storeId}={}){
   const groups=await db.$queryRawUnsafe(`SELECT state::text AS state,count(*)::int AS count FROM ${SCHEMA}.job WHERE ${where} GROUP BY state`,...args);
   const items=await db.$queryRawUnsafe(`SELECT id::text AS "jobId",data->>'captureId' AS "captureId",(SELECT c."bipeId" FROM "ProductCapture" c WHERE c.id=data->>'captureId') AS "bipeId",state::text AS state,retry_count+1 AS attempts,
    created_on AS "createdAt",started_on AS "startedAt",completed_on AS "completedAt",start_after AS "nextAttemptAt",
-   CASE WHEN output->>'reason' ~ '^[a-z_]{1,80}$' THEN output->>'reason' ELSE NULL END AS reason
+   ${outcomeReasonSql('output')} AS reason
    FROM ${SCHEMA}.job WHERE ${where} ORDER BY created_on DESC LIMIT 250`,...args);
   const [oldest]=await db.$queryRawUnsafe(`SELECT EXTRACT(EPOCH FROM (clock_timestamp()-min(created_on)))::float8 AS seconds FROM ${SCHEMA}.job WHERE ${where} AND state IN ('created','retry','active')`,...args);
   return {available:true,queue:QUEUE,states:Object.fromEntries(groups.map(g=>[g.state,g.count])),totalJobs:groups.reduce((n,g)=>n+g.count,0),oldestPendingSeconds:oldest?.seconds??null,items,worker};
@@ -172,7 +182,7 @@ async function health(db,{roundId,storeId}={}){
 async function outcomes(db,captureIds){
  if(!captureIds?.length)return [];
  try{return await db.$queryRawUnsafe(`SELECT DISTINCT ON (c.id) c.id AS "captureId",j.state::text AS state,
-  CASE WHEN j.output->>'reason' ~ '^[a-z_]{1,80}$' THEN j.output->>'reason' ELSE NULL END AS reason
+  ${outcomeReasonSql('j.output')} AS reason
   FROM ${SCHEMA}.job j JOIN "ProductCapture" c ON c.id=j.data->>'captureId'
   WHERE j.name=$1 AND c.id=ANY($2::text[])
    AND j.data->>'revision'=substring(c.note from '\\[scanner-photo-revision:([0-9]+)\\]$')
