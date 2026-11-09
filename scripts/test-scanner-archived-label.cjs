@@ -13,4 +13,7 @@ assert.equal(readWords(data([word('43',180,270),word('BR',310,271),word('42',360
 assert.equal(readWords(data([word('43',180,270,50),word('BR',310,271),ref])),null);
 assert.equal(readWords(data([word('43',180,270),word('BR',800,271),ref])),null);
 assert.equal(readWords(data([word('43',180,270),word('BR',310,271),word('42',180,500),word('BR',310,500),ref])),null);
-console.log('PASS: 9 archived-label geometry cases; BR before/after/below, other scales, ambiguity, confidence and distance.');
+const column=[word('USA',100,100),word('10',100,145),word('EUR',100,190),word('43.5',100,235),word('UK',100,280),word('9',100,325),word('28',100,415),word('BRA',100,460),word('42',100,505),ref];
+assert.equal(readWords(data(column)).size,'42','Vertical scales establish their own labels above values; cm 28 must not become BR');
+assert.equal(readWords(data([word('28',100,415),word('BRA',100,460),word('42',100,505),ref])),null,'No column context: both candidates stay ambiguous');
+console.log('PASS: 11 archived-label geometry cases; literal BR, vertical scale ownership, other scales, ambiguity, confidence and distance.');

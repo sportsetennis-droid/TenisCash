@@ -9,7 +9,8 @@
   const stable = value => JSON.stringify(value, function (_, item) { return item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item; });
   const settings = read(settingsKey, { mode: 'inventory', stores: {}, origin: '' });
   settings.stores = settings.stores || {};
-  let action = ['inventory', 'transfer', 'receipt'].includes(settings.mode) ? settings.mode : 'inventory';
+  const requestedMode=new URLSearchParams(window.location?.search||'').get('mode');
+  let action = ['inventory', 'replacement', 'transfer', 'receipt'].includes(requestedMode||settings.mode) ? requestedMode||settings.mode : 'inventory';
   let token = sessionStorage.getItem('tc_transfer_token') || localStorage.getItem('loja_token') || localStorage.getItem('tc_token') || localStorage.getItem('tc_admin_token') || '';
   let actor = null, stores = [], allowed = [], shipments = [], generation = 0, shipmentRequest = 0, busy = false, storageFailed = false, preview = null, interaction = false;
   let expiredActor = null, authenticationRecoveryTimer = null, authenticationRecovery = null;
@@ -97,7 +98,7 @@
     });
   }
   $('bipar-action').value = action;
-  function isInventory() { return action === 'inventory'; }
+  function isInventory() { return action === 'inventory'||action === 'replacement'; }
   function store(id) { return stores.find(item => item.id === id); }
   function storeName(id) { const item = store(id); return item ? item.name + (item.code ? ' (' + item.code + ')' : '') : 'Loja não selecionada'; }
   function normalizedSize(value) { const size = String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/^BR\s*/, '').replace(',', '.').trim(); return ['U', 'UNICO'].includes(size) ? 'UNICO' : size; }
@@ -523,11 +524,18 @@
     if (options.some(item => item.id === selected)) select.value = selected;
   }
   function refresh() {
-    $('round-box').hidden = !isInventory(); $('inventory-readings').hidden = !isInventory(); $('inventory-seller-wrap').hidden = !isInventory();
-    $('action-setup').hidden = isInventory(); $('action-workspace').hidden = isInventory();
+    $('round-box').hidden = !isInventory(); $('inventory-readings').hidden = !isInventory(); $('inventory-seller-wrap').hidden = !isInventory()||action==='replacement';
+    $('action-setup').hidden = action === 'inventory'; $('action-workspace').hidden = isInventory();
     $('action-history').hidden = isInventory(); syncStatus();
-    $('bipar-store-label').textContent = isInventory() ? 'LOJA DO INVENTÁRIO' : action === 'transfer' ? 'LOJA DE DESTINO' : 'LOJA QUE ESTÁ RECEBENDO';
+    $('bipar-store-label').textContent = action === 'replacement' ? 'LOJA DO NOVO ESTOQUE' : isInventory() ? 'LOJA DO INVENTÁRIO' : action === 'transfer' ? 'LOJA DE DESTINO' : 'LOJA QUE ESTÁ RECEBENDO';
     window.ScannerTransfer?.refresh();
+    if(action==='replacement'){
+      $('action-login').hidden=!!actor;$('action-switch-user').hidden=!actor;
+      $('action-person').textContent=actor?'Operador: '+actor.name:'';
+      $('action-origin-wrap').hidden=true;$('action-shipment-wrap').hidden=true;
+      $('action-explanation').textContent='Cada peça validada entra no novo estoque oficial. O saldo anterior fica arquivado na operação.';
+      if(typeof atualizarStatus==='function')atualizarStatus();
+    }
     if (isInventory()) return;
     $('action-login').hidden = !!actor; $('action-switch-user').hidden = !actor;
     $('action-person').textContent = actor ? 'Operador: ' + actor.name : '';
@@ -1182,6 +1190,6 @@
       invalidate(); renderReadings(); refresh(); refreshLegacyReads();
     }
   });
-  window.BiparActions = { mode: () => action, version: () => generation, isInventory, refresh, scan, openCamera, closeCamera, storesReady, storeChanged, recoveryInventory: () => canRecoverOthers() ? legacyRecoveryInventory.map(item => ({ ...item })) : [], hasFocus: () => interaction };
+  window.BiparActions = { mode: () => action, operator:()=>actor, version: () => generation, isInventory, headers:()=>token?{Authorization:'Bearer '+token}:{}, replacementReady:()=>!!actor&&allowed.includes($('loja').value), refresh, scan, openCamera, closeCamera, storesReady, storeChanged, recoveryInventory: () => canRecoverOthers() ? legacyRecoveryInventory.map(item => ({ ...item })) : [], hasFocus: () => interaction };
   refresh();
 })();

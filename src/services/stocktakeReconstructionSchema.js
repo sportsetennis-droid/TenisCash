@@ -3,11 +3,12 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const migrationPath = path.join(__dirname, '../../prisma/migrations/20261026_stocktake_reconstruction/migration.sql');
-const statements = fs.readFileSync(migrationPath, 'utf8')
+const migrationPaths = ['20261026_stocktake_reconstruction','20261109_stocktake_product_scope']
+  .map(name=>path.join(__dirname, '../../prisma/migrations',name,'migration.sql'));
+const statements = migrationPaths.flatMap(migrationPath=>fs.readFileSync(migrationPath, 'utf8')
   .split(/\r?\n-- @statement\s*\r?\n/)
   .map(statement => statement.trim())
-  .filter(statement => statement && !statement.startsWith('--'));
+  .filter(statement => statement && !statement.startsWith('--')));
 
 function createSchemaReadiness(prisma) {
   let ready = null;

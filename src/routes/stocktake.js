@@ -40,14 +40,32 @@ router.use(async (_req, res, next) => {
 });
 router.use('/rounds', require('./stocktakeRounds'));
 router.use('/reconstructions', require('./stocktakeReconstruction'));
+router.use('/replacements', require('./stockReplacement'));
+const replacement=require('../services/stockReplacement');
+async function authorizeReplacement(req,res,roundId=req.body?.roundId){
+  if(!roundId)return true;
+  const round=await prisma.stocktakeRound.findUnique({where:{id:roundId}});
+  if(round?.operationType!=='replacement')return true;
+  let authenticated=false;await authMiddleware(req,res,()=>{authenticated=true});
+  if(!authenticated)return false;
+  const staff=require('../services/scanTransfers'),actor=await staff.operator(prisma,req.userId);
+  if(!staff.canSend(actor,round.storeId)){res.status(403).json({error:'Esta loja não está vinculada à sua conta.'});return false;}
+  if(req.body?.sellerId&&req.body.sellerId!==actor.id){res.status(409).json({error:'Esta leitura foi guardada com outro operador. Entre na conta original para enviá-la; a identificação não será trocada.'});return false;}
+  req.replacementRound=round;
+  req.body=req.body||{};req.body.sellerId=actor.id;req.body.sellerName=actor.name;
+  return true;
+}
+const replacementRecovery=setInterval(()=>ensureReconstructionSchema().then(()=>replacement.resume(prisma)).catch(e=>console.warn('[replacement/recovery]',e.message)),30000);
+replacementRecovery.unref();
 
 
 // Upload em memória pra foto de conferência (máx 12MB), comprimida com sharp -> webp base64.
 const captureUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024 },
   fileFilter: (_r, f, cb) => (/^image\//i.test(f.mimetype) ? cb(null, true) : cb(new Error('arquivo não é imagem'))) });
 async function shrinkPhoto(buf) {
-  const out = await sharp(buf, { failOn: 'none' }).rotate().resize(900, 1200, { fit: 'inside', withoutEnlargement: true }).webp({ quality: 78 }).toBuffer();
-  return `data:image/webp;base64,${out.toString('base64')}`;
+  // Preserve the uploaded frame, after verifying all pixels. A readable header
+  // is not evidence that a truncated image was archived successfully.
+  return require('../services/scannerOriginalPhoto').archiveDataUri(buf);
 }
 
 // Extrai tamanho da descricao da NFe (mesmo regex do script create-products-from-nfe-pending.js)
@@ -163,6 +181,7 @@ async function applyBipeIfReady(tx, bipeId) {
 
   if (!bipe) return { applied: false, reason: 'bipe_not_found' };
   if (bipe.applied) return { applied:true,idempotent:true,reason:'already_applied' };
+  if(bipe.roundId&&(await tx.stocktakeRound.findUnique({where:{id:bipe.roundId}}))?.operationType==='replacement')return {applied:false,reason:'replacement_validation_pending'};
   return { applied:false,reason:bipe.roundId ? 'round_count_only' : 'historical_read_only' };
 
 }
@@ -276,6 +295,7 @@ router.get('/sellers', async (req, res) => {
 // bruto não é perdido. Idempotência opcional via clientScanId (embutido
 // no userAgent — sem mudar schema). Logs estruturados pra auditoria.
 router.post('/bipe', async (req, res) => {
+  try { if(!await authorizeReplacement(req,res))return; } catch(e){return res.status(e.status||500).json({error:e.message})}
   const ip = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').toString().split(',')[0].trim();
   const uaRaw = (req.headers['user-agent'] || '').toString().slice(0, 160);
 
@@ -574,6 +594,7 @@ router.post('/bipe', async (req, res) => {
 // Proteções: só preenche PLACEHOLDER (nunca sobrescreve tamanho real já confirmado);
 // valida formato plausível; recusa tamanho que já existe noutro código do mesmo card.
 router.post('/bipe/:id/size', async (req, res) => {
+  try {const b=await prisma.stocktakeBipe.findUnique({where:{id:req.params.id}});if(!await authorizeReplacement(req,res,b?.roundId))return;}catch(e){return res.status(e.status||500).json({error:e.message})}
   try {
     const size = normalizeManualSize(req.body?.size);
     if (!size) {
@@ -695,13 +716,14 @@ router.post('/capture',
   }),
   async (req, res) => {
     try {
+      if(!await authorizeReplacement(req,res))return;
       const { barcode, storeId, sellerId, sellerName, note, bipeId, roundId, clientScanId } = req.body || {};
       await rounds.roundForScan(prisma,storeId,roundId);
       const key=rounds.scanKey(roundId,clientScanId);
       const files = req.files || [];
       if (!files.length && !barcode) return res.status(400).json({ error: 'mande ao menos uma foto ou o código' });
       const shots = [];
-      for (const f of files.slice(0, 4)) { try { shots.push(await shrinkPhoto(f.buffer)); } catch (_) {} }
+      for (const f of files.slice(0, 4)) shots.push(await shrinkPhoto(f.buffer));
       const cap = await rounds.createRoundCapture(prisma, { roundId,scanKey:key,
         barcode: barcode ? String(barcode).trim() : null,
         storeId: storeId || null, sellerId: sellerId || null, sellerName: sellerName ? String(sellerName).slice(0, 80) : null,
@@ -822,6 +844,8 @@ async function processarEtiqueta(capId, photo, eanLocal, meta) {
   // Compare-and-set protects a newer frame accepted while this OCR ran.
   if (meta?.photoRevision) await prisma.productCapture.updateMany({ where: { id: capId, photo, note: current.note }, data });
   else await prisma.productCapture.update({ where: { id: capId }, data });
+  const finalCapture=await prisma.productCapture.findUnique({where:{id:capId},select:{bipeId:true}});
+  replacement.enqueue(prisma,finalCapture?.bipeId);
   return { vinculado, mensagem };
 }
 
@@ -831,9 +855,11 @@ const recognizeAutomatic = createAutomaticRecognizer({ db: prisma, normalizeScan
   needsManualSize, sizeOptionsForBipe });
 router.post('/recognize', async (req, res) => {
   try {
+    if(!await authorizeReplacement(req,res))return;
     const result = await recognizeAutomatic(req.body || {}, {
       ip: (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').toString().split(',')[0].trim(),
     });
+    if(req.replacementRound){const b=result.bipeId?await prisma.stocktakeBipe.findUnique({where:{id:result.bipeId}}):null;result.complete=!!b?.applied;result.appliedToStock=!!b?.applied;result.blockedReason=b?.applied?null:'replacement_validation_pending';if(b)replacement.enqueue(prisma,b.id);}
     res.json(result);
   } catch (error) {
     res.status(error.status || 500).json({ ok: false, error: error.message,
@@ -847,6 +873,7 @@ router.post('/etiqueta',
     let savedPhotoAck = null;
     try {
       if (!req.file) return res.status(400).json({ error: 'sem foto' });
+      if(!await authorizeReplacement(req,res))return;
       const { storeId, sellerId, sellerName, eanLocal, clientScanId, ocrText, roundId, photoRevision } = req.body || {};
       await rounds.roundForScan(prisma,storeId,roundId);
       const key=rounds.scanKey(roundId,clientScanId);
@@ -943,6 +970,7 @@ router.post('/etiqueta',
           note: capturePhotos.photoNote(current.note, 'etiqueta processando…'), status: 'processando' } });
       });
       if (!cap) return res.json({ ...photoAck, stale: true });
+      replacement.enqueue(prisma,bipeId);
       // responde JÁ — a pessoa segue pro próximo produto; reconhecimento roda em background
       res.json({
         ...photoAck,
@@ -969,6 +997,7 @@ router.post('/etiqueta',
 // removes this uncounted attempt from the active round. It cannot cancel a bipe.
 router.post('/etiqueta/cancelar', async (req, res) => {
   try {
+    if(!await authorizeReplacement(req,res))return;
     const { storeId, roundId, clientScanId } = req.body || {};
     const scanKey = rounds.scanKey(roundId, clientScanId);
     const result = await prisma.$transaction(async tx => {
@@ -1027,7 +1056,9 @@ router.get('/etiqueta-status', async (req, res) => {
   try {
     const ids = String(req.query.ids || '').split(',').filter(Boolean).slice(0, 40);
     if (!ids.length) return res.json({ rows: [] });
-    const rows = await prisma.productCapture.findMany({ where: { id: { in: ids } }, select: { id: true, status: true, note: true, bipeId: true, barcode:true, excludedAt:true } });
+    const rows = await prisma.productCapture.findMany({ where: { id: { in: ids } }, select: { id: true, roundId:true, status: true, note: true, bipeId: true, barcode:true, excludedAt:true } });
+    const replacementIds=new Set((await prisma.stocktakeRound.findMany({where:{id:{in:[...new Set(rows.map(r=>r.roundId).filter(Boolean))]},operationType:'replacement'},select:{id:true}})).map(r=>r.id));
+    for(const id of replacementIds)if(!await authorizeReplacement(req,res,id))return;
     const withPhotos = new Set((await prisma.productCapture.findMany({
       where: { id: { in: ids }, AND: [{ photo: { not: null } }, { photo: { not: '' } }] }, select: { id: true } })).map(row => row.id));
     const bipeIds = rows.map((row) => row.bipeId).filter(Boolean);
@@ -1043,14 +1074,16 @@ router.get('/etiqueta-status', async (req, res) => {
       const bipe = row.bipeId ? bipeMap[row.bipeId] : null;
       const ps = bipe?.productSizeId ? sizeMap[bipe.productSizeId] : null;
       const needsSize = Boolean(bipe && ps && needsManualSize(ps.product.brand, ps));
+      const live=replacementIds.has(row.roundId);
+      const check=live&&bipe?await prisma.stockReplacementCheck.findUnique({where:{bipeId:bipe.id}}):null;
       return {
         id: row.id,
         photoSaved: withPhotos.has(row.id),
         photoRevision: capturePhotos.revisionOf(row.note),
-        complete: captureComplete(row,bipe,ps,needsSize),
+        complete: live?Boolean(check?.appliedAt&&!check.reversedAt):captureComplete(row,bipe,ps,needsSize),
         barcode:row.barcode,
         status: row.status,
-        mensagem: capturePhotos.visibleNote(row.note).replace(/^etiqueta\s*/, '').replace(/\s*\{.*$/, '').trim(),
+        mensagem: live ? (check?.appliedAt&&!check.reversedAt?'Uma peça incluída no novo estoque oficial.':replacement.reasonText(check?.reason)) : capturePhotos.visibleNote(row.note).replace(/^etiqueta\s*/, '').replace(/\s*\{.*$/, '').trim(),
         bipeId: bipe?.id || null,
         appliedToStock: Boolean(bipe?.applied),
         needsSize,

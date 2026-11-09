@@ -10,7 +10,7 @@ const state = { window: { BiparActions: { isInventory: () => true }, ScannerRoun
   localStorage: { getItem: () => 'Original operator' }, STORAGE_VENDNAME: 'operator', genClientScanId: randomUUID,
   etiqCameraContext: null, etiqLeituraArmada: true, etiqPausado: false, etiqIgnoredCode: '', etiqIgnoreUntil: 0,
   etiqFila: [], etiqAtivo: null, etiqRetryAt: 0, etiqStorageReady: true, etiqStorageFailed: false,
-  etiqAutoFrames: new Map(), etiqAuto: { stop() {}, reset() {} }, etiqWatch: null,
+  etiqAutoFrames: new Map(), etiqAuto: { stop() {}, reset(value) {state.lastReset=value;} }, etiqWatch: null,
   renderEtiqCaptureState() {}, renderEtiqLista() {}, etiqBeep() {}, clearInterval() {}, setInterval() {}, alert() {},
   etiqSave: async item => { if (fail) { state.etiqStorageFailed = true; return false; } saved.push(structuredClone(item)); return true; },
   enviarFila: async () => { if (!state.etiqStorageFailed) uploads.push(...saved.slice(uploads.length)); }, etiqStorageNotice() {},
@@ -32,10 +32,15 @@ const settle = () => new Promise(setImmediate);
   assert.notEqual(saved[0].b64, saved[1].b64); assert.equal(saved[0].clientScanId, saved[1].clientScanId);
   item.capId = 'server-photo'; item.capIdPhotoRevision = 2; item.complete = true; item.st = 'vinculado';
   state.window.proximaEtiqueta(); assert.equal(state.etiqAtivo, null);
+  assert.equal(state.lastReset,undefined,'Explicit Next accepts another identical code, without an afterCode suppression');
   state.window.capturaAutomatica({ ean: '5901234123457' }); assert.equal(state.etiqFila.length, 1, 'No image means no new photographic scan');
   fail = true; state.window.capturaAutomatica({ ean: '5901234123457', frame }); await settle();
   assert.equal(state.etiqStorageFailed, true); assert.equal(uploads.length, 2); assert.equal(state.etiqFila.length, 2);
   const pending = state.etiqFila[1]; assert.ok(pending.b64); assert.notEqual(pending.clientScanId, id);
   state.window.proximaEtiqueta(); assert.equal(state.etiqAtivo, pending.lid);
+  fail=false;state.etiqStorageFailed=false;pending.manualPhoto=true;pending.capId='saved-second';pending.capIdPhotoRevision=pending.photoRevision;pending.st='pendente';
+  state.window.proximaEtiqueta();assert.equal(state.etiqAtivo,null,'Archived manual photo with known code advances to a NEW piece');
+  state.window.capturaAutomatica({ean:pending.ean,frame});await settle();assert.equal(state.etiqFila.length,3);assert.notEqual(state.etiqFila[2].clientScanId,pending.clientScanId);
+  state.window.ScannerRound.id=()=>pending.roundId;state.window.relerEtiqueta(pending.lid);assert.equal(state.etiqAtivo,pending.lid);state.window.capturaAutomatica({ean:pending.ean,frame});await settle();assert.equal(state.etiqFila.length,3);assert.equal(state.etiqFila[1].clientScanId,pending.clientScanId);
   console.log('PASS: inventory automatic read saves exact decoded frame, preserves context and recapture ID, waits for photo acknowledgement, and retains failed storage as pending.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

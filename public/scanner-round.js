@@ -2,28 +2,33 @@
   'use strict';
   let current=null, requestNumber=0;
   function selected(){return document.getElementById('loja')?.value||'';}
-  function id(){return current?.storeId===selected() && current.status==='counting' ? current.id : null;}
+  function operation(){return window.BiparActions?.mode?.()==='replacement'?'replacement':'inventory';}
+  function id(){return current?.storeId===selected() && (current.operationType||'inventory')===operation() && current.status==='counting' ? current.id : null;}
   function requireRound(storeId){
     if(!id()||current.storeId!==storeId)throw Error('Selecione uma loja com rodada aberta. Nenhum bipe será misturado ao histórico.');
     return current.id;
   }
   async function refresh(){
     if(window.BiparActions && !window.BiparActions.isInventory())return;
-    const n=++requestNumber,storeId=selected();
+    const n=++requestNumber,storeId=selected(),mode=operation();
     try{
-      const r=await fetch('/api/stocktake/rounds/current?storeId='+encodeURIComponent(storeId));
+      const r=await fetch('/api/stocktake/rounds/current?storeId='+encodeURIComponent(storeId)+'&operation='+mode,{headers:window.BiparActions?.headers?.()||{}});
       if(!r.ok)throw Error('Não foi possível verificar a rodada.');
-      const d=await r.json();if(n!==requestNumber||storeId!==selected()||(window.BiparActions&&!window.BiparActions.isInventory()))return;
+      const d=await r.json();if(n!==requestNumber||mode!==operation()||storeId!==selected()||(window.BiparActions&&!window.BiparActions.isInventory()))return;
       current=d.round;
       document.getElementById('round-title').textContent=current ? 'RODADA #'+current.number+' — '+current.name : 'SEM RODADA ABERTA';
       document.getElementById('round-detail').textContent=current ? (current.status==='counting'?'EM CONTAGEM':'EM CONFERÊNCIA — coleta encerrada')+' · Início '+new Date(current.startedAt).toLocaleString('pt-BR')+' · '+(d.totals?.total||0)+' leituras nesta rodada · '+(d.totals?.pending||0)+' pendentes' : 'O administrador deve iniciar o inventário desta loja. Leituras antigas ficam no histórico.';
       document.getElementById('round-box').dataset.ready=id()?'true':'false';
+      if(mode==='replacement'&&!current)document.getElementById('round-detail').textContent='O administrador deve iniciar a Substituição de estoque desta loja. O arquivo antigo será preservado.';
+      const effect=document.getElementById('round-effect'),link=document.getElementById('round-manage');
+      if(effect)effect.textContent=mode==='replacement'?'Cada bipe validado acrescenta uma peça ao novo estoque oficial. Pendências ficam na conferência.':'Bipar registra a contagem física; não acrescenta mercadoria ao estoque.';
+      if(link){link.href=mode==='replacement'?'/substituir-estoque.html'+(current?'?id='+encodeURIComponent(current.id):''):'/inventario.html';link.textContent=mode==='replacement'?'Conferir novo estoque e arquivo anterior':'Gerenciar inventário';}
     }catch(e){
       if(n!==requestNumber)return;
       // A polling failure is not proof that an open round was closed. Keep
       // the last server-confirmed round so one transient network error does
       // not make the next camera read close the scanner.
-      if(!current||current.storeId!==storeId){
+      if(!current||current.storeId!==storeId||(current.operationType||'inventory')!==mode){
         current=null;
         document.getElementById('round-title').textContent='RODADA NÃO VERIFICADA';
         document.getElementById('round-detail').textContent=e.message;
