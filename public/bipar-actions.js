@@ -692,10 +692,9 @@
       const br = String(item.ocrText || '').match(/\bBR\s*0*(\d{2}(?:[.,]5)?)\b/i);
       if (br && normalizedSize(br[1]) === normalizedSize(data.product.size)) item.ocrSize = br[1];
       persist(draft);
-      // A fast lookup may finish after this piece was safely queued and the
-      // camera already advanced. Report its result without stealing focus from
-      // a newer piece or claiming a pending size has been confirmed.
-      if (item.pendingAutoContinuedAt && cameraAtRequest === cameraGeneration && $('action-camera') && !cameraRead) {
+      // A lookup may finish after the operator deliberately advanced. Report
+      // its result without taking the camera away from the current piece.
+      if (item.pendingAcknowledgedAt && cameraAtRequest === cameraGeneration && $('action-camera') && !cameraRead) {
         const detail = requiresSizeInput(item) ? ' · confira o tamanho na lista' : ' · Tam. ' + item.product.size;
         window.ScannerCamera.feedback((requiresSizeInput(item) ? 'Confira: ' : '✓ ') + item.product.name + detail);
       }
@@ -704,7 +703,13 @@
       if (!current()) return false;
       delete item.product; delete item.requiresSizeConfirmation; delete item.ocrSize; item.error = error.message || 'Identificação interrompida. Tente novamente com esta mesma leitura.';
       persist(draft); return false;
-    } finally { release(); inflight.delete(item.clientScanId); if (lookups.get(item.clientScanId) === job) lookups.delete(item.clientScanId); if (currentDraft === draft) { renderReadings(); refresh(); } } })();
+    } finally {
+      release(); inflight.delete(item.clientScanId); if (lookups.get(item.clientScanId) === job) lookups.delete(item.clientScanId);
+      if (currentDraft === draft) { renderReadings(); refresh(); }
+      if (current() && cameraAtRequest === cameraGeneration && $('action-camera') && cameraRead === item && !item.photoCaptureError) {
+        if (storageFailed) pauseCameraStorage(); else showCameraRead(item);
+      }
+    } })();
     lookups.set(item.clientScanId, job);
     return job.promise;
   }
@@ -915,9 +920,8 @@
     $('action-camera-size')?.remove(); $('action-camera-pending')?.remove();
     $('etiq-confirm').style.display = 'flex'; $('etiq-confirm-status').textContent = 'Identificando a peça…'; $('etiq-confirm-btn').disabled = true;
     $('etiq-confirm-det').textContent = 'Código lido: ' + reading.ean;
-    // Start resolving the exact barcode immediately. Give very fast responses
-    // a brief chance to show size confirmation before advancing; slow lookups
-    // stay pending while the camera proceeds to the next physical piece.
+    // Start resolving this barcode immediately. The camera stays on this piece
+    // until the operator explicitly clicks Next, including pending lookups.
     const item = retry ? await retryRead(draft, retry, reading.ean, reading.ocrText || '', cameraId) : await scan(reading.ean, reading.ocrText || '', { background: true });
     if (cameraId !== cameraGeneration || !$('action-camera')) return;
     if (storageFailed) { pauseCameraStorage(); return; }
@@ -945,8 +949,8 @@
     if (cameraId !== cameraGeneration || !$('action-camera')) return;
     const needsOcr = !item.product || requiresSizeInput(item);
     // Let the exact EAN lookup decide whether OCR is needed. The scan is
-    // already persisted and the camera can continue, so waiting here only
-    // gates optional OCR work—not the next physical piece.
+    // already persisted. Waiting here gates optional OCR, never an automatic
+    // advance to another physical piece.
     const exactLookup = lookups.get(item.clientScanId)?.promise || Promise.resolve();
     if (!item.product) await new Promise(resolve => {
       let settled = false;
@@ -961,8 +965,8 @@
     const frameToken = {}, barcode = item.barcode, backgroundResolution = !item.product;
     cameraOcrReads.set(item.clientScanId, frameToken);
     showCameraRead(item);
-    // Pending barcode reads continue automatically. Their own captured OCR may
-    // still resolve in the background, without reopening or changing a later piece.
+    // OCR may finish after a deliberate Next click. It can resolve this saved
+    // piece without reopening or changing the operator's later piece.
     const currentFrame = () => cameraId === cameraGeneration && gen === generation && token === authToken && currentDraft === draft && cameraOcrReads.get(item.clientScanId) === frameToken && item.barcode === barcode && !item.removed && activeReads(draft).includes(item) && !read(pendingKey, null) && !!$('action-camera');
     const sameRead = () => currentFrame() && attempt === cameraAttempt && cameraRead === item;
     void textPromise.then(async value => {
@@ -1020,7 +1024,7 @@
   function retryCameraRead(item) {
     if (!item || item.removed || !activeReads().includes(item) || inflight.has(item.clientScanId)) return;
     cameraOcrReads.delete(item.clientScanId);
-    cameraRetry = item; cameraRead = null;
+    cameraAttempt++; cameraRetry = item; cameraRead = null;
     $('action-camera-size')?.remove(); $('action-camera-pending')?.remove(); $('etiq-confirm').style.display = 'none';
     $('etiq-hint').textContent = 'Releia a etiqueta inteira da MESMA peça. Código anterior: ' + item.barcode + '. Esta tentativa não acrescenta outra peça.';
     scanner?.reset(); // No afterCode: this is the same physical piece, not the next one.
@@ -1028,42 +1032,42 @@
   }
   function nextCameraRead(pending = false) {
     const item = cameraRead;
-    if (!item || item.working || !item.barcode || item.photoCaptureError || (item.photoRequired && !item.photoSaved) || (inflight.has(item.clientScanId) && pending !== 'automatic')) return;
-    const previousAutoContinuedAt = item.pendingAutoContinuedAt;
-    if (pending === true) {
+    if (!item || item.working || !item.barcode || item.photoCaptureError || (item.photoRequired && !item.photoSaved) || (inflight.has(item.clientScanId) && !pending)) return;
+    const previousAcknowledgedAt = item.pendingAcknowledgedAt;
+    if (pending) {
       item.pendingAcknowledgedAt = new Date().toISOString();
       message('Leitura ' + item.barcode + ' mantida como pendente. O lote só poderá ser confirmado depois de identificar o produto e conferir o tamanho.', true);
-    } else if (pending === 'automatic') {
-      item.pendingAutoContinuedAt = new Date().toISOString();
-      cameraPendingRead = item;
     }
     if (!persist()) {
-      item.pendingAutoContinuedAt = previousAutoContinuedAt;
-      if (cameraPendingRead === item) cameraPendingRead = null;
+      item.pendingAcknowledgedAt = previousAcknowledgedAt;
       pauseCameraStorage(); return;
     }
-    invalidate(); cameraRead = null; cameraRetry = null; $('action-camera-size')?.remove(); $('action-camera-pending')?.remove(); $('etiq-confirm').style.display = 'none';
+    if (pending) cameraPendingRead = item;
+    invalidate(); cameraAttempt++; cameraRead = null; cameraRetry = null; $('action-camera-size')?.remove(); $('action-camera-pending')?.remove(); $('etiq-confirm').style.display = 'none';
     renderReadings(); refresh(); updateCameraSummary();
-    scanner?.reset({ afterCode: item.barcode });
+    $('etiq-hint').textContent = 'Próxima peça liberada. Centralize a nova etiqueta.';
+    // The explicit click authorizes exactly one new piece, even with the same
+    // barcode. Repeated frames remain blocked again as soon as it is captured.
+    scanner?.reset();
   }
   function showCameraRead(item) {
-    $('action-camera-size')?.remove(); $('action-camera-pending')?.remove(); cameraRead = item;
-    if (!item.product) { nextCameraRead('automatic'); return; }
-    if (!requiresSizeInput(item)) {
-      nextCameraRead();
-      if (!storageFailed && !cameraRead) window.ScannerCamera.feedback('✓ ' + item.product.name + ' · Tam. ' + item.product.size);
-      return;
-    }
-    $('etiq-confirm').style.display = 'flex';
-    cameraDetails(item);
+    const previousSize = cameraRead === item ? $('action-camera-size') : null;
     const needsSize = item.product && requiresSizeInput(item);
-    const size = document.createElement('input'); size.id = 'action-camera-size'; size.type = 'text'; size.maxLength = 20; size.placeholder = /ADIDAS/i.test(item.product?.brand) ? 'Digite o BR desta caixa' : 'Digite o tamanho da etiqueta'; size.value = item.ocrSize || ''; size.setAttribute('aria-label', size.placeholder); size.style.cssText = 'display:block;min-height:48px;width:100%;max-width:320px;padding:10px;font-size:20px;margin:8px auto;color:#111;background:white;border-radius:8px';
-    if (needsSize) $('etiq-confirm-det').after(size);
-    const button = $('etiq-confirm-btn'); button.textContent = item.product ? needsSize ? 'TAMANHO CONFERIDO — PRÓXIMA PEÇA' : 'PRÓXIMA PEÇA' : 'RELER A MESMA PEÇA'; button.disabled = !item.product || (needsSize && normalizedSize(size.value) !== normalizedSize(item.product.size)); button.style.background = item.product ? '#167541' : '#925400';
-    size.addEventListener('input', () => { button.disabled = !size.value.trim() || normalizedSize(size.value) !== normalizedSize(item.product?.size); });
-    if (!item.product) button.disabled = false;
+    if (!needsSize || !previousSize) $('action-camera-size')?.remove();
+    $('action-camera-pending')?.remove(); cameraRead = item; scanner?.stop();
+    $('etiq-confirm').style.display = 'flex';
+    $('etiq-hint').textContent = 'Leitura pausada nesta peça. Clique em PRÓXIMO para ler outra etiqueta.';
+    cameraDetails(item);
+    const button = $('etiq-confirm-btn');
+    let size = previousSize;
+    if (needsSize && !size) {
+      size = document.createElement('input'); size.id = 'action-camera-size'; size.type = 'text'; size.maxLength = 20; size.placeholder = /ADIDAS/i.test(item.product?.brand) ? 'Digite o BR desta caixa' : 'Digite o tamanho da etiqueta'; size.value = item.confirmedSize || item.ocrSize || ''; size.setAttribute('aria-label', size.placeholder); size.style.cssText = 'display:block;min-height:48px;width:100%;max-width:320px;padding:10px;font-size:20px;margin:8px auto;color:#111;background:white;border-radius:8px';
+      $('etiq-confirm-det').after(size);
+      size.addEventListener('input', () => { button.disabled = inflight.has(item.clientScanId) || !size.value.trim() || normalizedSize(size.value) !== normalizedSize(item.product?.size); });
+    }
+    button.textContent = item.product ? needsSize ? 'TAMANHO CONFERIDO — PRÓXIMO' : 'PRÓXIMO' : 'RELER A MESMA PEÇA'; button.disabled = inflight.has(item.clientScanId) || !!(needsSize && normalizedSize(size.value) !== normalizedSize(item.product.size)); button.style.background = item.product ? '#167541' : '#925400';
     if (!item.product || needsSize) {
-      const pending = document.createElement('button'); pending.id = 'action-camera-pending'; pending.type = 'button'; pending.dataset.click = 'next-pending'; pending.textContent = 'PRÓXIMA PEÇA — MANTER PENDENTE'; pending.style.cssText = 'width:100%;max-width:340px;min-height:48px;margin-top:12px;padding:10px;font-size:15px;font-weight:800;color:white;background:#555;border:1px solid #aaa;border-radius:12px'; button.after(pending);
+      const pending = document.createElement('button'); pending.id = 'action-camera-pending'; pending.type = 'button'; pending.dataset.click = 'next-pending'; pending.textContent = 'PRÓXIMO — MANTER PENDENTE'; pending.style.cssText = 'width:100%;max-width:340px;min-height:48px;margin-top:12px;padding:10px;font-size:15px;font-weight:800;color:white;background:#555;border:1px solid #aaa;border-radius:12px'; button.after(pending);
     }
     updateCameraSummary();
   }
@@ -1093,7 +1097,7 @@
       if (command === 'retry-pending') { if (!cameraRead && !cameraRetry && !storageFailed && cameraPendingRead && !cameraPendingRead.product) retryCameraRead(cameraPendingRead); return; }
       if (command === 'capture') {
         if (cameraRead && !cameraRead.working && (!cameraRead.product || cameraRead.photoCaptureError)) retryCameraRead(cameraRead);
-        if (!cameraRead) { const captured = frame(); if (captured) { const ean = await window.ScannerAuto.decodeInWorker(captured); if (cameraId === cameraGeneration && $('action-camera')) await capture({ ean: typeof ean === 'string' ? ean : ean?.text || '', frame: captured }); } }
+        if (!cameraRead) { const captured = frame(), attempt = cameraAttempt; if (captured) { const ean = await window.ScannerAuto.decodeInWorker(captured); if (cameraId === cameraGeneration && attempt === cameraAttempt && $('action-camera')) await capture({ ean: typeof ean === 'string' ? ean : ean?.text || '', frame: captured }); } }
         return;
       }
       if (command === 'next-pending') return nextCameraRead(true);
