@@ -3330,6 +3330,7 @@ model FiscalWebhookLog {
 // com StoreStock e decidir o que fazer.
 // =====================================================================
 model StocktakeBipe {
+  replacementCheck StockReplacementCheck?
   transferScan  StocktakeTransferScan?
   roundId       String?
   round         StocktakeRound? @relation(fields: [roundId], references: [id], onDelete: Restrict)
@@ -5860,6 +5861,10 @@ model StocktakeRound {
   appliedAt   DateTime?
   createdById String?
   baseline    Json
+  productScope Json @default("{\"type\":\"all\"}")
+  operationType String @default("inventory")
+  activeReplacementStoreId String? @unique
+  replacementChecks StockReplacementCheck[]
   result      Json?
   bipes       StocktakeBipe[]
   captures    ProductCapture[]
@@ -5884,6 +5889,23 @@ model StocktakeReconstruction {
   rounds StocktakeRound[]
 
   @@index([status, startedAt])
+}
+
+// Durable validation/application receipt. A scan can add one physical unit only once.
+model StockReplacementCheck {
+  bipeId String @id
+  bipe StocktakeBipe @relation(fields:[bipeId], references:[id], onDelete:Restrict)
+  roundId String
+  round StocktakeRound @relation(fields:[roundId], references:[id], onDelete:Restrict)
+  status String @default("pending")
+  reason String?
+  evidence Json?
+  imageReview Json?
+  appliedProductSizeId String?
+  appliedAt DateTime?
+  reversedAt DateTime?
+  checkedAt DateTime @default(now())
+  @@index([roundId,status])
 }
 
 // Apontamentos diários. Não substituem o total das etapas da OS nem movimentam estoque.

@@ -5,7 +5,8 @@ const service=require('../services/stocktakeRounds');
 const router=express.Router();
 const run=fn=>async(req,res)=>{try{await fn(req,res)}catch(e){res.status(e.status||500).json({error:e.status?e.message:'Não foi possível concluir. Atualize e tente novamente.'})}};
 router.get('/current',run(async(req,res)=>{
-  const round=await prisma.stocktakeRound.findFirst({where:{activeStoreId:String(req.query.storeId||'')},select:{id:true,number:true,name:true,storeId:true,status:true,startedAt:true}});
+  const replacement=req.query.operation==='replacement';
+  const round=await prisma.stocktakeRound.findFirst({where:{[replacement?'activeReplacementStoreId':'activeStoreId']:String(req.query.storeId||'')},select:{id:true,number:true,name:true,storeId:true,status:true,startedAt:true,operationType:true}});
   if(!round)return res.json({round:null});
   const [bipes,captures]=await Promise.all([
     prisma.stocktakeBipe.findMany({where:{roundId:round.id},select:{found:true,duplicate:true,productSizeId:true,productSize:true,excludedAt:true}}),
@@ -27,6 +28,7 @@ router.post('/:id/seal',run(async(req,res)=>{
     await tx.$queryRaw`SELECT id FROM "StocktakeRound" WHERE id=${req.params.id} FOR UPDATE`;
     const round=await tx.stocktakeRound.findUnique({where:{id:req.params.id}});
     if(!round)service.fail('Rodada não encontrada.',404);
+    if(round.operationType==='replacement')service.fail('Use a conferência da Substituição de estoque.');
     if(round.status==='review')return;
     if(round.status!=='counting')service.fail('Esta rodada já foi encerrada.');
     await tx.stocktakeRound.update({where:{id:round.id},data:{status:'review',endedAt:new Date()}});
@@ -37,6 +39,7 @@ router.post('/:id/cancel',run(async(req,res)=>{
     await tx.$queryRaw`SELECT id FROM "StocktakeRound" WHERE id=${req.params.id} FOR UPDATE`;
     const round=await tx.stocktakeRound.findUnique({where:{id:req.params.id}});
     if(!round||!['counting','review'].includes(round.status))service.fail('Rodada já encerrada.');
+    if(round.operationType==='replacement')service.fail('Esta operação já atualiza o estoque a cada bipe. Use a conferência da Substituição de estoque.');
     if(round.reconstructionId)service.fail('Esta rodada pertence a uma reconstrução de rede. Arquive o lote inteiro para manter todas as lojas juntas.');
     return tx.stocktakeRound.update({where:{id:round.id},data:{status:'cancelled',activeStoreId:null,endedAt:new Date()}});
   });
@@ -50,6 +53,7 @@ router.post('/:id/exclude/:bipeId',run(async(req,res)=>{
     if(!round||!['counting','review'].includes(round.status))service.fail('Rodada encerrada.');
     const bipe=await tx.stocktakeBipe.findUnique({where:{id:req.params.bipeId}});
     if(!bipe||bipe.roundId!==round.id||bipe.storeId!==round.storeId)service.fail('Bipe não pertence a esta rodada.');
+    if(round.operationType==='replacement'&&!bipe.excludedAt)await require('../services/stockReplacement').exclude(tx,bipe,String(req.body.reason).trim().slice(0,200));
     await tx.stocktakeBipe.update({where:{id:bipe.id},data:{excludedAt:new Date(),exclusionReason:String(req.body.reason).trim().slice(0,200)}});
     await tx.productCapture.updateMany({where:{roundId:round.id,bipeId:bipe.id},data:{excludedAt:new Date(),status:'descartado',exclusionReason:String(req.body.reason).slice(0,200)}});
   });res.json({ok:true});

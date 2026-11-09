@@ -147,7 +147,7 @@
   <div class="setup">
     <div style="margin-bottom:12px">
       <label for="bipar-action">AÇÃO</label>
-      <select id="bipar-action"><option value="transfer">Transferência</option><option value="receipt">Recebimento</option><option value="inventory" selected>Inventário</option></select>
+      <select id="bipar-action"><option value="replacement">Substituição de estoque</option><option value="transfer">Transferência</option><option value="receipt">Recebimento</option><option value="inventory" selected>Inventário</option></select>
     </div>
     <div class="setup-row">
       <div>
@@ -185,9 +185,9 @@
   <section id="round-box" aria-live="polite" style="border:3px solid #FF6D00;background:#fff3e8;border-radius:12px;padding:16px;margin-bottom:16px">
     <strong id="round-title">VERIFICANDO RODADA</strong>
     <p id="round-detail" style="margin:8px 0">Selecione a loja.</p>
-    <p><b>Bipar registra a contagem física; não acrescenta mercadoria ao estoque.</b></p>
+    <p><b id="round-effect">Bipar registra a contagem física; não acrescenta mercadoria ao estoque.</b></p>
     <button type="button" id="refresh-round" class="btn">Atualizar rodada</button>
-    <a href="/inventario.html">Gerenciar inventário</a> · <a href="/bipes.html">Histórico anterior</a>
+    <a id="round-manage" href="/inventario.html">Gerenciar inventário</a> · <a href="/substituir-estoque.html">Substituição de estoque</a> · <a href="/bipes.html">Histórico anterior</a>
   </section>
   <div class="bipe-box locked" id="bipe-box">
     <label for="codigo">CÓDIGO DE BARRAS</label>
@@ -311,10 +311,11 @@
   </section>
   </details>
 
-<script src="/scanner-barcode-policy.js?v=20261027-internal-codes-1"></script><script src="/scanner-confirm.js?v=20260915-resume-2"></script><script src="/scanner-view.js?v=20261018-recent-reads-1"></script><script src="/scanner-camera.js?v=20261018-live-fast-2"></script><script src="/scanner-round.js?v=20261018-preserve-round-1"></script><script src="/bipar-transfer.js?v=20261002-actions-1"></script><script src="/scanner-photo-storage.js?v=20261109-action-archive-1"></script><script src="/scan-action-photos.js?v=20261109-archive-1"></script><script src="/bipar-actions.js?v=20261109-manual-next-1"></script>
+<script src="/scanner-barcode-policy.js?v=20261027-internal-codes-1"></script><script src="/scanner-confirm.js?v=20260915-resume-2"></script><script src="/scanner-view.js?v=20261018-recent-reads-1"></script><script src="/scanner-camera.js?v=20261018-live-fast-2"></script><script src="/scanner-round.js?v=20261109-replacement-1"></script><script src="/bipar-transfer.js?v=20261002-actions-1"></script><script src="/scanner-photo-storage.js?v=20261109-action-archive-1"></script><script src="/scan-action-photos.js?v=20261109-archive-1"></script><script src="/bipar-actions.js?v=20261109-replacement-1"></script>
 <script src="/vendor/barcode/zxing-reader-3.1.4.js"></script><script src="/scanner-auto.js?v=20261027-internal-codes-1"></script><script src="/scanner-regions.js?v=20260914-worker-1"></script><script src="/scanner-ocr.js?v=20260914-auto-3"></script>
 
 <script>
+  function stocktakeFetch(url,options={}) { return fetch(url,{...options,headers:{...(window.BiparActions?.headers?.()||{}),...(options.headers||{})}}); }
   const STORAGE_LOJA = 'sports_tennis_bipar_loja';
   const STORAGE_VEND = 'sports_tennis_bipar_vendedor';
   const STORAGE_VENDNAME = 'sports_tennis_bipar_vendedor_nome';
@@ -327,7 +328,7 @@
     if (window.BiparActions && !window.BiparActions.isInventory()) { window.BiparActions.storesReady(); return; }
     const modeVersion = window.BiparActions?.version();
     try {
-      const r = await fetch('/api/stocktake/stores');
+      const r = await stocktakeFetch('/api/stocktake/stores');
       const d = await r.json();
       if (window.BiparActions && (!window.BiparActions.isInventory() || window.BiparActions.version() !== modeVersion)) return;
       stores = d.stores || [];
@@ -360,7 +361,7 @@
       return;
     }
     try {
-      const r = await fetch('/api/stocktake/sellers?storeId=' + encodeURIComponent(storeId));
+      const r = await stocktakeFetch('/api/stocktake/sellers?storeId=' + encodeURIComponent(storeId));
       const d = await r.json();
       if (document.getElementById('loja').value !== storeId || (window.BiparActions && (!window.BiparActions.isInventory() || window.BiparActions.version() !== modeVersion))) return;
       sellers = d.sellers || [];
@@ -386,6 +387,11 @@
 
   function atualizarStatus() {
     if (window.BiparActions && !window.BiparActions.isInventory()) { window.BiparActions.refresh(); return; }
+    if(window.BiparActions?.mode()==='replacement'){
+      const actor=window.BiparActions.operator(),select=document.getElementById('vendedor');
+      select.replaceChildren(new Option(actor?.name||'Entre com sua conta',actor?.id||''));
+      if(actor)localStorage.setItem(STORAGE_VENDNAME,actor.name);
+    }
     const loja = document.getElementById('loja').value;
     const vend = document.getElementById('vendedor').value;
     const manualNome = document.getElementById('vendedor-manual').value.trim();
@@ -401,7 +407,7 @@
       vendNome = sellers.find(s => s.id === vend)?.name || '';
       temVendedor = true;
     }
-    if (loja && temVendedor && window.ScannerRound.id() && !retryStorageFailed) {
+    if (loja && temVendedor && window.ScannerRound.id() && !retryStorageFailed && (window.BiparActions?.mode()!=='replacement'||window.BiparActions.replacementReady())) {
       const lojaNome = stores.find(s => s.id === loja)?.name || '';
       status.className = 'setup-status status-ok';
       status.textContent = '✓ Pronto: ' + vendNome + ' em ' + lojaNome;
@@ -415,7 +421,7 @@
       }
     } else {
       status.className = 'setup-status status-warn';
-      status.textContent = retryStorageFailed ? 'Não foi possível salvar o último bipe. Mantenha a página aberta e tente salvar a fila novamente.' : !window.ScannerRound.id() ? 'Abra uma rodada de inventário para esta loja.' : vend === '__manual__' && !manualNome ? '⚠️ Digite o nome do vendedor' : '⚠️ Selecione loja e vendedor antes de bipar';
+      status.textContent = retryStorageFailed ? 'Não foi possível salvar o último bipe. Mantenha a página aberta e tente salvar a fila novamente.' : window.BiparActions?.mode()==='replacement' ? (!window.BiparActions.replacementReady()?'Entre com sua conta e escolha uma loja vinculada.':'Inicie a Substituição de estoque desta loja.') : !window.ScannerRound.id() ? 'Abra uma rodada de inventário para esta loja.' : vend === '__manual__' && !manualNome ? '⚠️ Digite o nome do vendedor' : '⚠️ Selecione loja e vendedor antes de bipar';
       box.classList.add('locked');
       input.disabled = true;
       input.placeholder = 'Aguardando loja/vendedor...';
@@ -605,7 +611,7 @@
         if (!item.clientScanId) item.clientScanId = genClientScanId();
         window.ScannerTransfer?.activity('retry:' + item.clientScanId, item);
         try {
-          const r = await fetch('/api/stocktake/bipe', {
+          const r = await stocktakeFetch('/api/stocktake/bipe', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -685,7 +691,7 @@
 
     window.ScannerTransfer?.activity('bipe:' + clientScanId, payload);
     try {
-      const r = await fetch('/api/stocktake/bipe', {
+      const r = await stocktakeFetch('/api/stocktake/bipe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -793,7 +799,7 @@
         fd.append('sellerId', vsel === '__manual__' ? '' : (vsel || ''));
         fd.append('sellerName', localStorage.getItem(STORAGE_VENDNAME) || '');
         fd.append('note', 'etiqueta');
-        const r = await fetch('/api/stocktake/capture', { method: 'POST', body: fd });
+        const r = await stocktakeFetch('/api/stocktake/capture', { method: 'POST', body: fd });
         if (!r.ok) throw new Error('HTTP ' + r.status);
         btn.textContent = '✓ FOTO ENVIADA';
         btn.style.background = '#25d366';
@@ -1142,14 +1148,22 @@
   window.proximaEtiqueta = function () {
     const current=etiqFila.find(x=>x.lid===etiqAtivo);
     const queuedAuto = current?.autoRecognition && !current.manualPhoto && current.bipeId && current.ean && current.st !== 'revisao';
-    const savedManualPhoto = current?.manualPhoto && current.b64 && current.st !== 'revisao';
+    const savedManualPhoto = current?.manualPhoto && current.b64 && !current.ean && current.st !== 'revisao';
     if(current && !current.complete && !queuedAuto && !savedManualPhoto && !(current?.capId && Number(current.capIdPhotoRevision || 0) === Number(current.photoRevision || 0) && current?.ean && current.st!=='revisao'))return;
     clearInterval(etiqWatch);etiqRetryAt=0;
     if (!savedManualPhoto) etiqAtivo=null;
     const pane=document.getElementById('etiq-confirm');if(pane)pane.style.display='none';
     etiqUltimo='';etiqUltimoTs=0;etiqPausado=false;etiqLeituraArmada=true;
-    etiqAuto?.reset({afterCode:savedManualPhoto ? '' : current?.ean});
+    // Próximo authorizes another physical piece, including the same code.
+    etiqAuto?.reset();
     const hint=document.getElementById('etiq-hint');if(hint)hint.textContent=savedManualPhoto&&!current?.ean?'Aponte para o código desta mesma peça.':'Leitura autorizada. Aponte para o código desejado.';
+  };
+  window.relerEtiqueta = function(lid){
+    const item=etiqFila.find(x=>x.lid===lid);
+    if(!item||item.excluded||item.complete||item.roundId!==window.ScannerRound.id())return;
+    etiqAtivo=item.lid;etiqRetryAt=0;etiqPausado=false;etiqLeituraArmada=true;
+    etiqAuto?.reset();renderEtiqCaptureState();
+    const hint=document.getElementById('etiq-hint');if(hint)hint.textContent='Releia a MESMA peça · código '+(item.ean||'pendente')+'. A quantidade será preservada.';
   };
 
   function capturarFrame(ean, capturedFrame = null, automatic = false) {
@@ -1233,7 +1247,7 @@
     const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 25000);
     let r;
     try {
-      const request = fetch('/api/stocktake/recognize', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal,
+      const request = stocktakeFetch('/api/stocktake/recognize', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal,
         body: JSON.stringify({ storeId: item.storeId, roundId: item.roundId, sellerId: item.sellerId, sellerName: item.sellerName,
           clientScanId: item.clientScanId, barcode: item.ean, ocrText: sentOcr }) });
       etiqStartAutoOcr(item, revision);
@@ -1307,7 +1321,7 @@
         const uploadTimeout = setTimeout(() => uploadController.abort(), 25000);
         let r;
         try {
-          const upload = fetch('/api/stocktake/etiqueta', { method: 'POST', body: fd, signal: uploadController.signal });
+          const upload = stocktakeFetch('/api/stocktake/etiqueta', { method: 'POST', body: fd, signal: uploadController.signal });
           // Saving the image on the server starts first. OCR runs independently
           // and can enrich this same physical capture afterwards.
           etiqStartOcr(item, revision, image, sentBarcode);
@@ -1395,7 +1409,7 @@
     const revisions = new Map(pend.map(item => [item.capId, Number(item.photoRevision || 0)]));
     etiqStatusBusy = true;
     try {
-      const r = await fetch('/api/stocktake/etiqueta-status?ids=' + pend.map((x) => x.capId).join(','));
+      const r = await stocktakeFetch('/api/stocktake/etiqueta-status?ids=' + pend.map((x) => x.capId).join(','));
       const d = await r.json();
       for (const row of (d.rows || [])) {
         const it = etiqFila.find((x) => x.capId === row.id);
@@ -1436,7 +1450,7 @@
     cont.textContent = 'enviando ' + nFila + ' · leituras registradas ' + nEnviado + ' · ✓ identificadas ' + nVinc +
       (nPendente ? ' · pra conferir ' + nPendente : '') + (nSalvo ? ' · fotos manuais ' + nSalvo : '');
     const esc = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    const recent = currentItems.slice(-8).reverse();
+    const recent = (window.BiparActions?.mode()==='replacement' ? currentItems.filter(x=>!x.complete).concat(currentItems.filter(x=>x.complete).slice(-8)) : currentItems.slice(-8)).reverse();
     ul.innerHTML = '<div style="font-size:11px;font-weight:900;color:#aaa;margin-bottom:4px">ÚLTIMOS BIPES · ' + currentItems.length + '</div>' + recent.map(x => {
       const p = x.product || {};
       const name = p.name || x.productName || x.name || (x.ean ? 'Produto ainda não identificado' : 'Código pendente');
@@ -1450,7 +1464,7 @@
         '<div style="font-weight:800;color:#fff;line-height:1.25">' + esc(name) + '</div>' +
         (details ? '<div style="color:#c9c9c9;line-height:1.25">' + esc(details) + '</div>' : '') +
         '<div style="color:#b8d8ff;line-height:1.25;overflow-wrap:anywhere">' + esc(x.ean ? 'Código ' + x.ean : 'Código pendente') + ' · ' + esc(status) + '</div>' +
-        '</div>' + (x.bipeId ? '<button type="button" data-click="exclude-recent-bipe" data-round="' + esc(x.roundId) + '" data-bipe="' + esc(x.bipeId) + '" data-lid="' + esc(x.lid) + '" aria-label="Excluir este bipe" style="flex:none;min-height:36px;padding:6px 9px;border:1px solid #b42318;border-radius:8px;background:#351714;color:#ffb4ab;font-weight:800">Excluir bipe</button>' : '') +
+        '</div>' + (!x.complete&&window.BiparActions?.mode()==='replacement'?'<button type="button" data-click="retry-label" data-lid="'+esc(x.lid)+'" style="min-height:36px">Reler esta peça</button>':'') + (x.bipeId ? '<button type="button" data-click="exclude-recent-bipe" data-round="' + esc(x.roundId) + '" data-bipe="' + esc(x.bipeId) + '" data-lid="' + esc(x.lid) + '" aria-label="Excluir este bipe" style="flex:none;min-height:36px;padding:6px 9px;border:1px solid #b42318;border-radius:8px;background:#351714;color:#ffb4ab;font-weight:800">Excluir bipe</button>' : '') +
         '</div>';
     }).join('');
   }
@@ -1463,7 +1477,7 @@
       const token = sessionStorage.getItem('tc_transfer_token') || localStorage.getItem('loja_token') ||
         localStorage.getItem('tc_token') || localStorage.getItem('tc_admin_token') || '';
       if (!token) throw new Error('Sua sessão não foi encontrada. Entre novamente e tente excluir o bipe.');
-      const response = await fetch('/api/stocktake/rounds/' + encodeURIComponent(roundId) + '/exclude/' + encodeURIComponent(bipeId), {
+      const response = await stocktakeFetch('/api/stocktake/rounds/' + encodeURIComponent(roundId) + '/exclude/' + encodeURIComponent(bipeId), {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
         body: JSON.stringify({ reason: 'Excluído pelo operador na lista de bipes do scanner.' }),
       });
@@ -1820,7 +1834,7 @@
     const b = sizeModalBipe;
     if (!b || !b.bipeId) { showNextSizeModal(); return; }
     try {
-      const r = await fetch('/api/stocktake/bipe/' + encodeURIComponent(b.bipeId) + '/size', {
+      const r = await stocktakeFetch('/api/stocktake/bipe/' + encodeURIComponent(b.bipeId) + '/size', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ size }),
@@ -1914,6 +1928,7 @@
     const b=e.target.closest('[data-click]');if(!b)return;
     const actions={manual:()=>window.abrirDigitacaoManual(),camera:()=>window.fotografarEtiqueta(),report:abrirContagem,clear:limparTela,
       next:()=>window.proximaEtiqueta(),capture:()=>window.capturaManual(),close:()=>window.fecharScanner(),
+      'retry-label':()=>window.relerEtiqueta(b.dataset.lid),
       'confirm-code':()=>window.confirmarSkuManual(),'other-size':()=>window.confirmarTamanhoOutro(),'skip-size':()=>window.pularTamanho(),
       photo:()=>window.fotoEtiqueta(b,b.dataset.bipe,b.dataset.code),size:()=>window.reabrirTamanho(Number(b.dataset.index)),
       'exclude-recent-bipe':()=>excluirBipeRecente(b),

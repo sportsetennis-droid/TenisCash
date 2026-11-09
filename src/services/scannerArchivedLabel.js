@@ -15,13 +15,26 @@ function readWords(data) {
   const sizes = new Set();
   for (const label of reliable.filter(w => /^(BR|BRA)$/i.test(w.text))) {
     const b = label.bbox, h = b.y1 - b.y0;
+    // A vertical multi-scale column may put the previous scale's value as
+    // close to BR as BR's own value. Infer direction only from two other
+    // literal scale/value pairs and the unambiguous start of that column.
+    const cy=w=>(w.bbox.y0+w.bbox.y1)/2,cx=w=>(w.bbox.x0+w.bbox.x1)/2;
+    const sameColumn=w=>Math.abs(cx(w)-cx(label))<=Math.max(b.x1-b.x0,w.bbox.x1-w.bbox.x0)*.6;
+    const scales=reliable.filter(w=>/^(BR|BRA|USA?|UK|EUR|EU|CM|CHN)$/i.test(w.text)&&sameColumn(w)).sort((a,z)=>cy(a)-cy(z));
+    const nums=reliable.filter(w=>/^\d{1,2}(?:[.,]5)?$/.test(w.text)&&sameColumn(w));
+    let belowOnly=false;
+    if(scales.length>=3){const first=scales[0],gap=w=>Math.max(first.bbox.y1-first.bbox.y0,w.bbox.y1-w.bbox.y0)*1.5;
+      const before=nums.some(w=>cy(w)<cy(first)&&first.bbox.y0-w.bbox.y1<=gap(w));
+      const pairs=scales.filter(s=>s!==label&&nums.some(w=>cy(w)>cy(s)&&w.bbox.y0-s.bbox.y1<=Math.max(s.bbox.y1-s.bbox.y0,w.bbox.y1-w.bbox.y0)*1.5&&!scales.some(t=>cy(t)>cy(s)&&cy(t)<cy(w))));
+      belowOnly=!before&&pairs.length>=2;
+    }
     const nearby = reliable.filter(w => /^\d{2}(?:[.,]5)?$/.test(w.text) && w !== label).filter(w => {
       const a = w.bbox, ah = a.y1 - a.y0;
       const sameRow = Math.abs((a.y0 + a.y1 - b.y0 - b.y1) / 2) <= Math.max(h, ah) * .6
         && Math.max(0, a.x0 - b.x1, b.x0 - a.x1) <= Math.max(h, ah) * 5;
       const sameColumn = Math.abs((a.x0 + a.x1 - b.x0 - b.x1) / 2) <= Math.max(b.x1 - b.x0, a.x1 - a.x0) * .6
         && Math.max(0, a.y0 - b.y1, b.y0 - a.y1) <= Math.max(h, ah) * 1.5;
-      return sameRow || sameColumn;
+      return sameRow || (sameColumn&&(!belowOnly||cy(w)>cy(label)));
     });
     if (nearby.length !== 1) return null;
     sizes.add(sizeKey(nearby[0].text));
@@ -49,6 +62,11 @@ async function readImage(image, barcode) {
         const { data } = await worker.recognize(frame, {}, { text: true, blocks: true });
         const read = readWords(data);
         if (read) return { ...read, decodedBarcodes: codes };
+        if(expired)return null;
+        const metadata=await sharp(frame).metadata();
+        const enhanced=await sharp(frame).resize({width:Math.min(3000,metadata.width*2)}).greyscale().normalize().png().toBuffer();
+        const improved=readWords((await worker.recognize(enhanced,{}, {text:true,blocks:true})).data);
+        if(improved)return {...improved,decodedBarcodes:codes};
       }
       return { pending: true, reason: 'photo_size_or_reference_pending' };
     })();

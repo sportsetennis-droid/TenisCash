@@ -186,6 +186,8 @@ async function applyReconstruction(db,id,roundReviews) {
     await tx.$executeRaw`LOCK TABLE "ProductSize" IN SHARE MODE`;
     await tx.$executeRaw`LOCK TABLE "StoreStock" IN SHARE ROW EXCLUSIVE MODE`;
     const report=await reconstructionReport(tx,id);
+    const newStock=await tx.stocktakeRound.findFirst({where:{operationType:'replacement',storeId:{in:report.reports.map(r=>r.round.storeId)},startedAt:{gte:batch.startedAt}}});
+    if(newStock)fail('Uma loja deste lote já iniciou um novo estoque. Esta reconstrução antiga fica somente para conferência e não pode sobrescrevê-lo.');
     const confirmationsById=new Map(confirmations.map(item=>[String(item?.roundId||''),item]));
     for(const storeReport of report.reports){
       const label=storeReport.store?.code||storeReport.store?.name||storeReport.round.storeId;
@@ -240,6 +242,8 @@ async function startRound(db, storeId, name, userId) {
   });
 }
 async function finishRound(db,id,reviewToken,fullStoreConfirmed) {
+  const target=await db.stocktakeRound.findUnique({where:{id}});
+  if(target?.operationType==='replacement')fail('Use a conferência da Substituição de estoque; os bipes já atualizam o saldo individualmente.');
   if (fullStoreConfirmed !== true) fail('Confirme a conferência completa da loja antes de atualizar o estoque.');
   return db.$transaction(async tx => {
     await tx.$queryRaw`SELECT id FROM "StocktakeRound" WHERE id = ${id} FOR UPDATE`;
@@ -250,6 +254,7 @@ async function finishRound(db,id,reviewToken,fullStoreConfirmed) {
     // Prevent sales or manual adjustments racing the stock comparison and replacement.
     await tx.$executeRaw`LOCK TABLE "StoreStock" IN SHARE ROW EXCLUSIVE MODE`;
     const report = await roundReport(tx,id);
+    if(await tx.stocktakeRound.findFirst({where:{storeId:round.storeId,operationType:'replacement',OR:[{activeReplacementStoreId:round.storeId},{startedAt:{gte:round.startedAt}}]}}))fail('Esta loja iniciou uma substituição de estoque. Esta rodada antiga fica para conferência e não pode sobrescrever o novo saldo.');
     if (reviewToken !== report.reviewToken) fail('O relatório mudou. Atualize e confira novamente.');
     if (!report.totals.total || report.totals.pending) fail('Resolva as leituras pendentes antes de fechar o inventário.');
     if (report.totals.barcodePending) fail('Há produtos identificados sem código de barras escaneado. Complete essas leituras antes de fechar o inventário.');
