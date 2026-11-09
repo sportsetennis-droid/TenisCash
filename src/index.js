@@ -1315,8 +1315,6 @@ app.get('/t/:slug', async (req, res) => {
       ${t.prizeDescription ? '<div class="prize">🏆 ' + apexEsc(t.prizeDescription) + '</div>' : ''}
     </div>
 
-    ${t.description ? '<div class="sec-h">Sobre</div><div class="about">' + apexEsc(t.description) + '</div>' : ''}
-
     ${muralHtml}
 
     <div class="cats" id="cats"></div>
