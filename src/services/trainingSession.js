@@ -69,7 +69,13 @@ async function get(sessionId) {
   const users = allIds.length ? await prisma.user.findMany({ where: { id: { in: allIds } }, select: { id: true, name: true, username: true } }) : [];
   const roster = users.map((u) => {
     const a = attByUser[u.id] || {};
-    return { userId: u.id, name: u.name, username: u.username, confirmed: !!a.confirmed, present: a.present == null ? null : a.present, attendanceId: a.id || null };
+    return {
+      userId: u.id, name: u.name, username: u.username,
+      confirmed: !!a.confirmed, present: a.present == null ? null : a.present,
+      goals: a.goals == null ? null : a.goals, passes: a.passes == null ? null : a.passes,
+      efficiency: a.efficiency == null ? null : a.efficiency, rating: a.rating == null ? null : a.rating,
+      note: a.note || null, attendanceId: a.id || null,
+    };
   }).sort((x, y) => String(x.name || '').localeCompare(String(y.name || '')));
   return { session: s, roster };
 }
@@ -106,16 +112,66 @@ async function confirm(sessionId, userId, confirmed) {
   return { ok: true, attendance: a };
 }
 
-// Treinador faz a chamada: marca presente/faltou (present true|false|null).
-async function mark(sessionId, athleteUserId, present, note) {
+// Treinador/coordenador marca presença + PRODUÇÃO do atleta no treino (prontuário).
+// fields: { present(true|false|null), goals, passes, efficiency(0-100), rating(0-10), note }
+// Só grava o que vier no fields (patch parcial).
+function clampNum(v, max) {
+  if (v === undefined) return undefined;
+  if (v === null || v === '') return null;
+  let n = Number(v);
+  if (Number.isNaN(n)) return undefined;
+  n = Math.max(0, n);
+  if (max != null) n = Math.min(max, n);
+  return n;
+}
+async function mark(sessionId, athleteUserId, fields = {}) {
   const s = await sessionClub(sessionId);
   if (!s) return { ok: false, code: 404, error: 'treino não encontrado' };
+  const data = {};
+  if ('present' in fields) data.present = (fields.present == null || fields.present === 'null') ? null : !!fields.present;
+  if ('note' in fields) data.note = fields.note ? String(fields.note).slice(0, 300) : null;
+  const g = clampNum(fields.goals); if (g !== undefined) data.goals = g == null ? null : Math.round(g);
+  const p = clampNum(fields.passes); if (p !== undefined) data.passes = p == null ? null : Math.round(p);
+  const e = clampNum(fields.efficiency, 100); if (e !== undefined) data.efficiency = e == null ? null : Math.round(e);
+  const r = clampNum(fields.rating, 10); if (r !== undefined) data.rating = r == null ? null : Math.round(r * 10) / 10;
+  if (!Object.keys(data).length) return { ok: false, code: 400, error: 'nada pra marcar' };
   const a = await prisma.trainingAttendance.upsert({
     where: { sessionId_userId: { sessionId: s.id, userId: String(athleteUserId) } },
-    create: { sessionId: s.id, userId: String(athleteUserId), present: present == null ? null : !!present, note: note ? String(note).slice(0, 200) : null },
-    update: { present: present == null ? null : !!present, ...(note !== undefined ? { note: note ? String(note).slice(0, 200) : null } : {}) },
+    create: { sessionId: s.id, userId: String(athleteUserId), ...data },
+    update: data,
   });
   return { ok: true, attendance: a };
+}
+
+// PRONTUÁRIO do atleta neste torneio: resumo de rendimento + histórico treino a treino.
+async function prontuario(tournamentId, userId) {
+  const mine = await prisma.teamMembership.findMany({ where: { tournamentId, userId, status: 'ACTIVE' }, select: { clubName: true } });
+  const clubs = [...new Set(mine.map((m) => m.clubName))];
+  const user = await prisma.user.findUnique({ where: { id: String(userId) }, select: { id: true, name: true, username: true } });
+  const sessions = clubs.length ? await prisma.trainingSession.findMany({ where: { tournamentId, clubName: { in: clubs }, status: { not: 'CANCELED' } }, orderBy: [{ scheduledAt: 'desc' }, { createdAt: 'desc' }] }) : [];
+  const att = sessions.length ? await prisma.trainingAttendance.findMany({ where: { sessionId: { in: sessions.map((s) => s.id) }, userId } }) : [];
+  const attBy = Object.fromEntries(att.map((a) => [a.sessionId, a]));
+  let marked = 0, present = 0, absent = 0, confirmed = 0, goals = 0, passes = 0, effSum = 0, effN = 0, ratSum = 0, ratN = 0;
+  const history = sessions.map((s) => {
+    const a = attBy[s.id] || {};
+    if (a.present === true) { present++; marked++; } else if (a.present === false) { absent++; marked++; }
+    if (a.confirmed) confirmed++;
+    if (a.goals != null) goals += a.goals;
+    if (a.passes != null) passes += a.passes;
+    if (a.efficiency != null) { effSum += a.efficiency; effN++; }
+    if (a.rating != null) { ratSum += a.rating; ratN++; }
+    return { sessionId: s.id, title: s.title, scheduledAt: s.scheduledAt, status: s.status, clubName: s.clubName, present: a.present == null ? null : a.present, confirmed: !!a.confirmed, goals: a.goals == null ? null : a.goals, passes: a.passes == null ? null : a.passes, efficiency: a.efficiency == null ? null : a.efficiency, rating: a.rating == null ? null : a.rating, note: a.note || null };
+  });
+  return {
+    user: user || { id: userId },
+    clubs,
+    summary: {
+      treinos: sessions.length, marcados: marked, presencas: present, faltas: absent, confirmados: confirmed,
+      presencaPct: marked ? Math.round((present / marked) * 100) : null,
+      gols: goals, passes, eficienciaMedia: effN ? Math.round(effSum / effN) : null, notaMedia: ratN ? Math.round((ratSum / ratN) * 10) / 10 : null,
+    },
+    history,
+  };
 }
 
 // Treinos dos clubes em que o atleta está vinculado (pra ele ver/confirmar).
@@ -130,4 +186,4 @@ async function forUser(tournamentId, userId) {
   return { sessions: sessions.map((s) => ({ ...s, myConfirmed: !!(byId[s.id] && byId[s.id].confirmed), myPresent: byId[s.id] ? byId[s.id].present : null })) };
 }
 
-module.exports = { clubOfEntry, create, list, get, update, remove, confirm, mark, forUser, sessionClub };
+module.exports = { clubOfEntry, create, list, get, update, remove, confirm, mark, forUser, prontuario, sessionClub };
