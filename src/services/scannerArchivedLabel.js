@@ -6,7 +6,12 @@ const norm = value => String(value || '').normalize('NFKC').toUpperCase().replac
 const sizeKey = value => String(value || '').replace(',', '.');
 // Only complete printed identity shapes take part in the conflict veto.
 // Bare numeric fragments can also be manufacturing codes and are not joined.
-const isIdentityReference = ref => /^\d{9}[A-Z]{2,8}(?:\d{1,3})?$/.test(ref) || /^[A-Z]{1,3}\d{4,10}$/.test(ref);
+function identityReferences(words,references){
+  // Do not turn a field such as "SAC:0800" into an apparent model SAC0800
+  // by stripping its punctuation. Require a printed model token itself.
+  const literal=new Set(words.filter(w=>/^[A-Z]{1,3}\d{4,10}(?:[-/]\d{2,4})?$/.test(w.text.trim())).map(w=>norm(w.text)));
+  return references.filter(ref=>/^\d{9}[A-Z]{2,8}(?:\d{1,3})?$/.test(ref)||literal.has(ref));
+}
 function printedReferences(words) {
   const references = new Set(words.filter(w=>!/^(?:BR|BRA|USA?|UK|EUR|EU|CM|CHN|JP)\s*\d{1,2}(?:[.,]5)?$/i.test(w.text)).map(w => norm(w.text)).filter(x => /^\d{5,10}$/.test(x) ||
     (x.length >= 5 && x.length <= 25 && /[A-Z]/.test(x) && /\d/.test(x))));
@@ -38,7 +43,7 @@ function printedReferences(words) {
     const joined=norm(model.text)+token;
     references.add(joined);joinedNineDigitReferences.add(joined);
   }
-  if(joinedNineDigitReferences.size>1 || new Set([...references].filter(isIdentityReference)).size>1)return null;
+  if(joinedNineDigitReferences.size>1 || new Set(identityReferences(words,[...references])).size>1)return null;
   return [...references];
 }
 
@@ -100,10 +105,10 @@ function readParts(data) {
   if(sizes.size>1)return {conflict:true};
   const references = printedReferences(reliable);
   if(!references)return {conflict:true};
-  return {size:sizes.size?[...sizes][0]:null,references,text:String(data.text||'').slice(0,12000)};
+  return {size:sizes.size?[...sizes][0]:null,references,identityReferences:identityReferences(reliable,references),text:String(data.text||'').slice(0,12000)};
 }
 
-function readWords(data){const parts=readParts(data);return !parts.conflict&&parts.size&&parts.references.length?{...parts,source:'archived-photo-local-ocr-v1'}:null;}
+function readWords(data){const parts=readParts(data);return !parts.conflict&&parts.size&&parts.references.length?{size:parts.size,references:parts.references,text:parts.text,source:'archived-photo-local-ocr-v1'}:null;}
 
 async function readImage(image, barcode) {
   try { return await require('./scannerImageBroker').run('label', image, barcode); }
@@ -155,4 +160,4 @@ async function target(db, barcode, evidence) {
   }
   return selected;
 }
-module.exports = { readWords, readParts, isIdentityReference, readImage, fiscalRows, target };
+module.exports = { readWords, readParts, readImage, fiscalRows, target };

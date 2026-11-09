@@ -1,7 +1,6 @@
 'use strict';
 const path = require('node:path');
 const barcodePolicy = require('../../public/scanner-barcode-policy');
-const { isIdentityReference } = require('./scannerArchivedLabel');
 const incompleteNineDigitReference=observed=>observed.references.some(ref=>/^\d{9}$/.test(ref))&&!observed.references.some(ref=>/^\d{9}[A-Z]{2,8}(?:\d{1,3})?$/.test(ref));
 // One reusable OCR worker per isolated process; the parent owns deadlines.
 // Never terminate while Tesseract is preparing an image asynchronously.
@@ -28,7 +27,7 @@ function createProcessor(deps = {}) {
     const seenSizes=new Set(),seenReferences=new Set();
     const consistent=data=>{const parts=readParts(data);if(parts.conflict)return false;
       if(parts.size)seenSizes.add(parts.size);
-      for(const ref of parts.references||[])if(isIdentityReference(ref))seenReferences.add(ref);
+      for(const ref of parts.identityReferences||[])seenReferences.add(ref);
       return seenSizes.size<=1&&seenReferences.size<=1;};
     for (const angle of [0, 90, 270, 180]) {
       const frame = angle ? await input(image).rotate(angle).png().toBuffer() : image;

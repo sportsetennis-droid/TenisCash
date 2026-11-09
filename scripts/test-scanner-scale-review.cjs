@@ -121,6 +121,13 @@ test('a reference-only first pass still conflicts with another alphanumeric mode
   });
 });
 
+test('a printed customer-service phone field is not a contradictory model', async () => {
+  let pass=0;
+  await processorFixture(()=>data(++pass===1?[word('SAC:0800',100,400)]:[...br('36'),word('101056056AZLTQS',100,400)]),async processor=>{
+    assert.equal((await processor.run('label',Buffer.from('same-photo-phone-and-model'),barcode)).size,'36');
+  });
+});
+
 (async () => {
   let failed = 0;
   for (const { name, run } of tests) {
