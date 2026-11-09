@@ -16,6 +16,16 @@ Aplicar somente a migração aditiva `20261109010000_scan_action_photos` antes d
 
 ## Validação
 
-`npm run test:scanner` inclui captura do inventário, integridade de JPEG/PNG/WebP e 88 grupos da interface de ações, usando DOM/câmera/rede simulados. O visualizador é testado com fotos pendentes, fotos arquivadas, logout e respostas atrasadas. `scripts/test-scan-action-photos.cjs` exige PostgreSQL local isolado e testa bytes reais de imagem, concorrência, recapturas, autorização, HTTP e trava de confirmação. Históricos e transferências têm testes próprios no mesmo ambiente isolado. Isso não constitui teste físico com o telefone do operador.
+`npm run test:scanner` inclui captura do inventário, integridade de JPEG/PNG/WebP, nove casos de geometria BR e 91 grupos da interface de ações, usando DOM/câmera/rede simulados. O visualizador é testado com fotos pendentes, fotos arquivadas, logout e respostas atrasadas. `scripts/test-scan-action-photos.cjs` exige PostgreSQL local isolado e testa bytes reais de imagem, concorrência, recapturas, autorização, HTTP e trava de confirmação. Históricos e transferências têm testes próprios no mesmo ambiente isolado. Isso não constitui teste físico com o telefone do operador.
 
 Teste solicitado em 08/11/2026 encontrou JPEG truncado aceito porque o cabeçalho continuava legível. O servidor agora decodifica todos os pixels antes de reconhecer o arquivamento; os bytes originais são preservados, sem converter a imagem. Imagem incompleta permanece pendente para reenvio da mesma peça.
+
+## Vinculação automática pela foto arquivada
+
+Ordem de Douglas: “Então vc precisa vincular isso automaticamente”, após verificar a captura real do Nano X4 na Loja 07. A imagem já arquivada é processada no próprio servidor, com ZXing e Tesseract locais e o modelo de idioma já hospedado pelo TenisCash, sem API paga nem envio a serviço de OCR externo. O texto recebido do navegador não é tratado como confirmação visual: o servidor decodifica o código e lê os pixels originais.
+
+Somente EAN único na imagem igual ao bipe, tamanho BR explícito com geometria e confiança suficientes, referência compatível e vínculo inequívoco com produto canônico em NF-e de entrada permitem aprender o barcode. No formato Reebok documentado, a referência de nove dígitos e o BR observado precisam concordar com a referência fiscal completa; o BR não é deduzido do sufixo. Outra escala, ambiguidade, cadastro conflitante, referência diferente, transferência incompatível, leitura removida ou lote fechado permanecem pendentes.
+
+O vínculo reaproveita a variante correta; variante comprovada ausente nasce com estoque zero. IDs, quantidade, loja, lote, foto, estoque comprado e XML ficam preservados. A evidência e o resultado ficam em AdminAction e no contexto do produto. O mesmo bipe recebe a identificação; reenvio antigo não desfaz a resolução comprovada. Falha temporária do leitor mantém a foto arquivada e retoma a identificação na fila. Abas antigas devem ser recarregadas para usar a atualização automática da lista.
+
+Teste completo com imagem real local: `TRANSFER_TEST_DATABASE_URL` deve apontar para PostgreSQL localhost e `SCAN_PHOTO_FIXTURE` para a imagem de teste; executar `node scripts/test-scan-photo-link.cjs`. A foto particular não é incluída no repositório. Verifica vínculo, conflito, autorização, repetição, rascunho atrasado, foto original, estoque inalterado e tamanho novo sem estoque.

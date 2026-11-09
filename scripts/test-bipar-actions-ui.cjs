@@ -1159,5 +1159,30 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
     assert.equal(image.src, testFrame().toDataURL()); assert.ok(viewer.children.some(n => n.textContent.includes('aguardando arquivamento')));
     assert.equal(item.photoArchived, false);
   });
-  console.log('PASS: 88 action UI regression groups; isolated DOM, camera and network mocks only.');
+  await test('photo identification refreshes the same pending piece and confirms its observed size', async () => {
+    const h = harness(); await h.boot(); let linked = false;
+    h.handler = () => linked ? response({ product, requiresSizeConfirmation: true }) : response({ error: 'Tamanho pendente' }, 404);
+    await h.scan(product.barcode); const item = h.api.activeReads()[0], id = item.clientScanId;
+    h.photoHandler = () => { linked = true; return response({ archived: true, photo: { id: randomUUID() }, identification: { status: 'linked', product, confirmedSize: '40' } }); };
+    await h.archivePhotos(); assert.equal(item.product.productSizeId, product.productSizeId); assert.equal(item.confirmedSize, '40');
+    assert.equal(item.error, ''); assert.equal(item.clientScanId, id); assert.equal(h.api.activeReads().length, 1); assert.equal(h.api.localPending(), false);
+  });
+  await test('a busy automatic reader retries the archived photo without another scan or manual click', async () => {
+    const h = harness(); await h.boot(); h.handler = () => response({ error: 'Tamanho pendente' }, 404);
+    await h.scan(product.barcode); const item = h.api.activeReads()[0];
+    h.photoHandler = () => response({ archived: true, photo: { id: 'same-photo' }, identification: { status: 'pending', retry: true } });
+    await h.archivePhotos(); assert.equal(item.photoArchived, true);
+    h.handler = () => response({ product, requiresSizeConfirmation: true });
+    h.photoHandler = () => response({ archived: true, photo: { id: 'same-photo' }, identification: { status: 'linked', product, confirmedSize: '40' } });
+    await h.api.flushPhotos(); assert.equal(h.photoRequests.length, 2); assert.equal(item.confirmedSize, '40'); assert.equal(h.api.activeReads().length, 1);
+  });
+  await test('late photo recognition after logout never resolves the old operator piece', async () => {
+    const h = harness(); await h.boot(); h.handler = () => response({ error: 'Tamanho pendente' }, 404);
+    await h.scan(product.barcode); const item = h.api.activeReads()[0], late = deferred();
+    await h.api.photoArchive.capture(h.api.state().currentDraft, item, testFrame()); h.photoHandler = () => late.promise;
+    const pending = h.api.flushPhotos(); await flush(); h.get('action-switch-user').onclick();
+    late.resolve(response({ archived: true, photo: { id: randomUUID() }, identification: { status: 'linked', product, confirmedSize: '40' } })); await pending;
+    assert.equal(item.product, undefined); assert.equal(item.confirmedSize, ''); assert.equal(h.api.state().actor, null);
+  });
+  console.log('PASS: 91 action UI regression groups; isolated DOM, camera and network mocks only.');
 })().catch(error => { console.error(error.stack || error); process.exitCode = 1; });

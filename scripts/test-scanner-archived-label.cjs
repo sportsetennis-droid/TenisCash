@@ -1,0 +1,16 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {readWords}=require('../src/services/scannerArchivedLabel');
+const word=(text,x,y,confidence=96)=>({text,confidence,bbox:{x0:x,y0:y,x1:x+40,y1:y+25}});
+const data=words=>({text:words.map(w=>w.text).join('\n'),blocks:[{paragraphs:[{lines:[{words}]}]}]});
+const ref=word('100211606',480,1050);
+assert.equal(readWords(data([word('43',180,270),word('BR',310,271),ref])).size,'43');
+assert.equal(readWords(data([word('BR',180,270),word('43',240,271),ref])).size,'43');
+assert.equal(readWords(data([word('BR',180,270),word('43',180,315),ref])).size,'43');
+assert.equal(readWords(data([word('43',180,270),word('USA',310,271),ref])),null);
+assert.equal(readWords(data([word('43',180,270),word('BR',310,271),word('11',180,345),word('USA',310,345),ref])).size,'43');
+assert.equal(readWords(data([word('43',180,270),word('BR',310,271),word('42',360,270),ref])),null);
+assert.equal(readWords(data([word('43',180,270,50),word('BR',310,271),ref])),null);
+assert.equal(readWords(data([word('43',180,270),word('BR',800,271),ref])),null);
+assert.equal(readWords(data([word('43',180,270),word('BR',310,271),word('42',180,500),word('BR',310,500),ref])),null);
+console.log('PASS: 9 archived-label geometry cases; BR before/after/below, other scales, ambiguity, confidence and distance.');
