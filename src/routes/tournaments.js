@@ -916,7 +916,7 @@ router.post('/entries/:entryId/players', async (req, res) => {
 // body { logo: dataURI } ou { logo: null } pra limpar. Guarda data URI pequeno.
 router.post('/entries/:entryId/logo', async (req, res) => {
   try {
-    const entry = await prisma.tournamentEntry.findUnique({ where: { id: req.params.entryId }, select: { id: true } });
+    const entry = await prisma.tournamentEntry.findUnique({ where: { id: req.params.entryId }, select: { id: true, name: true, tournamentId: true } });
     if (!entry) return res.status(404).json({ error: 'time não encontrado' });
     const raw = (req.body || {}).logo;
     let logoUrl = null;
@@ -927,8 +927,13 @@ router.post('/entries/:entryId/logo', async (req, res) => {
       if (v.length > 800000) return res.status(413).json({ error: 'logo muito grande — reduza a imagem' });
       logoUrl = v;
     }
-    await prisma.tournamentEntry.update({ where: { id: entry.id }, data: { logoUrl } });
-    res.json({ ok: true, logoUrl });
+    // Time é UM clube só, em várias categorias: a logo é do CLUBE → aplica em TODAS as
+    // inscrições do mesmo time (mesmo nome, mesmo torneio). Vale pra todos (dono 2026-11-09).
+    const r = await prisma.tournamentEntry.updateMany({
+      where: { tournamentId: entry.tournamentId, name: entry.name },
+      data: { logoUrl },
+    });
+    res.json({ ok: true, logoUrl, entriesUpdated: r.count });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
