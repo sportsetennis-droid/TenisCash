@@ -16,17 +16,24 @@
   async function getWorker() {
     if (!workerPromise) {
       const started = generation;
+      let created;
       const pending = (async () => {
       await loadScript();
-      const ready = await window.Tesseract.createWorker('eng', 1, {
+      const ready = created = await window.Tesseract.createWorker('eng', 1, {
         workerPath: '/vendor/ocr/worker.min.js', corePath: '/vendor/ocr',
         langPath: '/vendor/ocr', workerBlobURL: false,
       });
-      if (started !== generation) { await ready.terminate(); throw new Error('Leitura cancelada'); }
+      if (started !== generation) throw new Error('Leitura cancelada');
       worker = ready;
       await ready.setParameters({ tessedit_pageseg_mode: '11', preserve_interword_spaces: '1' });
       return ready;
-      })().catch(e => { if (workerPromise === pending) workerPromise = null; throw e; });
+      })().catch(async e => {
+        if (workerPromise === pending) workerPromise = null;
+        if (worker === created) worker = null;
+        // Even an initialization failure owns a real worker that must terminate.
+        if (created) { try { await created.terminate(); } catch (_) {} }
+        throw e;
+      });
       workerPromise = pending;
     }
     return workerPromise;

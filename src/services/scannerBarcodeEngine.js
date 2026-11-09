@@ -1,6 +1,7 @@
 'use strict';
 // Heavy dependencies are loaded only by the isolated image process.
 const fs = require('node:fs'), path = require('node:path'), sharp = require('sharp');
+const barcodePolicy = require('../../public/scanner-barcode-policy');
 const MAX_PIXELS = 24000000;
 let mod;
 function getMod() {
@@ -16,7 +17,7 @@ async function read(buf) {
   const { data, info } = await sharp(buf, { limitInputPixels: MAX_PIXELS }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const rows = await getMod().readBarcodes({ data: new Uint8ClampedArray(data), width: info.width, height: info.height },
     { tryHarder: true, tryRotate: true, tryInvert: true, formats: ['EAN-13', 'UPC-A', 'EAN-8', 'Code128', 'ITF'], maxNumberOfSymbols: 3 });
-  return [...new Set(rows.map(r => String(r.text || '')).filter(s => /^\d{8,14}$/.test(s)))];
+  return [...new Set(rows.map(r => String(r.text || '').trim()).filter(barcodePolicy.isScanCode))];
 }
 async function decode(image) {
   const codes = await read(image);

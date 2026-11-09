@@ -23,7 +23,9 @@ function build(report, queue = { available: false, items: [] }, now = new Date()
     const active = jobs.some(j => ['active', 'running'].includes(j.state));
     const waiting = jobs.some(j => ['created', 'retry', 'queued', 'pending'].includes(j.state));
     const failed = jobs.some(j => ['failed', 'cancelled'].includes(j.state));
-    const transient = !c?.reason || ['ocr_busy', 'ocr_timeout', 'ocr_unavailable', 'aguardando_conferencia_da_etiqueta'].includes(c.reason);
+    const transient = !c?.reason || ['ocr_busy', 'ocr_timeout', 'ocr_unavailable', 'ocr_memory_limit',
+      'photo_decode_busy', 'photo_decode_timeout', 'photo_decode_unavailable', 'photo_decode_memory_limit',
+      'aguardando_conferencia_da_etiqueta'].includes(c.reason);
     const state = excluded ? 'excluded' : applied ? 'applied' : active || (waiting && transient) ? 'processing' : 'review';
     counts[state]++;
     const reason = state === 'applied' ? null : state === 'excluded' ? (b?.exclusionReason || c?.reason || 'Leitura excluída ou estornada.')

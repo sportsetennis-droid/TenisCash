@@ -4,7 +4,14 @@ const { canonicalProduct } = require('./scannerCatalog');
 const barcodePolicy = require('../../public/scanner-barcode-policy');
 const norm = value => String(value || '').normalize('NFKC').toUpperCase().replace(/[^A-Z0-9]/g, '');
 const sizeKey = value => String(value || '').replace(',', '.');
-
+// Only complete printed identity shapes take part in the conflict veto.
+// Bare numeric fragments can also be manufacturing codes and are not joined.
+function identityReferences(words,references){
+  // Do not turn a field such as "SAC:0800" into an apparent model SAC0800
+  // by stripping its punctuation. Require a printed model token itself.
+  const literal=new Set(words.filter(w=>/^[A-Z]{1,3}\d{4,10}(?:[-/]\d{2,4})?$/.test(w.text.normalize('NFKC').toUpperCase().trim())).map(w=>norm(w.text)));
+  return references.filter(ref=>/^\d{9}[A-Z]{2,8}(?:\d{1,3})?$/.test(ref)||literal.has(ref));
+}
 function printedReferences(words) {
   const references = new Set(words.filter(w=>!/^(?:BR|BRA|USA?|UK|EUR|EU|CM|CHN|JP)\s*\d{1,2}(?:[.,]5)?$/i.test(w.text)).map(w => norm(w.text)).filter(x => /^\d{5,10}$/.test(x) ||
     (x.length >= 5 && x.length <= 25 && /[A-Z]/.test(x) && /\d/.test(x))));
@@ -36,23 +43,28 @@ function printedReferences(words) {
     const joined=norm(model.text)+token;
     references.add(joined);joinedNineDigitReferences.add(joined);
   }
-  if(joinedNineDigitReferences.size>1)return [];
+  if(joinedNineDigitReferences.size>1 || new Set(identityReferences(words,[...references])).size>1)return null;
   return [...references];
 }
 
 // Keep geometry: in a multiscale label "43 BR" is not "11 USA".
-function readWords(data) {
+function readParts(data) {
   const words = (data.blocks || []).flatMap(b => (b.paragraphs || []).flatMap(p => (p.lines || []).flatMap(l => l.words || [])));
   const reliable = words.filter(w => w.confidence >= 75 && w.bbox);
   const sizes = new Set();
-  for (const label of reliable.filter(w => /^(BR|BRA)$/i.test(w.text))) {
+  const brLabels=reliable.filter(w => /^(BR|BRA)$/i.test(w.text));
+  // Two printed Brazilian scales may belong to two boxes, even when their
+  // values happen to be equal. Do not collapse those labels into one answer.
+  if(brLabels.length>1)return {conflict:true};
+  for (const label of brLabels) {
     const b = label.bbox, h = b.y1 - b.y0;
     // A vertical multi-scale column may put the previous scale's value as
     // close to BR as BR's own value. Infer direction only from two other
     // literal scale/value pairs and the unambiguous start of that column.
     const cy=w=>(w.bbox.y0+w.bbox.y1)/2,cx=w=>(w.bbox.x0+w.bbox.x1)/2;
     const sameColumn=w=>Math.abs(cx(w)-cx(label))<=Math.max(b.x1-b.x0,w.bbox.x1-w.bbox.x0)*.6;
-    const scales=reliable.filter(w=>/^(BR|BRA|USA?|UK|EUR|EU|CM|CHN)$/i.test(w.text)&&sameColumn(w)).sort((a,z)=>cy(a)-cy(z));
+    const scaleWords=reliable.filter(w=>/^(BR|BRA|USA?|UK|EUR|EU|F|CM|CHN|JP|J)$/i.test(w.text));
+    const scales=scaleWords.filter(sameColumn).sort((a,z)=>cy(a)-cy(z));
     const nums=reliable.filter(w=>/^\d{1,2}(?:[.,]5)?$/.test(w.text)&&sameColumn(w));
     let belowOnly=false;
     if(scales.length>=3){const first=scales[0],gap=w=>Math.max(first.bbox.y1-first.bbox.y0,w.bbox.y1-w.bbox.y0)*1.5;
@@ -68,20 +80,35 @@ function readWords(data) {
         && Math.max(0, a.y0 - b.y1, b.y0 - a.y1) <= Math.max(h, ah) * 1.5;
       return sameRow || (sameColumn&&(!belowOnly||cy(w)>cy(label)));
     });
-    if (nearby.length !== 1) return null;
+    if(nearby.length!==1)continue;
     // If BR's number was not recognized, the preceding scale's value can be
     // the only reliable neighbour (CM 24 / BRA [unreadable]). Ambiguous
     // attachment is not BR evidence; never relabel that value as Brazilian.
     const selected=nearby[0];
     if(cy(selected)<cy(label)&&scales.some(s=>s!==label&&cy(s)<cy(selected)&&
-      selected.bbox.y0-s.bbox.y1<=Math.max(s.bbox.y1-s.bbox.y0,selected.bbox.y1-selected.bbox.y0)*1.5))return null;
+      selected.bbox.y0-s.bbox.y1<=Math.max(s.bbox.y1-s.bbox.y0,selected.bbox.y1-selected.bbox.y0)*1.5))continue;
+    // A number on the other side of a foreign scale belongs to that scale;
+    // proximity alone must never turn "BR [unreadable] EUR 43" into BR 43.
+    if(scaleWords.some(s=>s!==label&&Math.abs(cy(s)-cy(selected))<=Math.max(s.bbox.y1-s.bbox.y0,selected.bbox.y1-selected.bbox.y0)*.6&&cx(s)>Math.min(cx(label),cx(selected))&&cx(s)<Math.max(cx(label),cx(selected))))continue;
+    // Labels can follow their value as well ("43 F"). A clearly closer
+    // aligned foreign scale owns that value even when it is not between BR
+    // and the number. This only vetoes an ambiguous BR attachment.
+    const distance=(a,z)=>Math.hypot(Math.max(0,a.x0-z.x1,z.x0-a.x1),Math.max(0,a.y0-z.y1,z.y0-a.y1));
+    const sh=selected.bbox.y1-selected.bbox.y0,brDistance=distance(b,selected.bbox);
+    if(scaleWords.some(s=>{if(s===label)return false;const a=s.bbox,ah=a.y1-a.y0;
+      const row=Math.abs(cy(s)-cy(selected))<=Math.max(ah,sh)*.6;
+      const column=Math.abs(cx(s)-cx(selected))<=Math.max(a.x1-a.x0,selected.bbox.x1-selected.bbox.x0)*.6;
+      return (row||column)&&distance(a,selected.bbox)+Math.max(ah,sh)*.15<brDistance;
+    }))continue;
     sizes.add(sizeKey(nearby[0].text));
   }
-  if (sizes.size !== 1) return null;
+  if(sizes.size>1)return {conflict:true};
   const references = printedReferences(reliable);
-  if (!references.length) return null;
-  return { size: [...sizes][0], references, text: String(data.text || '').slice(0, 12000), source: 'archived-photo-local-ocr-v1' };
+  if(!references)return {conflict:true};
+  return {size:sizes.size?[...sizes][0]:null,references,identityReferences:identityReferences(reliable,references),text:String(data.text||'').slice(0,12000)};
 }
+
+function readWords(data){const parts=readParts(data);return !parts.conflict&&parts.size&&parts.references.length?{size:parts.size,references:parts.references,text:parts.text,source:'archived-photo-local-ocr-v1'}:null;}
 
 async function readImage(image, barcode) {
   try { return await require('./scannerImageBroker').run('label', image, barcode); }
@@ -133,4 +160,4 @@ async function target(db, barcode, evidence) {
   }
   return selected;
 }
-module.exports = { readWords, readImage, fiscalRows, target };
+module.exports = { readWords, readParts, readImage, fiscalRows, target };

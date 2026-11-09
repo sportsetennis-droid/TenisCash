@@ -8,6 +8,7 @@ function createProcessor(deps = {}) {
   const sharp = deps.sharp || require('sharp');
   const decode = deps.decode || require('./scannerBarcodeEngine').decode;
   const readWords = deps.readWords || require('./scannerArchivedLabel').readWords;
+  const readParts = deps.readParts || require('./scannerArchivedLabel').readParts;
   const createWorker = deps.createWorker || require('tesseract.js').createWorker;
   let worker, busy = false;
   const input = image => sharp(image, { limitInputPixels: 24000000 });
@@ -21,6 +22,13 @@ function createProcessor(deps = {}) {
     });
     await worker.setParameters({ preserve_interword_spaces: '1' });
     let stretched=false;
+    // Retain contradictory partial evidence within this photo only. A pass
+    // without a complete answer may still contain a reliable BR or colour.
+    const seenSizes=new Set(),seenReferences=new Set();
+    const consistent=data=>{const parts=readParts(data);if(parts.conflict)return false;
+      if(parts.size)seenSizes.add(parts.size);
+      for(const ref of parts.identityReferences||[])seenReferences.add(ref);
+      return seenSizes.size<=1&&seenReferences.size<=1;};
     for (const angle of [0, 90, 270, 180]) {
       const frame = angle ? await input(image).rotate(angle).png().toBuffer() : image;
       const metadata = await input(frame).metadata();
@@ -32,6 +40,7 @@ function createProcessor(deps = {}) {
         await worker.setParameters({ tessedit_pageseg_mode: psm });
         for (const candidate of [frame, enhanced]) {
           const data=(await worker.recognize(candidate, {}, { text: true, blocks: true })).data;
+          if(!consistent(data))return {pending:true,reason:'photo_size_or_reference_pending'};
           // This is only a trigger for another attempt, never identity/size
           // evidence. The next read still has to pass every literal guard.
           nineDigitText ||= (data.blocks||[]).some(b=>(b.paragraphs||[]).some(p=>(p.lines||[]).some(l=>(l.words||[]).some(w=>w.confidence>=75&&/^\d{9}$/.test(String(w.text||'').trim())))));
@@ -54,7 +63,9 @@ function createProcessor(deps = {}) {
         for(const normalized of [false,true]){
           let wide=input(frame).resize({width:Math.max(1,Math.floor(metadata.width*scale*2)),height:Math.max(1,Math.floor(metadata.height*scale)),fit:'fill'});
           if(normalized)wide=wide.greyscale().normalize();
-          const observed=readWords((await worker.recognize(await wide.png().toBuffer(),{}, {text:true,blocks:true})).data);
+          const data=(await worker.recognize(await wide.png().toBuffer(),{}, {text:true,blocks:true})).data;
+          if(!consistent(data))return {pending:true,reason:'photo_size_or_reference_pending'};
+          const observed=readWords(data);
           if(observed&&partial&&partial.size!==observed.size)return {pending:true,reason:'photo_size_or_reference_pending'};
           if(observed){
             if(incompleteNineDigitReference(observed))partial=partial||observed;

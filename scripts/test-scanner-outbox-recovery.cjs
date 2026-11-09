@@ -5,6 +5,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('nod
 const html=fs.readFileSync(path.join(__dirname,'../public/bipar.html'),'utf8');
 const actions=fs.readFileSync(path.join(__dirname,'../public/bipar-actions.js'),'utf8');
 const identity=html.slice(html.indexOf('  function etiqIdentity('),html.indexOf('  function etiqCopy('));
+const durable=html.slice(html.indexOf('  function etiqPhotoDurable('),html.indexOf('  function renderEtiqCaptureState('));
 const queue=html.slice(html.indexOf('  const etiqRejectedAuthorizations'),html.indexOf('  let etiqStatusOffset'));
 const recovery=html.slice(html.indexOf('  async function resumeInventoryOutbox()'),html.indexOf('  carregarLojas();',html.indexOf('  async function resumeInventoryOutbox()')));
 const auth=actions.slice(actions.indexOf('  function canUploadStocktake('),actions.indexOf('  async function authenticate('));
@@ -21,7 +22,7 @@ function harness(rows,{authenticated=true,status=200}={}){
   isInventory(){return ctx.action==='replacement'||ctx.action==='inventory'},tokenSubject:t=>t==='token-a'||t==='new-token-a'?'operator-a':'operator-b',
   expireAuthentication(){ctx.expired++;ctx.actor=null;},async resumeAuthentication(){ctx.resumed++;if(ctx.recover){ctx.token='new-token-a';ctx.actor={id:'operator-a'};}},expired:0,resumed:0,recover:false,
   etiqFila:rows,etiqStorageReady:true,etiqStorageFailed:false,etiqBusy:false,etiqAtivo:null,etiqRestorePromise:Promise.resolve(),etiqAutoFrames:new Map(),
-  etiqSave:async()=>{saved.push(JSON.parse(JSON.stringify(rows)));return true;},etiqReadPhoto:async()=>{await ctx.beforePhotoRead?.();return photo;},etiqStartOcr(){},etiqStartAutoOcr(){},
+  etiqSave:async()=>{saved.push(JSON.parse(JSON.stringify(rows)));for(const row of rows)ctx.etiqSave.baseline.set(ctx.etiqIdentity(row),JSON.parse(JSON.stringify(row)));return true;},etiqReadPhoto:async()=>{await ctx.beforePhotoRead?.();return photo;},etiqStartOcr(){},etiqStartAutoOcr(){},
   renderEtiqLista(){},renderEtiqCaptureState(){},renderLista(){},consultarStatus:async()=>{ctx.statusPolls++;},statusPolls:0,
   fetch:async data=>{assert.equal(data,photo);return {blob:async()=>new Blob(['original'])};},
   stocktakeFetch:async(url,options)=>{uploads.push({url,form:options.body,authorization:ctx.token});const status=ctx.responseStatus,id=typeof options.body==='string'?JSON.parse(options.body).clientScanId:options.body.get('clientScanId');await ctx.beforeResponse?.(options);return {status,ok:status===200,json:async()=>ctx.readResponseBody?ctx.readResponseBody(options):ctx.responseBody||(status===200?{capId:'capture-'+id,bipeId:'bipe-'+id,photoSaved:true,photoRevision:1}:{error:'HTTP '+status})};},responseStatus:status,
@@ -31,7 +32,8 @@ function harness(rows,{authenticated=true,status=200}={}){
  vm.createContext(ctx);vm.runInContext(auth,ctx);
  ctx.window.ScannerRound={current:()=>ctx.round,id:()=>ctx.round?.id||null};
  ctx.window.BiparActions={isInventory:ctx.isInventory,mode:()=>ctx.action,version:()=>1,headers:()=>ctx.token?{Authorization:'Bearer '+ctx.token}:{},operator:()=>ctx.actor,replacementReady:()=>false,canUploadStocktake:ctx.canUploadStocktake,recoverStocktakeAuthentication:ctx.recoverStocktakeAuthentication};
- vm.runInContext(identity+queue+recovery+updateStatus,ctx);
+ ctx.etiqSave.baseline=new Map();
+ vm.runInContext(identity+durable+queue+recovery+updateStatus,ctx);
  return {ctx,uploads,events,timers,saved};
 }
 (async()=>{

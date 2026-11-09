@@ -225,9 +225,15 @@
       events.sort((a, b) => Number(!a.base) - Number(!b.base) || (Number(a.at) || 0) - (Number(b.at) || 0) || String(a.key || '').localeCompare(String(b.key || '')));
       for (const event of events) {
         const row = rows.get(event.identity) || {};
+        const currentRevision = Number(row.photoRevision || 0);
+        const eventRevision = event.fields.photoRevision == null ? currentRevision : Number(event.fields.photoRevision || 0);
         // A stale tab cannot undo confirmation even if it holds an older image.
         // All originals remain in the immutable image store and event history.
-        if (row.complete && row.capId && !event.fields.complete && event.fields.st === 'fila') continue;
+        // Old unversioned deltas cannot prove which image they describe after
+        // a recapture. Preserve the event, but recheck that revision remotely.
+        if (currentRevision > 1 && event.fields.photoRevision == null) continue;
+        if (eventRevision < currentRevision) continue;
+        if (eventRevision === currentRevision && row.complete && row.capId && !event.fields.complete && event.fields.st === 'fila') continue;
         if (row.st === 'revisao' && row.msg === 'Repetição cancelada — não contada' && event.fields.st === 'fila') continue;
         Object.assign(row, event.fields); rows.set(event.identity, row);
       }

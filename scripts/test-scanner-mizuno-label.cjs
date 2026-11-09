@@ -60,6 +60,10 @@ function fakeSharp(){return{angle:0,rotate(angle){this.angle=angle;return this},
  calls=0;wideCalls=0;
  worker.recognize=async bytes=>{calls++;if(bytes.toString().startsWith('wide:'))wideCalls++;return{data:data(twoSizes)}};
  const ambiguous=createProcessor({sharp:fakeSharp,readWords,decode:async()=>['7894756210898'],createWorker:async()=>worker});
- const pending=await ambiguous.run('label',Buffer.from('original'),'7894756210898');assert.equal(pending.pending,true);assert.equal(wideCalls,2,'Never multiply stretch passes across four rotations');assert.equal(calls,18,'Sixteen existing passes plus at most two extra');await ambiguous.close();
+ const pending=await ambiguous.run('label',Buffer.from('original'),'7894756210898');assert.equal(pending.pending,true);assert.equal(wideCalls,0,'Confirmed conflicting literal BR values stop before extra passes');assert.equal(calls,1);await ambiguous.close();
+ calls=0;wideCalls=0;
+ worker.recognize=async bytes=>{calls++;if(bytes.toString().startsWith('wide:'))wideCalls++;return{data:trigger}};
+ const bounded=createProcessor({sharp:fakeSharp,readWords,decode:async()=>['7894756210898'],createWorker:async()=>worker});
+ assert.equal((await bounded.run('label',Buffer.from('original'),'7894756210898')).pending,true);assert.equal(wideCalls,2,'Never multiply stretch passes across four rotations');assert.equal(calls,18,'Sixteen existing passes plus at most two extra');await bounded.close();
  console.log('PASS: measured literal BRA/model/colour, nine-digit adjacent colour, wrong-scale/cross-line/low-confidence/conflicting-box rejection, up to two whole-frame attempts (colour then normalized) triggered even when initial colour is poor; <=4MP each.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

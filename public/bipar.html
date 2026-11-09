@@ -316,8 +316,8 @@
   </section>
   </details>
 
-<script src="/scanner-barcode-policy.js?v=20261027-internal-codes-1"></script><script src="/scanner-confirm.js?v=20260915-resume-2"></script><script src="/scanner-view.js?v=20261018-recent-reads-1"></script><script src="/scanner-camera.js?v=20261018-live-fast-2"></script><script src="/scanner-round.js?v=20261109-replacement-1"></script><script src="/bipar-transfer.js?v=20261002-actions-1"></script><script src="/scanner-photo-storage.js?v=20261109-readback-1"></script><script src="/scan-action-photos.js?v=20261109-archive-1"></script><script src="/bipar-actions.js?v=20261109-mobile-durable-1"></script>
-<script src="/vendor/barcode/zxing-reader-3.1.4.js"></script><script src="/scanner-auto.js?v=20261109-edge-ready-1"></script><script src="/scanner-regions.js?v=20260914-worker-1"></script><script src="/scanner-ocr.js?v=20261109-bounded-memory-1"></script>
+<script src="/scanner-barcode-policy.js?v=20261109-parallel-1"></script><script src="/scanner-confirm.js?v=20260915-resume-2"></script><script src="/scanner-view.js?v=20261018-recent-reads-1"></script><script src="/scanner-camera.js?v=20261018-live-fast-2"></script><script src="/scanner-round.js?v=20261109-replacement-1"></script><script src="/bipar-transfer.js?v=20261002-actions-1"></script><script src="/scanner-photo-storage.js?v=20261109-parallel-1"></script><script src="/scan-action-photos.js?v=20261109-archive-1"></script><script src="/bipar-actions.js?v=20261109-mobile-durable-1"></script>
+<script src="/vendor/barcode/zxing-reader-3.1.4.js"></script><script src="/scanner-auto.js?v=20261109-parallel-1"></script><script src="/scanner-regions.js?v=20260914-worker-1"></script><script src="/scanner-ocr.js?v=20261109-parallel-1"></script>
 
 <script>
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
@@ -603,6 +603,8 @@
     if (window.BiparActions && !window.BiparActions.isInventory()) return;
     if (_retrying) return;
     _retrying = true;
+    // Rejected credentials are transient; never persist tokens with a reading.
+    const rejectedAuthorizations = processRetryQueue.rejectedAuthorizations || (processRetryQueue.rejectedAuthorizations = new Map());
     try {
       let q = loadRetryQueue();
       // A retry must keep the same identity after a crash or another tab opens.
@@ -614,6 +616,9 @@
         if (window.BiparActions && !window.BiparActions.isInventory()) { remaining.push(item); continue; }
         window.ScannerTransfer?.start(item);
         if(!item.roundId || item.blocked){remaining.push({...item,blocked:item.blocked||'Leitura antiga sem rodada. Revisar separadamente.'});continue;}
+        if (window.BiparActions?.canUploadStocktake && !window.BiparActions.canUploadStocktake(item)) { remaining.push(item); continue; }
+        const sentAuthorization = window.BiparActions?.headers?.().Authorization || '';
+        if (item.authPending && (!sentAuthorization || sentAuthorization === rejectedAuthorizations.get(retryKey(item)))) { remaining.push(item); continue; }
         // garante clientScanId em itens antigos (compat reversa)
         if (!item.clientScanId) item.clientScanId = genClientScanId();
         window.ScannerTransfer?.activity('retry:' + item.clientScanId, item);
@@ -629,7 +634,18 @@
               clientScanId: item.clientScanId, roundId:item.roundId,
             }),
           });
-          // 4xx: cliente errou — REMOVE da fila, não fica em loop. Log BIPE_RETRY_CLIENTE.
+          if (r.status === 401) {
+            // Expiry is retryable only after the original operator signs in.
+            // A late response cannot expire another account: recovery checks
+            // both the operator ID and the exact rejected authorization.
+            remaining.push({ ...item, authPending: true });
+            rejectedAuthorizations.set(retryKey(item), sentAuthorization);
+            if (item.sellerId && window.BiparActions?.recoverStocktakeAuthentication) {
+              try { await window.BiparActions.recoverStocktakeAuthentication(item.sellerId, sentAuthorization); } catch (_) {}
+            }
+            continue;
+          }
+          // Genuine client/permission conflicts remain preserved for review.
           if (r.status >= 400 && r.status < 500) {
             const detail=await r.json().catch(()=>({}));
             remaining.push({...item,blocked:detail.error||'Leitura recusada. Revisar a rodada.'});
@@ -637,6 +653,7 @@
           }
           if (!r.ok) { remaining.push(item); continue; }
           const d = await r.json();
+          rejectedAuthorizations.delete(retryKey(item));
           removeFromQueue(item.clientScanId);
           window.ScannerTransfer?.update(item, {saved:true, bipeId:d.bipeId || null});
           // sucesso: atualiza o bipe local existente
@@ -922,6 +939,9 @@
           const identity = etiqIdentity(item), base = etiqSave.baseline.get(identity);
           const fields = Object.fromEntries(Object.entries(item).filter(([key, value]) => !base || JSON.stringify(base[key]) !== JSON.stringify(value)));
           if (!Object.keys(fields).length) continue;
+          // Every status delta belongs to this exact photograph, including
+          // updates arriving from a tab that still holds an older recapture.
+          if (item.photoRevision != null) fields.photoRevision = Number(item.photoRevision);
           const saved = await etiqPhotoStorage.append(identity, fields);
           // Advance after each committed piece, even if the next piece fails.
           // A retry cannot duplicate the already durable full photo.
@@ -1146,17 +1166,19 @@
       next.style.background = queued ? '#a65b00' : '#555';
       return;
     }
-    status.textContent = saved ? '✓ FOTO SALVA' : etiqStorageFailed ? 'FOTO AGUARDANDO SALVAMENTO' : '⏳ SALVANDO FOTO…';
+    const review = it.st === 'revisao' && !it.manualDecodePending;
+    status.textContent = review ? '⚠ LEITURA EM REVISÃO' : saved ? '✓ FOTO SALVA' : etiqStorageFailed ? 'FOTO AGUARDANDO SALVAMENTO' : '⏳ SALVANDO FOTO…';
     const uploaded = it.capId && Number(it.capIdPhotoRevision || 0) === Number(it.photoRevision || 0);
     const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
-    const progress = !saved ? 'Mantenha esta página aberta. A imagem ainda depende da gravação local.' : !uploaded ? 'Imagem salva e relida neste aparelho; ' + (offline ? 'sem conexão. O envio retoma quando a conexão voltar.' : 'aguardando confirmação de envio ao sistema.') : 'Imagem recebida no sistema; isso ainda não confirma entrada no estoque.';
+    const progress = !saved ? 'Mantenha esta página aberta. A imagem ainda depende da gravação local.' : !uploaded ? review ? 'Imagem salva neste aparelho; o envio não foi concluído.' : 'Imagem salva e relida neste aparelho; ' + (offline ? 'sem conexão. O envio retoma quando a conexão voltar.' : 'aguardando confirmação de envio ao sistema.') : 'Imagem recebida no sistema; isso ainda não confirma entrada no estoque.';
     const protection = saved && !uploaded && typeof etiqStorageHealth !== 'undefined' && etiqStorageHealth && etiqStorageHealth.persisted !== true
       ? ' O navegador não confirmou proteção contra remoção automática; não limpe os dados deste site.' : '';
-    detail.textContent = progress + (it.ean ? ' Código: ' + it.ean + '. Produto e tamanho serão conferidos em segundo plano.' : ' Falta identificar o código. Você pode fotografar a mesma etiqueta novamente ou fechar mantendo a pendência.') + protection;
+    const diagnostic = String(it.msg || it.alerta || '').trim();
+    detail.textContent = progress + (it.ean ? ' Código: ' + it.ean + '.' + (diagnostic ? ' ' + diagnostic : review ? ' Esta leitura precisa de revisão antes de continuar.' : ' Produto e tamanho serão conferidos em segundo plano.') : it.manualDecodePending ? ' Lendo o código na própria foto; mantenha esta peça.' : it.msg || ' Falta identificar o código. Você pode fotografar a mesma etiqueta novamente ou fechar mantendo a pendência.') + protection;
     const queued = saved && !!it.ean && !etiqStorageFailed && it.st !== 'revisao';
-    if (hint) hint.textContent = queued ? 'Leitura guardada. Toque em Próximo para outra peça; a conferência continua.' : it.ean ? 'Guardando código e foto neste aparelho.' : 'Foto preservada. Aproxime o código da mesma etiqueta ou fotografe novamente.';
+    if (hint) hint.textContent = review ? 'Leitura preservada. Confira o motivo acima.' : queued ? 'Leitura guardada. Toque em Próximo para outra peça; a conferência continua.' : it.ean ? 'Guardando código e foto neste aparelho.' : it.manualDecodePending ? 'Lendo o código desta foto. A leitura continua sendo da mesma peça.' : 'Foto preservada. Toque em Reler esta peça ou fotografe a mesma etiqueta novamente.';
     next.disabled = !queued; next.hidden = !it.ean;
-    next.textContent = queued ? 'PRÓXIMO — CONFERÊNCIA EM SEGUNDO PLANO' : 'AGUARDE SALVAR NO APARELHO'; next.style.background = queued ? '#a65b00' : '#555';
+    next.textContent = review ? 'LEITURA EM REVISÃO' : queued ? 'PRÓXIMO — CONFERÊNCIA EM SEGUNDO PLANO' : 'AGUARDE SALVAR NO APARELHO'; next.style.background = queued ? '#a65b00' : '#555';
   }
   window.capturaAutomatica = function (prepared) {
     if (window.BiparActions && !window.BiparActions.isInventory()) return;
@@ -1167,18 +1189,12 @@
     if(prepared?.ean)etiqIgnoredCode='';
     let current=etiqFila.find(x=>x.lid===etiqAtivo);
     if(current?.complete){etiqAuto?.stop();renderEtiqCaptureState();return;}
-    if(etiqPausado || (current && !['pendente','vinculado'].includes(current.st)) || Date.now()<etiqRetryAt){etiqAuto?.reset();return;}
-    if(current?.ean && prepared?.ean && current.ean!==prepared.ean){
+    if(etiqPausado || (current && !current.retakeArmed && !['pendente','vinculado'].includes(current.st)) || Date.now()<etiqRetryAt){etiqAuto?.reset();return;}
+    const expectedCode = current?.ean || current?.captureExpectedBarcode || '';
+    const codeIdentity = value => window.ScannerBarcodePolicy?.identity(value) || String(value || '').replace(/^0+/, '');
+    if(expectedCode && prepared?.ean && codeIdentity(expectedCode)!==codeIdentity(prepared.ean)){
       document.getElementById('etiq-hint').textContent='Código diferente. Continue com a mesma peça; feche para revisar se trocou de produto.';
       etiqAuto?.reset();return;
-    }
-    if (current?.manualPhoto) {
-      // Decoding may enrich a manual picture, but must not replace it with a
-      // later automatic frame. Both results belong to the same physical piece.
-      if (prepared.ean) current.ean = prepared.ean;
-      if (prepared.ocrText) { current.ocrText = prepared.ocrText; current.ocrDone = true; }
-      current.st = 'fila'; etiqLeituraArmada = false; etiqPausado = true; etiqAuto?.stop();
-      etiqSave().then(() => enviarFila()); renderEtiqCaptureState(); return;
     }
     // An undecoded frame is not another piece. Keep reading the same label.
     if (!prepared?.ean) {
@@ -1206,16 +1222,52 @@
     if (etiqCameraContext && !etiqSameInventoryContext(etiqCameraContext)) { etiqContextChanged(); return; }
     try{window.ScannerRound.requireRound(document.getElementById('loja').value)}catch(e){alert(e.message);window.fecharScanner();return;}
     const current = etiqFila.find(x => x.lid === etiqAtivo);
-    // A manual capture can retake the same piece, including a pending upload.
+    const video = document.getElementById('etiq-video');
+    if (!video || video.readyState < 2 || video.paused || video.ended) {
+      const hint = document.getElementById('etiq-hint');
+      if (hint) hint.textContent = 'Aguarde a imagem ao vivo antes de fotografar esta peça.';
+      return;
+    }
+    let frame;
+    try { frame = window.ScannerCamera.snapshot(video); } catch (_) {}
+    if (!frame?.width || !frame?.height) return;
+    const expectedBarcode = current?.ean || current?.captureExpectedBarcode || '';
+    // Preserve this piece's ID, but never claim its previous code was decoded
+    // from the new photograph. The frozen visible frame owns this revision.
     etiqLeituraArmada = false; etiqPausado = true; etiqAuto?.stop();
+    window.ScannerAuto?.stopDecoder?.();
     etiqRetryAt=Date.now()+5000;
-    const lid=capturarFrame(current?.ean||'');
-    if(!lid){etiqAuto?.reset();return;}
+    const lid=capturarFrame('', frame, false, { expectedBarcode });
+    if(!lid){frame.width=0;frame.height=0;etiqAuto?.reset();return;}
     etiqAtivo=lid;
     renderEtiqCaptureState();
-    etiqAuto?.reset();
     clearInterval(etiqWatch);
     etiqWatch=setInterval(renderEtiqCaptureState,350);
+    const item=etiqFila.find(x=>x.lid===lid), revision=item.photoRevision;
+    const sameRevision=()=>etiqFila.includes(item) && item.photoRevision===revision && !item.excluded && !item.repeatCancelPending;
+    Promise.resolve().then(() => sameRevision() ? window.ScannerAuto?.decodeInWorker(frame) : '').then(code => {
+      if (!sameRevision()) return;
+      const identity=value=>window.ScannerBarcodePolicy?.identity(value)||String(value||'').replace(/^0+/, '');
+      item.manualDecodePending=false;
+      if (code && expectedBarcode && identity(code)!==identity(expectedBarcode)) {
+        item.st='revisao'; item.captureConflictBarcode=code;
+        item.msg='Esta foto mostra outro código. Releia a mesma peça; a imagem foi preservada sem trocar o código do bipe.';
+      } else if (code) {
+        item.ean=code; item.st='fila'; delete item.captureExpectedBarcode; delete item.captureConflictBarcode;
+        item.msg='Código lido na própria foto. Conferência em segundo plano.';
+      } else {
+        // A prior barcode on the server must not identify a new undecoded
+        // revision. Keep retakes local until their own code is confirmed.
+        item.st=expectedBarcode?'revisao':'fila';
+        item.msg='Foto preservada sem código confirmado. Toque em Reler esta peça ou fotografe a mesma etiqueta novamente.';
+      }
+      etiqSave().then(()=>enviarFila()); renderEtiqCaptureState(); renderEtiqLista();
+    }).catch(() => {
+      if (!sameRevision()) return;
+      item.manualDecodePending=false; item.st=expectedBarcode?'revisao':'fila';
+      item.msg='Não foi possível ler o código desta foto. Releia a mesma peça; a imagem continua preservada.';
+      etiqSave().then(()=>enviarFila()); renderEtiqCaptureState(); renderEtiqLista();
+    }).finally(()=>{frame.width=0;frame.height=0;});
   };
   window.proximaEtiqueta = function () {
     const current=etiqFila.find(x=>x.lid===etiqAtivo);
@@ -1240,12 +1292,13 @@
   window.relerEtiqueta = function(lid){
     const item=etiqFila.find(x=>x.lid===lid);
     if(!item||item.excluded||item.complete||item.roundId!==window.ScannerRound.id())return;
+    item.retakeArmed=true;
     etiqAtivo=item.lid;etiqRetryAt=0;etiqPausado=false;etiqLeituraArmada=true;
     etiqAuto?.reset();renderEtiqCaptureState();
     const hint=document.getElementById('etiq-hint');if(hint)hint.textContent='Releia a MESMA peça · código '+(item.ean||'pendente')+'. A quantidade será preservada.';
   };
 
-  function capturarFrame(ean, capturedFrame = null, automatic = false) {
+  function capturarFrame(ean, capturedFrame = null, automatic = false, manualDecode = null) {
     if (!etiqStorageReady || etiqStorageFailed) { etiqStorageNotice(); return null; }
     const video = document.getElementById('etiq-video');
     if (!capturedFrame && (!video || !video.videoWidth)) return null;
@@ -1279,8 +1332,12 @@
     // Measure only local persistence after the frame/code have been accepted;
     // camera acquisition, upload and OCR are separate timings.
     item.localCaptureAcceptedAt = Date.now(); delete item.localVerifiedAt; delete item.localSaveMs;
-    item.ean = ean; item.st = 'fila'; item.complete = false; item.ocrDone = false; item.ocrStarted = false; item.ocrText = '';
+    item.ean = ean; item.st = manualDecode ? 'revisao' : 'fila'; item.complete = false; item.ocrDone = false; item.ocrStarted = false; item.ocrText = '';
     item.manualPhoto = !automatic; item.autoPhoto = automatic; item.autoRecognition = false; item.msg = '';
+    item.manualDecodePending=!!manualDecode;
+    if (manualDecode?.expectedBarcode) item.captureExpectedBarcode=manualDecode.expectedBarcode;
+    else delete item.captureExpectedBarcode;
+    delete item.captureConflictBarcode; delete item.retakeArmed;
     delete item.autoContinued;
     item.autoRevision = Number(item.autoRevision || 0) + 1;
     etiqAutoFrames.delete(item.clientScanId);
@@ -1461,6 +1518,7 @@
       // One outbox for all captured pieces. A failed piece waits its own turn;
       // it never keeps the active camera item or the rest of the queue hostage.
       const eligible = etiqFila.filter(x => queued(x) && etiqCanUpload(x) &&
+        ((x.autoRecognition && !x.manualPhoto) || etiqPhotoDurable(x)) &&
         (attempts.get(etiqIdentity(x))?.retryAt || 0) <= Date.now());
       const item = eligible.reduce((first, x) => !first ||
         (attempts.get(etiqIdentity(x))?.order || 0) < (attempts.get(etiqIdentity(first))?.order || 0) ? x : first, null);
@@ -1483,10 +1541,13 @@
         const sellerName = item.sellerName || '';
         const revision = Number(item.photoRevision || 0), sentBarcode = item.ean || '', sentOcr = item.ocrText || '';
         const image = await etiqReadPhoto(item);
+        // A newer capture may start while an older queue save/read completes.
+        // Only this exact piece/revision's committed local original may upload.
+        if (Number(item.photoRevision || 0) !== revision || !etiqPhotoDurable(item)) return;
         const blob = await (await fetch(image)).blob();
         if (window.BiparActions && !window.BiparActions.isInventory()) return;
         // Identity may have changed while IndexedDB/photo conversion awaited.
-        if (!etiqCanUpload(item)) return;
+        if (!etiqCanUpload(item) || !etiqPhotoDurable(item)) return;
         if (Number(item.photoRevision || 0) !== revision) return;
         const fd = new FormData();
         fd.append('file', blob, 'etiqueta.jpg');
@@ -1513,16 +1574,34 @@
           d = await r.json().catch(error => { if (uploadController.signal.aborted) throw error; return {}; });
         }
         finally { clearTimeout(uploadTimeout); }
-        progressed = r.ok && !d.pending;
+        if (!d || typeof d !== 'object' || Array.isArray(d)) d = {};
+        const photoAcknowledged = d.photoSaved === true && typeof d.capId === 'string' && d.capId.length > 0 &&
+          d.photoRevision != null && Number(d.photoRevision) === revision;
+        progressed = r.ok && photoAcknowledged && !d.pending;
         if (Number(item.photoRevision || 0) !== revision) return;
         if (r.status === 401) { await etiqWaitForAuthentication(item, sentAuthorization); return; }
         if (r.ok) { item.authPending = false; etiqRejectedAuthorizations.delete(etiqIdentity(item)); }
+        if (r.status === 429) {
+          const retryAfter = String(r.headers?.get?.('Retry-After') || '').trim();
+          const retryAt = /^\d+$/.test(retryAfter) ? Date.now() + Number(retryAfter) * 1000 : Date.parse(retryAfter);
+          if (Number.isFinite(retryAt)) attempts.get(key).retryAfterAt = retryAt;
+          item.st = 'fila'; item.msg = d.error || 'Envio temporariamente limitado. Foto preservada; o sistema tentará novamente.';
+          await etiqSave(); renderEtiqLista(); return;
+        }
+        if (r.status === 413) {
+          item.st = 'revisao'; item.msg = d.error || 'A foto excedeu o limite de envio. O original está preservado neste aparelho para revisão.';
+          await etiqSave(); renderEtiqLista(); return;
+        }
         if (d.photoRevision != null && Number(d.photoRevision) !== revision) {
           // Another tab may already have uploaded a newer revision. This ACK
           // did not advance our queued photograph, so never retry it at 100ms.
           progressed = false; enviarFila.requested = false; return;
         }
-        if ((r.ok || d.photoSaved === true) && d.capId && d.photoSaved !== false) {
+        if (r.ok && !photoAcknowledged) {
+          item.msg = 'O sistema ainda não confirmou esta foto. Original preservado; tentando novamente.';
+          await etiqSave(); renderEtiqLista(); return;
+        }
+        if (photoAcknowledged) {
           item.capId = d.capId; item.capIdPhotoRevision = revision;
         }
         if (r.status === 409 && d.repeat && await etiqRepeatRequired(item, d.repeat)) return;
@@ -1566,16 +1645,17 @@
         const sameRevision = Number(sendingItem.photoRevision || 0) === sendingRevision;
         if (sendingItem.st === 'fila' && sameRevision && !progressed) {
           attempt.delay = Math.min((attempt.delay || 1000) * 2, 30000);
-          attempt.retryAt = Date.now() + attempt.delay;
-        } else { attempt.delay = 0; attempt.retryAt = 0; }
+          attempt.retryAt = Math.max(Date.now() + attempt.delay, attempt.retryAfterAt || 0);
+        } else { attempt.delay = 0; attempt.retryAt = 0; delete attempt.retryAfterAt; }
       }
       const sameAction = !window.BiparActions || window.BiparActions.isInventory();
-      const waiting = etiqFila.filter(item => item.st === 'fila' && etiqCanUpload(item) && (item.b64 || item.photoRef || (item.autoRecognition && item.ean)));
+      const waiting = etiqFila.filter(item => item.st === 'fila' && etiqCanUpload(item) &&
+        ((item.autoRecognition && !item.manualPhoto) || etiqPhotoDurable(item)) && (item.b64 || item.photoRef || (item.autoRecognition && item.ean)));
       if (sameAction && waiting.length) {
         // A second frame can arrive while the first HTTP request is pending.
         // Wake that queue after the request finishes even if the camera closed.
         const nextAt = Math.min(...waiting.map(item => attempts.get(etiqIdentity(item))?.retryAt || 0));
-        const delay = Math.max(etiqStorageFailed ? 2000 : 100, nextAt - Date.now());
+        const delay = Math.min(2147483647, Math.max(etiqStorageFailed ? 2000 : 100, nextAt - Date.now()));
         clearTimeout(enviarFila.wakeTimer);
         enviarFila.wakeTimer = setTimeout(() => {
           enviarFila.wakeTimer = null;
@@ -1586,30 +1666,64 @@
     }
   }
 
-  let etiqStatusOffset = 0, etiqStatusBusy = false;
+  let etiqStatusOffset = 0, etiqStatusBusy = false, etiqStatusRetryAt = 0;
   async function consultarStatus() {
     if (window.BiparActions && !window.BiparActions.isInventory()) return;
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
     if (etiqStatusBusy) return;
     const autoPending = etiqFila.filter(item => item.autoRecognition && !item.manualPhoto && item.st === 'pendente' &&
-      item.ean && !item.complete && item.roundId === window.ScannerRound.id() && Date.now() >= (item.autoRetryAt || 0));
+      item.ean && !item.complete && !item.excluded && etiqCanUpload(item) && item.roundId === window.ScannerRound.id() && Date.now() >= (item.autoRetryAt || 0));
     if (autoPending.length) {
       autoPending.forEach(item => { item.st = 'fila'; item.autoRetryAt = Date.now() + 30000; });
       etiqSave().then(() => enviarFila());
     }
-    const allPending = etiqFila.filter((x) => x.capId && Number(x.capIdPhotoRevision || 0) === Number(x.photoRevision || 0) && (!x.complete && x.st !== 'revisao'));
+    if (Date.now() < etiqStatusRetryAt) return;
+    const allPending = etiqFila.filter((x) => x.capId && !x.excluded && etiqCanUpload(x) && Number(x.capIdPhotoRevision || 0) === Number(x.photoRevision || 0) && (!x.complete && x.st !== 'revisao'));
     if (!allPending.length) { etiqStatusOffset = 0; return; }
     etiqStatusOffset %= allPending.length;
     const pend = allPending.slice(etiqStatusOffset).concat(allPending.slice(0, etiqStatusOffset)).slice(0, 20);
     etiqStatusOffset = (etiqStatusOffset + pend.length) % allPending.length;
     const revisions = new Map(pend.map(item => [item.capId, Number(item.photoRevision || 0)]));
+    const currentPending = () => pend.filter(item => !item.complete && !item.excluded && Number(item.photoRevision || 0) === revisions.get(item.capId));
+    const authorization = window.BiparActions?.headers?.().Authorization || '';
+    const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 25000);
     etiqStatusBusy = true;
     try {
-      const r = await stocktakeFetch('/api/stocktake/etiqueta-status?ids=' + pend.map((x) => x.capId).join(','));
-      const d = await r.json();
+      const r = await stocktakeFetch('/api/stocktake/etiqueta-status?ids=' + pend.map((x) => x.capId).join(','), { signal: controller.signal });
+      const body = await r.json().catch(error => { if (controller.signal.aborted) throw error; return {}; });
+      const d = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+      if (r.status === 401) {
+        const first = currentPending()[0];
+        // One rejected request needs one identity refresh, not one per photo.
+        if (first) await etiqWaitForAuthentication(first, authorization);
+        for (const item of currentPending()) {
+          if (item === first) continue;
+          item.authPending = true; etiqRejectedAuthorizations.set(etiqIdentity(item), authorization);
+          item.msg = 'Sessão expirada. Foto e código preservados; entre com a mesma conta para retomar o envio.';
+        }
+        await etiqSave(); renderEtiqLista();
+        return;
+      }
+      if (!r.ok) {
+        if (r.status === 429 || r.status === 408) {
+          // Throttling/timeouts postpone only status polling. Keep every read
+          // eligible and leave the independent upload queue free to progress.
+          const retryAfter = String(r.headers?.get?.('Retry-After') || '').trim();
+          const retryAt = /^\d+$/.test(retryAfter) ? Date.now() + Number(retryAfter) * 1000 : Date.parse(retryAfter);
+          etiqStatusRetryAt = Math.max(Date.now() + 3000, Number.isFinite(retryAt) ? retryAt : 0);
+          return;
+        }
+        if (r.status >= 400 && r.status < 500) {
+          for (const item of currentPending()) { item.st = 'revisao'; item.msg = d.error || 'Consulta não autorizada. Foto e código preservados para revisão.'; }
+          await etiqSave(); renderEtiqLista();
+        }
+        return;
+      }
+      etiqStatusRetryAt = 0;
+      for (const item of currentPending()) { item.authPending = false; etiqRejectedAuthorizations.delete(etiqIdentity(item)); }
       for (const row of (d.rows || [])) {
-        const it = etiqFila.find((x) => x.capId === row.id);
-        if (it && Number(it.photoRevision || 0) === revisions.get(row.id) && Number(row.photoRevision || 0) === Number(it.photoRevision || 0) && it.st!=='fila' && row.status !== 'processando') {
+        const it = pend.find((x) => x.capId === row.id);
+        if (it && !it.complete && !it.excluded && it.st !== 'revisao' && Number(it.photoRevision || 0) === revisions.get(row.id) && Number(row.photoRevision || 0) === Number(it.photoRevision || 0) && it.st!=='fila' && row.status !== 'processando') {
           it.complete = row.complete===true;
           // Keep the original: capId may belong to an earlier recapture.
           if(row.barcode)it.ean=row.barcode;
@@ -1629,7 +1743,7 @@
         }
       }
       await etiqSave(); renderEtiqLista();
-    } catch (_) {} finally { etiqStatusBusy = false; }
+    } catch (_) {} finally { clearTimeout(timeout); etiqStatusBusy = false; }
   }
 
   function renderEtiqLista() {
@@ -1720,17 +1834,25 @@
   function comprimirFoto(file) {
     return new Promise((resolve, reject) => {
       const img = new Image();
-      img.onload = () => {
-        const MAX = 1280;
-        const k = Math.min(1, MAX / Math.max(img.width, img.height));
-        const c = document.createElement('canvas');
-        c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
-        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-        c.toBlob((b) => (b ? resolve(b) : reject(new Error('canvas'))), 'image/jpeg', 0.72);
-        URL.revokeObjectURL(img.src);
+      let canvas = null, objectUrl = null;
+      const finish = (error, blob) => {
+        img.onload = null; img.onerror = null; img.src = '';
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+        if (canvas) { canvas.width = 0; canvas.height = 0; }
+        if (error) reject(error); else resolve(blob);
       };
-      img.onerror = () => reject(new Error('img'));
-      img.src = URL.createObjectURL(file);
+      img.onload = () => {
+        try {
+          const k = Math.min(1, 1280 / Math.max(img.width, img.height));
+          canvas = document.createElement('canvas');
+          canvas.width = Math.round(img.width * k); canvas.height = Math.round(img.height * k);
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob(blob => finish(blob ? null : new Error('canvas'), blob), 'image/jpeg', 0.72);
+        } catch (error) { finish(error); }
+      };
+      img.onerror = () => finish(new Error('img'));
+      try { objectUrl = URL.createObjectURL(file); img.src = objectUrl; }
+      catch (error) { finish(error); }
     });
   }
 
