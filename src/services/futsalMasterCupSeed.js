@@ -184,6 +184,19 @@ async function importFutsalMasterCup(ownerId) {
     }
   }
 
+  // 2b) Propaga a LOGO do time entre categorias: se o mesmo time (mesmo nome) já tem
+  // escudo numa categoria, reusa nas outras que estão sem (ex. Cabo Branco novo no 60+).
+  const allEntries = await prisma.tournamentEntry.findMany({ where: { tournamentId: t.id }, select: { id: true, name: true, logoUrl: true } });
+  const logoByName = {};
+  for (const e of allEntries) { if (e.logoUrl && !logoByName[e.name]) logoByName[e.name] = e.logoUrl; }
+  let logosCopied = 0;
+  for (const e of allEntries) {
+    if (!e.logoUrl && logoByName[e.name]) {
+      await prisma.tournamentEntry.update({ where: { id: e.id }, data: { logoUrl: logoByName[e.name] } }).catch(() => {});
+      logosCopied += 1;
+    }
+  }
+
   // 3) Jogos (idempotente por ordering = nº do jogo)
   let created = 0;
   let tbd = 0;
@@ -273,7 +286,7 @@ async function importFutsalMasterCup(ownerId) {
   return {
     ok: true, slug: t.slug, tournamentId: t.id,
     categories: Object.keys(TEAMS).length, teams: totalTeams,
-    matchesCreated: created, matchesTBD: tbd, matchesReconciled: reconciled,
+    matchesCreated: created, matchesTBD: tbd, matchesReconciled: reconciled, logosCopied,
     publicUrl: '/t/' + t.slug,
   };
 }
