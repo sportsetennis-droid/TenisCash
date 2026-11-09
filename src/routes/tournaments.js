@@ -331,16 +331,52 @@ router.get('/:id/athletes/:userId/prontuario', authMiddleware, async (req, res) 
   try {
     res.set('Cache-Control', 'no-store');
     const target = req.params.userId;
-    let allowed = target === req.userId || roles.isGlobalAdmin(req.userRole);
-    if (!allowed) {
-      // treinador/coord pode ver se o atleta está num clube que ele gere
+    const self = target === req.userId;
+    const admin = roles.isGlobalAdmin(req.userRole);
+    let allowed = self || admin;
+    let canEvaluate = admin && !self;
+    if (!self) {
+      // treinador/coord pode ver (e avaliar) se o atleta está num clube que ele gere
       const mine = await prisma.teamMembership.findMany({ where: { tournamentId: req.params.id, userId: target, status: 'ACTIVE' }, select: { clubName: true } });
       for (const m of [...new Set(mine.map((x) => x.clubName))]) {
-        if (await canTrainClub(req, req.params.id, m)) { allowed = true; break; }
+        if (await canTrainClub(req, req.params.id, m)) { allowed = true; canEvaluate = true; break; }
       }
     }
     if (!allowed) return res.status(403).json({ error: 'sem permissão' });
-    res.json(await training.prontuario(req.params.id, target));
+    const data = await training.prontuario(req.params.id, target);
+    data.canEvaluate = canEvaluate;
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Nova avaliação do atleta (Four Corner). Treinador/coordenador do time dele.
+// body { scores:{technical,tactical,physical,psychological,social}, notes, evaluatedAt }
+router.post('/:id/athletes/:userId/evaluations', authMiddleware, async (req, res) => {
+  try {
+    const target = req.params.userId;
+    if (target === req.userId) return res.status(403).json({ error: 'não pode avaliar a si mesmo' });
+    const mine = await prisma.teamMembership.findMany({ where: { tournamentId: req.params.id, userId: target, status: 'ACTIVE' }, select: { clubName: true } });
+    let clubOk = null;
+    for (const m of [...new Set(mine.map((x) => x.clubName))]) { if (await canTrainClub(req, req.params.id, m)) { clubOk = m; break; } }
+    if (!clubOk && !roles.isGlobalAdmin(req.userRole)) return res.status(403).json({ error: 'sem permissão (treinador/coordenador do time do atleta)' });
+    const b = req.body || {};
+    const r = await training.createEvaluation({ tournamentId: req.params.id, userId: target, evaluatorId: req.userId, clubName: clubOk, scores: b.scores || b, notes: b.notes, evaluatedAt: b.evaluatedAt });
+    if (!r.ok) return res.status(r.code || 400).json(r);
+    res.status(201).json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+// Apaga uma avaliação. Treinador/coordenador do time do atleta.
+router.delete('/:id/evaluations/:evalId', authMiddleware, async (req, res) => {
+  try {
+    const ev = await prisma.athleteEvaluation.findFirst({ where: { id: req.params.evalId, tournamentId: req.params.id }, select: { userId: true } });
+    if (!ev) return res.json({ ok: true });
+    let allowed = roles.isGlobalAdmin(req.userRole);
+    if (!allowed) {
+      const mine = await prisma.teamMembership.findMany({ where: { tournamentId: req.params.id, userId: ev.userId, status: 'ACTIVE' }, select: { clubName: true } });
+      for (const m of [...new Set(mine.map((x) => x.clubName))]) { if (await canTrainClub(req, req.params.id, m)) { allowed = true; break; } }
+    }
+    if (!allowed) return res.status(403).json({ error: 'sem permissão' });
+    res.json(await training.deleteEvaluation(req.params.id, req.params.evalId));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

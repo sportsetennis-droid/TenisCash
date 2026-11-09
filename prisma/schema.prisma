@@ -4071,6 +4071,27 @@ model TrainingSession {
   @@index([recurrenceGroupId])
 }
 
+// Avaliação do atleta (FA Four Corner Model) — alimenta a curva de evolução.
+model AthleteEvaluation {
+  id            String    @id @default(cuid())
+  tournamentId  String
+  clubName      String?
+  userId        String // atleta avaliado
+  evaluatorId   String? // treinador/coordenador
+  technical     Float? // 1-10
+  tactical      Float?
+  physical      Float?
+  psychological Float?
+  social        Float?
+  overall       Float? // média das dimensões preenchidas
+  notes         String?
+  evaluatedAt   DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([tournamentId, userId])
+  @@index([userId])
+}
+
 // Modelo de plano de treino reutilizável por clube (templates).
 model TrainingTemplate {
   id              String   @id @default(cuid())

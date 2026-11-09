@@ -174,6 +174,27 @@ const STATEMENTS = [
      CONSTRAINT "TrainingTemplate_pkey" PRIMARY KEY ("id")
    )`,
   `CREATE INDEX IF NOT EXISTS "TrainingTemplate_club_idx" ON "TrainingTemplate" ("tournamentId", "clubName")`,
+  // AVALIAÇÃO do atleta — FA Four Corner Model (Técnico/Tático/Físico/Psicológico/Social),
+  // nota 1-10 por dimensão + geral. Alimenta a curva de evolução no prontuário.
+  `CREATE TABLE IF NOT EXISTS "AthleteEvaluation" (
+     "id" TEXT NOT NULL,
+     "tournamentId" TEXT NOT NULL,
+     "clubName" TEXT,
+     "userId" TEXT NOT NULL,
+     "evaluatorId" TEXT,
+     "technical" DOUBLE PRECISION,
+     "tactical" DOUBLE PRECISION,
+     "physical" DOUBLE PRECISION,
+     "psychological" DOUBLE PRECISION,
+     "social" DOUBLE PRECISION,
+     "overall" DOUBLE PRECISION,
+     "notes" TEXT,
+     "evaluatedAt" TIMESTAMP(3),
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "AthleteEvaluation_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE INDEX IF NOT EXISTS "AthleteEvaluation_athlete_idx" ON "AthleteEvaluation" ("tournamentId", "userId")`,
+  `CREATE INDEX IF NOT EXISTS "AthleteEvaluation_user_idx" ON "AthleteEvaluation" ("userId")`,
 ];
 
 async function ensureApexSchema(prisma) {
