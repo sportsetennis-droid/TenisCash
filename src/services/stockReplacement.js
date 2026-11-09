@@ -8,7 +8,7 @@ const hash=value=>createHash('sha256').update(typeof value==='string'?value:JSON
 const photoDigest=value=>createHash('sha256').update(Buffer.from(value.slice(value.indexOf(',')+1),'base64')).digest('hex');
 const normalized=value=>String(value||'').normalize('NFKC').toUpperCase().replace(/[^A-Z0-9]/g,'');
 const sizeKey=value=>String(value||'').replace(',','.').trim();
-function reasonText(reason){return ({produto_ou_variante_pendente:'Produto ou variante ainda não identificados.',foto_ou_codigo_pendente:'Falta a foto arquivada com o código desta peça.',tipo_de_produto_pendente:'Conferir a classificação do produto para esta contagem de calçados.',codigo_da_foto_divergente:'O código da foto não confirmou o código lido.',tamanho_da_foto_divergente:'O tamanho BR da foto difere do cadastro. Conferir antes de incluir.',referencia_ou_marca_divergente:'A referência e a marca da etiqueta ainda precisam ser confirmadas.',photo_barcode_conflict:'A foto não permitiu confirmar um único código de barras.',photo_size_or_reference_pending:'Falta confirmar o tamanho BR e a referência na foto.',ocr_busy:'Conferência da foto na fila.',ocr_timeout:'A leitura da foto será tentada novamente.',ocr_unavailable:'Conferência local da foto temporariamente indisponível.',leitura_encerrada:'Leitura encerrada ou excluída.'})[reason]||'Foto arquivada; aguardando conferência para entrar no novo estoque.';}
+function reasonText(reason){if(reason==='photo_barcode_not_found')return 'O código de barras não ficou legível nesta foto. Reenquadre a mesma etiqueta.';if(reason==='photo_barcode_mismatch')return 'O código confirmado na foto é diferente do código lido. Confira a mesma peça.';return ({produto_ou_variante_pendente:'Produto ou variante ainda não identificados.',foto_ou_codigo_pendente:'Falta a foto arquivada com o código desta peça.',tipo_de_produto_pendente:'Conferir a classificação do produto para esta contagem de calçados.',codigo_da_foto_divergente:'O código da foto não confirmou o código lido.',tamanho_da_foto_divergente:'O tamanho BR da foto difere do cadastro. Conferir antes de incluir.',referencia_ou_marca_divergente:'A referência e a marca da etiqueta ainda precisam ser confirmadas.',photo_barcode_conflict:'A foto não permitiu confirmar um único código de barras.',photo_size_or_reference_pending:'Falta confirmar o tamanho BR e a referência na foto.',ocr_busy:'Conferência da foto na fila.',ocr_timeout:'A leitura da foto será tentada novamente.',ocr_unavailable:'Conferência local da foto temporariamente indisponível.',leitura_encerrada:'Leitura encerrada ou excluída.'})[reason]||'Foto arquivada; aguardando conferência para entrar no novo estoque.';}
 function fail(message,status=409){const e=Error(message);e.status=status;throw e;}
 async function preview(db,storeId){
  const store=await db.store.findUnique({where:{id:storeId},select:{id:true,code:true,name:true,active:true}});
@@ -45,7 +45,7 @@ async function start(db,{storeId,requestId,reviewToken},actorId){
 async function context(db,bipeId){
  const bipe=await db.stocktakeBipe.findUnique({where:{id:bipeId}});
  if(!bipe?.roundId)return null;
- const round=await db.stocktakeRound.findUnique({where:{id:bipe.roundId}});
+ const round=await db.stocktakeRound.findUnique({where:{id:bipe.roundId},select:{id:true,number:true,operationType:true,storeId:true,status:true}});
  if(round?.operationType!=='replacement')return null;
  const capture=await db.productCapture.findFirst({where:{bipeId,roundId:round.id,storeId:round.storeId,excludedAt:null},orderBy:{createdAt:'desc'}});
  const size=bipe.productSizeId?await db.productSize.findUnique({where:{id:bipe.productSizeId},include:{product:true}}):null;
@@ -119,6 +119,7 @@ async function applyVerified(db,c,read,reference,options={}){
   const imageReview={status:'pending',reason:now.size.product.imageUrl?'Conferir correspondência visual da imagem de catálogo com este modelo e cor.':'Produto sem imagem de catálogo.',imageUrl:now.size.product.imageUrl||null};
   await tx.stockReplacementCheck.upsert({where:{bipeId:now.bipe.id},create:{bipeId:now.bipe.id,roundId:now.round.id,status:'applied',evidence:snapshot,imageReview,appliedProductSizeId:now.size.id,appliedAt:new Date()},update:{status:'applied',reason:null,evidence:snapshot,imageReview,appliedProductSizeId:now.size.id,appliedAt:new Date(),checkedAt:new Date()}});
   await tx.stocktakeBipe.update({where:{id:now.bipe.id},data:{applied:true,productName:now.size.product.name,productBrand:now.size.product.brand,productSize:now.size.size}});
+  await tx.productCapture.update({where:{id:now.capture.id},data:{status:'vinculado',resolvedAt:new Date(),note:require('./scannerCapturePhoto').photoNote(now.capture.note,'etiqueta Uma peça incluída no novo estoque oficial.')},select:{id:true}});
   if(options.beforeCommit)await options.beforeCommit(tx);
   return {applied:true,stock:movement.stockAfter};
  },{timeout:20000});
@@ -128,15 +129,15 @@ async function check(db,bipeId,options={}){
  const prior=await db.stockReplacementCheck.findUnique({where:{bipeId}});if(prior?.appliedAt){if(!prior.reversedAt)await images.check(db,bipeId);return {applied:!prior.reversedAt,idempotent:true};}
  if(options.evidenceCapture&&!require('./stockReplacementQueue').matches(c.capture,require('./stockReplacementQueue').snapshot(options.evidenceCapture)))return {applied:false,reason:'leitura_alterada'};
  const early=validateRead(c,{pending:true,reason:'aguardando_conferencia_da_etiqueta'});
- if(early!=='aguardando_conferencia_da_etiqueta'){await pending(db,c,early);return {applied:false,reason:early};}
+ if(early!=='aguardando_conferencia_da_etiqueta'){if(!options.deferPending)await pending(db,c,early);return {applied:false,reason:early};}
  const bytes=Buffer.from(c.capture.photo.slice(c.capture.photo.indexOf(',')+1),'base64');
  const read=options.read||await require('./scannerArchivedLabel').readImage(bytes,c.bipe.barcode);
  // A busy worker has not examined this piece. Keep its queue age so an older
  // timed-out image cannot repeatedly push every untouched piece behind itself.
  if(read?.reason==='ocr_busy')return {applied:false,reason:'ocr_busy'};
- const reason=validateRead(c,read);if(reason){await pending(db,c,reason,{captureId:c.capture.id,photoSha256:photoDigest(c.capture.photo)});return {applied:false,reason};}
+ const reason=validateRead(c,read);if(reason){if(!options.deferPending)await pending(db,c,reason,{captureId:c.capture.id,photoSha256:photoDigest(c.capture.photo)});return {applied:false,reason};}
  const reference=await referenceMatches(db,c,read);
- if(!reference){await pending(db,c,'referencia_ou_marca_divergente',{captureId:c.capture.id,photoSha256:photoDigest(c.capture.photo)});return {applied:false,reason:'referencia_ou_marca_divergente'};}
+ if(!reference){if(!options.deferPending)await pending(db,c,'referencia_ou_marca_divergente',{captureId:c.capture.id,photoSha256:photoDigest(c.capture.photo)});return {applied:false,reason:'referencia_ou_marca_divergente'};}
  const result=await applyVerified(db,c,read,reference,options);if(result.applied)await images.check(db,bipeId);return result;
 }
 function enqueue(db,bipeId){return require('./stockReplacementQueue').enqueue(db,bipeId);}

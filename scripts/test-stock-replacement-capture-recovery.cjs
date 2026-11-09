@@ -94,7 +94,7 @@ async function unchanged(f,c,reason,s=service){
  console.log('PASS closed/non-replacement rounds, excluded captures, foreign stores/keys, missing evidence, inactive/foreign operators are untouched');
 
  const invalidPhoto=await capture(f,{photo:'data:image/png;base64,aW52YWxpZA=='});await unchanged(f,invalidPhoto);
- const wrongImage=await capture(f,{photo:await image(code())});await unchanged(f,wrongImage,'photo_barcode_conflict');
+ const wrongImage=await capture(f,{photo:await image(code())});await unchanged(f,wrongImage,'photo_barcode_mismatch');
  const multiple=await capture(f);await unchanged(f,multiple,'photo_barcode_conflict',createRecovery({decode:async()=>[multiple.barcode,code()],enqueue:()=>{throw Error('must not enqueue')}}));
  for(const mutation of [
   {note:photos.photoNote('','New photo','2')},{photo:await image(code())},{sellerName:'Changed name'},{sellerId:other.seller.id},

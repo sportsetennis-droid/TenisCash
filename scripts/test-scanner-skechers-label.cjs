@@ -39,6 +39,8 @@ const {createProcessor}=require('../src/services/scannerImageProcessor');
  assert.equal(second.size,'37');assert.equal(created,1,'Successful reads reuse a single OCR worker');assert.equal(terminated,0);
  codes=['0196989405971','5901234123457'];const before=calls;
  assert.equal((await processor.run('label',Buffer.from('conflict'),'0196989405971')).reason,'photo_barcode_conflict');assert.equal(calls,before);
+ codes=[];assert.equal((await processor.run('label',Buffer.from('unreadable'),'0196989405971')).reason,'photo_barcode_not_found');assert.equal(calls,before,'Unreadable barcode does not start OCR');
+ codes=['5901234123457'];assert.equal((await processor.run('label',Buffer.from('different'),'0196989405971')).reason,'photo_barcode_mismatch');assert.equal(calls,before,'A different barcode is not an ambiguous or missing barcode');
  await processor.close();assert.equal(terminated,1,'Only an idle worker is closed by the processor');
  const writer=require('zxing-wasm/writer');writer.prepareZXingModule({overrides:{wasmBinary:fs.readFileSync(path.join(__dirname,'../node_modules/zxing-wasm/dist/writer/zxing_writer.wasm'))}});
  const decoder=require('../src/services/barcodeDecoder');

@@ -13,6 +13,40 @@ function snapshot(capture){return {captureId:capture.id,roundId:capture.roundId,
 function matches(capture,data){return !!capture&&capture.id===data.captureId&&capture.roundId===data.roundId&&capture.storeId===data.storeId&&
  capture.scanKey===data.scanKey&&capture.sellerId===data.sellerId&&photos.revisionOf(capture.note)===data.revision&&
  fingerprint(capture.photo)===data.photoHash&&fingerprint(policy.identity(capture.barcode))===data.barcodeHash;}
+function pendingReason(note){return String(note||'').match(/\[scanner-queue-pending:([a-z_]{1,80})\]/)?.[1]||null;}
+async function syncPendingCheck(tx,capture,bipeId,reason){
+ if(!bipeId)return null;
+ await tx.$queryRaw`SELECT id FROM "StocktakeBipe" WHERE id=${bipeId} FOR UPDATE`;
+ const bipe=await tx.stocktakeBipe.findUnique({where:{id:bipeId}});
+ if(!bipe||bipe.excludedAt||bipe.roundId!==capture.roundId||bipe.storeId!==capture.storeId||bipe.sellerId!==capture.sellerId||policy.identity(bipe.barcode)!==policy.identity(capture.barcode))return null;
+ const prior=await tx.stockReplacementCheck.findUnique({where:{bipeId}});
+ if(bipe.applied||prior?.appliedAt)return null;
+ const evidence={captureId:capture.id,photoRevision:photos.revisionOf(capture.note),photoHash:fingerprint(capture.photo),source:'durable-queue'};
+ await tx.stockReplacementCheck.upsert({where:{bipeId},create:{bipeId,roundId:capture.roundId,status:'pending',reason,evidence},update:{status:'pending',reason,evidence,checkedAt:new Date()}});
+ return bipeId;
+}
+async function persistPending(db,data,reason,{complete}={}){
+ if(!/^[a-z_]{1,80}$/.test(reason||''))reason='photo_size_or_reference_pending';
+ return db.$transaction(async tx=>{
+  await tx.$queryRaw`SELECT id FROM "StocktakeRound" WHERE id=${data.roundId} FOR SHARE`;
+  const round=await tx.stocktakeRound.findUnique({where:{id:data.roundId},select:{operationType:true,status:true,storeId:true}});
+  if(round?.operationType!=='replacement'||!['counting','review'].includes(round.status)||round.storeId!==data.storeId)return {status:'obsolete',reason:'round_inactive'};
+  await tx.$queryRaw`SELECT id FROM "ProductCapture" WHERE id=${data.captureId} FOR UPDATE`;
+  const capture=await tx.productCapture.findUnique({where:{id:data.captureId}});
+  if(!matches(capture,data)||capture.excludedAt||capture.status==='descartado')return {status:'obsolete',reason:'capture_changed'};
+  const bipeId=await syncPendingCheck(tx,capture,capture.bipeId,reason);
+  if(capture.bipeId&&!bipeId){
+   const bipe=await tx.stocktakeBipe.findUnique({where:{id:capture.bipeId},select:{applied:true}});
+   if(bipe?.applied)return {status:'applied',bipeId:capture.bipeId,idempotent:true};
+   return {status:'obsolete',reason:'bipe_context_conflict'};
+  }
+  await tx.productCapture.update({where:{id:capture.id},data:{status:'pendente',resolvedAt:null,
+   note:photos.photoNote(capture.note,'etiqueta '+require('./stockReplacement').reasonText(reason)+' [scanner-queue-pending:'+reason+']')},select:{id:true}});
+  const result={status:'pending',reason,captureId:capture.id,bipeId};
+  if(complete)await complete(tx,result);
+  return result;
+ },{timeout:20000});
+}
 function createQueue(db,options={}){
  let boss,starting,ready=false,workerId,lastErrorCode=null,identify=options.identify,stopping=false,lastId=null;
  const pendingAgeMs=options.pendingAgeMs??300000;
@@ -61,13 +95,16 @@ function createQueue(db,options={}){
   const data=job.data;
   let capture=await db.productCapture.findUnique({where:{id:data.captureId}});
   if(!matches(capture,data)||capture.excludedAt||capture.status==='descartado')return {status:'obsolete',reason:'capture_changed'};
-  const round=await db.stocktakeRound.findUnique({where:{id:data.roundId}});
+  const round=await db.stocktakeRound.findUnique({where:{id:data.roundId},select:{operationType:true,status:true,storeId:true}});
   if(round?.operationType!=='replacement'||!['counting','review'].includes(round.status)||round.storeId!==data.storeId)return {status:'obsolete',reason:'round_inactive'};
   const recovery=require('./stockReplacementCaptureRecovery');
-  if(!await recovery.authorized(db,capture))return {status:'pending',reason:'operator_not_authorized'};
+  const pending=reason=>persistPending(db,data,reason,{complete:async(tx,result)=>{
+   const completed=await boss.complete(QUEUE,job,result,{db:adapter(tx)});if(completed.affected!==1)throw failure('queue_claim_lost');
+  }});
+  if(!await recovery.authorized(db,capture))return pending('operator_not_authorized');
   if(!capture.bipeId){
    const result=await recovery.recover(db,capture.id,{enqueue:false});
-   if(!result.recovered){if(transient.has(result.reason))throw failure(result.reason);return {status:'pending',reason:result.reason};}
+   if(!result.recovered){if(transient.has(result.reason))throw failure(result.reason);return pending(result.reason);}
    capture=await db.productCapture.findUnique({where:{id:data.captureId}});
   }
   if(!matches(capture,data))return {status:'obsolete',reason:'capture_changed'};
@@ -87,9 +124,10 @@ function createQueue(db,options={}){
   if(observed&&!observed.pending&&identify){
    await identify(capture.id,capture.photo,capture.barcode,{photoRevision:data.revision,ocrText:observed.text,serverRead:observed});
   }
-  const result=await replacement.check(db,bipe.id,{read:observed,evidenceCapture:capture,beforeCommit});
+  const result=await replacement.check(db,bipe.id,{read:observed,evidenceCapture:capture,beforeCommit,deferPending:true});
   if(transient.has(result?.reason))throw failure(result.reason);
-  return {status:result?.applied?'applied':'pending',reason:result?.reason||null,bipeId:bipe.id};
+  if(!result?.applied)return pending(result?.reason||'photo_size_or_reference_pending');
+  return {status:'applied',reason:null,bipeId:bipe.id};
  }
  async function reconcile(){
   await start();
@@ -131,6 +169,16 @@ async function health(db,{roundId,storeId}={}){
   return {available:true,queue:QUEUE,states:Object.fromEntries(groups.map(g=>[g.state,g.count])),totalJobs:groups.reduce((n,g)=>n+g.count,0),oldestPendingSeconds:oldest?.seconds??null,items,worker};
  }catch(_){return {available:false,queue:QUEUE,states:{},totalJobs:0,oldestPendingSeconds:null,items:[],worker:{...worker,lastErrorCode:'queue_status_unavailable'}};}
 }
+async function outcomes(db,captureIds){
+ if(!captureIds?.length)return [];
+ try{return await db.$queryRawUnsafe(`SELECT DISTINCT ON (c.id) c.id AS "captureId",j.state::text AS state,
+  CASE WHEN j.output->>'reason' ~ '^[a-z_]{1,80}$' THEN j.output->>'reason' ELSE NULL END AS reason
+  FROM ${SCHEMA}.job j JOIN "ProductCapture" c ON c.id=j.data->>'captureId'
+  WHERE j.name=$1 AND c.id=ANY($2::text[])
+   AND j.data->>'revision'=substring(c.note from '\\[scanner-photo-revision:([0-9]+)\\]$')
+   AND j.data->>'photoHash'=encode(sha256(convert_to(COALESCE(c.photo,''),'UTF8')),'hex')
+  ORDER BY c.id,j.created_on DESC`,QUEUE,captureIds);}catch(_){return [];}
+}
 async function stop(db){const queue=instances.get(db);if(queue){await queue.stop();instances.delete(db);}}
 async function stopAll(){await Promise.allSettled([...instances.keys()].map(stop));}
-module.exports={SCHEMA,QUEUE,createQueue,get,enqueue,health,stop,stopAll,adapter,snapshot,matches};
+module.exports={SCHEMA,QUEUE,createQueue,get,enqueue,health,outcomes,stop,stopAll,adapter,snapshot,matches,pendingReason,persistPending,syncPendingCheck};

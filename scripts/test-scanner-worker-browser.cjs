@@ -32,6 +32,14 @@ async function installFixtures(page) {
       const bits = '101' + [...code.slice(1,7)].map((d,i) => (pattern[i] === 'L' ? left : even)[+d]).join('') + '01010' + [...code.slice(7)].map(d => right[+d]).join('') + '101';
       ctx.fillStyle = 'black'; [...bits].forEach((b,i) => { if (b === '1') ctx.fillRect(x + i * 4, y, 4, height); });
     }
+    window.edgeFrame = mixed => {
+      const c=document.createElement('canvas');c.width=1000;c.height=1200;const ctx=c.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,c.width,c.height);
+      // All bars and quiet zones are visible. The old 84% central crop cuts
+      // the right edge of this real, generated EAN instead of the camera view.
+      draw(ctx,'2922791600581',585,600,200);
+      if(mixed){ctx.filter='blur(1.2px)';draw(ctx,'7900373256192',585,250,200);ctx.filter='none';}
+      return c;
+    };
     window.frame = kind => {
       const c = document.createElement('canvas'); c.width = kind === 'multiple' ? 1000 : 720; c.height = kind === 'multiple' ? 800 : 420;
       const ctx = c.getContext('2d'); ctx.fillStyle = 'white'; ctx.fillRect(0,0,c.width,c.height);
@@ -63,6 +71,19 @@ async function main() {
       assert.equal(result.code,kind === 'none' || kind === 'multiple' ? '' : '2922791600581');
       assert.equal(result.state.method,'worker'); assert.equal(result.state.ready,true);
       results.push('real WASM worker: ' + kind + ', OffscreenCanvas=' + result.offscreen);
+    }
+    for(const mixed of [false,true])for(const rotated of [false,true]){
+      const edge=await page.evaluate(async({mixed,rotated})=>{const source=edgeFrame(mixed),c=document.createElement('canvas');c.width=rotated?source.height:source.width;c.height=rotated?source.width:source.height;const ctx=c.getContext('2d');ctx.translate(c.width/2,c.height/2);if(rotated)ctx.rotate(Math.PI/2);ctx.drawImage(source,-source.width/2,-source.height/2);const start=performance.now();return {code:await ScannerAuto.decodeInWorker(c),elapsedMs:Math.round(performance.now()-start),state:ScannerAuto.decoderStatus()};},{mixed,rotated});
+      assert.equal(edge.code,mixed?'':'2922791600581','Visible edge barcode, mixed='+mixed+', rotated='+rotated);assert.equal(edge.state.method,'worker');
+      results.push('visible-frame edge fallback '+JSON.stringify({mixed,rotated,...edge}));
+    }
+    if(process.env.SCANNER_TEST_EDGE_PHOTO){
+      assert.match(process.env.SCANNER_TEST_EDGE_CODE||'',/^\d{8,16}$/,'An explicit expected code is required for the local original fixture');
+      await page.evaluate(async src=>{window.edgePhoto=new Image();edgePhoto.src=src;await edgePhoto.decode();},'data:image/jpeg;base64,'+fs.readFileSync(process.env.SCANNER_TEST_EDGE_PHOTO).toString('base64'));
+      for(const rotated of [false,true]){
+        const actual=await page.evaluate(async rotated=>{const c=document.createElement('canvas');c.width=rotated?edgePhoto.height:edgePhoto.width;c.height=rotated?edgePhoto.width:edgePhoto.height;const ctx=c.getContext('2d');ctx.translate(c.width/2,c.height/2);if(rotated)ctx.rotate(Math.PI/2);ctx.drawImage(edgePhoto,-edgePhoto.width/2,-edgePhoto.height/2);const start=performance.now();return {code:await ScannerAuto.decodeInWorker(c),elapsedMs:Math.round(performance.now()-start),state:ScannerAuto.decoderStatus()};},rotated);
+        assert.equal(actual.code,process.env.SCANNER_TEST_EDGE_CODE,'Exact original edge-label photo, rotated='+rotated);assert.equal(actual.state.method,'worker');results.push('local original edge-label fixture '+JSON.stringify({rotated,...actual}));
+      }
     }
     const crowded=await page.evaluate(async()=>{
       const c=document.createElement('canvas');c.width=1800;c.height=1900;const ctx=c.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,c.width,c.height);

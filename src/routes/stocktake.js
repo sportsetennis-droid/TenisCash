@@ -976,6 +976,7 @@ router.post('/etiqueta',
       if (!bipeId) return res.json({ ...photoAck, barcodeRequired: false, pending: true,
         error: 'Foto salva. Aguardando registrar o código; tentando novamente.' });
       const cap = await prisma.$transaction(async tx => {
+        await rounds.roundForScan(tx,storeId,roundId,true);
         await tx.$queryRaw`SELECT id FROM "ProductCapture" WHERE id = ${previousCapture.id} FOR UPDATE`;
         const current = await tx.productCapture.findUnique({ where: { id: previousCapture.id } });
         if (current.excludedAt) return null;
@@ -984,8 +985,17 @@ router.post('/etiqueta',
           await tx.productCapture.update({ where: { id: current.id }, data: { barcode: eanCam, bipeId } });
           return null;
         }
+        let alreadyApplied=false,appliedCheck=null;
+        if(req.replacementRound){
+          await tx.$queryRaw`SELECT id FROM "StocktakeBipe" WHERE id=${bipeId} FOR UPDATE`;
+          const linked=await tx.stocktakeBipe.findUnique({where:{id:bipeId},select:{applied:true}});
+          appliedCheck=await tx.stockReplacementCheck.findUnique({where:{bipeId},select:{appliedAt:true,reversedAt:true}});
+          alreadyApplied=!!linked?.applied&&!!appliedCheck?.appliedAt&&!appliedCheck.reversedAt;
+        }
+        const pendingReason=req.replacementRound&&!alreadyApplied?replacementQueue.pendingReason(current.note):null;
+        if(pendingReason)await replacementQueue.syncPendingCheck(tx,current,bipeId,pendingReason);
         return tx.productCapture.update({ where: { id: current.id }, data: { barcode: eanCam, bipeId,
-          note: capturePhotos.photoNote(current.note, 'etiqueta processando…'), status: 'processando' } });
+          ...(alreadyApplied?{status:'vinculado',resolvedAt:appliedCheck.appliedAt}:pendingReason?{status:'pendente'}:{note: capturePhotos.photoNote(current.note, 'etiqueta processando…'), status: 'processando'}) } });
       });
       if (!cap) return res.json({ ...photoAck, stale: true });
       replacement.enqueue(prisma,bipeId);
@@ -1078,6 +1088,7 @@ router.get('/etiqueta-status', async (req, res) => {
     const rows = await prisma.productCapture.findMany({ where: { id: { in: ids } }, select: { id: true, roundId:true, status: true, note: true, bipeId: true, barcode:true, excludedAt:true } });
     const replacementIds=new Set((await prisma.stocktakeRound.findMany({where:{id:{in:[...new Set(rows.map(r=>r.roundId).filter(Boolean))]},operationType:'replacement'},select:{id:true}})).map(r=>r.id));
     for(const id of replacementIds)if(!await authorizeReplacement(req,res,id))return;
+    const outcomeMap=new Map((await replacementQueue.outcomes(prisma,rows.filter(r=>replacementIds.has(r.roundId)).map(r=>r.id))).map(x=>[x.captureId,x]));
     const withPhotos = new Set((await prisma.productCapture.findMany({
       where: { id: { in: ids }, AND: [{ photo: { not: null } }, { photo: { not: '' } }] }, select: { id: true } })).map(row => row.id));
     const bipeIds = rows.map((row) => row.bipeId).filter(Boolean);
@@ -1095,14 +1106,20 @@ router.get('/etiqueta-status', async (req, res) => {
       const needsSize = Boolean(bipe && ps && needsManualSize(ps.product.brand, ps));
       const live=replacementIds.has(row.roundId);
       const check=live&&bipe?await prisma.stockReplacementCheck.findUnique({where:{bipeId:bipe.id}}):null;
+      const outcome=outcomeMap.get(row.id);
+      const reasonCode=live?(['completed','failed','cancelled'].includes(outcome?.state)&&outcome.reason||replacementQueue.pendingReason(row.note)||check?.reason||null):null;
+      const excludedAt=row.excludedAt||bipe?.excludedAt||null;
+      const discarded=!!excludedAt||row.status==='descartado';
       return {
         id: row.id,
         photoSaved: withPhotos.has(row.id),
         photoRevision: capturePhotos.revisionOf(row.note),
         complete: live?Boolean(check?.appliedAt&&!check.reversedAt):captureComplete(row,bipe,ps,needsSize),
         barcode:row.barcode,
-        status: row.status,
-        mensagem: live ? (check?.appliedAt&&!check.reversedAt?'Uma peça incluída no novo estoque oficial.':replacement.reasonText(check?.reason)) : capturePhotos.visibleNote(row.note).replace(/^etiqueta\s*/, '').replace(/\s*\{.*$/, '').trim(),
+        status: discarded?'descartado':live&&check?.appliedAt&&!check.reversedAt?'vinculado':live&&reasonCode&&!check?.appliedAt?'pendente':row.status,
+        excludedAt,
+        reasonCode,
+        mensagem: live ? (check?.appliedAt&&!check.reversedAt?'Uma peça incluída no novo estoque oficial.':replacement.reasonText(reasonCode)) : capturePhotos.visibleNote(row.note).replace(/^etiqueta\s*/, '').replace(/\s*\{.*$/, '').trim(),
         bipeId: bipe?.id || null,
         appliedToStock: Boolean(bipe?.applied),
         needsSize,

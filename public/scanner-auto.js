@@ -81,6 +81,9 @@
   let wasmReady;
   const wasmLocation=()=>'/vendor/barcode/zxing_reader.wasm';
   const readerOptions={tryHarder:true,tryRotate:true,tryInvert:true,formats:['EAN13','UPCA','EAN8','Code128','ITF'],maxNumberOfSymbols:3};
+  // Large printed references may form several harmless candidate regions.
+  // The existing pixel budgets still bound every enlargement and recovery.
+  const maxBarcodeRegions=12;
   async function prepareReader(){
     if(!root.ZXingWASM)throw new Error('Leitor de código não carregado');
     if(!wasmReady)wasmReady=root.ZXingWASM.prepareZXingModule({overrides:{locateFile:wasmLocation},fireImmediately:true});
@@ -145,7 +148,7 @@
       }
       // White modules may separate bars into components. Join only adjacent
       // components with matching height, without joining text above/below.
-      if(components.length>256)return Array(9).fill({});
+      if(components.length>256)return Array(maxBarcodeRegions+1).fill({});
       components.sort((a,b)=>verticalBars?a.minX-b.minX:a.minY-b.minY);
       const merged=[];
       for(const component of components){
@@ -209,7 +212,7 @@
   async function recoverBarcodeRegions(image,regions){
     // Do not select the first label or silently skip candidates when a crowded
     // frame exceeds budget. A null result means the frame cannot be accepted.
-    if(!regions.length)return [];if(regions.length>8)return null;
+    if(!regions.length)return [];if(regions.length>maxBarcodeRegions)return null;
     if(regions.reduce((sum,region)=>{const item=regionDimensions(region);return sum+item.width*item.height*2;},0)>5100000)return null;
     const results=[],unresolved=[];
     for(const region of regions){
@@ -233,33 +236,41 @@
     }
     return results;
   }
-  async function decodePixels(image){
-    if(!Number.isInteger(image?.width)||!Number.isInteger(image?.height)||image.width<1||image.height<1||image.width*image.height>16000000||image.data?.length!==image.width*image.height*4)throw new Error('Quadro de leitura inválido');
-    await prepareReader();
-    const centered=centeredPixels(image);
-    let results=await root.ZXingWASM.readBarcodes(centered,readerOptions);
-    const codesOf=items=>[...new Set(items.map(r=>String(r.text||'').trim()).filter(t=>barcodePolicy.isScanCode(t)))];
+  const codesOf=items=>[...new Set(items.map(r=>String(r.text||'').trim()).filter(t=>barcodePolicy.isScanCode(t)))];
+  async function decodePixelFrame(image,initialResults){
+    let results=initialResults||await root.ZXingWASM.readBarcodes(image,readerOptions);
     // Ambiguity is already decisive; do not enlarge and decode the same labels
     // another four times before refusing to choose between them.
-    if(codesOf(results).length>1)return '';
-    const regions=barcodeRegions(centered);
+    if(codesOf(results).length>1)return {code:'',ambiguous:true};
+    const regions=barcodeRegions(image);
     // Packaging text can produce several small regions. The pixel budgets
     // below bound their work; never discard a candidate just to choose a code.
-    if(regions.length>8)return '';
+    if(regions.length>maxBarcodeRegions)return {code:'',ambiguous:false};
     // A sharp label must not hide a second blurry label in the same frame.
     if(!results.length||regions.length>1){
-      const recovered=await recoverBarcodeRegions(centered,regions);if(recovered===null)return '';
+      const recovered=await recoverBarcodeRegions(image,regions);if(recovered===null)return {code:'',ambiguous:false};
       results.push(...recovered);
     }
     if(!results.length){
       // Region recovery is cheaper than doubling a whole camera frame. Only
       // use the large rotated pass if it could still add useful information.
       let min=255,max=0;
-      for(let i=0;i<centered.data.length;i+=16){const value=(centered.data[i]+centered.data[i+1]+centered.data[i+2])/3;min=Math.min(min,value);max=Math.max(max,value);if(max-min>=3)break;}
-      if(max-min>=3)results=await root.ZXingWASM.readBarcodes(rotatedEnhancedPixels(centered),readerOptions);
+      for(let i=0;i<image.data.length;i+=16){const value=(image.data[i]+image.data[i+1]+image.data[i+2])/3;min=Math.min(min,value);max=Math.max(max,value);if(max-min>=3)break;}
+      if(max-min>=3)results=await root.ZXingWASM.readBarcodes(rotatedEnhancedPixels(image),readerOptions);
     }
     const codes=codesOf(results);
-    return codes.length===1?codes[0]:'';
+    return {code:codes.length===1?codes[0]:'',ambiguous:codes.length>1};
+  }
+  async function decodePixels(image){
+    if(!Number.isInteger(image?.width)||!Number.isInteger(image?.height)||image.width<1||image.height<1||image.width*image.height>16000000||image.data?.length!==image.width*image.height*4)throw new Error('Quadro de leitura inválido');
+    await prepareReader();
+    const centered=centeredPixels(image),initial=await root.ZXingWASM.readBarcodes(centered,readerOptions),codes=codesOf(initial);
+    // Never override known ambiguity. Select the complete VISIBLE frame before
+    // any enlargement when the centre has no code: both paths share exactly
+    // one region-recovery budget, rather than spending it twice on one frame.
+    // snapshot() already removes pixels hidden by object-fit:cover.
+    if(codes.length>1)return '';
+    return (codes.length===1?await decodePixelFrame(centered,initial):await decodePixelFrame(image)).code;
   }
   let decoderWorker, decoderRequest=0, decoderPending, decoderEpoch=0, workerRetryAt=0,decoderWarmup;
   let decoderState={method:'worker',ready:false,error:null};
@@ -301,7 +312,7 @@
   }
   function ensureDecoderWorker(){
     if(decoderWorker)return decoderWorker;
-    const worker=decoderWorker=new Worker('/scanner-barcode-worker.js?v=20261027-internal-codes-1');
+    const worker=decoderWorker=new Worker('/scanner-barcode-worker.js?v=20261109-edge-ready-1');
     worker.onmessage=({data})=>{
       if(decoderWorker!==worker)return;
       if(data?.ready){decoderState={method:'worker',ready:true,error:null};finishWarmup(true);return;}
