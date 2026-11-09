@@ -3487,9 +3487,10 @@ async function checkInventory(id, name) {
       </tr>`;
     }).join('');
 
-    document.getElementById('invDetails').innerHTML = `
+    const detailsEl = document.getElementById('invDetails');
+    detailsEl.innerHTML = `
       <div class="card" style="margin-top:16px;">
-        <h3 style="margin-bottom:8px;">${name}</h3>
+        <h3 style="margin-bottom:8px;">${escPreco(name)}</h3>
         <p class="page-subtitle">Estoque total na rede: <strong>${d.totalStock} un.</strong></p>
         <div style="overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;margin-top:8px;min-width:520px;">
@@ -3500,7 +3501,55 @@ async function checkInventory(id, name) {
         <p style="font-size:11px;color:#8e8e93;margin-top:8px;">LOJA01: Baratão · LOJA02: Bessa · LOJA03: Rainha · LOJA04: Ecommerce · LOJA05: Tambaú · LOJA06: Tambiá</p>
       </div>
     `;
+    detailsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) { alert(e.message); }
+}
+
+function checkInventoryFromCard(card, id) {
+  const name = card.querySelector('.product-name')?.textContent?.trim() || '';
+  return checkInventory(id, name);
+}
+
+function storeInventoryPhotoUrls(product) {
+  const photos = [];
+  const addPhoto = (url) => {
+    const value = String(url || '').trim();
+    if (value && !photos.includes(value)) photos.push(value);
+  };
+  addPhoto(product.imageUrl);
+  try {
+    const extras = typeof product.imageUrls === 'string' ? JSON.parse(product.imageUrls) : product.imageUrls;
+    if (Array.isArray(extras)) extras.forEach(addPhoto);
+  } catch (_) {}
+  return photos;
+}
+
+function renderStoreInventoryPhotos(product) {
+  const photos = storeInventoryPhotoUrls(product);
+  if (!photos.length) return '<div class="product-img" style="display:flex;align-items:center;justify-content:center;color:#8e8e93;">📦</div>';
+  if (photos.length === 1) {
+    return `<img class="product-img" src="${escPreco(photos[0])}" onerror="this.style.background='#f5f5f7'">`;
+  }
+  return `
+    <div class="product-img" data-store-photo-gallery data-current-photo="0" style="position:relative;box-sizing:border-box;padding:0;overflow:hidden;">
+      ${photos.map((url, index) => `<img src="${escPreco(url)}" alt="Foto ${index + 1} de ${photos.length}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:4px;background:var(--bg);display:${index === 0 ? 'block' : 'none'};" onerror="this.style.display='none'">`).join('')}
+      <button type="button" aria-label="Foto anterior" onclick="storeInventoryPhotoNav(event,this,-1)" style="position:absolute;left:7px;top:50%;transform:translateY(-50%);width:32px;height:32px;border:1px solid #ddd;border-radius:50%;background:rgba(255,255,255,.95);font-size:20px;line-height:1;cursor:pointer;z-index:2;">‹</button>
+      <button type="button" aria-label="Próxima foto" onclick="storeInventoryPhotoNav(event,this,1)" style="position:absolute;right:7px;top:50%;transform:translateY(-50%);width:32px;height:32px;border:1px solid #ddd;border-radius:50%;background:rgba(255,255,255,.95);font-size:20px;line-height:1;cursor:pointer;z-index:2;">›</button>
+      <span data-store-photo-counter style="position:absolute;bottom:7px;left:50%;transform:translateX(-50%);padding:2px 8px;border-radius:10px;background:rgba(0,0,0,.65);color:white;font-size:11px;font-weight:700;z-index:2;">1 / ${photos.length}</span>
+    </div>`;
+}
+
+function storeInventoryPhotoNav(event, button, direction) {
+  event.stopPropagation();
+  const gallery = button.closest('[data-store-photo-gallery]');
+  const photos = Array.from(gallery?.querySelectorAll('img') || []);
+  if (photos.length < 2) return;
+  const current = Number(gallery.dataset.currentPhoto) || 0;
+  const next = (current + direction + photos.length) % photos.length;
+  gallery.dataset.currentPhoto = String(next);
+  photos.forEach((photo, index) => { photo.style.display = index === next ? 'block' : 'none'; });
+  const counter = gallery.querySelector('[data-store-photo-counter]');
+  if (counter) counter.textContent = `${next + 1} / ${photos.length}`;
 }
 
 async function loadStoreInventory(page=1) {
@@ -3519,8 +3568,8 @@ async function loadStoreInventory(page=1) {
       <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">📦 Mostrando ${d.products.length} de ${d.total} produtos</p>
       <div class="grid grid-3">
         ${d.products.map(p => `
-          <div class="product-card" onclick="checkInventory('${p.id}','${(p.name || '').replace(/'/g, "\\'")}')">
-            <img class="product-img" src="${p.imageUrl || ''}" onerror="this.style.background='#f5f5f7'">
+          <div class="product-card" onclick="checkInventoryFromCard(this,'${p.id}')">
+            ${renderStoreInventoryPhotos(p)}
             <div class="product-info">
               <div class="product-brand">${p.brand || ''}</div>
               <div class="product-name">${p.name || ''}</div>
