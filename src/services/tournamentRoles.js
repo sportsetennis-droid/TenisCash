@@ -96,25 +96,47 @@ async function resolveUser({ userId, username, phone }) {
 }
 
 // Nomeia um papel. Valida role e escopo (time) obrigatório onde cabe.
+// TIME = CLUBE ÚNICO: papel de time (admin/treinador/jogador) vale pra TODAS as
+// categorias do mesmo clube (mesmo nome) — nomeia uma vez, cobre o clube inteiro.
 async function assignRole(tournamentId, { userId, role, entryId }) {
   const r = String(role || '').toUpperCase();
   if (!ROLES.includes(r)) return { ok: false, error: 'papel inválido' };
   if (TEAM_SCOPED.includes(r) && !entryId) return { ok: false, error: 'este papel precisa de um time (entryId)' };
-  const eid = TEAM_SCOPED.includes(r) ? String(entryId) : null;
-  if (eid) {
-    const entry = await prisma.tournamentEntry.findFirst({ where: { id: eid, tournamentId }, select: { id: true } });
-    if (!entry) return { ok: false, error: 'time não encontrado neste torneio' };
+
+  // papel de torneio (sem time)
+  if (!TEAM_SCOPED.includes(r)) {
+    const existing = await prisma.tournamentRole.findFirst({ where: { tournamentId, userId, role: r, entryId: null } });
+    if (existing) return { ok: true, role: existing, already: true };
+    const created = await prisma.tournamentRole.create({ data: { tournamentId, userId, role: r, entryId: null } });
+    return { ok: true, role: created };
   }
-  // idempotente (índice único tournamentId+userId+role+entryId)
-  const existing = await prisma.tournamentRole.findFirst({ where: { tournamentId, userId, role: r, entryId: eid } });
-  if (existing) return { ok: true, role: existing, already: true };
-  const created = await prisma.tournamentRole.create({ data: { tournamentId, userId, role: r, entryId: eid } });
-  return { ok: true, role: created };
+
+  // papel de time → replica em todas as inscrições do mesmo CLUBE (mesmo nome)
+  const entry = await prisma.tournamentEntry.findFirst({ where: { id: String(entryId), tournamentId }, select: { id: true, name: true } });
+  if (!entry) return { ok: false, error: 'time não encontrado neste torneio' };
+  const clubEntries = await prisma.tournamentEntry.findMany({ where: { tournamentId, name: entry.name }, select: { id: true } });
+  const rolesOut = [];
+  for (const e of clubEntries) {
+    const existing = await prisma.tournamentRole.findFirst({ where: { tournamentId, userId, role: r, entryId: e.id } });
+    rolesOut.push(existing || (await prisma.tournamentRole.create({ data: { tournamentId, userId, role: r, entryId: e.id } })));
+  }
+  return { ok: true, role: rolesOut[0], roles: rolesOut, count: rolesOut.length, club: entry.name };
 }
 
 async function removeRole(tournamentId, roleId) {
-  await prisma.tournamentRole.deleteMany({ where: { id: roleId, tournamentId } });
-  return { ok: true };
+  const row = await prisma.tournamentRole.findFirst({ where: { id: roleId, tournamentId } });
+  if (!row) return { ok: true, removed: 0 };
+  // papel de time → remove em TODAS as categorias do mesmo clube (clube único)
+  if (TEAM_SCOPED.includes(row.role) && row.entryId) {
+    const entry = await prisma.tournamentEntry.findUnique({ where: { id: row.entryId }, select: { name: true } });
+    if (entry) {
+      const club = await prisma.tournamentEntry.findMany({ where: { tournamentId, name: entry.name }, select: { id: true } });
+      const r = await prisma.tournamentRole.deleteMany({ where: { tournamentId, userId: row.userId, role: row.role, entryId: { in: club.map((c) => c.id) } } });
+      return { ok: true, removed: r.count };
+    }
+  }
+  await prisma.tournamentRole.delete({ where: { id: roleId } }).catch(() => {});
+  return { ok: true, removed: 1 };
 }
 
 // Lista papéis do torneio com nome/telefone do usuário e nome do time.

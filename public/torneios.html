@@ -311,6 +311,10 @@ async function renderTournament(id){
   let t;try{t=await api('/'+id);}catch(e){app.innerHTML=topbar('Torneio',true)+'<div class="wrap"><div class="card"><div class="empty">'+esc(e.message)+'</div></div></div>';return;}
   let posts=[];try{posts=(await api('/'+id+'/posts')).posts||[];}catch(e){}
   const isOwner=ME&&(t.ownerId===ME.id);
+  let MR={caps:{},roles:[],teams:[]};
+  try{MR=await api('/'+id+'/my-roles');}catch(e){}
+  const canManage=isOwner||!!(MR.caps&&MR.caps.manageTournament);
+  const canAssign=isOwner||!!(MR.caps&&MR.caps.assignRoles);
   const canRegister=['OPEN','ONGOING'].includes(t.status);
   const st=ST_LABEL[t.status]||['',''];
   let html=topbar(t.name,true)+'<div class="wrap">';
@@ -324,14 +328,19 @@ async function renderTournament(id){
     '<button class="btn sec" data-act="share-t" data-slug="'+esc(t.slug)+'" data-name="'+esc(t.name)+'">Compartilhar</button></div>';
   html+='</div>';
 
-  if(!isOwner){
+  if(!canManage){
+    const myRoles=(MR.roles||[]).filter(r=>r.role!=='PLAYER'||true);
+    if(myRoles.length){
+      html+=myRolePanel(t,MR);
+    }
     if(canRegister){
       html+='<div class="card" style="background:var(--soft)"><h2 style="margin:0 0 6px">Quer jogar?</h2>'+
         '<p class="muted" style="margin:0 0 10px">Peça sua inscrição neste torneio. O organizador aprova.</p>'+
         '<button class="btn" data-act="register" data-tid="'+t.id+'" data-dbl="'+(t.isDoubles?1:0)+'">📝 Pedir inscrição</button></div>';
     }
     html+=muralCard(t.id,false,posts);
-    html+='<div class="card"><div class="empty"><div class="ic">👀</div>Você está vendo como visitante.<br>Só o organizador gerencia a chave.</div></div></div>';
+    if(!myRoles.length)html+='<div class="card"><div class="empty"><div class="ic">👀</div>Você está vendo como visitante.<br>Só a organização gerencia a chave.</div></div>';
+    html+='</div>';
     app.innerHTML=html;return;
   }
 
@@ -363,9 +372,80 @@ async function renderTournament(id){
   html+='</div>';
 
   html+='<div id="cat-panel"></div>';
+  if(canAssign)html+=rolesCard(t.id);
   html+=muralCard(t.id,true,posts);
   html+='</div>';
   app.innerHTML=html;
+  if(canAssign)loadRoles(t.id);
+}
+
+// ---------- Contas & Papéis ----------
+const ROLE_LBL={FOUNDER:'Fundador do campeonato',COORDINATOR:'Coordenador técnico',TEAM_ADMIN:'Administrador do time',COACH:'Treinador',REFEREE:'Arbitragem',PLAYER:'Jogador'};
+const TEAM_ROLES=['TEAM_ADMIN','COACH','PLAYER'];
+function rolesCard(tid){
+  return '<div class="card" id="roles-card"><h2 style="margin:0 0 4px">👥 Contas & Papéis</h2>'+
+    '<p class="muted" style="margin:0 0 10px">Quem alimenta cada parte do torneio. Cada pessoa entra com telefone + senha.</p>'+
+    '<div id="roles-list"><div class="spin"></div></div>'+
+    '<div style="height:10px"></div><button class="btn sm gho" data-act="add-role" data-tid="'+tid+'" style="width:100%">+ Nomear pessoa</button></div>';
+}
+async function loadRoles(tid){
+  const box=document.getElementById('roles-list');if(!box)return;
+  let data;try{data=await api('/'+tid+'/roles');}catch(e){box.innerHTML='<div class="empty" style="padding:12px">'+esc(e.message)+'</div>';return;}
+  const rs=data.roles||[];
+  // agrupa papéis de time do mesmo clube numa linha só (clube único)
+  const seen={};const rows=[];
+  rs.forEach(r=>{
+    const key=(r.user&&r.user.id||'')+'|'+r.role+'|'+(r.entry?r.entry.name:'');
+    if(TEAM_ROLES.includes(r.role)){if(seen[key])return;seen[key]=1;}
+    rows.push(r);
+  });
+  box.innerHTML=rows.length?rows.map(r=>{
+    const nm=(r.user&&r.user.name)||'—';
+    const sub=esc(ROLE_LBL[r.role]||r.role)+(r.entry?' · '+esc(r.entry.name):'')+((r.user&&r.user.phone)?' · '+esc(r.user.phone):'');
+    const del=(r.id&&!r.implicit)?'<button class="btn sm dang" data-act="del-role" data-tid="'+tid+'" data-rid="'+r.id+'"'+(TEAM_ROLES.includes(r.role)?' data-uid="'+esc(r.user&&r.user.id||'')+'" data-role="'+r.role+'" data-club="'+esc(r.entry?r.entry.name:'')+'"':'')+'>✕</button>':'<span class="pill g">dono</span>';
+    return '<div class="listitem"><div class="av" style="background:var(--soft);color:var(--orange-d);font-weight:800">'+initials(nm)+'</div>'+
+      '<div class="grow"><div class="nm">'+esc(nm)+((r.user&&r.user.username)?' <span class="sub">@'+esc(r.user.username)+'</span>':'')+'</div><div class="sub">'+sub+'</div></div>'+del+'</div>';
+  }).join(''):'<div class="empty" style="padding:12px">Só você por enquanto. Nomeie o coordenador, os árbitros e os admins dos times.</div>';
+}
+async function sheetAddRole(tid){
+  let clubs=[];try{clubs=(await api('/'+tid+'/clubs')).clubs||[];}catch(e){}
+  const roleOpts=Object.keys(ROLE_LBL).filter(k=>k!=='FOUNDER').map(k=>'<option value="'+k+'">'+ROLE_LBL[k]+'</option>').join('');
+  const clubOpts='<option value="">— escolha o clube —</option>'+clubs.map(c=>'<option value="'+c.entryId+'">'+esc(c.name)+'</option>').join('');
+  openSheet('<h3 style="margin:0 0 10px">Nomear pessoa</h3>'+
+    '<label>Nome</label><input id="ar-name" placeholder="Nome da pessoa">'+
+    '<label>Telefone</label><input id="ar-phone" inputmode="numeric" placeholder="(83) 9...">'+
+    '<label>Papel</label><select id="ar-role">'+roleOpts+'</select>'+
+    '<div id="ar-club-wrap" style="display:none"><label>Clube (vale pra todas as categorias dele)</label><select id="ar-club">'+clubOpts+'</select></div>'+
+    '<p class="muted" style="margin:8px 0 0;font-size:12px">Se a pessoa ainda não tem conta, crio uma com uma senha provisória pra você passar pra ela.</p>'+
+    '<div style="height:12px"></div><button class="btn" data-act="save-role" data-tid="'+tid+'">Nomear</button>');
+  const roleSel=document.getElementById('ar-role');const wrap=document.getElementById('ar-club-wrap');
+  const sync=()=>{wrap.style.display=TEAM_ROLES.includes(roleSel.value)?'block':'none';};
+  roleSel.addEventListener('change',sync);sync();
+}
+async function saveAddRole(tid){
+  const name=document.getElementById('ar-name').value.trim();
+  const phone=document.getElementById('ar-phone').value.replace(/\D/g,'');
+  const role=document.getElementById('ar-role').value;
+  const entryId=TEAM_ROLES.includes(role)?(document.getElementById('ar-club')||{}).value:undefined;
+  if(!name||!phone)return toast('Preencha nome e telefone');
+  if(TEAM_ROLES.includes(role)&&!entryId)return toast('Escolha o clube');
+  try{
+    const p=await api('/'+tid+'/people',{method:'POST',body:{name,phone}});
+    const r=await api('/'+tid+'/roles',{method:'POST',body:{userId:p.user.id,role,entryId}});
+    closeSheet();loadRoles(tid);
+    if(p.created&&p.tempPassword)toast('Conta criada! Senha provisória: '+p.tempPassword+' (passe pra pessoa)');
+    else toast('Nomeado: '+(ROLE_LBL[role]||role));
+  }catch(e){toast(e.message);}
+}
+// Painel do participante (não-organizador) com seus papéis e atalhos.
+function myRolePanel(t,MR){
+  const rs=MR.roles||[];const seen={};const items=[];
+  rs.forEach(r=>{const k=r.role+'|'+(r.entryId||'');if(seen[k])return;seen[k]=1;
+    let link='';
+    if(r.role==='REFEREE')link='<a class="btn sm gho plain" data-act="nav" data-h="t/'+t.id+'" style="margin-top:6px">Ver jogos pra apitar (na chave)</a>';
+    items.push('<div class="listitem"><div class="av" style="background:var(--grad);color:#fff">'+({FOUNDER:'★',COORDINATOR:'🧭',TEAM_ADMIN:'🛡️',COACH:'🧢',REFEREE:'🧑‍⚖️',PLAYER:'🏃'}[r.role]||'•')+'</div>'+
+      '<div class="grow"><div class="nm">'+esc(ROLE_LBL[r.role]||r.role)+'</div><div class="sub">neste torneio'+'</div>'+link+'</div></div>');});
+  return '<div class="card"><h2 style="margin:0 0 6px">Seu papel aqui</h2>'+items.join('')+'</div>';
 }
 
 // Mural/avisos do torneio (texto). isOwner mostra o compositor + remover.
@@ -1019,6 +1099,9 @@ document.addEventListener('click',async(ev)=>{
   if(a==='ch-result'){sheetChallengeResult(el.dataset.id,el.dataset.h,el.dataset.a);return;}
   if(a==='save-ch-result'){saveChallengeResult(el.dataset.id,el.dataset.w);return;}
   if(a==='share-t'){const url=location.origin+'/t/'+el.dataset.slug;const txt=el.dataset.name+' — acompanhe no TenisCash';if(navigator.share){navigator.share({title:el.dataset.name,text:txt,url});}else{navigator.clipboard.writeText(url);toast('Link copiado');}return;}
+  if(a==='add-role'){sheetAddRole(el.dataset.tid);return;}
+  if(a==='save-role'){saveAddRole(el.dataset.tid);return;}
+  if(a==='del-role'){if(confirm('Remover esta pessoa do papel?')){try{await api('/'+el.dataset.tid+'/roles/'+el.dataset.rid,{method:'DELETE'});toast('Removido');loadRoles(el.dataset.tid);}catch(e){toast(e.message);}}return;}
 });
 // fecha sheet ao tocar no fundo
 document.getElementById('sheetbg').addEventListener('click',(e)=>{if(e.target.id==='sheetbg')closeSheet();});
