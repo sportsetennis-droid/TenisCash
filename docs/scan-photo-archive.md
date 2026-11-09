@@ -16,7 +16,7 @@ Aplicar somente a migração aditiva `20261109010000_scan_action_photos` antes d
 
 ## Validação
 
-`npm run test:scanner` inclui captura do inventário, integridade de JPEG/PNG/WebP, nove casos de geometria BR e 91 grupos da interface de ações, usando DOM/câmera/rede simulados. O visualizador é testado com fotos pendentes, fotos arquivadas, logout e respostas atrasadas. `scripts/test-scan-action-photos.cjs` exige PostgreSQL local isolado e testa bytes reais de imagem, concorrência, recapturas, autorização, HTTP e trava de confirmação. Históricos e transferências têm testes próprios no mesmo ambiente isolado. Isso não constitui teste físico com o telefone do operador.
+`npm run test:scanner` inclui captura do inventário, integridade de JPEG/PNG/WebP, nove casos de geometria BR e 95 grupos da interface de ações, usando DOM/câmera/rede simulados. O visualizador é testado com fotos pendentes, fotos arquivadas, logout e respostas atrasadas. `scripts/test-scan-action-photos.cjs` exige PostgreSQL local isolado e testa bytes reais de imagem, concorrência, recapturas, autorização, HTTP e trava de confirmação. Históricos e transferências têm testes próprios no mesmo ambiente isolado. Isso não constitui teste físico com o telefone do operador.
 
 Teste solicitado em 08/11/2026 encontrou JPEG truncado aceito porque o cabeçalho continuava legível. O servidor agora decodifica todos os pixels antes de reconhecer o arquivamento; os bytes originais são preservados, sem converter a imagem. Imagem incompleta permanece pendente para reenvio da mesma peça.
 
@@ -29,3 +29,13 @@ Somente EAN único na imagem igual ao bipe, tamanho BR explícito com geometria 
 O vínculo reaproveita a variante correta; variante comprovada ausente nasce com estoque zero. IDs, quantidade, loja, lote, foto, estoque comprado e XML ficam preservados. A evidência e o resultado ficam em AdminAction e no contexto do produto. O mesmo bipe recebe a identificação; reenvio antigo não desfaz a resolução comprovada. Falha temporária do leitor mantém a foto arquivada e retoma a identificação na fila. Abas antigas devem ser recarregadas para usar a atualização automática da lista.
 
 Teste completo com imagem real local: `TRANSFER_TEST_DATABASE_URL` deve apontar para PostgreSQL localhost e `SCAN_PHOTO_FIXTURE` para a imagem de teste; executar `node scripts/test-scan-photo-link.cjs`. A foto particular não é incluída no repositório. Verifica vínculo, conflito, autorização, repetição, rascunho atrasado, foto original, estoque inalterado e tamanho novo sem estoque.
+
+## Uma peça por vez; próxima somente por clique — 09/11/2026
+
+Ordem de Douglas: “Eu quero que o sistema leia uma por vez e só após o operador clicar em próximo é que vai ler a próxima”. Ele esclareceu que duas peças podem ter etiquetas iguais e que o operador deve controlar a passagem manualmente. Esta ordem substitui o avanço automático de recebimentos e transferências.
+
+Após capturar código e foto, o painel da peça permanece aberto e o leitor fica pausado. Produto reconhecido, erro de identificação, término de consulta/OCR e arquivamento de foto não liberam a câmera para outra peça. Somente PRÓXIMO ou PRÓXIMO — MANTER PENDENTE autoriza uma nova unidade. Código igual é aceito para outra peça após esse clique; não se exige detectar uma mudança visual para substituir a decisão do operador. RELER A MESMA PEÇA preserva o ID e a quantidade, mantendo as imagens de cada tentativa. Consulta tardia pode atualizar a peça original, mas não avançar nem alterar a peça seguinte; um resultado atrasado da captura manual também é descartado se pertence ao ciclo anterior.
+
+O inventário já mantém sua captura pausada até Próximo; seu fluxo foi preservado. Bipes anteriores, quantidades, cadastros, preços, estoque e confirmação de recebimento não são alterados por esta correção. Recarregar a página carrega `bipar-actions.js?v=20261109-manual-next-1`.
+
+Regressão isolada: 100 quadros repetidos/alternados não adicionam peça; clique duplo sem peça intermediária não acumula autorizações; dois pares de código igual após Próximo têm IDs próprios; sequência dos códigos problemáticos da Loja 04 permanece em um bipe e permite recapturar a mesma unidade; atraso de consulta, OCR, foto e decodificação manual não avança a câmera. Fotos, troca de operador/loja, falhas de armazenamento e bloqueio de confirmação com pendências continuam cobertos. Nenhum bipe fictício inserido em produção para esses testes.
