@@ -38,4 +38,14 @@ Após capturar código e foto, o painel da peça permanece aberto e o leitor fic
 
 O inventário já mantém sua captura pausada até Próximo; seu fluxo foi preservado. Bipes anteriores, quantidades, cadastros, preços, estoque e confirmação de recebimento não são alterados por esta correção. Recarregar a página carrega `bipar-actions.js?v=20261109-manual-next-1`.
 
+## Próximo após guardar código e foto no aparelho — 09/11/2026
+
+Douglas corrigiu a espera na Substituição de estoque: “Depois que escaneiou já tem que aparecer o próximo e o sistema interno fica trabalhando”. O horário exato da mensagem não está disponível. O clique continua manual; a alteração é no momento em que Próximo fica disponível.
+
+Em `bipar.html`, o compromisso local da imagem original, do código e da revisão libera Próximo sem esperar o upload ou a identificação. A confirmação dessa transação já atualiza o painel. Foto ainda somente em memória, erro de armazenamento ou código ausente não liberam uma nova peça. Releitura manual sem código retoma a mesma peça, depois de preservar sua imagem. O estado “foto salva neste aparelho” é distinto de “imagem salva no sistema” e não afirma estoque aplicado.
+
+O envio e o OCR seguem na fila existente. Cada resultado fica vinculado ao ID e à revisão originais; outra unidade com código igual recebe outro ID somente após o clique. Não houve mudança de saldo, de rodada, de regra de validação nem ativação de serviço pago por esta correção.
+
+`scripts/test-scanner-local-next.cjs` executa as funções reais da fila, captura e painel em ambiente isolado: mantém o compromisso local, upload e OCR artificialmente pendentes; verifica o botão antes/depois do salvamento; captura outro par de código igual durante o envio; entrega resultados atrasados; provoca falha de armazenamento e retoma sem perder nem duplicar peças. `test-scanner-inventory-photo.cjs` verifica também a proteção antes da gravação local e a recaptura. Estes testes não equivalem a teste físico no telefone.
+
 Regressão isolada: 100 quadros repetidos/alternados não adicionam peça; clique duplo sem peça intermediária não acumula autorizações; dois pares de código igual após Próximo têm IDs próprios; sequência dos códigos problemáticos da Loja 04 permanece em um bipe e permite recapturar a mesma unidade; atraso de consulta, OCR, foto e decodificação manual não avança a câmera. Fotos, troca de operador/loja, falhas de armazenamento e bloqueio de confirmação com pendências continuam cobertos. Nenhum bipe fictício inserido em produção para esses testes.
