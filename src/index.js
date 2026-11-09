@@ -1392,10 +1392,13 @@ app.get('/t/:slug', async (req, res) => {
     });
     return html;
   }
+  // Jogos = SÓ fase regular (grupos / pontos corridos). O mata-mata fica na aba Mata-mata (dono 2026-11-09).
   function renderMatches(matches){
     if(!matches.length) return '<div class="empty">Chave ainda não gerada.</div>';
-    var groupM=matches.filter(function(m){return m.stage==='GROUP';});
-    var rest=matches.filter(function(m){return m.stage!=='GROUP';});
+    var reg=matches.filter(function(m){return m.stage==='GROUP'||m.stage==='LEAGUE';});
+    if(!reg.length) return '<div class="empty" style="padding:16px">Os jogos da fase de grupos aparecem aqui. O mata-mata está na aba <b>Mata-mata</b>.</div>';
+    var groupM=reg.filter(function(m){return m.stage==='GROUP';});
+    var leagueM=reg.filter(function(m){return m.stage!=='GROUP';});
     var html='';
     if(groupM.length){
       var byG={},go=[];
@@ -1403,10 +1406,7 @@ app.get('/t/:slug', async (req, res) => {
       go.sort();
       go.forEach(function(g){html+='<div class="grp-h">Grupo '+esc(g)+'</div>'+renderRoundBlocks(byG[g]);});
     }
-    if(rest.length){
-      if(groupM.length) html+='<div class="grp-h">🏆 Mata-mata</div>';
-      html+=renderRoundBlocks(rest);
-    }
+    if(leagueM.length) html+=renderRoundBlocks(leagueM);
     return html;
   }
   function stdTableHtml(rows){
