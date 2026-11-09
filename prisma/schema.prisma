@@ -3827,7 +3827,9 @@ model TournamentMatch {
   // Súmula oficial
   referee1           String? // árbitro principal
   referee2           String? // árbitro auxiliar
+  referee3           String? // 3º árbitro
   scorer             String? // anotador / mesa
+  timekeeper         String? // cronometrista
   homePenalties      Int? // pênaltis do mandante (desempate mata-mata)
   awayPenalties      Int? // pênaltis do visitante
   decidedByPenalties Boolean @default(false)
@@ -3999,6 +4001,32 @@ model MatchEvent {
 
   @@index([matchId])
   @@index([playerId])
+}
+
+// Contas/papéis do torneio (genérico pra TODO torneio).
+// role: FOUNDER | COORDINATOR | TEAM_ADMIN | COACH | REFEREE | PLAYER
+model TournamentRole {
+  id           String   @id @default(cuid())
+  tournamentId String
+  userId       String
+  role         String
+  entryId      String? // time, quando o papel é por time
+  createdAt    DateTime @default(now())
+
+  @@index([tournamentId])
+  @@index([userId])
+}
+
+// Nomeação da arbitragem por jogo: REF1 | REF2 | REF3 | SCORER | TIMEKEEPER
+model MatchOfficial {
+  id        String   @id @default(cuid())
+  matchId   String
+  userId    String
+  role      String
+  createdAt DateTime @default(now())
+
+  @@index([matchId])
+  @@index([userId])
 }
 
 // ============================================================

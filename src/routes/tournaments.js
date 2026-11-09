@@ -17,8 +17,65 @@ const { notify, notifyMany } = require('../services/notify');
 const cash = require('../services/tournamentCash');
 const { importFutsalMasterCup } = require('../services/futsalMasterCupSeed');
 const sheet = require('../services/matchSheet');
+const roles = require('../services/tournamentRoles');
 
 const router = express.Router();
+
+// =====================================================================
+// CONTAS / PAPÉIS do torneio (genérico pra todo torneio) — login real.
+// =====================================================================
+
+// Meus papéis neste torneio + o que posso fazer (pra UI rotear). Requer login.
+router.get('/:id/my-roles', authMiddleware, async (req, res) => {
+  try {
+    const r = await roles.myRoles(req.userId, req.userRole, req.params.id);
+    res.json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Lista os papéis do torneio (fundador/coordenador). Requer login + permissão.
+router.get('/:id/roles', authMiddleware, async (req, res) => {
+  try {
+    if (!(await roles.can(req.userId, req.userRole, req.params.id, 'ASSIGN_ROLES'))) {
+      return res.status(403).json({ error: 'sem permissão (só fundador/coordenador)' });
+    }
+    res.json({ roles: await roles.listRoles(req.params.id) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Nomeia um papel. Body: { phone|username|userId, role, entryId? }. Fundador/coordenador.
+router.post('/:id/roles', authMiddleware, async (req, res) => {
+  try {
+    const tournamentId = req.params.id;
+    if (!(await roles.can(req.userId, req.userRole, tournamentId, 'ASSIGN_ROLES'))) {
+      return res.status(403).json({ error: 'sem permissão (só fundador/coordenador)' });
+    }
+    const body = req.body || {};
+    const user = await roles.resolveUser({ userId: body.userId, username: body.username, phone: body.phone });
+    if (!user) return res.status(404).json({ error: 'usuário não encontrado — peça pra ele se cadastrar primeiro (telefone/@)' });
+    // Coordenador não nomeia FOUNDER/COORDINATOR (só o fundador/admin global faz).
+    const roleUp = String(body.role || '').toUpperCase();
+    if ((roleUp === 'FOUNDER' || roleUp === 'COORDINATOR')) {
+      const isFounder = await roles.can(req.userId, req.userRole, tournamentId, 'MANAGE_TOURNAMENT');
+      const amFounder = roles.isGlobalAdmin(req.userRole) || (await roles.rolesFor(req.userId, tournamentId)).some((x) => x.role === 'FOUNDER');
+      if (!amFounder && !roles.isGlobalAdmin(req.userRole)) return res.status(403).json({ error: 'só o fundador nomeia fundador/coordenador' });
+      void isFounder;
+    }
+    const r = await roles.assignRole(tournamentId, { userId: user.id, role: body.role, entryId: body.entryId });
+    if (!r.ok) return res.status(400).json(r);
+    res.status(201).json({ ok: true, user, role: r.role, already: !!r.already });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Remove um papel nomeado. Fundador/coordenador.
+router.delete('/:id/roles/:roleId', authMiddleware, async (req, res) => {
+  try {
+    if (!(await roles.can(req.userId, req.userRole, req.params.id, 'ASSIGN_ROLES'))) {
+      return res.status(403).json({ error: 'sem permissão (só fundador/coordenador)' });
+    }
+    res.json(await roles.removeRole(req.params.id, req.params.roleId));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
 // Membros (userIds) de uma entry — pra notificar a dupla/atleta.
 async function entryMemberIds(entryId) {
