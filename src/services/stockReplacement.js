@@ -5,6 +5,7 @@ const images=require('./stockReplacementImages');
 const policy=require('../../public/scanner-barcode-policy');
 const {applyStoreStockDelta}=require('./storeStockLedger');
 const hash=value=>createHash('sha256').update(typeof value==='string'?value:JSON.stringify(value)).digest('hex');
+const photoDigest=value=>createHash('sha256').update(Buffer.from(value.slice(value.indexOf(',')+1),'base64')).digest('hex');
 const normalized=value=>String(value||'').normalize('NFKC').toUpperCase().replace(/[^A-Z0-9]/g,'');
 const sizeKey=value=>String(value||'').replace(',','.').trim();
 function reasonText(reason){return ({produto_ou_variante_pendente:'Produto ou variante ainda não identificados.',foto_ou_codigo_pendente:'Falta a foto arquivada com o código desta peça.',tipo_de_produto_pendente:'Conferir a classificação do produto para esta contagem de calçados.',codigo_da_foto_divergente:'O código da foto não confirmou o código lido.',tamanho_da_foto_divergente:'O tamanho BR da foto difere do cadastro. Conferir antes de incluir.',referencia_ou_marca_divergente:'A referência e a marca da etiqueta ainda precisam ser confirmadas.',photo_barcode_conflict:'A foto não permitiu confirmar um único código de barras.',photo_size_or_reference_pending:'Falta confirmar o tamanho BR e a referência na foto.',ocr_busy:'Conferência da foto na fila.',ocr_timeout:'A leitura da foto será tentada novamente.',ocr_unavailable:'Conferência local da foto temporariamente indisponível.',leitura_encerrada:'Leitura encerrada ou excluída.'})[reason]||'Foto arquivada; aguardando conferência para entrar no novo estoque.';}
@@ -30,8 +31,9 @@ async function start(db,{storeId,requestId,reviewToken},actorId){
   if(current.active)fail('Já há uma substituição em andamento nesta loja. Abra a operação existente.');
   if(reviewToken!==current.reviewToken)fail('O estoque mudou. Atualize a conferência de início; nada foi substituído.');
   const productScope=await scope.build(tx,'footwear');
+  const [clock]=await tx.$queryRaw`SELECT clock_timestamp() AS "startedAt"`;
   const round=await tx.stocktakeRound.create({data:{id:requestId,storeId,name:'Substituição de estoque · '+current.store.code,
-   operationType:'replacement',activeReplacementStoreId:storeId,createdById:actorId,baseline:current.baseline,productScope,startedAt:new Date()}});
+   operationType:'replacement',activeReplacementStoreId:storeId,createdById:actorId,baseline:current.baseline,productScope,startedAt:clock.startedAt}});
   // The complete previous balance is committed with its archive, atomically.
   // No previous scans or balances are imported into the new stock.
   for(const row of current.baseline){if(!row.stock)continue;
@@ -88,7 +90,7 @@ async function applyVerified(db,c,read,reference){
   if(prior?.appliedAt)return {applied:!prior.reversedAt,idempotent:true};
   const reason=now&&validateRead(now,read);
   if(!now||reason||now.capture.photo!==c.capture.photo||now.size.id!==c.size.id||now.size.product.sku!==c.size.product.sku||now.size.product.brand!==c.size.product.brand)return {applied:false,reason:reason||'leitura_alterada'};
-  const snapshot={captureId:now.capture.id,photoSha256:hash(now.capture.photo),barcode:now.bipe.barcode,reference,size:now.size.size,
+  const snapshot={captureId:now.capture.id,photoSha256:photoDigest(now.capture.photo),barcode:now.bipe.barcode,reference,size:now.size.size,
    productId:now.size.productId,productSizeId:now.size.id,name:now.size.product.name,brand:now.size.product.brand,
    source:read.source,verifiedAt:new Date().toISOString()};
   const movement=await applyStoreStockDelta(tx,{storeId:now.round.storeId,productSizeId:now.size.id,quantity:1,type:'inventory_adjustment',source:'stock-replacement-scan',reason:'Bipe validado da substituição #'+now.round.number,metadata:{roundId:now.round.id,bipeId:now.bipe.id,captureId:now.capture.id}});
@@ -106,9 +108,9 @@ async function check(db,bipeId){
  if(early!=='aguardando_conferencia_da_etiqueta'){await pending(db,c,early);return {applied:false,reason:early};}
  const bytes=Buffer.from(c.capture.photo.slice(c.capture.photo.indexOf(',')+1),'base64');
  const read=await require('./scannerArchivedLabel').readImage(bytes,c.bipe.barcode);
- const reason=validateRead(c,read);if(reason){await pending(db,c,reason,{captureId:c.capture.id,photoSha256:hash(c.capture.photo)});return {applied:false,reason};}
+ const reason=validateRead(c,read);if(reason){await pending(db,c,reason,{captureId:c.capture.id,photoSha256:photoDigest(c.capture.photo)});return {applied:false,reason};}
  const reference=await referenceMatches(db,c,read);
- if(!reference){await pending(db,c,'referencia_ou_marca_divergente',{captureId:c.capture.id,photoSha256:hash(c.capture.photo)});return {applied:false,reason:'referencia_ou_marca_divergente'};}
+ if(!reference){await pending(db,c,'referencia_ou_marca_divergente',{captureId:c.capture.id,photoSha256:photoDigest(c.capture.photo)});return {applied:false,reason:'referencia_ou_marca_divergente'};}
  const result=await applyVerified(db,c,read,reference);if(result.applied)images.enqueue(db,bipeId);return result;
 }
 function enqueue(db,bipeId){if(!bipeId)return;jobs.add(bipeId);if(working)return;working=true;setImmediate(async()=>{try{while(jobs.size){const id=jobs.values().next().value;jobs.delete(id);try{await check(db,id)}catch(e){console.warn('[stock-replacement/check]',e.message)}}}finally{working=false}});}
