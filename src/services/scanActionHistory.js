@@ -34,7 +34,7 @@ function clean(input = {}) {
     const confirmedSize = String(scan.confirmedSize || '').trim();
     if (confirmedSize.length > 40) fail('Tamanho informado inválido.', 400);
     return { clientScanId: scan.clientScanId.toLowerCase(), barcode, scannedAt, productSizeId, confirmedSize,
-      removed: scan.removed === true, error: String(scan.error || '').slice(0, 500) };
+      removed: scan.removed === true, photoRequired: scan.photoRequired === true, error: String(scan.error || '').slice(0, 500) };
   }).sort((a, b) => a.clientScanId.localeCompare(b.clientScanId));
   if (new Set(scans.map(s => s.clientScanId)).size !== scans.length) fail('Um identificador de bipe foi enviado duas vezes.', 400);
   return { sessionId, mode, fromStoreId, toStoreId, transferId, revision: input.revision, status: input.status || 'open', scans };
@@ -156,6 +156,7 @@ async function syncWithin(tx, actual, value, payloadHash, options = {}) {
       const previous = lot?.scans.find(s => s.clientScanId === scan.clientScanId);
       const history = Array.isArray(previous?.barcodeHistory) ? previous.barcodeHistory : [];
       const scanData = { ...scan, lotId: value.sessionId,
+        photoRequired: scan.photoRequired || previous?.photoRequired || false,
         payloadHash: hash(value.scans.find(s => s.clientScanId === scan.clientScanId)),
         originalBarcode: previous?.originalBarcode || previous?.barcode || scan.barcode,
         barcodeHistory: previous && previous.barcode !== scan.barcode ? [...history, { from: previous.barcode, to: scan.barcode, at: new Date().toISOString(), actorId: actual.id }] : history };
@@ -260,7 +261,9 @@ async function detail(db, actor, sessionId) {
     const actual = await actualActor(tx, actor), permission = visibleWhere(actual, '');
     const lot = await tx.scanActionLot.findFirst({ where: { AND: [permission, { sessionId }] }, include: { scans: { orderBy: [{ scannedAt: 'asc' }, { clientScanId: 'asc' }] } } });
     if (!lot) fail('Lote não encontrado nas lojas autorizadas.', 404);
+    const photos = await tx.scanActionPhoto.findMany({ where: { scanId: { in: lot.scans.map(s => s.clientScanId) } }, select: require('./scanActionPhotos').metadataSelect, orderBy: [{ capturedAt: 'asc' }, { id: 'asc' }] });
     return { lot: (await publicLots(tx, [lot]))[0], scans: lot.scans.map(s => ({ clientScanId: s.clientScanId, barcode: s.barcode, originalBarcode: s.originalBarcode,
+      photoRequired: s.photoRequired, photos: photos.filter(p => p.scanId === s.clientScanId),
       createdAt: s.scannedAt, recordedAt: s.recordedAt, removed: s.removed, recognized: s.recognized, confirmedSize: s.confirmedSize || '',
       requiresSizeConfirmation: s.requiresSizeConfirmation, error: s.error || '', product: s.productSizeId ? { productSizeId: s.productSizeId, name: s.productName, brand: s.brand, size: s.size, barcode: s.barcode } : null })) };
   }, { isolationLevel: 'RepeatableRead', timeout: 30000 });
@@ -303,4 +306,4 @@ async function markConfirmed(tx, actor, value, transfer, items) {
   return sessionId;
 }
 
-module.exports = { MAX_SCANS, sync, recover, history, detail, markConfirmed };
+module.exports = { MAX_SCANS, sync, recover, history, detail, markConfirmed, visibleWhere };

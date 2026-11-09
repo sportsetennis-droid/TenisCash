@@ -786,9 +786,31 @@ model ScanActionRead {
   confirmedSize String?
   requiresSizeConfirmation Boolean @default(false)
   error        String?
+  photoRequired Boolean @default(false)
+  photos       ScanActionPhoto[]
 
   @@index([lotId, scannedAt])
   @@index([scannedAt])
+}
+
+// Immutable photographic evidence. Retrying a photo never creates another scan.
+model ScanActionPhoto {
+  id           String @id @default(uuid())
+  scanId       String
+  scan         ScanActionRead @relation(fields: [scanId], references: [clientScanId], onDelete: Restrict)
+  sha256       String
+  image        Bytes
+  mimeType     String
+  width        Int
+  height       Int
+  barcode      String
+  ocrText      String @default("")
+  capturedAt   DateTime
+  archivedAt   DateTime @default(now())
+  uploadedById String
+
+  @@unique([scanId, sha256])
+  @@index([scanId, capturedAt])
 }
 
 model StockTransferItem {
