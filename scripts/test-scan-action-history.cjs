@@ -117,6 +117,8 @@ const recoveryAdmin = (role = 'admin') => db.user.create({ data: { name: 'Recove
     const send = { sessionId: input.sessionId, fromStoreId: f.from.id, toStoreId: f.to.id, scans: input.scans.map(s => confirmScan(f, s)) };
     const review = await actions.sendPreview(db, f.sender, send);
     await actions.sendConfirm(db, f.sender, { ...send, requestId: randomUUID(), reviewToken: review.reviewToken });
+    // Pin this historical fixture instead of depending on the machine's month.
+    await db.scanActionLot.update({ where: { sessionId: input.sessionId }, data: { confirmedAt: new Date('2026-10-15T12:00:00-03:00') } });
     const month = await history.history(db, f.sender, { mode: 'transfer', from: '2026-10-01', to: '2026-10-31', storeId: f.from.id });
     assert.equal(month.lots.length, 1); assert.equal(month.totals.scans, 0); assert.equal(month.totals.confirmedScans, 1);
     assert.equal(month.lots[0].scanCount, 0); assert.equal(month.lots[0].totalScanCount, 1);

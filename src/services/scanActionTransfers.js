@@ -151,6 +151,8 @@ async function lookup(db, actor, input = {}) {
 }
 function block(list, code, message, extra = {}) { list.push({ code, message, ...extra }); }
 async function inspectScans(db, scans, blockers, expected = null) {
+  const missingPhotos = await db.scanActionRead.findMany({ where: { clientScanId: { in: scans.map(s => s.clientScanId) }, photoRequired: true, photos: { none: {} } }, select: { clientScanId: true } });
+  for (const scan of missingPhotos) block(blockers, 'pending_photo', 'A imagem desta leitura ainda não foi arquivada. Salve a foto antes de confirmar o lote.', { clientScanId: scan.clientScanId });
   if (scans.length) {
     const reused = await db.storeStockMovement.findFirst({ where: { source: SOURCE,
       OR: scans.map(scan => ({ metadata: { path: ['clientScanIds'], array_contains: [scan.clientScanId] } })) }, select: { id: true } });

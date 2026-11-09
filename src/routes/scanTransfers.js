@@ -5,6 +5,7 @@ const service=require('../services/scanTransfers');
 const stocktakeTransfers=require('../services/stocktakeTransfers');
 const actions=require('../services/scanActionTransfers');
 const actionHistory=require('../services/scanActionHistory');
+const actionPhotos=require('../services/scanActionPhotos');
 const router=express.Router();
 router.use(authMiddleware);
 router.use(async(req,res,next)=>{try{req.transferActor=await service.operator(prisma,req.userId);next();}catch(e){res.status(e.status||500).json({error:e.status?e.message:'Não foi possível verificar seu acesso.'});}});
@@ -16,6 +17,11 @@ router.post('/actions/drafts/sync',handle(r=>actionHistory.sync(prisma,r.transfe
 router.post('/actions/drafts/recover',handle(r=>actionHistory.recover(prisma,r.transferActor,r.body||{})));
 router.get('/actions/history',handle(r=>actionHistory.history(prisma,r.transferActor,r.query)));
 router.get('/actions/history/:sessionId',handle(r=>actionHistory.detail(prisma,r.transferActor,r.params.sessionId)));
+router.post('/actions/history/:sessionId/scans/:scanId/photos',handle(r=>actionPhotos.save(prisma,r.transferActor,r.params.sessionId,r.params.scanId,r.body||{})));
+router.get('/actions/history/:sessionId/scans/:scanId/photos/:photoId',async(req,res)=>{try{
+  const photo=await actionPhotos.image(prisma,req.transferActor,req.params.sessionId,req.params.scanId,req.params.photoId);
+  res.set({'Cache-Control':'private, no-store','Content-Type':photo.mimeType,'X-Content-Type-Options':'nosniff'}).send(Buffer.from(photo.image));
+}catch(e){res.status(e.status||500).json({error:e.status?e.message:'Não foi possível abrir a foto.'});}});
 router.post('/actions/send-preview',handle(r=>actions.sendPreview(prisma,r.transferActor,r.body||{})));
 router.post('/actions/send-confirm',handle(r=>actions.sendConfirm(prisma,r.transferActor,r.body||{})));
 router.get('/actions/pending',handle(r=>actions.pending(prisma,r.transferActor,{storeId:String(r.query.storeId||'')})));

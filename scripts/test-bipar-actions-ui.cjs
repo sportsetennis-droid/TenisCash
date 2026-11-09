@@ -14,6 +14,7 @@ const person = { id: '10000000-0000-4000-8000-000000000001', name: 'Isolated ope
 const product = { productSizeId: '20000000-0000-4000-8000-000000000001', name: 'Test shoe', brand: 'Adidas', size: '40', barcode: '7891234567895' };
 const lupo = { productSizeId: '20000000-0000-4000-8000-000000000002', name: 'Manguito Lupo AU UV Unissex', brand: 'LUPO', size: 'P', barcode: '7900373256192' };
 const receipts = [1, 2].map(n => ({ id: '30000000-0000-4000-8000-00000000000' + n, code: 100 + n, fromStore: stores[0], toStore: stores[1], qtyTotal: 1, status: 'in_transit' }));
+const testFrame = () => ({ width: 100, height: 100, toDataURL: () => 'data:image/jpeg;base64,cGhvdG8=' });
 function receiptStorage(storeId = stores[1].id) { return storage({ [settingsKey]: JSON.stringify({ mode: 'receipt', stores: { receipt: storeId }, origin: stores[0].id }) }); }
 function deferred() { let resolve, reject; const promise = new Promise((ok, fail) => { resolve = ok; reject = fail; }); return { promise, resolve, reject }; }
 function response(data, status = 200) { return { ok: status >= 200 && status < 300, status, json: async () => data }; }
@@ -66,7 +67,7 @@ function harness(shared, options = {}) {
     get: id => nodes.get(id), handler: null, historyHandler: null, contextHandler: null, contextUser: person, play: async () => {}, recognize: async () => '', decode: async () => '', confirmDuplicate: async () => true };
   const window = { events: {}, addEventListener(name, fn) { (this.events[name] ||= []).push(fn); }, ScannerTransfer: { refresh() {} }, ScannerConfirm: { ask: text => h.confirmDuplicate(text) },
     ScannerView: { markup: () => '__SCANNER__' }, ScannerOCR: { recognize: canvas => h.recognize(canvas) },
-    ScannerCamera: { constraints: { audio: false, video: true }, warmup() {}, tune: async () => {}, snapshot: () => document.createElement('canvas'), feedback(text) { h.lastFeedback = text; }, start(video, scanner) { const id = nextTimer++; intervals.set(id, () => scanner.tick()); return { stop() { intervals.delete(id); } }; } },
+    ScannerCamera: { constraints: { audio: false, video: true }, warmup() {}, tune: async () => {}, snapshot: testFrame, feedback(text) { h.lastFeedback = text; }, start(video, scanner) { const id = nextTimer++; intervals.set(id, () => scanner.tick()); return { stop() { intervals.delete(id); } }; } },
     ScannerAuto: { stopDecoder() {}, decodeInWorker: canvas => h.decode(canvas), create(options) { const scanner = { options, resets: [], stopped: false, tick() {}, reset(value) { this.resets.push(value); this.stopped = false; }, stop() { this.stopped = true; } }; scannerInstances.push(scanner); return scanner; } },
     fecharScanner() {} };
   const context = vm.createContext({ window, document, localStorage, sessionStorage, console, crypto: { randomUUID }, AbortController, URLSearchParams, atob,
@@ -76,6 +77,7 @@ function harness(shared, options = {}) {
     fetch: async (url, options = {}) => {
       assert.ok(url.startsWith('/api/scan-transfers/actions') || url === '/api/auth/login', 'New action must never call inventory or an external endpoint: ' + url);
       const request = { url, method: options.method || 'GET', body: options.body ? JSON.parse(options.body) : null, auth: options.headers?.Authorization };
+      if (url.endsWith('/photos') && request.method === 'POST') { (h.photoRequests ||= []).push(request); return h.photoHandler ? h.photoHandler(request) : response({ archived: true, photo: { id: randomUUID() } }); }
       if (/\/drafts\/(sync|recover)$/.test(url) || url.includes('/history')) {
         historyRequests.push(request);
         if (h.historyHandler) return h.historyHandler(request);
@@ -90,16 +92,19 @@ function harness(shared, options = {}) {
       if (url.includes('/pending?')) return response({ transfers: [] });
       throw Error('Unexpected isolated request: ' + url);
     } });
-  const exportCode = 'window.__test = { authenticate, loadShipments, openCamera, closeCamera, capture, resolveRead, refreshIdentifications, activeReads, scansPayload, contextChanged, storeChanged, prepare, confirmAction, persist, signature, flushSync, queueSync, recoverDrafts, reconcileConflictsFromServer, startNewLot, loadHistory, showHistoryDetail, copyHistory, syncPayload, historyFilters, state:()=>({actor,currentDraft,preview,cameraRead,cameraRetry,busy,stream,scanner,generation,syncJobs,historyData,historyPage,historyMode}) };';
+  window.crypto = { randomUUID }; window.localStorage = localStorage;
+  for (const file of ['scanner-photo-storage.js', 'scan-action-photos.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '../public', file), 'utf8'), context);
+  const exportCode = 'window.__test = { photoArchive, flushPhotos, localPending, authenticate, loadShipments, openCamera, closeCamera, capture, resolveRead, refreshIdentifications, activeReads, scansPayload, contextChanged, storeChanged, prepare, confirmAction, persist, signature, flushSync, queueSync, recoverDrafts, reconcileConflictsFromServer, startNewLot, loadHistory, showHistoryDetail, copyHistory, syncPayload, historyFilters, state:()=>({actor,currentDraft,preview,cameraRead,cameraRetry,busy,stream,scanner,generation,syncJobs,historyData,historyPage,historyMode}) };';
   assert.ok(source.endsWith('})();\n') || source.trimEnd().endsWith('})();'));
   vm.runInContext(source.replace(/\}\)\(\);\s*$/, exportCode + '\n})();'), context, { filename: 'public/bipar-actions.js' });
   h.api = window.__test; h.window = window; h.boot = () => h.api.authenticate();
   h.scan = barcode => window.BiparActions.scan(barcode);
+  h.archivePhotos = async () => { for (const item of h.api.activeReads().filter(s => s.photoRequired && !s.photoSaved)) await h.api.photoArchive.capture(h.api.state().currentDraft, item, testFrame()); await h.api.flushPhotos(); };
   h.cameraClick = command => h.get('action-camera').emit('click', { target: { closest: () => ({ dataset: { click: command } }) } });
   h.size = async value => { const input = h.get('action-readings').querySelectorAll('[data-scan-size]')[0]; input.value = value; await input.emit('input'); };
   return h;
 }
-async function flush() { for (let i = 0; i < 6; i++) await Promise.resolve(); }
+async function flush() { await new Promise(setImmediate); }
 async function test(name, fn) { await fn(); console.log('PASS: ' + name); }
 function legacyActionDraft(operatorId, mode = 'transfer', count = 2) {
   const context = { actorId: operatorId, mode, fromStoreId: mode === 'transfer' ? stores[0].id : '', toStoreId: stores[1].id, transferId: '' };
@@ -130,7 +135,7 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
   await test('camera capture accepts the same 16-digit internal code and records it pending without assigning a product', async () => {
     const h = harness(); await h.boot(); await h.api.openCamera(); const code = '0615640591012795';
     h.handler = request => { assert.ok(request.url.endsWith('/lookup')); assert.equal(request.body.barcode, code); return response({ error: 'Código não identificado' }, 404); };
-    const capture = h.api.capture({ ean: code, frame: {} }); await flush();
+    const capture = h.api.capture({ ean: code, frame: testFrame() }); await flush();
     const wait = [...h.timers].find(([, timer]) => timer.ms === 100);
     if (wait) { h.timers.delete(wait[0]); wait[1].fn(); }
     await capture; await flush();
@@ -244,7 +249,7 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
       assert.ok(request.url.endsWith('/lookup'));
       return lookups++ === 0 ? first.promise : second.promise;
     };
-    const frame = {};
+    const frame = testFrame();
     const firstCapture = h.api.capture({ ean: lupo.barcode, frame }); await flush();
     const firstWait = [...h.timers].find(([, timer]) => timer.ms === 100);
     if (firstWait) { h.timers.delete(firstWait[0]); firstWait[1].fn(); }
@@ -271,7 +276,7 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
   await test('resolved Lupo advances without a size prompt and never fabricates physical confirmation', async () => {
     const h = harness(); await h.boot(); const ocr = deferred(); let ocrCalls = 0; h.recognize = () => { ocrCalls++; return ocr.promise; };
     h.handler = () => response({ product: lupo, requiresSizeConfirmation: false });
-    await h.api.openCamera(); await h.api.capture({ ean: lupo.barcode, frame: {} }); await flush();
+    await h.api.openCamera(); await h.api.capture({ ean: lupo.barcode, frame: testFrame() }); await flush();
     const item = h.api.activeReads()[0];
     assert.equal(h.get('action-camera-size'), undefined); assert.equal(h.get('action-camera-pending'), undefined);
     assert.equal(h.get('etiq-confirm').style.display, 'none');
@@ -302,7 +307,7 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
       assert.ok(h.get('action-camera-size')); assert.equal(h.get('etiq-confirm-btn').disabled, true);
       assert.equal(h.get('etiq-confirm-status').textContent, 'Confira o tamanho na etiqueta');
       await h.cameraClick('next'); assert.ok(h.api.state().cameraRead); assert.equal(h.api.activeReads()[0].confirmedSize, '');
-      const before = h.requests.length; await h.api.prepare(); assert.equal(h.requests.length, before + 1);
+      const before = h.requests.length; await h.archivePhotos(); await h.api.prepare(); assert.equal(h.requests.length, before + 1);
       assert.ok(h.requests.at(-1).url.endsWith('/lookup')); assert.equal(h.api.state().preview, null);
       h.api.closeCamera();
     }
@@ -319,7 +324,7 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
     };
     await reloaded.boot(); assert.equal(reloaded.api.activeReads()[0].clientScanId, scanId); assert.equal(reloaded.api.state().currentDraft.sessionId, sessionId);
     assert.equal(reloaded.get('action-readings').querySelectorAll('[data-scan-size]').length, 0);
-    reloaded.get('action-shipment').value = receipts[0].id; await reloaded.get('action-shipment').emit('change'); await reloaded.api.prepare();
+    reloaded.get('action-shipment').value = receipts[0].id; await reloaded.get('action-shipment').emit('change'); await reloaded.archivePhotos(); await reloaded.api.prepare();
     assert.equal(reloaded.api.state().preview.allowed, true); reloaded.get('action-approved').checked = true; await reloaded.api.confirmAction();
     const submitted = reloaded.requests.find(request => request.url.endsWith('/receive-confirm'));
     assert.ok(submitted); assert.equal(submitted.body.scans[0].clientScanId, scanId);
@@ -363,7 +368,7 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
     const reloaded = harness(h.localStorage); reloaded.handler = () => response({ error: 'Conflicting variant' }, 409); await reloaded.boot(); await flush();
     assert.equal(reloaded.api.activeReads().length, 1); assert.equal(reloaded.api.activeReads()[0].clientScanId, item.clientScanId);
     assert.equal(reloaded.api.activeReads()[0].product, undefined); assert.match(reloaded.api.activeReads()[0].error, /Conflicting variant/);
-    const before = reloaded.requests.length; await reloaded.api.prepare(); assert.equal(reloaded.requests.length, before + 1);
+    const before = reloaded.requests.length; await reloaded.archivePhotos(); await reloaded.api.prepare(); assert.equal(reloaded.requests.length, before + 1);
     assert.ok(reloaded.requests.at(-1).url.endsWith('/lookup')); assert.equal(reloaded.api.state().preview, null);
     assert.equal(reloaded.get('action-confirm').disabled, true);
   });
@@ -371,7 +376,7 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
     const h = harness(); await h.boot(); h.handler = () => response({ product: lupo, requiresSizeConfirmation: true }); await h.scan(lupo.barcode); await h.size('G');
     h.handler = () => response({ product: lupo, requiresSizeConfirmation: false }); await h.api.resolveRead(h.api.state().currentDraft, h.api.activeReads()[0]);
     assert.equal(h.api.activeReads()[0].confirmedSize, 'G'); assert.equal(h.get('action-readings').querySelectorAll('[data-scan-size]').length, 1);
-    const before = h.requests.length; await h.api.prepare(); assert.equal(h.requests.length, before + 1);
+    const before = h.requests.length; await h.archivePhotos(); await h.api.prepare(); assert.equal(h.requests.length, before + 1);
     assert.ok(h.requests.at(-1).url.endsWith('/lookup')); assert.equal(h.api.state().preview, null);
     assert.equal(h.api.scansPayload()[0].confirmedSize, 'G'); assert.equal(h.api.scansPayload()[0].resolvedSize, 'P');
   });
@@ -397,7 +402,7 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
     assert.equal(h.api.state().cameraRead, null); h.api.closeCamera();
   });
   await test('barcode lookup starts before OCR finishes; same-frame OCR is saved and sent without confirming a size', async () => {
-    const h = harness(); await h.boot(); const ocr = deferred(), canvas = { marker: 'same physical label' }; let frameSeen;
+    const h = harness(); await h.boot(); const ocr = deferred(), canvas = { ...testFrame(), marker: 'same physical label' }; let frameSeen;
     h.recognize = frame => { frameSeen = frame; return ocr.promise; };
     h.handler = request => request.body?.ocrText ? response({ product }) : response({ error: 'Unknown code' }, 404);
     await h.api.openCamera(); const capturing = h.api.capture({ ean: product.barcode, frame: canvas }); await capturing; await flush();
@@ -415,7 +420,7 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
   });
   await test('slow OCR never delays a known product or overwrites the physical size being typed', async () => {
     const h = harness(); await h.boot(); const ocr = deferred(); h.recognize = () => ocr.promise;
-    await h.api.openCamera(); await h.api.capture({ ean: product.barcode, frame: {} });
+    await h.api.openCamera(); await h.api.capture({ ean: product.barcode, frame: testFrame() });
     assert.equal(h.api.state().cameraRead.product.productSizeId, product.productSizeId);
     const size = h.get('action-camera-size'); size.value = '4'; await size.emit('input');
     assert.equal(h.get('etiq-confirm-btn').disabled, true);
@@ -430,7 +435,7 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
   await test('late OCR after deliberate advance or closing never contaminates another piece or reopens a confirmation', async () => {
     for (const finish of ['advance', 'close']) {
       const h = harness(); await h.boot(); const ocr = deferred(); h.recognize = () => ocr.promise;
-      await h.api.openCamera(); await h.api.capture({ ean: product.barcode, frame: {} });
+      await h.api.openCamera(); await h.api.capture({ ean: product.barcode, frame: testFrame() });
       const first = h.api.activeReads()[0];
       if (finish === 'advance') {
         const size = h.get('action-camera-size'); size.value = '40'; await size.emit('input'); await h.cameraClick('next');
@@ -476,7 +481,7 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
     assert.match(h.get('action-camera-notice-text').textContent, /guardado como pendente/);
     assert.ok(h.tracks.every(track => !track.stopped)); assert.equal(h.scannerInstances[0].stopped, false);
     assert.equal(h.scannerInstances[0].resets.at(-1).afterCode, product.barcode);
-    const before = h.requests.length; await h.api.prepare(); h.get('action-approved').checked = true; await h.api.confirmAction();
+    const before = h.requests.length; await h.archivePhotos(); await h.api.prepare(); h.get('action-approved').checked = true; await h.api.confirmAction();
     assert.equal(h.requests.length, before + 1); assert.ok(h.requests.at(-1).url.endsWith('/lookup')); assert.equal(h.get('action-confirm').disabled, true);
     await h.api.capture({ ean: '7891234567888' }); assert.equal(h.api.activeReads().length, 2, 'The next physical label can be read without an extra next button');
     assert.equal(h.get('etiq-confirm').style.display, 'none'); assert.equal(h.api.state().cameraRead, null);
@@ -542,7 +547,7 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
       const h = harness(); await h.boot(); h.handler = () => response({ product: chosen, requiresSizeConfirmation: chosen === product });
       await h.scan(chosen.barcode); if (chosen === product) await h.size('40');
       h.handler = request => request.url.endsWith('/lookup') ? response({ product: chosen, requiresSizeConfirmation: chosen === product }) : request.url.endsWith('/send-preview') ? response({ canTransfer: true, reviewToken: 'a'.repeat(64), scanCount: 1, items: [], blockers: [] }) : Promise.reject(Error('Network interrupted'));
-      await h.api.prepare(); h.get('action-approved').checked = true; await h.api.confirmAction();
+      await h.archivePhotos(); await h.api.prepare(); h.get('action-approved').checked = true; await h.api.confirmAction();
       const pending = JSON.parse(h.localStorage.getItem(pendingKey)); assert.ok(pending?.body.requestId);
       assert.equal(h.api.activeReads().length, 1); const firstRequest = h.requests.find(request => request.url.endsWith('/send-confirm'));
       if (chosen === lupo) { assert.equal(firstRequest.body.scans[0].confirmedSize, ''); assert.equal(firstRequest.body.scans[0].resolvedSize, 'P'); }
@@ -583,7 +588,7 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
     assert.ok(lookup); assert.ok(!lookup.body.transferId, 'Unbound draft cannot guess an incoming transfer');
     h.api.closeCamera(); await h.size('40');
     const before = h.requests.length;
-    await h.api.prepare(); h.get('action-approved').checked = true; await h.api.confirmAction();
+    await h.archivePhotos(); await h.api.prepare(); h.get('action-approved').checked = true; await h.api.confirmAction();
     assert.equal(h.requests.length, before, 'No preview or stock write may be sent without a transfer');
     assert.equal(h.get('action-confirm').disabled, true); assert.equal(h.localStorage.getItem(pendingKey), null);
     assert.equal(h.api.activeReads().length, 1, 'Scanning without a shipment remains a saved draft');
@@ -620,19 +625,19 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
     assert.equal(reboundLookup.body.transferId, receipts[0].id, 'Retries after binding use the selected shipment, including variants disabled after dispatch');
     assert.equal(h.api.activeReads().length, 1); await h.size('40');
     h.handler = request => request.url.endsWith('/lookup') ? response({ product }) : request.url.endsWith('/receive-preview') ? response({ canReceive: true, reviewToken: 'c'.repeat(64), transfer: receipts[0], scanCount: 1, items: [], blockers: [] }) : response({ transfers: receipts });
-    await h.api.prepare(); assert.ok(h.api.state().preview?.allowed);
+    await h.archivePhotos(); await h.api.prepare(); assert.ok(h.api.state().preview?.allowed);
     h.get('action-approved').checked = true;
     const before = h.requests.length; h.get('action-shipment').value = receipts[1].id;
     await h.api.confirmAction(); assert.equal(h.requests.length, before, 'Different shipment cannot reuse the previous signed review');
     await h.get('action-shipment').emit('change'); assert.equal(h.api.state().preview, null); assert.equal(h.get('action-confirm').disabled, true);
-    await h.api.prepare(); assert.ok(h.api.state().preview?.allowed); await h.api.loadShipments();
+    await h.archivePhotos(); await h.api.prepare(); assert.ok(h.api.state().preview?.allowed); await h.api.loadShipments();
     assert.equal(h.api.state().preview, null); assert.equal(h.api.activeReads()[0].clientScanId, id);
   });
   await test('missing, unauthorized and unknown receiving stores keep scanning and camera blocked', async () => {
     for (const id of ['', stores[2].id, '99999999-9999-4999-8999-999999999999']) {
       const h = harness(receiptStorage(id)); await h.boot(); const before = h.requests.length;
       assert.equal(h.get('codigo').disabled, true);
-      assert.equal(await h.scan(product.barcode), null); await h.api.openCamera(); await h.api.prepare();
+      assert.equal(await h.scan(product.barcode), null); await h.api.openCamera(); await h.archivePhotos(); await h.api.prepare();
       h.get('action-approved').checked = true; await h.api.confirmAction();
       assert.equal(h.api.activeReads().length, 0); assert.equal(h.scannerInstances.length, 0); assert.equal(h.get('action-camera'), undefined);
       assert.equal(h.requests.length, before, 'Invalid destination must not trigger lookup, review or stock confirmation');
@@ -666,7 +671,7 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
     const item = h.api.activeReads()[0], originalId = item.clientScanId;
     const corrected = { ...lupo, productSizeId: '20000000-0000-4000-8000-000000000003', name: 'Corrected canonical variant', size: 'M' };
     h.handler = request => request.url.endsWith('/lookup') ? response({ product: corrected, requiresSizeConfirmation: false }) : response({ canTransfer: true, reviewToken: 'e'.repeat(64), scanCount: 1, items: [], blockers: [] });
-    await h.api.prepare();
+    await h.archivePhotos(); await h.api.prepare();
     const reviewed = h.requests.find(request => request.url.endsWith('/send-preview'));
     assert.ok(reviewed); assert.equal(reviewed.body.scans[0].productSizeId, corrected.productSizeId); assert.equal(reviewed.body.scans[0].resolvedSize, 'M');
     assert.equal(reviewed.body.scans[0].confirmedSize, ''); assert.equal(reviewed.body.scans[0].clientScanId, originalId); assert.equal(item.product.productSizeId, corrected.productSizeId);
@@ -734,19 +739,19 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
     const h = harness(receiptStorage()); h.handler = request => request.url.includes('/pending?') ? response({ transfers: receipts }) : response({ product: lupo, requiresSizeConfirmation: false }); await h.boot(); await h.scan(lupo.barcode);
     const item = h.api.activeReads()[0]; h.get('action-shipment').value = receipts[0].id; await h.get('action-shipment').emit('change');
     h.handler = request => { assert.equal(request.body.transferId, receipts[0].id); assert.equal(request.body.storeId, stores[1].id); return response({ error: 'Esta peça não pertence à transferência selecionada.' }, 409); };
-    await h.api.prepare(); assert.equal(item.product, undefined); assert.match(item.error, /não pertence/);
+    await h.archivePhotos(); await h.api.prepare(); assert.equal(item.product, undefined); assert.match(item.error, /não pertence/);
     assert.equal(h.requests.filter(request => request.url.endsWith('/receive-preview')).length, 0); assert.equal(h.get('action-confirm').disabled, true); assert.equal(h.api.activeReads().length, 1);
   });
   await test('successful identification keeps a real stock blocker and never confirms the transfer', async () => {
     const h = harness(); await h.boot(); h.handler = () => response({ product: lupo, requiresSizeConfirmation: false }); await h.scan(lupo.barcode);
     h.handler = request => request.url.endsWith('/lookup') ? response({ product: lupo, requiresSizeConfirmation: false }) : response({ canTransfer: false, reviewToken: 'f'.repeat(64), scanCount: 1, items: [{ productName: lupo.name, size: 'P', quantity: 1, available: 0, remaining: -1 }], blockers: [{ code: 'insufficient_stock', message: 'Somente 0 no estoque da origem.' }] });
-    await h.api.prepare(); h.get('action-approved').checked = true; await h.api.confirmAction();
+    await h.archivePhotos(); await h.api.prepare(); h.get('action-approved').checked = true; await h.api.confirmAction();
     assert.equal(h.api.state().preview.allowed, false); assert.equal(h.get('action-confirm').disabled, true);
     assert.equal(h.requests.filter(request => request.url.endsWith('/send-confirm')).length, 0); assert.equal(h.api.activeReads().length, 1);
   });
   await test('expired authentication during revalidation cannot authorize a stale preview', async () => {
     const h = harness(); await h.boot(); h.handler = () => response({ product: lupo, requiresSizeConfirmation: false }); await h.scan(lupo.barcode);
-    h.handler = () => response({ error: 'Entre novamente.' }, 401); await h.api.prepare();
+    h.handler = () => response({ error: 'Entre novamente.' }, 401); await h.archivePhotos(); await h.api.prepare();
     assert.equal(h.api.state().actor, null); assert.equal(h.api.state().preview, null); assert.equal(h.get('action-confirm').disabled, true);
     assert.equal(h.requests.filter(request => request.url.endsWith('/send-preview')).length, 0); assert.equal(h.api.activeReads().length, 1);
   });
@@ -772,7 +777,7 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
   await test('pending same-frame OCR can resolve in the background without changing the next Adidas confirmation', async () => {
     const h = harness(); await h.boot(); const ocr = deferred(); h.recognize = () => ocr.promise;
     h.handler = request => request.body?.barcode === product.barcode ? response({ product }) : request.body?.ocrText ? response({ product: lupo, requiresSizeConfirmation: false }) : response({ error: 'Size pending' }, 422);
-    await h.api.openCamera(); await h.api.capture({ ean: lupo.barcode, frame: {} }); const first = h.api.activeReads()[0];
+    await h.api.openCamera(); await h.api.capture({ ean: lupo.barcode, frame: testFrame() }); const first = h.api.activeReads()[0];
     assert.equal(h.api.state().cameraRead, null); assert.equal(h.get('etiq-confirm').style.display, 'none');
     await h.api.capture({ ean: product.barcode }); const second = h.api.activeReads()[1], size = h.get('action-camera-size'); size.value = '4'; await size.emit('input');
     ocr.resolve('LUPO TAM P'); await flush(); await flush();
@@ -1085,5 +1090,46 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
       assert.equal(h.get('action-history-copy-text').value, ''); assert.equal(h.get('action-history-copy-text').hidden, true);
     }
   });
-  console.log('PASS: 81 action UI regression groups; isolated mocks only.');
+  await test('a manual read stays pending until its own photo is durably saved and archived', async () => {
+    const h = harness(); await h.boot(); h.handler = () => response({ product: lupo, requiresSizeConfirmation: false });
+    await h.scan(lupo.barcode); const item = h.api.activeReads()[0], id = item.clientScanId;
+    assert.equal(item.photoRequired, true); assert.equal(h.api.localPending(), true);
+    await h.api.prepare(); assert.equal(h.requests.some(r => r.url.includes('-preview')), false);
+    await h.archivePhotos(); assert.equal(h.api.localPending(), false);
+    assert.equal(h.api.activeReads().length, 1); assert.equal(item.clientScanId, id);
+    assert.equal(h.photoRequests.length, 1); assert.ok(h.photoRequests[0].url.includes(id));
+  });
+  await test('offline photo survives reload and retries the same lot and scan without another piece', async () => {
+    const h = harness(); await h.boot(); h.handler = () => response({ product: lupo, requiresSizeConfirmation: false });
+    await h.api.openCamera(); await h.api.capture({ ean: lupo.barcode, frame: testFrame() });
+    const item = h.api.activeReads()[0], lot = h.api.state().currentDraft.sessionId;
+    h.photoHandler = () => { throw Error('offline'); }; await h.api.flushPhotos();
+    assert.equal(item.photoArchived, false); assert.equal(item.photoSaved, true); assert.match(item.photoError, /offline/);
+    const reloaded = harness(h.localStorage); reloaded.handler = () => response({ product: lupo, requiresSizeConfirmation: false }); await reloaded.boot(); await flush();
+    await reloaded.api.flushPhotos(); const after = reloaded.api.activeReads()[0];
+    assert.equal(after.clientScanId, item.clientScanId); assert.equal(reloaded.api.activeReads().length, 1); assert.equal(after.photoArchived, true);
+    assert.equal(reloaded.photoRequests[0].url, h.photoRequests[0].url); assert.equal(reloaded.photoRequests[0].body.photo, testFrame().toDataURL());
+    assert.equal(reloaded.api.state().currentDraft.sessionId, lot);
+    assert.equal(h.localStorage.getItem('etiqFila'), null, 'Action image queue must not touch inventory queue');
+  });
+  await test('failure to persist a camera photo keeps the same piece for a deliberate retry', async () => {
+    const h = harness(); await h.boot(); h.handler = () => response({ product: lupo, requiresSizeConfirmation: false });
+    const set = h.localStorage.setItem; h.localStorage.setItem = (key, value) => { if (key.startsWith('tc_action-archive_photo_event')) throw Error('Photo quota exhausted'); set(key, value); };
+    await h.api.openCamera(); await h.api.capture({ ean: lupo.barcode, frame: testFrame() });
+    const item = h.api.activeReads()[0]; assert.equal(h.api.state().cameraRead, item); assert.match(item.photoCaptureError, /quota/);
+    assert.equal(item.photoSaved, undefined); assert.equal(h.api.localPending(), true); assert.equal(h.api.activeReads().length, 1);
+    h.localStorage.setItem = set; await flush(); await h.cameraClick('next'); await h.api.capture({ ean: lupo.barcode, frame: testFrame() });
+    assert.equal(h.api.activeReads().length, 1); assert.equal(h.api.activeReads()[0].clientScanId, item.clientScanId); assert.equal(item.photoSaved, true);
+  });
+  await test('all recaptures must finish uploading and another operator never uploads the saved queue', async () => {
+    const h = harness(); await h.boot(); h.handler = () => response({ product: lupo, requiresSizeConfirmation: false }); await h.scan(lupo.barcode);
+    const draft = h.api.state().currentDraft, item = h.api.activeReads()[0];
+    await h.api.photoArchive.capture(draft, item, testFrame()); await h.api.photoArchive.capture(draft, item, testFrame());
+    let count = 0; h.photoHandler = () => { if (++count === 2) throw Error('Second photo pending'); return response({ archived: true, photo: { id: randomUUID() } }); };
+    await h.api.flushPhotos(); assert.equal(item.photoArchived, false); assert.equal(h.api.localPending(), true);
+    const other = harness(h.localStorage); other.contextUser = { ...person, id: randomUUID() }; await other.boot(); await other.api.flushPhotos(); assert.equal(other.photoRequests, undefined);
+    h.photoHandler = null; await h.api.flushPhotos(); assert.equal(item.photoArchived, true); assert.equal(h.api.activeReads().length, 1);
+    assert.equal((await h.api.photoArchive.rows(draft.sessionId, item.clientScanId)).length, 2);
+  });
+  console.log('PASS: 85 action UI regression groups; isolated DOM, camera and network mocks only.');
 })().catch(error => { console.error(error.stack || error); process.exitCode = 1; });

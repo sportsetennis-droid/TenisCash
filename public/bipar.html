@@ -311,9 +311,9 @@
   </section>
   </details>
 
-<script src="/scanner-barcode-policy.js?v=20261027-internal-codes-1"></script><script src="/scanner-confirm.js?v=20260915-resume-2"></script><script src="/scanner-view.js?v=20261018-recent-reads-1"></script><script src="/scanner-camera.js?v=20261018-live-fast-2"></script><script src="/scanner-round.js?v=20261018-preserve-round-1"></script><script src="/bipar-transfer.js?v=20261002-actions-1"></script><script src="/bipar-actions.js?v=20261027-internal-codes-1"></script>
+<script src="/scanner-barcode-policy.js?v=20261027-internal-codes-1"></script><script src="/scanner-confirm.js?v=20260915-resume-2"></script><script src="/scanner-view.js?v=20261018-recent-reads-1"></script><script src="/scanner-camera.js?v=20261018-live-fast-2"></script><script src="/scanner-round.js?v=20261018-preserve-round-1"></script><script src="/bipar-transfer.js?v=20261002-actions-1"></script><script src="/scanner-photo-storage.js?v=20261109-action-archive-1"></script><script src="/scan-action-photos.js?v=20261109-archive-1"></script><script src="/bipar-actions.js?v=20261109-photo-archive-1"></script>
 <script src="/vendor/barcode/zxing-reader-3.1.4.js"></script><script src="/scanner-auto.js?v=20261027-internal-codes-1"></script><script src="/scanner-regions.js?v=20260914-worker-1"></script><script src="/scanner-ocr.js?v=20260914-auto-3"></script>
-<script src="/scanner-photo-storage.js?v=20261016-photo-idb-2"></script>
+
 <script>
   const STORAGE_LOJA = 'sports_tennis_bipar_loja';
   const STORAGE_VEND = 'sports_tennis_bipar_vendedor';
@@ -1102,43 +1102,33 @@
       current.st = 'fila'; etiqLeituraArmada = false; etiqPausado = true; etiqAuto?.stop();
       etiqSave().then(() => enviarFila()); renderEtiqCaptureState(); return;
     }
-    // A reference without a decoded barcode is not another piece or a saved
-    // photo. Keep aiming and reading automatically, without a durable image.
+    // An undecoded frame is not another piece. Keep reading the same label.
     if (!prepared?.ean) {
       const hint = document.getElementById('etiq-hint');
       if (hint) hint.textContent = 'Referência lida. Aproxime o código de barras; leitura automática continua ativa.';
       etiqAuto?.reset(); return;
     }
-    const seller = document.getElementById('vendedor').value;
-    const item = current || { lid: 'e' + genClientScanId(), clientScanId: genClientScanId(),
-      roundId: window.ScannerRound.requireRound(document.getElementById('loja').value),
-      storeId: document.getElementById('loja').value || '', sellerId: seller === '__manual__' ? '' : (seller || ''),
-      sellerName: localStorage.getItem(STORAGE_VENDNAME) || '' };
-    item.ean = prepared.ean; item.st = 'fila'; item.complete = false;
-    item.autoRecognition = true; item.manualPhoto = false; item.b64 = null;
-    delete item.autoContinued;
-    item.ocrText = prepared.ocrText || ''; item.ocrDone = !!prepared.ocrText; item.ocrStarted = false;
-    item.autoRevision = Number(item.autoRevision || 0) + 1;
-    if (prepared.frame) etiqAutoFrames.set(item.clientScanId, prepared.frame);
-    if (!current) { etiqFila.push(item); window.ScannerTransfer?.start(item); }
-    // Recognition is asynchronous. Persist and queue this physical piece, then
-    // release the camera immediately instead of waiting for the server ACK.
-    // Keep the same-code guard tied to the captured frame so a stationary label
-    // cannot be counted twice while the operator moves to the next pair.
-    etiqAtivo = item.lid; etiqRetryAt = 0; etiqLeituraArmada = false; etiqPausado = true;
+    // Archive the exact decoded frame through the existing photo endpoint.
+    // A new automatic camera read may no longer discard its photograph.
+    if (!prepared.frame?.width || !prepared.frame?.height) {
+      document.getElementById('etiq-hint').textContent = 'Falta capturar a imagem desta etiqueta. Mantenha a mesma peça na câmera.';
+      etiqAuto?.reset(); return;
+    }
+    const lid = capturarFrame(prepared.ean, prepared.frame, true);
+    if (!lid) { etiqAuto?.reset(); return; }
+    etiqAtivo = lid; etiqRetryAt = 0; etiqLeituraArmada = false; etiqPausado = true;
     clearInterval(etiqWatch); etiqWatch = null;
     etiqAuto?.stop();
     const hint = document.getElementById('etiq-hint');
-    if (hint) hint.textContent = 'Código lido. Toque em Próximo quando quiser autorizar outra leitura.';
-    etiqSave().then(() => enviarFila()); renderEtiqCaptureState(); renderEtiqLista();
+    if (hint) hint.textContent = 'Código e imagem capturados. Salvando a etiqueta desta peça.';
+    renderEtiqCaptureState(); renderEtiqLista();
   };
   window.capturaManual = function () {
     if (window.BiparActions && !window.BiparActions.isInventory()) return;
     if (etiqCameraContext && !etiqSameInventoryContext(etiqCameraContext)) { etiqContextChanged(); return; }
     try{window.ScannerRound.requireRound(document.getElementById('loja').value)}catch(e){alert(e.message);window.fecharScanner();return;}
     const current = etiqFila.find(x => x.lid === etiqAtivo);
-    // Manual capture is the only path that freezes and persists camera pixels.
-    // It can promote an automatic read, including one still awaiting its ACK.
+    // A manual capture can retake the same piece, including a pending upload.
     etiqLeituraArmada = false; etiqPausado = true; etiqAuto?.stop();
     etiqRetryAt=Date.now()+5000;
     const lid=capturarFrame(current?.ean||'');
@@ -1162,10 +1152,10 @@
     const hint=document.getElementById('etiq-hint');if(hint)hint.textContent=savedManualPhoto&&!current?.ean?'Aponte para o código desta mesma peça.':'Leitura autorizada. Aponte para o código desejado.';
   };
 
-  function capturarFrame(ean) {
+  function capturarFrame(ean, capturedFrame = null, automatic = false) {
     if (!etiqStorageReady || etiqStorageFailed) { etiqStorageNotice(); return null; }
     const video = document.getElementById('etiq-video');
-    if (!video || !video.videoWidth) return null;
+    if (!capturedFrame && (!video || !video.videoWidth)) return null;
     const existing = etiqFila.find(x=>x.lid===etiqAtivo);
     const lid = existing?.lid || 'e' + Date.now();
     const selectedSeller = document.getElementById('vendedor').value;
@@ -1174,7 +1164,7 @@
       sellerId: selectedSeller === '__manual__' ? '' : (selectedSeller || ''),
       sellerName: localStorage.getItem(STORAGE_VENDNAME) || '' };
     if (!existing) window.ScannerTransfer?.start(item);
-    const source = video;
+    const source = capturedFrame || video;
     const width = source.width || video.videoWidth, height = source.height || video.videoHeight;
     const k = Math.min(1, 1800 / Math.max(width, height));
     const c = document.createElement('canvas');
@@ -1192,7 +1182,7 @@
     delete item.photoRef;
     item.photoRevision = Number(item.photoRevision || 0) + 1; item.photoTakenAt = new Date().toISOString();
     item.ean = ean; item.st = 'fila'; item.complete = false; item.ocrDone = false; item.ocrStarted = false; item.ocrText = '';
-    item.manualPhoto = true; item.autoRecognition = false; item.msg = '';
+    item.manualPhoto = !automatic; item.autoPhoto = automatic; item.autoRecognition = false; item.msg = '';
     delete item.autoContinued;
     item.autoRevision = Number(item.autoRevision || 0) + 1;
     etiqAutoFrames.delete(item.clientScanId);

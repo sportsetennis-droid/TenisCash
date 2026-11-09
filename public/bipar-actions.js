@@ -24,6 +24,59 @@
   const lookupConcurrency = 3;
   const lookupQueue = [];
   let runningLookups = 0;
+  let photoFlushTimer = null, closePhotoViewer = () => {};
+  const photoArchive = window.ScanActionPhotos?.create({
+    canUpload: row => !!actor && !!token && (row.operatorId === actor.id || canRecoverOthers()),
+    beforeUpload: async row => { const draft = [...drafts.values()].find(d => d.sessionId === row.lotId); return draft ? flushSync(draft) : true; },
+    upload: row => api('/history/' + row.lotId + '/scans/' + row.scanId + '/photos', { photo: row.b64, barcode: row.barcode, capturedAt: row.capturedAt, ocrText: row.ocrText }),
+    changed: row => {
+      const draft = [...drafts.values()].find(d => d.sessionId === row.lotId), item = draft?.scans.find(s => s.clientScanId === row.scanId);
+      if (item) { item.photoSaved = true; item.photoRequired = true; item.photoArchived = row.allArchived; item.photoError = row.error || ''; persist(draft); }
+      if (draft === currentDraft) { renderReadings(); refresh(); }
+      if (row.status !== 'archived') schedulePhotos();
+    },
+  });
+  function schedulePhotos() { clearTimeout(photoFlushTimer); photoFlushTimer = setTimeout(() => { void flushPhotos(); }, 1500); }
+  async function flushPhotos() {
+    if (!photoArchive || !actor || !token) return;
+    try { await photoArchive.flush(); }
+    catch (error) { message('As fotos ainda precisam ser arquivadas: ' + error.message, true); }
+    clearTimeout(photoFlushTimer); photoFlushTimer = setTimeout(() => { void flushPhotos(); }, 15000);
+  }
+  async function showScanPhotos(sessionId, scanId, supplied = null) {
+    const authToken = token, owner = actor?.id;
+    try {
+      const local = photoArchive ? (await photoArchive.rows(sessionId, scanId)).filter(p => p.operatorId === owner || canRecoverOthers()) : [];
+      let remote = supplied;
+      if (!remote) { try { const data = await api('/history/' + sessionId); remote = data.scans.find(s => s.clientScanId === scanId)?.photos || []; } catch (e) { if (!local.length) throw e; remote = []; } }
+      if (token !== authToken || actor?.id !== owner) return;
+      closePhotoViewer();
+      const panel = document.createElement('dialog'); panel.id = 'action-photo-viewer'; panel.style.cssText = 'max-width:95vw;width:800px;max-height:90vh;overflow:auto';
+      const heading = document.createElement('h3'); heading.textContent = 'Imagens arquivadas desta leitura'; panel.append(heading);
+      const close = document.createElement('button'); close.textContent = 'Fechar'; close.type = 'button'; panel.append(close);
+      const objectUrls = []; const cleanup = () => { objectUrls.forEach(url => URL.revokeObjectURL(url)); panel.remove(); };
+      closePhotoViewer = cleanup;
+      close.onclick = cleanup; panel.addEventListener('cancel', cleanup);
+      document.body.append(panel); panel.showModal();
+      const remoteIds = new Set(remote.map(p => p.id));
+      for (const photo of remote) {
+        const response = await fetch('/api/scan-transfers/actions/history/' + sessionId + '/scans/' + scanId + '/photos/' + photo.id, { headers: { Authorization: 'Bearer ' + authToken } });
+        if (!response.ok) throw Error('Não foi possível abrir a foto arquivada.');
+        if (token !== authToken || actor?.id !== owner || !panel.isConnected) { cleanup(); return; }
+        const blob = await response.blob();
+        if (token !== authToken || actor?.id !== owner || !panel.isConnected) { cleanup(); return; }
+        const url = URL.createObjectURL(blob); objectUrls.push(url);
+        const image = document.createElement('img'); image.src = url; image.alt = 'Etiqueta capturada para o código ' + photo.barcode; image.style.cssText = 'display:block;max-width:100%;height:auto';
+        const label = document.createElement('p'); label.textContent = 'Código ' + photo.barcode + ' · ' + historyDate(photo.capturedAt, true) + ' · Arquivada'; panel.append(label, image);
+        if (photo.ocrText) { const text = document.createElement('pre'); text.style.whiteSpace = 'pre-wrap'; text.textContent = 'Texto lido na etiqueta: ' + photo.ocrText; panel.append(text); }
+      }
+      for (const photo of local.filter(p => !remoteIds.has(p.photoId))) {
+        const image = document.createElement('img'); image.src = photo.b64; image.alt = 'Etiqueta salva neste aparelho, código ' + photo.barcode; image.style.cssText = 'display:block;max-width:100%;height:auto';
+        const label = document.createElement('p'); label.textContent = 'Código ' + photo.barcode + ' · Salva neste aparelho; aguardando arquivamento'; panel.append(label, image);
+      }
+      if (!remote.length && !local.length) { const empty = document.createElement('p'); empty.textContent = 'Esta leitura não possui imagem arquivada.'; panel.append(empty); }
+    } catch (error) { closePhotoViewer(); message(error.message, true); }
+  }
   function lookupSlot() {
     return new Promise(resolve => {
       const start = () => {
@@ -151,7 +204,7 @@
     catch (_) { storageFailed = true; message('Não foi possível guardar o lote neste aparelho. Libere espaço no navegador e tente salvar novamente.', true); return false; }
   }
   function syncPayload(draft) {
-    return { sessionId: draft.sessionId, mode: draft.context.mode, fromStoreId: draft.context.fromStoreId || '', toStoreId: draft.context.toStoreId, transferId: draft.context.transferId || '', revision: draft.revision, status: draft.status === 'archived' ? 'archived' : 'open', scans: draft.scans.map(item => ({ clientScanId: item.clientScanId, barcode: item.barcode, createdAt: item.createdAt, removed: !!item.removed, product: item.product, confirmedSize: item.confirmedSize || '', requiresSizeConfirmation: item.requiresSizeConfirmation !== false, error: item.error || '' })) };
+    return { sessionId: draft.sessionId, mode: draft.context.mode, fromStoreId: draft.context.fromStoreId || '', toStoreId: draft.context.toStoreId, transferId: draft.context.transferId || '', revision: draft.revision, status: draft.status === 'archived' ? 'archived' : 'open', scans: draft.scans.map(item => ({ clientScanId: item.clientScanId, barcode: item.barcode, createdAt: item.createdAt, removed: !!item.removed, product: item.product, confirmedSize: item.confirmedSize || '', photoRequired: item.photoRequired === true, requiresSizeConfirmation: item.requiresSizeConfirmation !== false, error: item.error || '' })) };
   }
   function canRecoverOthers() { return ['admin', 'superadmin'].includes(actor?.role); }
   function canRecoverDraft(draft) { return !!actor && !!draft?.context?.actorId && (draft.context.actorId === actor.id || canRecoverOthers()); }
@@ -435,7 +488,8 @@
     return activeReads(draft).map(item => ({ clientScanId: item.clientScanId, barcode: item.barcode, productSizeId: item.product?.productSizeId, confirmedSize: item.confirmedSize || '', ...(item.requiresSizeConfirmation === false ? { resolvedSize: item.product?.size || '' } : {}), ...(item.duplicateConfirmed ? { duplicateConfirmed: true } : {}) }));
   }
   function signature() { return JSON.stringify([contextKey(), context().transferId, currentDraft?.sessionId, scansPayload()]); }
-  function localPending() { return activeReads().some(item => inflight.has(item.clientScanId) || !item.product || (requiresSizeInput(item) && (!item.confirmedSize || sizeConflict(item)))); }
+  function hasArchivedPhoto(item) { return item.photoArchived || (!item.photoSaved && item.photos?.length > 0); }
+  function localPending() { return activeReads().some(item => (item.photoRequired && !hasArchivedPhoto(item)) || inflight.has(item.clientScanId) || !item.product || (requiresSizeInput(item) && (!item.confirmedSize || sizeConflict(item)))); }
   function refreshLegacyReads() {
     if (!validContext() || busy || read(pendingKey, null)) return;
     // Failed lookups are saved too. A repaired catalog must recover those same
@@ -500,6 +554,10 @@
       const title = document.createElement('strong'); title.textContent = item.product ? item.product.name + ' · ' + item.product.brand : inflight.has(item.clientScanId) ? 'Identificando o produto' : 'Leitura pendente — produto não identificado';
       const detail = document.createElement('p'); detail.textContent = 'Código: ' + item.barcode + (item.product ? ' · Cadastro: tamanho ' + item.product.size : '');
       card.append(title, detail);
+      const photoStatus = document.createElement('p'); photoStatus.textContent = hasArchivedPhoto(item) ? 'Imagem arquivada no histórico' : item.photoSaved ? 'Imagem salva neste aparelho — aguardando arquivamento' : 'Sem imagem arquivada — fotografe a etiqueta desta peça'; card.append(photoStatus);
+      if (item.photoError) { const error = document.createElement('p'); error.className = 'transfer-error'; error.textContent = item.photoError; card.append(error); }
+      const photoButton = document.createElement('button'); photoButton.type = 'button'; photoButton.className = 'btn btn-secondary'; photoButton.dataset.scanId = item.clientScanId; photoButton.textContent = item.photoSaved || item.photoArchived || item.photos?.length ? 'Ver imagens da leitura' : 'Fotografar etiqueta desta peça'; photoButton.onclick = () => item.photoSaved || item.photoArchived || item.photos?.length ? showScanPhotos(currentDraft.sessionId, item.clientScanId) : openCamera(item); card.append(photoButton);
+      if (item.photoCaptureError && item.photoSaved) { const retryPhoto = document.createElement('button'); retryPhoto.type = 'button'; retryPhoto.textContent = 'Repetir a foto desta peça'; retryPhoto.onclick = () => openCamera(item); card.append(retryPhoto); }
       if (item.error) { const error = document.createElement('p'); error.className = 'transfer-error'; error.textContent = item.error; card.append(error); }
       if (item.product && requiresSizeInput(item)) {
         const label = document.createElement('label'); label.textContent = /ADIDAS/i.test(item.product.brand) ? 'Tamanho BR na etiqueta desta caixa' : 'Tamanho escrito na etiqueta desta peça';
@@ -536,7 +594,7 @@
   function expireAuthentication(authToken, retryAutomatically) {
     if (authToken !== token) return;
     expiredActor ||= actor || (tokenSubject(authToken) ? { id: tokenSubject(authToken) } : null);
-    actor = null; closeCamera(); invalidate(); refresh();
+    actor = null; closeCamera(); closePhotoViewer(); invalidate(); refresh();
     message('Sua sessão expirou. Os bipes guardados ainda precisam ser sincronizados. Entre novamente para continuar.', true);
     if (retryAutomatically && expiredActor && !automaticAuthenticationAttempts.has(authToken)) {
       automaticAuthenticationAttempts.add(authToken); clearTimeout(authenticationRecoveryTimer);
@@ -582,7 +640,7 @@
       const origin = [settings.origin, settings.stores.inventory, personalStore].find(id => id && allowed.includes(id) && store(id)) || '';
       setOptions($('action-origin'), stores.filter(item => allowed.includes(item.id)).map(item => ({ id: item.id, label: storeName(item.id) })), 'Selecione a loja de origem', origin);
       settings.origin = origin; saveSettings(); contextChanged(); if (action === 'receipt') await loadShipments();
-      setupHistory(); void loadHistory(1);
+      setupHistory(); void loadHistory(1); schedulePhotos();
     } catch (error) { if (token !== operationToken) return; actor = null; message(error.status === 401 ? 'Entre com sua conta pessoal para continuar.' : error.message, true); refresh(); }
   }
   async function loadShipments() {
@@ -649,7 +707,7 @@
     // Every intentional scan is one physical piece. The camera engine still
     // suppresses repeated frames; retryRead retains the existing scan identity.
     const duplicateConfirmed = true;
-    const item = { clientScanId: crypto.randomUUID(), barcode, confirmedSize: '', duplicateConfirmed, ocrText: String(ocrText || '').trim().slice(0, 12000), createdAt: new Date().toISOString() };
+    const item = { clientScanId: crypto.randomUUID(), barcode, confirmedSize: '', duplicateConfirmed, photoRequired: true, ocrText: String(ocrText || '').trim().slice(0, 12000), createdAt: new Date().toISOString() };
     draft.scans.push(item); invalidate(); if (!persist(draft)) { renderReadings(); refresh(); return null; }
     renderReadings(); refresh();
     if (options.background === true) { void resolveRead(draft, item, ocrText); return item; }
@@ -806,6 +864,8 @@
         const row = document.createElement('p'); row.className = 'action-history-scan';
         row.textContent = (index + 1) + '. ' + historyDate(scan.createdAt, true) + ' · ' + scan.barcode + ' · ' + (scan.product?.name || 'Produto pendente') + (scan.product?.size ? ' · Tam. ' + scan.product.size : '') + ' · ' + (scan.removed ? 'Retirada' : scan.recognized ? 'Identificada' : 'Pendente') + (scan.error ? ' · ' + scan.error : '');
         area.append(row);
+        const photos = scan.photos || [];
+        const photoButton = document.createElement('button'); photoButton.type = 'button'; photoButton.className = 'btn btn-secondary'; photoButton.textContent = photos.length ? 'Ver ' + photos.length + ' imagem(ns) desta leitura' : 'Sem imagem arquivada'; photoButton.disabled = !photos.length; photoButton.onclick = () => showScanPhotos(sessionId, scan.clientScanId, photos); area.append(photoButton);
       }
       $('action-history-detail-note').textContent = 'Detalhe completo do lote, inclusive leituras fora do período filtrado e retiradas. Códigos repetidos aparecem uma vez por bipe.';
       $('action-history-detail').hidden = false; historyMessage('');
@@ -857,6 +917,22 @@
       return;
     }
     cameraRetry = null;
+    item.photoRequired = true;
+    let capturedPhoto;
+    try {
+      if (!photoArchive) throw Error('O arquivamento de fotos não carregou. Reabra esta página antes de continuar.');
+      capturedPhoto = await photoArchive.capture(draft, item, reading.frame || frame());
+      item.photoSaved = true; item.photoArchived = false; item.photoError = ''; item.photoCaptureError = ''; item.capturePhotoId = capturedPhoto.clientScanId;
+      if (!persist(draft)) throw Error('A foto foi preservada, mas o lote ainda precisa ser salvo neste aparelho.');
+      schedulePhotos();
+    } catch (error) {
+      item.photoError = error.message; item.photoCaptureError = error.message; cameraRead = item; persist(draft); renderReadings(); refresh();
+      if (cameraId !== cameraGeneration || !$('action-camera')) return;
+      if (storageFailed) { pauseCameraStorage(); return; }
+      $('etiq-confirm-status').textContent = 'Foto não arquivada'; $('etiq-confirm-det').textContent = error.message + ' Releia esta mesma peça.';
+      $('etiq-confirm-btn').textContent = 'RELER A MESMA PEÇA'; $('etiq-confirm-btn').disabled = false; return;
+    }
+    if (cameraId !== cameraGeneration || !$('action-camera')) return;
     const needsOcr = !item.product || requiresSizeInput(item);
     // Let the exact EAN lookup decide whether OCR is needed. The scan is
     // already persisted and the camera can continue, so waiting here only
@@ -881,6 +957,7 @@
     const sameRead = () => currentFrame() && attempt === cameraAttempt && cameraRead === item;
     void textPromise.then(async value => {
       const text = String(value || '').trim().slice(0, 12000);
+      if (text && capturedPhoto) { await photoArchive.updateText(capturedPhoto.clientScanId, text); schedulePhotos(); }
       if (!text || !currentFrame() || (!sameRead() && !backgroundResolution) || text === item.ocrText) return;
       if (!item.product) {
         await resolveRead(draft, item, text);
@@ -941,7 +1018,7 @@
   }
   function nextCameraRead(pending = false) {
     const item = cameraRead;
-    if (!item || item.working || !item.barcode || (inflight.has(item.clientScanId) && pending !== 'automatic')) return;
+    if (!item || item.working || !item.barcode || item.photoCaptureError || (item.photoRequired && !item.photoSaved) || (inflight.has(item.clientScanId) && pending !== 'automatic')) return;
     const previousAutoContinuedAt = item.pendingAutoContinuedAt;
     if (pending === true) {
       item.pendingAcknowledgedAt = new Date().toISOString();
@@ -1005,13 +1082,13 @@
       if (command === 'close') return closeCamera();
       if (command === 'retry-pending') { if (!cameraRead && !cameraRetry && !storageFailed && cameraPendingRead && !cameraPendingRead.product) retryCameraRead(cameraPendingRead); return; }
       if (command === 'capture') {
-        if (cameraRead && !cameraRead.working && !cameraRead.product) retryCameraRead(cameraRead);
+        if (cameraRead && !cameraRead.working && (!cameraRead.product || cameraRead.photoCaptureError)) retryCameraRead(cameraRead);
         if (!cameraRead) { const captured = frame(); if (captured) { const ean = await window.ScannerAuto.decodeInWorker(captured); if (cameraId === cameraGeneration && $('action-camera')) await capture({ ean: typeof ean === 'string' ? ean : ean?.text || '', frame: captured }); } }
         return;
       }
       if (command === 'next-pending') return nextCameraRead(true);
       if (command !== 'next' || !cameraRead || cameraRead.working) return;
-      if (!cameraRead.product) { retryCameraRead(cameraRead); return; }
+      if (!cameraRead.product || cameraRead.photoCaptureError) { retryCameraRead(cameraRead); return; }
       if (requiresSizeInput(cameraRead)) {
         const size = $('action-camera-size')?.value.trim() || ''; if (!size || normalizedSize(size) !== normalizedSize(cameraRead.product.size)) return;
         cameraRead.confirmedSize = size;
@@ -1064,7 +1141,7 @@
   $('action-history-close-detail').onclick = () => { $('action-history-detail').hidden = true; };
   for (const id of ['action-history-store', 'action-history-status', 'action-history-from', 'action-history-to']) $(id).addEventListener('change', () => { $('action-history-copy-text').hidden = true; void loadHistory(1); });
   $('action-storage-retry').onclick = () => { if (persist()) message('Lote salvo neste aparelho.'); refresh(); };
-  $('action-switch-user').onclick = () => { if (busy) return; actor = null; expiredActor = null; clearTimeout(authenticationRecoveryTimer); token = ''; historyRequest++; historyData = null; $('action-history-list').replaceChildren(); $('action-history-detail').hidden = true; $('action-history-copy-text').value = ''; $('action-history-copy-text').hidden = true; $('action-history-summary').textContent = ''; $('action-history-pending').textContent = ''; historyMessage('Entre com sua conta para consultar os históricos.'); sessionStorage.removeItem('tc_transfer_token'); contextChanged(); refresh(); $('action-identity').focus(); };
+  $('action-switch-user').onclick = () => { if (busy) return; closePhotoViewer(); actor = null; expiredActor = null; clearTimeout(authenticationRecoveryTimer); token = ''; historyRequest++; historyData = null; $('action-history-list').replaceChildren(); $('action-history-detail').hidden = true; $('action-history-copy-text').value = ''; $('action-history-copy-text').hidden = true; $('action-history-summary').textContent = ''; $('action-history-pending').textContent = ''; historyMessage('Entre com sua conta para consultar os históricos.'); sessionStorage.removeItem('tc_transfer_token'); contextChanged(); refresh(); $('action-identity').focus(); };
   $('action-login').addEventListener('submit', async event => {
     event.preventDefault(); if (busy) return; busy = true; $('action-login-button').disabled = true;
     try { const identity = $('action-identity').value.trim(); const response = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...(identity.includes('@') ? { email: identity } : { phone: identity.replace(/\D/g, '') }), password: $('action-password').value }) }); const data = await response.json(); if (!response.ok) throw Error(data.error || 'Não foi possível entrar.'); token = data.token; $('action-password').value = ''; await authenticate({ allowFallback: false }); }
@@ -1075,6 +1152,8 @@
   document.addEventListener('focusin', event => { if (event.target !== document.body) interaction = !!event.target.closest('#action-setup,#action-workspace,#action-camera,#action-history'); });
   document.addEventListener('visibilitychange', () => { if (document.hidden) closeCamera(); else { if (!actor && expiredActor) void resumeAuthentication(); refreshLegacyReads(); recoverDrafts(); } });
   window.addEventListener('online', () => { if (!actor && expiredActor) void resumeAuthentication(); else recoverDrafts(); });
+  window.addEventListener('online', schedulePhotos);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) schedulePhotos(); });
   window.addEventListener('storage', event => {
     if (['loja_token', 'tc_token', 'tc_admin_token'].includes(event.key) && !actor && expiredActor) void resumeAuthentication();
     if (event.key === pendingKey) refresh();

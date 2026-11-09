@@ -18,6 +18,12 @@
   });
 
   function create(options = {}) {
+    // Separate action photos from inventory queues while reusing durable storage.
+    const namespace = options.namespace ? String(options.namespace).replace(/[^a-z0-9-]/gi, '') : '';
+    const queueKey = namespace ? 'tc_' + namespace + '_photo_queue_v1' : 'etiqFila';
+    const legacyPrefix = namespace ? 'tc_' + namespace + '_photo_checkpoint_v1:' : LEGACY;
+    const fallbackPrefix = namespace ? 'tc_' + namespace + '_photo_event_v2:' : FALLBACK;
+    const databaseName = namespace ? 'teniscash-' + namespace + '-photos' : 'teniscash-scanner-photos';
     const storage = options.localStorage || root.localStorage;
     const indexed = options.indexedDB === undefined ? root.indexedDB : options.indexedDB;
     const timeoutMs = options.timeoutMs || 15000;
@@ -39,7 +45,7 @@
       if (database) return database;
       if (!opened) {
         const pending = new Promise((resolve, reject) => {
-          const op = indexed.open('teniscash-scanner-photos', 1);
+          const op = indexed.open(databaseName, 1);
           let expired = false;
           const timer = setTimeout(() => { expired = true; reject(Error('O armazenamento de fotos não respondeu. Tente novamente.')); }, timeoutMs);
           op.onupgradeneeded = () => {
@@ -86,25 +92,25 @@
 
     function writeMirror(rows) {
       try {
-        const raw = storage.getItem('etiqFila'), existing = JSON.parse(raw || '[]');
+        const raw = storage.getItem(queueKey), existing = JSON.parse(raw || '[]');
         // Never replace an older tab's not-yet-migrated photograph or delta.
         if (!Array.isArray(existing) || existing.some(row => !isMirror(row))) return;
         const thin = rows.map(row => {
           const item = { ...row }; delete item.b64; delete item._photoStorageMirror;
           item._photoStorageMirror = signature(JSON.stringify(item)); return item;
         });
-        if (storage.getItem('etiqFila') === raw) storage.setItem('etiqFila', JSON.stringify(thin));
+        if (storage.getItem(queueKey) === raw) storage.setItem(queueKey, JSON.stringify(thin));
       } catch (_) { /* The authoritative transaction is already committed. */ }
     }
 
     function legacySources() {
       const sources = [], keys = [];
       observedClock = Math.max(observedClock + 0.001, root.performance?.timeOrigin && root.performance?.now ? root.performance.timeOrigin + root.performance.now() : Date.now());
-      for (let i = 0; i < storage.length; i++) { const key = storage.key(i); if (key === 'etiqFila' || key?.startsWith(LEGACY) || key?.startsWith(FALLBACK)) keys.push(key); }
+      for (let i = 0; i < storage.length; i++) { const key = storage.key(i); if (key === queueKey || key?.startsWith(legacyPrefix) || key?.startsWith(fallbackPrefix)) keys.push(key); }
       for (const key of keys) {
         const raw = storage.getItem(key); if (!raw) continue;
         let value; try { value = JSON.parse(raw); } catch (_) { continue; }
-        if (key === 'etiqFila') {
+        if (key === queueKey) {
           if (Array.isArray(value)) sources.push({ key, raw, events: value.filter(fields => !isMirror(fields)).map((fields, index) => ({ identity: identity(fields), at: observedClock, base: true, index, fields })) });
         } else if (value?.identity && value.fields && typeof value.fields === 'object') sources.push({ key, raw, events: [value] });
       }
@@ -189,12 +195,15 @@
       return [...rows.values()];
     }
 
-    async function read() {
-      if (fallback) return merge(legacySources().flatMap(source => source.events.map(event => ({ ...event, key: source.key }))));
+    async function read(options = {}) {
+      const filter = options.filter || (() => true);
+      if (fallback) return merge(legacySources().flatMap(source => source.events.map(event => ({ ...event, key: source.key })))).filter(filter);
       await migrateLegacy();
       const tx = await beginTransaction('events', 'readonly'), done = completed(tx, timeoutMs);
       const [events] = await Promise.all([request(tx.objectStore('events').getAll()), done]);
-      const merged = merge(events), needed = [...new Set(merged.map(row => row.photoRef).filter(Boolean))];
+      const merged = merge(events).filter(filter);
+      if (options.includeImages === false) return merged;
+      const needed = [...new Set(merged.map(row => row.photoRef).filter(Boolean))];
       // Retain every original on disk without loading superseded recaptures
       // into RAM on each queue poll. Only the current row images are hydrated.
       let images = [];
@@ -219,7 +228,7 @@
         // The image exists only in this delta, never duplicated in an aggregate.
         let at = Date.now();
         for (const source of legacySources()) for (const event of source.events) at = Math.max(at, (Number(event.at) || 0) + 1);
-        const event = { key: FALLBACK + uuid(), identity: id, at, fields: copy(fields) };
+        const event = { key: fallbackPrefix + uuid(), identity: id, at, fields: copy(fields) };
         storage.setItem(event.key, JSON.stringify(event)); return copy(fields);
       }
       const prepared = await prepare(fields);
