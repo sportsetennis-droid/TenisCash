@@ -4048,6 +4048,41 @@ model TeamMembership {
   @@index([userId])
 }
 
+// TREINO = atividade OFICIAL do time (mesmo status do jogo), criada pelo treinador.
+// Súmula própria: chamada/presença + o que foi feito. Não entra em classificação.
+model TrainingSession {
+  id              String    @id @default(cuid())
+  tournamentId    String
+  clubName        String
+  title           String    @default("Treino")
+  focus           String?
+  scheduledAt     DateTime?
+  location        String?
+  status          String    @default("SCHEDULED") // SCHEDULED | DONE | CANCELED
+  notes           String?
+  createdByUserId String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([tournamentId])
+  @@index([tournamentId, clubName])
+}
+
+model TrainingAttendance {
+  id        String   @id @default(cuid())
+  sessionId String
+  userId    String
+  confirmed Boolean  @default(false) // atleta confirmou (RSVP)
+  present   Boolean? // chamada do treinador: presente/faltou (null = não marcado)
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sessionId, userId])
+  @@index([sessionId])
+  @@index([userId])
+}
+
 // ============================================================
 // PROFISSIONAL ESPORTIVO — Card público + Gestão + Cobrança
 // ------------------------------------------------------------

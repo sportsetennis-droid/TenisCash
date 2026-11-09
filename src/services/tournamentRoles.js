@@ -65,6 +65,7 @@ async function can(userId, userRole, tournamentId, action, opts = {}) {
     case 'MANAGE_TEAM':
       return isCoord || teamAdminOf(opts.entryId);
     case 'SET_LINEUP':
+    case 'TRAIN': // criar/gerir treino: coordenador/fundador/admin OU admin/treinador do time
       return isCoord || teamAdminOf(opts.entryId) || coachOf(opts.entryId);
     case 'REFEREE': {
       if (isCoord) return true;

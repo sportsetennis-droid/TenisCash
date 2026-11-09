@@ -112,6 +112,42 @@ const STATEMENTS = [
   `CREATE UNIQUE INDEX IF NOT EXISTS "TeamMembership_uniq" ON "TeamMembership" ("tournamentId", "clubName", "userId")`,
   `CREATE INDEX IF NOT EXISTS "TeamMembership_tournament_idx" ON "TeamMembership" ("tournamentId")`,
   `CREATE INDEX IF NOT EXISTS "TeamMembership_user_idx" ON "TeamMembership" ("userId")`,
+  // TREINO = atividade OFICIAL do time (mesmo status do jogo), criada pelo treinador.
+  // Tem súmula própria: chamada/presença + o que foi feito. Não entra em classificação.
+  // Escopo por NOME do clube (clube = um só em várias categorias).
+  // status: SCHEDULED | DONE | CANCELED
+  `CREATE TABLE IF NOT EXISTS "TrainingSession" (
+     "id" TEXT NOT NULL,
+     "tournamentId" TEXT NOT NULL,
+     "clubName" TEXT NOT NULL,
+     "title" TEXT NOT NULL DEFAULT 'Treino',
+     "focus" TEXT,
+     "scheduledAt" TIMESTAMP(3),
+     "location" TEXT,
+     "status" TEXT NOT NULL DEFAULT 'SCHEDULED',
+     "notes" TEXT,
+     "createdByUserId" TEXT,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "TrainingSession_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE INDEX IF NOT EXISTS "TrainingSession_tournament_idx" ON "TrainingSession" ("tournamentId")`,
+  `CREATE INDEX IF NOT EXISTS "TrainingSession_club_idx" ON "TrainingSession" ("tournamentId", "clubName")`,
+  // Presença/chamada do treino. confirmed = atleta confirmou (RSVP); present = chamada do treinador.
+  `CREATE TABLE IF NOT EXISTS "TrainingAttendance" (
+     "id" TEXT NOT NULL,
+     "sessionId" TEXT NOT NULL,
+     "userId" TEXT NOT NULL,
+     "confirmed" BOOLEAN NOT NULL DEFAULT false,
+     "present" BOOLEAN,
+     "note" TEXT,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "TrainingAttendance_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "TrainingAttendance_uniq" ON "TrainingAttendance" ("sessionId", "userId")`,
+  `CREATE INDEX IF NOT EXISTS "TrainingAttendance_session_idx" ON "TrainingAttendance" ("sessionId")`,
+  `CREATE INDEX IF NOT EXISTS "TrainingAttendance_user_idx" ON "TrainingAttendance" ("userId")`,
 ];
 
 async function ensureApexSchema(prisma) {
