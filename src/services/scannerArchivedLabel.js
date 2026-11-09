@@ -9,7 +9,7 @@ const sizeKey = value => String(value || '').replace(',', '.');
 function identityReferences(words,references){
   // Do not turn a field such as "SAC:0800" into an apparent model SAC0800
   // by stripping its punctuation. Require a printed model token itself.
-  const literal=new Set(words.filter(w=>/^[A-Z]{1,3}\d{4,10}(?:[-/]\d{2,4})?$/.test(w.text.trim())).map(w=>norm(w.text)));
+  const literal=new Set(words.filter(w=>/^[A-Z]{1,3}\d{4,10}(?:[-/]\d{2,4})?$/.test(w.text.normalize('NFKC').toUpperCase().trim())).map(w=>norm(w.text)));
   return references.filter(ref=>/^\d{9}[A-Z]{2,8}(?:\d{1,3})?$/.test(ref)||literal.has(ref));
 }
 function printedReferences(words) {

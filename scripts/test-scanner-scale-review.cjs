@@ -75,6 +75,11 @@ test('distinct printed model references with only one BR still remain ambiguous'
 test('the same printed model repeated on the label is not a model conflict', () => {
   assert.equal(readWords(data([...br('41'),word('IF1405',100,300),word('IF1405',600,300)]))?.size,'41');
 });
+for(const [first,second] of [['if1405','if1406'],['IF1405','if1406'],['ＩＦ１４０５','ＩＦ１４０６']]){
+  test(`model conflict preserves case and NFKC normalization: ${first}/${second}`,()=>{
+    assert.equal(readWords(data([word(first,100,100),word(second,600,100),word('BR',600,200),word('41',660,200)])),null);
+  });
+}
 
 // All image transforms and worker calls are injected; no real sharp/Tesseract
 // instance is created. A reusable worker must not reuse partial label evidence
