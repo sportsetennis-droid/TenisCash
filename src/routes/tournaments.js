@@ -77,6 +77,89 @@ router.delete('/:id/roles/:roleId', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Cria (ou acha) a conta de uma pessoa pra ser nomeada (coordenador vouch).
+// Fundador/coordenador. Se criar, devolve uma senha provisória pra passar pra pessoa.
+router.post('/:id/people', authMiddleware, async (req, res) => {
+  try {
+    if (!(await roles.can(req.userId, req.userRole, req.params.id, 'ASSIGN_ROLES'))) {
+      return res.status(403).json({ error: 'sem permissão (só fundador/coordenador)' });
+    }
+    const b = req.body || {};
+    const name = String(b.name || '').trim();
+    const phone = String(b.phone || '').replace(/\D/g, '');
+    if (!name || !phone) return res.status(400).json({ error: 'informe nome e telefone' });
+    let user = await prisma.user.findUnique({ where: { phone }, select: { id: true, name: true, phone: true, username: true } });
+    let created = false, tempPassword = null;
+    if (!user) {
+      tempPassword = (String(b.password || '').trim()) || String(Math.floor(100000 + Math.random() * 900000)); // 6 dígitos
+      const hash = await bcrypt.hash(tempPassword, 10);
+      user = await prisma.user.create({
+        data: { name, phone, pin: hash, lgpdAccepted: true, lgpdDate: new Date() },
+        select: { id: true, name: true, phone: true, username: true },
+      });
+      created = true;
+    }
+    res.status(created ? 201 : 200).json({ ok: true, user, created, tempPassword });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Torneios onde EU tenho papel (fundador ou nomeado) — pra home rotear. Requer login.
+router.get('/my-tournaments', authMiddleware, async (req, res) => {
+  try {
+    const roleRows = await prisma.tournamentRole.findMany({ where: { userId: req.userId }, select: { tournamentId: true, role: true, entryId: true } });
+    const owned = await prisma.tournament.findMany({ where: { ownerId: req.userId }, select: { id: true } });
+    const ids = [...new Set(roleRows.map((r) => r.tournamentId).concat(owned.map((o) => o.id)))];
+    if (!ids.length) return res.json({ tournaments: [] });
+    const ts = await prisma.tournament.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, slug: true, sport: true, status: true, ownerId: true } });
+    const byId = {};
+    roleRows.forEach((r) => { (byId[r.tournamentId] = byId[r.tournamentId] || []).push({ role: r.role, entryId: r.entryId }); });
+    const out = ts.map((t) => ({ ...t, myRoles: (t.ownerId === req.userId ? [{ role: 'FOUNDER' }] : []).concat(byId[t.id] || []) }));
+    res.json({ tournaments: out });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Nomeação da arbitragem POR JOGO (quem apita cada partida). Fundador/coordenador.
+// role do official: REF1 | REF2 | REF3 | SCORER | TIMEKEEPER
+router.get('/:id/matches/:matchId/referees', authMiddleware, async (req, res) => {
+  try {
+    if (!(await roles.can(req.userId, req.userRole, req.params.id, 'MANAGE_TOURNAMENT'))) {
+      return res.status(403).json({ error: 'sem permissão' });
+    }
+    const officials = await prisma.matchOfficial.findMany({ where: { matchId: req.params.matchId }, orderBy: { createdAt: 'asc' } });
+    const users = await prisma.user.findMany({ where: { id: { in: officials.map((o) => o.userId) } }, select: { id: true, name: true, phone: true } });
+    const uById = Object.fromEntries(users.map((u) => [u.id, u]));
+    res.json({ officials: officials.map((o) => ({ id: o.id, role: o.role, user: uById[o.userId] || { id: o.userId } })) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+router.post('/:id/matches/:matchId/referees', authMiddleware, async (req, res) => {
+  try {
+    if (!(await roles.can(req.userId, req.userRole, req.params.id, 'MANAGE_TOURNAMENT'))) {
+      return res.status(403).json({ error: 'sem permissão' });
+    }
+    const b = req.body || {};
+    const role = String(b.role || '').toUpperCase();
+    if (!roles.OFFICIAL_ROLES.includes(role)) return res.status(400).json({ error: 'função inválida (REF1/REF2/REF3/SCORER/TIMEKEEPER)' });
+    const user = await roles.resolveUser({ userId: b.userId, username: b.username, phone: b.phone });
+    if (!user) return res.status(404).json({ error: 'usuário não encontrado' });
+    // garante que o árbitro tem o papel REFEREE no torneio (nomear na partida já credencia)
+    await roles.assignRole(req.params.id, { userId: user.id, role: 'REFEREE' }).catch(() => {});
+    const match = await prisma.tournamentMatch.findFirst({ where: { id: req.params.matchId, tournamentId: req.params.id }, select: { id: true } });
+    if (!match) return res.status(404).json({ error: 'jogo não encontrado' });
+    const existing = await prisma.matchOfficial.findFirst({ where: { matchId: match.id, userId: user.id, role } });
+    const official = existing || (await prisma.matchOfficial.create({ data: { matchId: match.id, userId: user.id, role } }));
+    res.status(201).json({ ok: true, user, official });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+router.delete('/:id/matches/:matchId/referees/:officialId', authMiddleware, async (req, res) => {
+  try {
+    if (!(await roles.can(req.userId, req.userRole, req.params.id, 'MANAGE_TOURNAMENT'))) {
+      return res.status(403).json({ error: 'sem permissão' });
+    }
+    await prisma.matchOfficial.deleteMany({ where: { id: req.params.officialId, matchId: req.params.matchId } });
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Membros (userIds) de uma entry — pra notificar a dupla/atleta.
 async function entryMemberIds(entryId) {
   const ms = await prisma.entryMember.findMany({ where: { entryId }, select: { userId: true } });
