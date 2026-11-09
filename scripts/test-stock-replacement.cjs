@@ -4,6 +4,7 @@ const url=process.env.ROUND_TEST_DATABASE_URL;
 if(!url?.startsWith('postgresql://roundtest@127.0.0.1:55329/stock_replacement_'))throw Error('Use exclusivamente o banco isolado stock_replacement_ na porta 55329.');
 process.env.DATABASE_URL=url;
 const {PrismaClient}=require('@prisma/client'),db=new PrismaClient(),service=require('../src/services/stockReplacement'),rounds=require('../src/services/stocktakeRounds');
+const queue=require('../src/services/stockReplacementQueue');queue.get(db,{work:false});
 const pass=s=>console.log('PASS '+s);
 (async()=>{const suffix=randomUUID(),store=await db.store.create({data:{code:'TEST-'+suffix,name:'Loja teste'}}),other=await db.store.create({data:{code:'OTHER-'+suffix,name:'Outra loja'}});
  const p=await db.product.create({data:{sku:'100211606-'+suffix,name:'Tênis Nano X4',brand:'REEBOK',category:'Tênis',price:100,imageUrl:'https://example.invalid/test-only.png',aiContext:{scannerReferences:['100211606']}}});
@@ -16,7 +17,7 @@ const pass=s=>console.log('PASS '+s);
  assert.equal(new Set(starts.map(x=>x.round.id)).size,1);assert.equal(round.baseline.length,2);assert.equal(round.baseline.reduce((n,s)=>n+s.stock,0),14);assert.equal(await stock(),0);assert.equal(await stock(ss.id),0);assert.equal(await stock(ps.id,other.id),7);assert.equal(await db.stocktakeBipe.count({where:{roundId:round.id}}),0);pass('início concorrente único arquiva todo saldo, zera calçados e roupa somente desta loja e não importa bipes');
  await assert.rejects(async()=>service.start(db,{storeId:store.id,requestId:randomUUID(),reviewToken:(await service.preview(db,store.id)).reviewToken},null),/andamento/);
  const photo='data:image/png;base64,'+(await require('sharp')({create:{width:30,height:30,channels:3,background:'#fff'}}).png().toBuffer()).toString('base64');
- async function piece(){const scanKey=round.id+':'+randomUUID();const bipe=await rounds.createRoundBipe(db,{roundId:round.id,scanKey,storeId:store.id,barcode:ps.barcode,productId:p.id,productSizeId:ps.id,productSize:'43',found:true});await db.productCapture.create({data:{scanKey,roundId:round.id,storeId:store.id,bipeId:bipe.id,barcode:ps.barcode,photo,status:'vinculado'}});return service.context(db,bipe.id);}
+ async function piece(){const scanKey=round.id+':'+randomUUID();const repeatConfirmedCount=await db.stocktakeBipe.count({where:{roundId:round.id,storeId:store.id,barcode:ps.barcode,excludedAt:null}});const bipe=await rounds.createRoundBipe(db,{roundId:round.id,scanKey,storeId:store.id,barcode:ps.barcode,productId:p.id,productSizeId:ps.id,productSize:'43',found:true,repeatConfirmedCount});await db.productCapture.create({data:{scanKey,roundId:round.id,storeId:store.id,bipeId:bipe.id,barcode:ps.barcode,photo,status:'vinculado'}});return service.context(db,bipe.id);}
  const c=await piece(),read={source:'archived-photo-local-ocr-v1',decodedBarcodes:[ps.barcode],size:'43',references:['100211606'],text:'REEBOK 100211606 BR 43'};
  assert.equal(await service.referenceMatches(db,c,read),'100211606');assert.equal(service.validateRead(c,{...read,size:'42'}),'tamanho_da_foto_divergente');assert.equal(service.validateRead(c,{...read,decodedBarcodes:['7891234567890']}),'codigo_da_foto_divergente');
  await service.applyVerified(db,c,{...read,size:'42'},'100211606');assert.equal(await stock(),0);pass('tamanho/código divergentes não viram saldo');
@@ -29,4 +30,4 @@ const pass=s=>console.log('PASS '+s);
  // The photo-verifier result is injected only in this isolated service test.
  const images=require('../src/services/stockReplacementImages');await assert.rejects(()=>images.confirm(db,round.id,c.bipe.id,{verified:true,fingerprint:'stale'},'isolated-test-auditor'),/mudou/);await images.confirm(db,round.id,c.bipe.id,{verified:true,fingerprint:images.fingerprint(p)},'isolated-test-auditor');
  const finished=await service.finish(db,round.id);assert.ok(finished.ok);assert.equal(await stock(),0);assert.ok((await service.finish(db,round.id)).alreadyFinished);assert.equal((await db.stocktakeRound.findUnique({where:{id:round.id}})).activeReplacementStoreId,null);assert.equal(await stock(ps.id,other.id),7);pass('concluir confere sem reescrever saldo nem outra loja, preservando arquivo e leituras');
-})().catch(e=>{console.error(e);process.exitCode=1}).finally(()=>db.$disconnect());
+})().catch(e=>{console.error(e);process.exitCode=1}).finally(async()=>{await queue.stopAll();await db.$disconnect();});

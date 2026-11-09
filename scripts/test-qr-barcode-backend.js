@@ -45,15 +45,17 @@ function loadRoute(file, db, method, routePath) {
       if (name === 'sharp') return () => { throw new Error('Unexpected image operation'); };
       if (name === '../middleware') return { prisma: db };
       if (name === '../services/barcodeInput') return barcodeInput;
+      if (name === '../../public/scanner-barcode-policy') return require('../public/scanner-barcode-policy');
+      if (name === '../services/stockReplacementQueue') return { get: () => ({setIdentify() {}}) };
       if (name === '../services/storeStockLedger') return ledger;
       if (name === '../services/scannerCatalog') return require('../src/services/scannerCatalog');
       if (name === '../services/scannerAutomaticRecognition') return require('../src/services/scannerAutomaticRecognition');
       if (name === '../services/stocktakeReconstructionSchema') return { createSchemaReadiness: () => async () => {} };
-      if (name.startsWith('../services/') || name === './stocktakeRounds' || name === './stocktakeReconstruction' || name === 'qrcode') return {};
+      if (name.startsWith('../services/') || name === './stocktakeRounds' || name === './stocktakeReconstruction' || name === './stockReplacement' || name === 'qrcode') return {};
       throw new Error(`Unexpected import: ${name}`);
     },
     module: { exports: {} }, console, Buffer,
-    setInterval: () => 0, setTimeout: () => 0,
+    setInterval: () => ({unref() {}}), setTimeout: () => ({unref() {}}),
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/routes', file), 'utf8'), ctx, { filename: file });
   const route = routes.find((entry) => entry.verb === method && entry.url === routePath);

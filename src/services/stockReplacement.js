@@ -68,28 +68,50 @@ function validateRead(c,read){
 }
 async function referenceMatches(db,c,read){
  const p=c.size.product;let ctx=p.aiContext||{};if(typeof ctx==='string'){try{ctx=JSON.parse(ctx)}catch(_){ctx={}}}
- const refs=[p.sku,ctx.supplierRef,...(Array.isArray(ctx.scannerReferences)?ctx.scannerReferences:[])].map(normalized).filter(Boolean);
+ const catalogRefs=[p.sku,ctx.supplierRef].map(normalized).filter(Boolean);
+ const refs=[...catalogRefs,...(Array.isArray(ctx.scannerReferences)?ctx.scannerReferences:[]).map(normalized)].filter(Boolean);
  const fiscal=await require('./scannerArchivedLabel').fiscalRows(db,c.bipe.barcode);
  for(const row of fiscal.filter(r=>r.productId===p.id)){
   refs.push(normalized(row.supplierCode));
+  catalogRefs.push(normalized(row.supplierCode));
   const reebok=normalized(p.brand)==='REEBOK'&&normalized(row.supplierCode).match(/^(\d{9})[A-Z]{2,12}\d{2}$/);
   if(reebok)refs.push(reebok[1]);
  }
+ let match;
+ if(normalized(p.brand)==='SKECHERS'){
+  // These catalog prefixes do not appear on the box. Keep the complete
+  // printed model AND colour; never match a model-only or historical colour.
+  const printedRef=value=>normalized(value).match(/^(?:GTM|GTW|T|R)?(\d{5,6}(?:BR)?[A-Z]{2,6})$/)?.[1];
+  const expected=new Set(catalogRefs.map(printedRef).filter(Boolean));
+  if(expected.size){
+   if(expected.size!==1)return null;
+   const candidates=(read.references||[]).map(ref=>({ref,key:printedRef(ref)})).filter(item=>item.key);
+   if(candidates.some(item=>!expected.has(item.key)))return null;
+   match=candidates.find(item=>expected.has(item.key))?.ref;
+   if(!match)return null;
+  }
+ }
  // SKU prefixes used by the existing catalog are identifiers, not new models.
  for(const ref of [...refs])if(ref.startsWith('T')&&ref.length>5)refs.push(ref.slice(1));
- const match=(read.references||[]).find(ref=>refs.includes(normalized(ref)));
+ match=match||(read.references||[]).find(ref=>refs.includes(normalized(ref)));
  const brands=[...String(read.text||'').matchAll(/\b(REEBOK|NIKE|ADIDAS|PUMA|FILA|ASICS|SKECHERS|MIZUNO|OLYMPIKUS)\b/gi)].map(m=>normalized(m[1]));
  return match&&!brands.some(brand=>brand!==normalized(p.brand))?match:null;
 }
 // Only server-generated evidence is accepted here. No HTTP route accepts an OCR verdict.
-async function applyVerified(db,c,read,reference){
+async function applyVerified(db,c,read,reference,options={}){
  return db.$transaction(async tx=>{
   await tx.$queryRaw`SELECT id FROM "StocktakeRound" WHERE id=${c.round.id} FOR SHARE`;
+  // Match late linking's round -> capture -> bipe order. savePhoto's UPDATE
+  // must wait here, so its revision cannot change between verification and +1.
+  if(!c.capture?.id)return {applied:false,reason:'foto_ou_codigo_pendente'};
+  await tx.$queryRaw`SELECT id FROM "ProductCapture" WHERE id=${c.capture.id} FOR UPDATE`;
   await tx.$queryRaw`SELECT id FROM "StocktakeBipe" WHERE id=${c.bipe.id} FOR UPDATE`;
   const now=await context(tx,c.bipe.id), prior=await tx.stockReplacementCheck.findUnique({where:{bipeId:c.bipe.id}});
   if(prior?.appliedAt)return {applied:!prior.reversedAt,idempotent:true};
   const reason=now&&validateRead(now,read);
-  if(!now||reason||now.capture.photo!==c.capture.photo||now.size.id!==c.size.id||now.size.product.sku!==c.size.product.sku||now.size.product.brand!==c.size.product.brand)return {applied:false,reason:reason||'leitura_alterada'};
+  if(!now||reason||!require('./stockReplacementQueue').matches(now.capture,require('./stockReplacementQueue').snapshot(c.capture))||now.size.id!==c.size.id||now.size.product.sku!==c.size.product.sku||now.size.product.brand!==c.size.product.brand)return {applied:false,reason:reason||'leitura_alterada'};
+  if(options.beforeCommit&&!await require('./stockReplacementCaptureRecovery').authorized(tx,now.capture))return {applied:false,reason:'operator_not_authorized'};
+  if(!await referenceMatches(tx,now,read))return {applied:false,reason:'referencia_ou_marca_divergente'};
   const snapshot={captureId:now.capture.id,photoSha256:photoDigest(now.capture.photo),barcode:now.bipe.barcode,reference,size:now.size.size,
    productId:now.size.productId,productSizeId:now.size.id,name:now.size.product.name,brand:now.size.product.brand,
    source:read.source,verifiedAt:new Date().toISOString()};
@@ -97,28 +119,29 @@ async function applyVerified(db,c,read,reference){
   const imageReview={status:'pending',reason:now.size.product.imageUrl?'Conferir correspondência visual da imagem de catálogo com este modelo e cor.':'Produto sem imagem de catálogo.',imageUrl:now.size.product.imageUrl||null};
   await tx.stockReplacementCheck.upsert({where:{bipeId:now.bipe.id},create:{bipeId:now.bipe.id,roundId:now.round.id,status:'applied',evidence:snapshot,imageReview,appliedProductSizeId:now.size.id,appliedAt:new Date()},update:{status:'applied',reason:null,evidence:snapshot,imageReview,appliedProductSizeId:now.size.id,appliedAt:new Date(),checkedAt:new Date()}});
   await tx.stocktakeBipe.update({where:{id:now.bipe.id},data:{applied:true,productName:now.size.product.name,productBrand:now.size.product.brand,productSize:now.size.size}});
+  if(options.beforeCommit)await options.beforeCommit(tx);
   return {applied:true,stock:movement.stockAfter};
  },{timeout:20000});
 }
-const jobs=new Set();let working=false;
-async function check(db,bipeId){
+async function check(db,bipeId,options={}){
  const c=await context(db,bipeId);if(!c||c.bipe.excludedAt||!['counting','review'].includes(c.round.status))return;
- const prior=await db.stockReplacementCheck.findUnique({where:{bipeId}});if(prior?.appliedAt){if(!prior.reversedAt)images.enqueue(db,bipeId);return {applied:!prior.reversedAt,idempotent:true};}
+ const prior=await db.stockReplacementCheck.findUnique({where:{bipeId}});if(prior?.appliedAt){if(!prior.reversedAt)await images.check(db,bipeId);return {applied:!prior.reversedAt,idempotent:true};}
+ if(options.evidenceCapture&&!require('./stockReplacementQueue').matches(c.capture,require('./stockReplacementQueue').snapshot(options.evidenceCapture)))return {applied:false,reason:'leitura_alterada'};
  const early=validateRead(c,{pending:true,reason:'aguardando_conferencia_da_etiqueta'});
  if(early!=='aguardando_conferencia_da_etiqueta'){await pending(db,c,early);return {applied:false,reason:early};}
  const bytes=Buffer.from(c.capture.photo.slice(c.capture.photo.indexOf(',')+1),'base64');
- const read=await require('./scannerArchivedLabel').readImage(bytes,c.bipe.barcode);
+ const read=options.read||await require('./scannerArchivedLabel').readImage(bytes,c.bipe.barcode);
+ // A busy worker has not examined this piece. Keep its queue age so an older
+ // timed-out image cannot repeatedly push every untouched piece behind itself.
+ if(read?.reason==='ocr_busy')return {applied:false,reason:'ocr_busy'};
  const reason=validateRead(c,read);if(reason){await pending(db,c,reason,{captureId:c.capture.id,photoSha256:photoDigest(c.capture.photo)});return {applied:false,reason};}
  const reference=await referenceMatches(db,c,read);
  if(!reference){await pending(db,c,'referencia_ou_marca_divergente',{captureId:c.capture.id,photoSha256:photoDigest(c.capture.photo)});return {applied:false,reason:'referencia_ou_marca_divergente'};}
- const result=await applyVerified(db,c,read,reference);if(result.applied)images.enqueue(db,bipeId);return result;
+ const result=await applyVerified(db,c,read,reference,options);if(result.applied)await images.check(db,bipeId);return result;
 }
-function enqueue(db,bipeId){if(!bipeId)return;jobs.add(bipeId);if(working)return;working=true;setImmediate(async()=>{try{while(jobs.size){const id=jobs.values().next().value;jobs.delete(id);try{await check(db,id)}catch(e){console.warn('[stock-replacement/check]',e.message)}}}finally{working=false}});}
+function enqueue(db,bipeId){return require('./stockReplacementQueue').enqueue(db,bipeId);}
 async function resume(db){
- const reads=await db.stocktakeBipe.findMany({where:{excludedAt:null,applied:false,round:{operationType:'replacement',status:{in:['counting','review']}},OR:[{replacementCheck:null},{replacementCheck:{checkedAt:{lt:new Date(Date.now()-60000)}}}]},orderBy:[{replacementCheck:{checkedAt:'asc'}},{bipedAt:'asc'}],take:50,select:{id:true}});
- for(const read of reads)enqueue(db,read.id);
- const imageChecks=await db.stockReplacementCheck.findMany({where:{appliedAt:{not:null},reversedAt:null,round:{status:{in:['counting','review']}},checkedAt:{lt:new Date(Date.now()-300000)}},orderBy:{checkedAt:'asc'},take:30,select:{bipeId:true}});
- for(const check of imageChecks)images.enqueue(db,check.bipeId);
+ return require('./stockReplacementQueue').get(db).reconcile();
 }
 async function report(db,id){
  const round=await db.stocktakeRound.findUnique({where:{id}});if(round?.operationType!=='replacement')fail('Substituição não encontrada.',404);

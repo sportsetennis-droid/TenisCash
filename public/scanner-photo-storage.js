@@ -32,6 +32,35 @@
     // Unsupported IDB has a single-copy localStorage fallback. If IDB exists but
     // fails/quota is exhausted, do not silently split newer data across backends.
     const fallback = !indexed;
+    const storageHealth = { backend: fallback ? 'localStorage' : 'IndexedDB', persisted: null, persistenceSupported: false, usage: null, quota: null, persistenceRequested: false };
+
+    async function status(options = {}) {
+      const manager = root.navigator?.storage;
+      storageHealth.persistenceSupported = typeof manager?.persisted === 'function';
+      // Request from the explicit camera-opening gesture. A denial is not a
+      // failed photograph, and a grant never guarantees immunity from deletion.
+      if (options.requestPersistence && !storageHealth.persistenceRequested && typeof manager?.persist === 'function') {
+        storageHealth.persistenceRequested = true;
+        try { storageHealth.persisted = !!(await manager.persist()); } catch (_) { storageHealth.persisted = null; }
+      }
+      if (storageHealth.persistenceSupported) {
+        try { storageHealth.persisted = !!(await manager.persisted()); } catch (_) { storageHealth.persisted = null; }
+      }
+      if (typeof manager?.estimate === 'function') {
+        try {
+          const estimate = await manager.estimate();
+          storageHealth.usage = Number.isFinite(estimate.usage) ? estimate.usage : null;
+          storageHealth.quota = Number.isFinite(estimate.quota) ? estimate.quota : null;
+        } catch (_) { /* Quota estimates are optional, not proof of a write. */ }
+      }
+      return { ...storageHealth };
+    }
+
+    function explainError(error) {
+      if (error?.name === 'QuotaExceededError') return 'Sem espaço disponível para salvar esta leitura no navegador. Não limpe os dados deste site: as fotos anteriores ainda podem aguardar envio.';
+      if (error?.name === 'SecurityError' || error?.name === 'NotAllowedError') return 'O navegador não permitiu guardar a leitura neste aparelho.';
+      return error?.message || 'Não foi possível confirmar a gravação da leitura neste aparelho.';
+    }
 
     function forgetConnection(connection) {
       // A delayed close/versionchange from an old connection must not discard
@@ -73,14 +102,24 @@
 
     async function beginTransaction(stores, mode) {
       const connection = await open();
-      try { return connection.transaction(stores, mode); }
+      const start = db => {
+        if (mode !== 'readwrite') return db.transaction(stores, mode);
+        try { return db.transaction(stores, mode, { durability: 'strict' }); }
+        catch (error) {
+          // Older WebKit may not accept the durability option. Its normal
+          // transaction still must complete and pass the independent readback.
+          if (error?.name !== 'TypeError') throw error;
+          return db.transaction(stores, mode);
+        }
+      };
+      try { return start(connection); }
       catch (error) {
         if (error?.name !== 'InvalidStateError') throw error;
         // Some browsers expose a closed connection before dispatching close.
         // Retry only transaction creation: no writes have started at this point.
         forgetConnection(connection);
         try { connection.close(); } catch (_) {}
-        return (await open()).transaction(stores, mode);
+        return start(await open());
       }
     }
 
@@ -237,23 +276,39 @@
         let at = Date.now();
         for (const source of legacySources()) for (const event of source.events) at = Math.max(at, (Number(event.at) || 0) + 1);
         const event = { key: fallbackPrefix + uuid(), identity: id, at, fields: copy(fields) };
-        storage.setItem(event.key, JSON.stringify(event)); return copy(fields);
+        const serialized = JSON.stringify(event);
+        storage.setItem(event.key, serialized);
+        if (storage.getItem(event.key) !== serialized) throw Error('A releitura da foto e do código não confirmou a gravação. A peça continua aguardando salvamento.');
+        return copy(fields);
       }
       const prepared = await prepare(fields);
       const tx = await beginTransaction(['events', 'photos'], 'readwrite'), done = completed(tx, timeoutMs);
+      const eventKey = 'delta:' + uuid();
       // All writers of this store serialize at the transaction boundary. Choose
       // a monotonic event clock inside that transaction, including other tabs.
       const op = tx.objectStore('events').getAll();
       op.onsuccess = () => {
         let at = Date.now(); for (const event of op.result) at = Math.max(at, (Number(event.at) || 0) + 1);
         for (const image of prepared.images) tx.objectStore('photos').put(image);
-        tx.objectStore('events').put({ key: 'delta:' + uuid(), identity: id, at, fields: prepared.fields });
+        tx.objectStore('events').put({ key: eventKey, identity: id, at, fields: prepared.fields });
       };
       await done;
+      // Commit acknowledgement alone is not our UI receipt. Read the exact
+      // delta and original back in a new transaction before enabling Next.
+      const check = await beginTransaction(['events', 'photos'], 'readonly'), checked = completed(check, timeoutMs);
+      const [event, photo] = await Promise.all([
+        request(check.objectStore('events').get(eventKey)),
+        prepared.fields.photoRef ? request(check.objectStore('photos').get(prepared.fields.photoRef)) : Promise.resolve(null),
+        checked,
+      ]);
+      if (event?.identity !== id || JSON.stringify(event.fields) !== JSON.stringify(prepared.fields) ||
+          (prepared.fields.photoRef && (!photo?.b64 || (fields.b64 && photo.b64 !== fields.b64)))) {
+        throw Error('A releitura da foto e do código não confirmou a gravação. A peça continua aguardando salvamento.');
+      }
       return { ...copy(fields), ...(prepared.fields.photoRef ? { photoRef: prepared.fields.photoRef } : {}) };
     }
 
-    return { read, readPhoto, append, migrateLegacy, identity, backend: fallback ? 'localStorage' : 'IndexedDB' };
+    return { read, readPhoto, append, migrateLegacy, identity, status, explainError, backend: fallback ? 'localStorage' : 'IndexedDB' };
   }
   root.ScannerPhotoStorage = { create, identity };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -29,13 +29,31 @@ assert.match(list, /data-click="exclude-recent-bipe"[\s\S]*data-bipe="bipe-9"[\s
 assert.ok(list.indexOf('Tênis teste 9') < list.indexOf('Tênis teste 8'), 'latest scans appear first');
 assert.ok(!list.includes('Tênis teste 1'), 'list is limited to the eight most recent items');
 assert.ok(!list.includes('Não exibir'), 'other rounds remain isolated');
-assert.match(nodes['etiq-contador'].textContent, /identificadas 10/);
+assert.match(nodes['etiq-contador'].textContent, /recebidas\/em conferência 10 · aplicadas 0/);
 const xss = rows[9]; xss.product.name = '<img src=x onerror=alert(1)>';
 vm.runInNewContext(code + '\nrenderEtiqLista();', context, { filename: 'public/bipar.html#renderEtiqLista-xss' });
 assert.ok(!nodes['etiq-lista'].innerHTML.includes('<img src=x'), 'product data is HTML-escaped');
 rows[9].excluded = true;
 vm.runInNewContext(code + '\nrenderEtiqLista();', context, { filename: 'public/bipar.html#renderEtiqLista-excluded' });
 assert.ok(!nodes['etiq-lista'].innerHTML.includes('Tênis teste 9'), 'excluded scans leave the active recent list');
-assert.match(nodes['etiq-contador'].textContent, /identificadas 9/);
+assert.match(nodes['etiq-contador'].textContent, /recebidas\/em conferência 9 · aplicadas 0/);
+context.window.BiparActions={isInventory:()=>true,mode:()=> 'replacement'};
+context.etiqPhotoDurable=()=>true;
+context.etiqFila=[
+  {roundId:'round-A',lid:'missing-code',photoRevision:1,product:{name:'Missing code'}},
+  {roundId:'round-A',lid:'local',ean:'12345',photoRevision:1,product:{name:'Local code'}},
+  {roundId:'round-A',lid:'received',ean:'12345',photoRevision:1,capId:'cap',capIdPhotoRevision:1,bipeId:'bipe',complete:true,product:{name:'Received code'}},
+  {roundId:'round-A',lid:'applied',ean:'12345',photoRevision:1,capId:'cap-2',capIdPhotoRevision:1,bipeId:'bipe-2',bipou:true,complete:true,product:{name:'Applied code'}},
+];
+vm.runInNewContext(code+'\nrenderEtiqLista();',context,{filename:'public/bipar.html#renderEtiqLista-stage-status'});
+const stageCards=nodes['etiq-lista'].innerHTML.split('<div style="padding:5px 0;');
+const card=name=>stageCards.find(value=>value.includes(name));
+assert.match(card('Missing code'),/FOTO SALVA · AGUARDANDO CÓDIGO/);
+assert.match(card('Local code'),/NO APARELHO · AGUARDANDO ENVIO/);
+assert.match(card('Received code'),/RECEBIDA · EM CONFERÊNCIA/);
+assert.doesNotMatch(card('Received code'),/APLICADA NO ESTOQUE/,'Identification and server photo ACK are not stock application');
+assert.match(card('Applied code'),/APLICADA NO ESTOQUE/);
+for(const name of ['Local code','Received code','Applied code'])assert.doesNotMatch(card(name),/AGUARDANDO CÓDIGO/,'A scanned code is never displayed as missing');
 console.log('PASS: recent scan list shows product, brand, size, reference, barcode, status; newest first; isolated by round; HTML escaped');
+console.log('PASS: individual replacement status distinguishes absent code, photo/code waiting locally, server receipt under review and confirmed applied stock.');
 

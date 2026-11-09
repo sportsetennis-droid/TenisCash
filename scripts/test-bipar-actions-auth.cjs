@@ -52,6 +52,13 @@ async function test(name,fn){await fn();count++;console.log('PASS: '+name);}
   const h=harness(storage({...originals,[settingsKey]:JSON.stringify({mode:'transfer',stores:{transfer:stores[1].id},origin:stores[0].id})}));h.contextUser={...person,role:'admin'};await h.boot();await settle();
   const evidence=h.window.BiparActions.recoveryInventory();assert.equal(evidence.length,3);assert.deepEqual(Array.from(evidence,x=>x.type).sort(),['inventory_photo_queue','inventory_retry_queue','pending_single_transfer']);for(const [key,value]of Object.entries(originals))assert.equal(h.localStorage.getItem(key),value);assert.ok(!h.historyRequests.some(r=>r.method==='POST'));assert.ok(!h.requests.some(r=>r.method==='POST'));assert.equal(h.api.activeReads().length,0);
  });
+ await test('cold offline startup keeps identity only as retry hint and verifies it on reconnect',async()=>{
+  const h=harness(undefined,{token:tokenFor(person.id,'offline')});let online=false;
+  h.contextHandler=()=>{if(!online)throw Error('offline');return response({user:person,stores,allowedStoreIds:[stores[0].id,stores[1].id]});};
+  await h.boot();assert.equal(h.api.state().actor,null);assert.equal(h.tracks.length,0);
+  online=true;for(const fn of h.window.events.online)fn();await settle();await settle();
+  assert.equal(h.api.state().actor.id,person.id);assert.equal(h.tracks.length,0,'Recovering auth never opens camera');
+ });
  console.log('PASS: '+count+' isolated authentication and legacy-evidence regression groups.');
 })().catch(e=>{console.error(e);process.exitCode=1;});
 

@@ -596,6 +596,7 @@
     $('action-result').hidden = true;
     message('');
     currentDraft = getDraft(); renderReadings(); refresh(); refreshLegacyReads();
+    window.ScannerInventoryOutbox?.resume();
   }
   async function api(path, body, authToken = token) {
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 30000);
@@ -628,6 +629,29 @@
     authenticationRecovery = authenticate({ expectedUserId });
     try { await authenticationRecovery; } finally { authenticationRecovery = null; }
   }
+  function canUploadStocktake(item) {
+    if (!isInventory()) return false;
+    let operation = item.operationType;
+    if (!operation) {
+      // Older saved reads predate operationType. Resolve their original round
+      // before allowing public inventory rules, never infer it from the screen.
+      const round = window.ScannerRound?.current?.();
+      if (!round || round.id !== item.roundId || round.storeId !== item.storeId) return false;
+      operation = round.operationType || 'inventory';
+    }
+    if (operation !== 'inventory' && operation !== 'replacement') return false;
+    // Legacy public inventory keeps its existing operator selection. A
+    // replacement/auth-waiting read belongs to its original identified person.
+    if (action !== 'replacement' && !item.authPending && operation !== 'replacement') return true;
+    return !!actor && !!token && !!item.sellerId && actor.id === item.sellerId && allowed.includes(item.storeId);
+  }
+  async function recoverStocktakeAuthentication(expectedUserId, rejectedAuthorization) {
+    if (!token || rejectedAuthorization !== 'Bearer ' + token || !expectedUserId ||
+        (actor?.id || tokenSubject(token)) !== expectedUserId) return false;
+    expireAuthentication(token, false);
+    await resumeAuthentication();
+    return actor?.id === expectedUserId;
+  }
   async function authenticate(options = {}) {
     const authToken = token, expectedUserId = options.expectedUserId || actor?.id || tokenSubject(authToken);
     let operationToken = authToken;
@@ -659,7 +683,15 @@
       setOptions($('action-origin'), stores.filter(item => allowed.includes(item.id)).map(item => ({ id: item.id, label: storeName(item.id) })), 'Selecione a loja de origem', origin);
       settings.origin = origin; saveSettings(); contextChanged(); if (action === 'receipt') await loadShipments();
       setupHistory(); void loadHistory(1); schedulePhotos();
-    } catch (error) { if (token !== operationToken) return; actor = null; message(error.status === 401 ? 'Entre com sua conta pessoal para continuar.' : error.message, true); refresh(); }
+    } catch (error) {
+      if (token !== operationToken) return;
+      actor = null;
+      // An offline cold start has not verified an actor yet. Keep only the
+      // expected ID as an authentication retry hint, never as authorization.
+      // The online/foreground hooks will reverify /context before any upload.
+      if (expectedUserId && (!error.status || error.status === 401 || error.status >= 500)) expiredActor ||= { id: expectedUserId };
+      message(error.status === 401 ? 'Entre com sua conta pessoal para continuar.' : error.message, true); refresh();
+    }
   }
   async function loadShipments() {
     const request = ++shipmentRequest, selectedStore = $('loja').value, authToken = token, selectedShipment = $('action-shipment').value || settings.shipment;
@@ -1190,6 +1222,6 @@
       invalidate(); renderReadings(); refresh(); refreshLegacyReads();
     }
   });
-  window.BiparActions = { mode: () => action, operator:()=>actor, version: () => generation, isInventory, headers:()=>token?{Authorization:'Bearer '+token}:{}, replacementReady:()=>!!actor&&allowed.includes($('loja').value), refresh, scan, openCamera, closeCamera, storesReady, storeChanged, recoveryInventory: () => canRecoverOthers() ? legacyRecoveryInventory.map(item => ({ ...item })) : [], hasFocus: () => interaction };
+  window.BiparActions = { mode: () => action, operator:()=>actor, version: () => generation, isInventory, headers:()=>token?{Authorization:'Bearer '+token}:{}, canUploadStocktake, recoverStocktakeAuthentication, replacementReady:()=>!!actor&&allowed.includes($('loja').value), refresh, scan, openCamera, closeCamera, storesReady, storeChanged, recoveryInventory: () => canRecoverOthers() ? legacyRecoveryInventory.map(item => ({ ...item })) : [], hasFocus: () => interaction };
   refresh();
 })();

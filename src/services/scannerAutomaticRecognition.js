@@ -98,6 +98,7 @@ function createAutomaticRecognizer({ db, normalizeScannedSize, needsManualSize,
     };
     const bipe = await rounds.createRoundBipe(guarded, {
       roundId: input.roundId, scanKey: key, storeId: input.storeId, barcode,
+      repeatConfirmedCount: input.repeatConfirmedCount,
       sellerId, sellerName, found: false, duplicate: false, applied: false,
       productId: null, productSizeId: null, productName: null, productSize: null, productBrand: null,
       ...(previousCapture?.createdAt ? { bipedAt: previousCapture.createdAt } : {}),

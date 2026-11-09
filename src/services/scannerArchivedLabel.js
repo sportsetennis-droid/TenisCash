@@ -1,12 +1,26 @@
 'use strict';
-const path = require('path');
 const { createHash } = require('node:crypto');
-const sharp = require('sharp');
 const { canonicalProduct } = require('./scannerCatalog');
 const barcodePolicy = require('../../public/scanner-barcode-policy');
 const norm = value => String(value || '').normalize('NFKC').toUpperCase().replace(/[^A-Z0-9]/g, '');
 const sizeKey = value => String(value || '').replace(',', '.');
-let busy = false;
+
+function printedReferences(words) {
+  const references = new Set(words.filter(w=>!/^(?:BR|BRA|USA?|UK|EUR|EU|CM|CHN|JP)\s*\d{1,2}(?:[.,]5)?$/i.test(w.text)).map(w => norm(w.text)).filter(x => /^\d{5,10}$/.test(x) ||
+    (x.length >= 5 && x.length <= 25 && /[A-Z]/.test(x) && /\d/.test(x))));
+  // Model and colour can be separate OCR words: "220644 / BKW". Keep
+  // their printed spatial relationship; never attach a colour from another row.
+  for (const model of words.filter(w => /^\d{5,8}(?:BR)?$/.test(norm(w.text)))) {
+    const a=model.bbox,h=a.y1-a.y0,cy=(a.y0+a.y1)/2;
+    const following=words.filter(w=>w!==model&&w.bbox.x0>=a.x1&&
+      Math.abs((w.bbox.y0+w.bbox.y1)/2-cy)<=Math.max(h,w.bbox.y1-w.bbox.y0)*.35&&
+      w.bbox.x0-a.x1<=h*3).sort((x,y)=>x.bbox.x0-y.bbox.x0);
+    const separator=following[0],colour=following[1];
+    if(separator&&/^[\/|\-]$/.test(separator.text.trim())&&colour&&/^[A-Z]{2,8}$/.test(colour.text.trim())&&
+      colour.bbox.x0-separator.bbox.x1<=h*1.5)references.add(norm(model.text)+norm(colour.text));
+  }
+  return [...references];
+}
 
 // Keep geometry: in a multiscale label "43 BR" is not "11 USA".
 function readWords(data) {
@@ -37,42 +51,27 @@ function readWords(data) {
       return sameRow || (sameColumn&&(!belowOnly||cy(w)>cy(label)));
     });
     if (nearby.length !== 1) return null;
+    // If BR's number was not recognized, the preceding scale's value can be
+    // the only reliable neighbour (CM 24 / BRA [unreadable]). Ambiguous
+    // attachment is not BR evidence; never relabel that value as Brazilian.
+    const selected=nearby[0];
+    if(cy(selected)<cy(label)&&scales.some(s=>s!==label&&cy(s)<cy(selected)&&
+      selected.bbox.y0-s.bbox.y1<=Math.max(s.bbox.y1-s.bbox.y0,selected.bbox.y1-selected.bbox.y0)*1.5))return null;
     sizes.add(sizeKey(nearby[0].text));
   }
   if (sizes.size !== 1) return null;
-  const references = [...new Set(reliable.map(w => norm(w.text)).filter(x => /^\d{5,10}$/.test(x) || (x.length >= 5 && x.length <= 25 && /[A-Z]/.test(x) && /\d/.test(x))))];
+  const references = printedReferences(reliable);
   if (!references.length) return null;
   return { size: [...sizes][0], references, text: String(data.text || '').slice(0, 12000), source: 'archived-photo-local-ocr-v1' };
 }
 
 async function readImage(image, barcode) {
-  if (busy) return { pending: true, retry: true, reason: 'ocr_busy' };
-  busy = true;
-  let worker, timer, expired = false;
-  try {
-    const work = (async () => {
-      const codes = await require('./barcodeDecoder').decodeBarcodesFromDataUri('data:image/jpeg;base64,' + image.toString('base64'));
-      if (codes.length !== 1 || barcodePolicy.identity(codes[0]) !== barcodePolicy.identity(barcode)) return { pending: true, reason: 'photo_barcode_conflict' };
-      worker = await require('tesseract.js').createWorker('eng', 1, { langPath: path.join(__dirname, '../../public/vendor/ocr'), cacheMethod: 'none', errorHandler: () => {} });
-      if (expired) { await worker.terminate(); return null; }
-      await worker.setParameters({ tessedit_pageseg_mode: '11', preserve_interword_spaces: '1' });
-      for (const angle of [0, 90, 270, 180]) {
-        if (expired) return null;
-        const frame = angle ? await sharp(image).rotate(angle).png().toBuffer() : image;
-        const { data } = await worker.recognize(frame, {}, { text: true, blocks: true });
-        const read = readWords(data);
-        if (read) return { ...read, decodedBarcodes: codes };
-        if(expired)return null;
-        const metadata=await sharp(frame).metadata();
-        const enhanced=await sharp(frame).resize({width:Math.min(3000,metadata.width*2)}).greyscale().normalize().png().toBuffer();
-        const improved=readWords((await worker.recognize(enhanced,{}, {text:true,blocks:true})).data);
-        if(improved)return {...improved,decodedBarcodes:codes};
-      }
-      return { pending: true, reason: 'photo_size_or_reference_pending' };
-    })();
-    return await Promise.race([work, new Promise(resolve => { timer = setTimeout(() => { expired = true; resolve({ pending: true, retry: true, reason: 'ocr_timeout' }); }, 16000); })]);
-  } catch (_) { return { pending: true, retry: true, reason: 'ocr_unavailable' }; }
-  finally { clearTimeout(timer); if (worker) await worker.terminate().catch(() => {}); busy = false; }
+  try { return await require('./scannerImageBroker').run('label', image, barcode); }
+  catch (error) {
+    const reasons = { SCANNER_IMAGE_BUSY: 'ocr_busy', SCANNER_IMAGE_TIMEOUT: 'ocr_timeout',
+      SCANNER_IMAGE_MEMORY_LIMIT: 'ocr_memory_limit', SCANNER_IMAGE_INVALID: 'photo_input_invalid' };
+    return { pending: true, retry: error.code !== 'SCANNER_IMAGE_INVALID', reason: reasons[error.code] || 'ocr_unavailable' };
+  }
 }
 
 async function fiscalRows(db, barcode) {
