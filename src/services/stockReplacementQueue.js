@@ -8,6 +8,8 @@ const transient=new Set(['ocr_busy','ocr_timeout','ocr_unavailable','ocr_memory_
 const costly=new Set(['ocr_timeout','ocr_memory_limit','photo_decode_timeout','photo_decode_memory_limit']);
 const fingerprint=photo=>createHash('sha256').update(String(photo||'')).digest('hex');
 function confirmationHash(note){const marker=require('./scannerRepeatConfirmation').marker(note);return marker?fingerprint(marker):'';}
+function ownerConfirmation(capture){const proof=require('./scannerRepeatConfirmation').confirmed(capture,0);
+ return proof?.source==='explicit-owner-chat-confirmation-v1'?{source:proof.source,manifestSha256:proof.manifestSha256,confirmationHash:confirmationHash(capture.note)}:null;}
 function singleton(data){return [data.captureId,data.revision,data.photoHash,...(data.confirmationHash?[data.confirmationHash]:[])].join(':');}
 function currentSnapshotSql(){const proof=`substring(c.note from '(\\n\\[scanner-repeat-(?:confirmed-v1:[0-9]{1,16}:[0-9]{13}:[a-f0-9]{64}|owner-v1:[0-9]{1,16}:[0-9]{13}:[a-f0-9]{64}:[a-f0-9]{64})\\])')`;return `j.data->>'roundId'=c."roundId" AND j.data->>'storeId'=c."storeId"
  AND j.data->>'scanKey'=c."scanKey" AND j.data->>'sellerId'=c."sellerId"
@@ -44,7 +46,7 @@ async function syncPendingCheck(tx,capture,bipeId,reason){
  await tx.stockReplacementCheck.upsert({where:{bipeId},create:{bipeId,roundId:capture.roundId,status:'pending',reason,evidence},update:{status:'pending',reason,evidence,checkedAt:new Date()}});
  return bipeId;
 }
-async function persistPending(db,data,reason,{complete,autoReprocess=false,nextAttemptAt}={}){
+async function persistPending(db,data,reason,{complete,autoReprocess=false,nextAttemptAt,ownerConfirmation:owner}={}){
  if(!/^[a-z_]{1,80}$/.test(reason||''))reason='photo_size_or_reference_pending';
  return db.$transaction(async tx=>{
   await tx.$queryRaw`SELECT id FROM "StocktakeRound" WHERE id=${data.roundId} FOR SHARE`;
@@ -61,7 +63,7 @@ async function persistPending(db,data,reason,{complete,autoReprocess=false,nextA
   }
   await tx.productCapture.update({where:{id:capture.id},data:{status:'pendente',resolvedAt:null,
    note:photos.photoNote(capture.note,'etiqueta '+require('./stockReplacement').reasonText(reason,{autoReprocess})+' [scanner-queue-pending:'+reason+']')},select:{id:true}});
-  const result={status:'pending',reason,captureId:capture.id,bipeId,...(autoReprocess?{autoReprocess:true,nextAttemptAt}:{})};
+  const result={status:'pending',reason,captureId:capture.id,bipeId,...(autoReprocess?{autoReprocess:true,nextAttemptAt}:{}),...(owner?{ownerConfirmation:owner}:{})};
   if(complete)await complete(tx,result);
   return result;
  },{timeout:20000});
@@ -124,8 +126,11 @@ function createQueue(db,options={}){
   if(!matches(capture,data)||capture.excludedAt||capture.status==='descartado')return {status:'obsolete',reason:'capture_changed'};
   const round=await db.stocktakeRound.findUnique({where:{id:data.roundId},select:{operationType:true,status:true,storeId:true}});
   if(round?.operationType!=='replacement'||!['counting','review'].includes(round.status)||round.storeId!==data.storeId)return {status:'obsolete',reason:'round_inactive'};
+  // A marker hash identifies the revision; only a server-side HMAC validation
+  // attests that this finite owner confirmation is authentic. Never expose HMAC.
+  const owner=ownerConfirmation(capture),attestation=owner?{ownerConfirmation:owner}:{};
   const recovery=require('./stockReplacementCaptureRecovery');
-  const pending=(reason,automatic=false)=>{const nextAttemptAt=new Date(Date.now()+pendingAgeMs).toISOString();return persistPending(db,data,reason,{autoReprocess:automatic,nextAttemptAt,complete:async(tx,result)=>{
+  const pending=(reason,automatic=false)=>{const nextAttemptAt=new Date(Date.now()+pendingAgeMs).toISOString();return persistPending(db,data,reason,{autoReprocess:automatic,nextAttemptAt,ownerConfirmation:owner,complete:async(tx,result)=>{
    const completed=await boss.complete(QUEUE,job,result,{db:adapter(tx)});if(completed.affected!==1)throw failure('queue_claim_lost');
    if(automatic){const next={...data,autoReprocess:true,nextAttemptAt,reprocessReason:reason};
     const sent=await boss.send(QUEUE,next,{db:adapter(tx),singletonKey:singleton(data),startAfter:new Date(nextAttemptAt),priority:recheckPriority,group:{id:data.storeId}});
@@ -142,10 +147,10 @@ function createQueue(db,options={}){
   if(!bipe||bipe.excludedAt||bipe.roundId!==data.roundId||bipe.storeId!==data.storeId||bipe.sellerId!==data.sellerId||policy.identity(bipe.barcode)!==policy.identity(capture.barcode))return {status:'obsolete',reason:'bipe_context_conflict'};
   const replacement=require('./stockReplacement');
   const beforeCommit=async tx=>{
-   const completed=await boss.complete(QUEUE,job,{status:'applied',captureId:data.captureId,bipeId:bipe.id},{db:adapter(tx)});
+   const completed=await boss.complete(QUEUE,job,{status:'applied',captureId:data.captureId,bipeId:bipe.id,...attestation},{db:adapter(tx)});
    if(completed.affected!==1)throw failure('queue_claim_lost');
   };
-  if(bipe.applied){await require('./stockReplacementImages').check(db,bipe.id);return {status:'applied',bipeId:bipe.id,idempotent:true};}
+  if(bipe.applied){await require('./stockReplacementImages').check(db,bipe.id);return {status:'applied',captureId:data.captureId,bipeId:bipe.id,idempotent:true,...attestation};}
   // Decode and OCR entirely outside the short application transaction. The
   // observed frame is bound to the same revision again inside applyVerified.
   const bytes=Buffer.from(capture.photo.slice(capture.photo.indexOf(',')+1),'base64');
@@ -162,7 +167,7 @@ function createQueue(db,options={}){
   if(costly.has(result?.reason))return pending(result.reason,true);
   if(transient.has(result?.reason))throw failure(result.reason);
   if(!result?.applied)return pending(result?.reason||'photo_size_or_reference_pending');
-  return {status:'applied',reason:null,bipeId:bipe.id};
+  return {status:'applied',reason:null,captureId:data.captureId,bipeId:bipe.id,...attestation};
  }
  async function prioritize(){
   // Only pending-job metadata is edited through pg-boss. Its update() rechecks

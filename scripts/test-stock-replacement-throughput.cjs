@@ -5,6 +5,7 @@ if(!url?.startsWith('postgresql://roundtest@127.0.0.1:55329/stock_replacement_')
 process.env.DATABASE_URL=url;
 const {PrismaClient}=require('@prisma/client'),db=new PrismaClient(),queues=require('../src/services/stockReplacementQueue'),photos=require('../src/services/scannerCapturePhoto');
 const priority=1500000000+Math.floor(Math.random()*100000),list=[];
+const originalSecret=process.env.JWT_SECRET;
 let mode='memory',meta;
 const read={source:'archived-photo-local-ocr-v1',decodedBarcodes:['5901234123457'],size:'41',references:['THROUGH001'],text:'PUMA THROUGH001 BR 41'};
 const q=queues.createQueue(db,{connectionString:url,work:false,jobPriority:priority,readImage:async()=>mode==='memory'?{pending:true,reason:'ocr_memory_limit'}:mode==='timeout'?{pending:true,reason:'ocr_timeout'}:mode==='busy'?{pending:true,reason:'ocr_busy'}:read,identify:async(_id,_photo,_code,m)=>{meta=m;}});list.push(q);
@@ -109,4 +110,27 @@ const countStock=async()=>(await db.storeStock.findUnique({where:{storeId_produc
  }
  assert.equal(await countStock(),1);
  console.log('PASS corrected barcode and context do not inherit prior identity attempts or outcome');
-})().catch(error=>{console.error(error);process.exitCode=1}).finally(async()=>{for(const q of list)await q.stop().catch(()=>{});await db.$disconnect();});
+ const confirmations=require('../src/services/scannerRepeatConfirmation'),testSecret='throughput-test-owner-secret-only';
+ for(const variant of ['valid-pending','valid-applied','wrong-key','no-key','forged']){
+  process.env.JWT_SECRET=testSecret;
+  const item=await piece(),orphan=await db.productCapture.update({where:{id:item.capture.id},data:{bipeId:null}});
+  const manifestText=JSON.stringify({source:'explicit-owner-chat-confirmation-v1',executor:'system-maintenance',operationId:'test-only-'+suffix,
+   confirmedBy:'test fixture',userStatement:'synthetic test only',targets:[{captureId:orphan.id,roundId:orphan.roundId,storeId:orphan.storeId,scanKey:orphan.scanKey,
+    sellerId:orphan.sellerId,sellerName:orphan.sellerName,barcode:orphan.barcode,createdAt:orphan.createdAt,photoRevision:'1',photoDataUrlSha256:queues.snapshot(orphan).photoHash}]});
+  let signed=await db.$transaction(tx=>confirmations.recordOwnerReview(tx,orphan,{manifestText}));
+  if(variant==='forged')signed=await db.productCapture.update({where:{id:signed.id},data:{note:signed.note.replace(/[a-f0-9]{64}\]/, 'd'.repeat(64)+']')}});
+  signed=await db.productCapture.update({where:{id:signed.id},data:{bipeId:item.bipe.id}});
+  const id=await q.enqueueCapture(signed);assert.ok(id);await q.boss.update(queues.QUEUE,undefined,{id,priority:priority+5});
+  const claim=await fetch({minPriority:priority+5,maxPriority:priority+5});assert.equal(claim.id,id);
+  if(variant==='wrong-key')process.env.JWT_SECRET='other-test-server-key-only';if(variant==='no-key')delete process.env.JWT_SECRET;
+  mode=variant==='valid-applied'?'read':'memory';const result=await q.processJob(claim);
+  const output=(await rows(signed.id)).find(x=>x.id===id).output;
+  if(variant.startsWith('valid-')){
+   const expected={source:'explicit-owner-chat-confirmation-v1',manifestSha256:require('node:crypto').createHash('sha256').update(manifestText).digest('hex'),confirmationHash:queues.snapshot(signed).confirmationHash};
+   assert.deepEqual(result.ownerConfirmation,expected);assert.deepEqual(output.ownerConfirmation,expected);
+   assert.equal(result.status,variant==='valid-applied'?'applied':'pending');
+  }else{assert.equal(result.ownerConfirmation,undefined);assert.equal(output.ownerConfirmation,undefined);}
+ }
+ assert.equal(await countStock(),2);
+ console.log('PASS server HMAC attestation is committed for genuine owner pending/applied only; absent/wrong key and forged proof fail closed');
+})().catch(error=>{console.error(error);process.exitCode=1}).finally(async()=>{if(originalSecret===undefined)delete process.env.JWT_SECRET;else process.env.JWT_SECRET=originalSecret;for(const q of list)await q.stop().catch(()=>{});await db.$disconnect();});
