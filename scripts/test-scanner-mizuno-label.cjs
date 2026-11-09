@@ -30,7 +30,7 @@ const twoColours=[...measured,word('101060060',92,100,700,280,740),word('AZUL46'
 assert.equal(readWords(data(twoColours)),null,'Two different complete model/colour references cannot choose the first box');
 const mixedReferences=[...simple,word('101060060ROSA46',95,100,700,410,740)];
 assert.equal(readWords(data(mixedReferences)),null,'A complete single OCR word must also conflict with a different split reference');
-function fakeSharp(){return{angle:0,rotate(angle){this.angle=angle;return this},resize(options){this.options=options;return this},greyscale(){return this},normalize(){return this},png(){return this},async metadata(){return this.angle===90||this.angle===270?{width:1013,height:1800}:{width:1800,height:1013}},async toBuffer(){return Buffer.from(this.options?.fit==='fill'?'wide:'+JSON.stringify(this.options):'regular')}};}
+function fakeSharp(){return{angle:0,rotate(angle){this.angle=angle;return this},resize(options){this.options=options;return this},greyscale(){return this},normalize(){this.normalized=true;return this},png(){return this},async metadata(){return this.angle===90||this.angle===270?{width:1013,height:1800}:{width:1800,height:1013}},async toBuffer(){return Buffer.from(this.options?.fit==='fill'?'wide:'+JSON.stringify({...this.options,normalized:this.normalized===true}):'regular')}};}
 (async()=>{
  let calls=0,wideCalls=0,parameters={},wideDimensions=[];
  const trigger=data(low.filter(w=>w.text!=='BRA'));
@@ -42,14 +42,24 @@ function fakeSharp(){return{angle:0,rotate(angle){this.angle=angle;return this},
   worker.recognize=async bytes=>{calls++;if(bytes.toString().startsWith('wide:')){wideCalls++;return{data:wideData}}return{data:data(low)}};
   const partialProcessor=createProcessor({sharp:fakeSharp,readWords,decode:async()=>['7894756210898'],createWorker:async()=>worker});
   const partialResult=await partialProcessor.run('label',Buffer.from('original'),'7894756210898');
-  assert.equal(wideCalls,1,'Literal BR with incomplete colour still gets the one whole-frame attempt');
+  assert.equal(wideCalls,wideData.text?1:2,'Literal BR with incomplete colour still gets bounded whole-frame attempts');
   if(wideData.text.includes('37'))assert.equal(partialResult.pending,true,'A changed literal BR across attempts cannot silently replace the earlier BR');
   else {assert.equal(partialResult.size,'36');assert.equal(partialResult.references.includes('101060060ROSA46'),!!wideData.text,'Failed extra attempt retains only the original partial evidence');}
   await partialProcessor.close();
  }
+ for(const changedSize of [false,true]){
+  calls=0;wideCalls=0;const wideOrder=[];
+  worker.recognize=async bytes=>{calls++;if(bytes.toString().startsWith('wide:')){wideCalls++;const options=JSON.parse(bytes.toString().slice(5));wideOrder.push(options.normalized);assert.ok(options.width*options.height<=4000000);
+    return{data:options.normalized?data(measured.map(w=>changedSize&&w.text==='36'?{...w,text:'37'}:w)):data(low)};}return{data:trigger}};
+  const colorFallback=createProcessor({sharp:fakeSharp,readWords,decode:async()=>['7894756210898'],createWorker:async()=>worker});
+  const fallback=await colorFallback.run('label',Buffer.from('original'),'7894756210898');assert.deepEqual(wideOrder,[false,true]);assert.equal(calls,6);
+  if(changedSize)assert.equal(fallback.pending,true,'Colour/normalized BR disagreement remains pending');
+  else {assert.equal(fallback.size,'36');assert.ok(fallback.references.includes('101060060ROSA46'),'Partial colour read must not bypass the normalized fallback');}
+  await colorFallback.close();
+ }
  calls=0;wideCalls=0;
  worker.recognize=async bytes=>{calls++;if(bytes.toString().startsWith('wide:'))wideCalls++;return{data:data(twoSizes)}};
  const ambiguous=createProcessor({sharp:fakeSharp,readWords,decode:async()=>['7894756210898'],createWorker:async()=>worker});
- const pending=await ambiguous.run('label',Buffer.from('original'),'7894756210898');assert.equal(pending.pending,true);assert.equal(wideCalls,1,'Never multiply stretch passes across four rotations');assert.equal(calls,17,'Sixteen existing passes plus only one extra');await ambiguous.close();
- console.log('PASS: measured literal BRA/model/colour, nine-digit adjacent colour, wrong-scale/cross-line/low-confidence/conflicting-box rejection, one whole-frame attempt triggered even when initial colour is poor; <=4MP.');
+ const pending=await ambiguous.run('label',Buffer.from('original'),'7894756210898');assert.equal(pending.pending,true);assert.equal(wideCalls,2,'Never multiply stretch passes across four rotations');assert.equal(calls,18,'Sixteen existing passes plus at most two extra');await ambiguous.close();
+ console.log('PASS: measured literal BRA/model/colour, nine-digit adjacent colour, wrong-scale/cross-line/low-confidence/conflicting-box rejection, up to two whole-frame attempts (colour then normalized) triggered even when initial colour is poor; <=4MP each.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

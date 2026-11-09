@@ -1,6 +1,7 @@
 'use strict';
 const path = require('node:path');
 const barcodePolicy = require('../../public/scanner-barcode-policy');
+const incompleteNineDigitReference=observed=>observed.references.some(ref=>/^\d{9}$/.test(ref))&&!observed.references.some(ref=>/^\d{9}[A-Z]{2,8}(?:\d{1,3})?$/.test(ref));
 // One reusable OCR worker per isolated process; the parent owns deadlines.
 // Never terminate while Tesseract is preparing an image asynchronously.
 function createProcessor(deps = {}) {
@@ -37,8 +38,7 @@ function createProcessor(deps = {}) {
           const observed = readWords(data);
           if (observed) {
             if(partial&&partial.size!==observed.size)return {pending:true,reason:'photo_size_or_reference_pending'};
-            const incompleteNineDigitReference=observed.references.some(ref=>/^\d{9}$/.test(ref))&&!observed.references.some(ref=>/^\d{9}[A-Z]{2,8}(?:\d{1,3})?$/.test(ref));
-            if(incompleteNineDigitReference&&!stretched)partial=partial||observed;
+            if(incompleteNineDigitReference(observed)&&!stretched)partial=partial||observed;
             else return { ...observed, decodedBarcodes: codes };
           }
         }
@@ -47,13 +47,20 @@ function createProcessor(deps = {}) {
         stretched=true;
         // Narrow printed fonts can defeat segmentation even in a sharp photo.
         // Expand the WHOLE frame horizontally; no label/number is cropped out.
-        // At most one extra pass per request, <=4MP, same parent deadline/RSS.
+        // At most two extra passes per request, <=4MP each, same deadline/RSS.
+        // Retain colour first: grayscale can erase narrow printed letterforms.
         const scale=Math.min(1,1800/Math.max(metadata.width,metadata.height),Math.sqrt(4000000/(metadata.width*metadata.height*2)));
-        const wide=await input(frame).resize({width:Math.max(1,Math.floor(metadata.width*scale*2)),height:Math.max(1,Math.floor(metadata.height*scale)),fit:'fill'}).greyscale().normalize().png().toBuffer();
         await worker.setParameters({tessedit_pageseg_mode:'11'});
-        const observed=readWords((await worker.recognize(wide,{}, {text:true,blocks:true})).data);
-        if(observed&&partial&&partial.size!==observed.size)return {pending:true,reason:'photo_size_or_reference_pending'};
-        if(observed)return {...observed,decodedBarcodes:codes};
+        for(const normalized of [false,true]){
+          let wide=input(frame).resize({width:Math.max(1,Math.floor(metadata.width*scale*2)),height:Math.max(1,Math.floor(metadata.height*scale)),fit:'fill'});
+          if(normalized)wide=wide.greyscale().normalize();
+          const observed=readWords((await worker.recognize(await wide.png().toBuffer(),{}, {text:true,blocks:true})).data);
+          if(observed&&partial&&partial.size!==observed.size)return {pending:true,reason:'photo_size_or_reference_pending'};
+          if(observed){
+            if(incompleteNineDigitReference(observed))partial=partial||observed;
+            else return {...observed,decodedBarcodes:codes};
+          }
+        }
       }
       if(partial)return {...partial,decodedBarcodes:codes};
     }
