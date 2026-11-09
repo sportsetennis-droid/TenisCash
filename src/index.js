@@ -1142,6 +1142,7 @@ const apexEsc = (s) =>
 // Página pública do torneio (chave, jogos, classificação)
 app.get('/t/:slug', async (req, res) => {
   try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
     const { prisma } = require('./middleware');
     const slug = req.params.slug;
     const t = await prisma.tournament.findFirst({

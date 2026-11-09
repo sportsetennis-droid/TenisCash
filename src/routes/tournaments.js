@@ -664,6 +664,7 @@ router.post('/:id/categories/:catId/knockout', authMiddleware, async (req, res) 
 // Partidas da categoria (público) — agrupadas por rodada
 router.get('/:id/categories/:catId/matches', async (req, res) => {
   try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
     const matches = await prisma.tournamentMatch.findMany({
       where: { categoryId: req.params.catId },
       orderBy: [{ round: 'asc' }, { ordering: 'asc' }],
@@ -682,6 +683,7 @@ router.get('/:id/categories/:catId/matches', async (req, res) => {
 // Classificação da categoria (público)
 router.get('/:id/categories/:catId/standings', async (req, res) => {
   try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
     const catId = req.params.catId;
     const standings = await prisma.tournamentStanding.findMany({
       where: { categoryId: catId },
@@ -1001,6 +1003,7 @@ router.post('/matches/:matchId/finalize', async (req, res) => {
 // kind = scorers | assists | cards · ?categoryId= opcional
 router.get('/:id/stats/:kind', async (req, res) => {
   try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
     const kind = ['scorers', 'assists', 'cards'].includes(req.params.kind) ? req.params.kind : 'scorers';
     const rows = await sheet.playerStats(req.params.id, { kind, categoryId: req.query.categoryId || null });
     res.json({ kind, ranking: rows });
