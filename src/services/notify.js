@@ -13,7 +13,7 @@ const prisma = new PrismaClient();
 async function notify(userId, { type, title, body, link } = {}) {
   if (!userId) return null;
   try {
-    return await prisma.appNotification.create({
+    const n = await prisma.appNotification.create({
       data: {
         userId,
         type: type || 'info',
@@ -22,10 +22,24 @@ async function notify(userId, { type, title, body, link } = {}) {
         link: link ? String(link).slice(0, 300) : null,
       },
     });
+    // WhatsApp (ponte não-oficial): só enfileira se a chave estiver configurada.
+    // A ponte externa (whatsapp-bridge) puxa a fila e envia. Nunca derruba o fluxo.
+    if (process.env.WA_BRIDGE_KEY) enqueueWhatsApp(userId, title, body).catch(() => {});
+    return n;
   } catch (e) {
     console.error('[notify] falhou:', e.message);
     return null;
   }
+}
+
+// Enfileira o aviso pra sair no WhatsApp (se o usuário tem telefone).
+async function enqueueWhatsApp(userId, title, body) {
+  try {
+    const u = await prisma.user.findUnique({ where: { id: userId }, select: { phone: true } });
+    if (!u || !u.phone) return;
+    const text = (title ? `*${title}*\n` : '') + String(body || '').slice(0, 900);
+    await prisma.whatsAppOutbox.create({ data: { phone: u.phone, body: text, userId } });
+  } catch (e) { /* silencioso: WhatsApp é best-effort */ }
 }
 
 // Dispara o mesmo aviso pra vários usuários (ex: os 2 da dupla).
