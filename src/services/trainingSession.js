@@ -225,6 +225,10 @@ async function prontuario(tournamentId, userId) {
     if (a.rating != null) { ratSum += a.rating; ratN++; }
     return { sessionId: s.id, title: s.title, scheduledAt: s.scheduledAt, status: s.status, clubName: s.clubName, present: a.present == null ? null : a.present, confirmed: !!a.confirmed, goals: a.goals == null ? null : a.goals, passes: a.passes == null ? null : a.passes, efficiency: a.efficiency == null ? null : a.efficiency, rating: a.rating == null ? null : a.rating, note: a.note || null };
   });
+  // Avaliações (Four Corner) + curva de evolução
+  const evals = await prisma.athleteEvaluation.findMany({ where: { tournamentId, userId: String(userId) }, orderBy: [{ evaluatedAt: 'asc' }, { createdAt: 'asc' }] });
+  const latestEval = evals.length ? evals[evals.length - 1] : null;
+  const curve = evals.filter((e) => e.overall != null).map((e) => ({ date: e.evaluatedAt || e.createdAt, overall: e.overall }));
   return {
     user: user || { id: userId },
     clubs,
@@ -234,7 +238,32 @@ async function prontuario(tournamentId, userId) {
       gols: goals, passes, eficienciaMedia: effN ? Math.round(effSum / effN) : null, notaMedia: ratN ? Math.round((ratSum / ratN) * 10) / 10 : null,
     },
     history,
+    evaluation: { latest: latestEval, count: evals.length, curve, history: evals.slice().reverse() },
   };
+}
+
+// ----- Avaliação do atleta (FA Four Corner Model) -----
+const EVAL_CORNERS = ['technical', 'tactical', 'physical', 'psychological', 'social'];
+function clampScore(v) {
+  if (v == null || v === '') return null;
+  let n = Number(v); if (Number.isNaN(n)) return null;
+  return Math.max(0, Math.min(10, Math.round(n * 10) / 10));
+}
+async function createEvaluation({ tournamentId, userId, evaluatorId, clubName, scores, notes, evaluatedAt }) {
+  const s = scores || {};
+  const vals = {}; EVAL_CORNERS.forEach((k) => { vals[k] = clampScore(s[k]); });
+  const present = EVAL_CORNERS.map((k) => vals[k]).filter((v) => v != null);
+  if (!present.length && !notes) return { ok: false, code: 400, error: 'preencha ao menos uma nota ou observação' };
+  const overall = present.length ? Math.round((present.reduce((a, b) => a + b, 0) / present.length) * 10) / 10 : null;
+  const ev = await prisma.athleteEvaluation.create({ data: { tournamentId, userId: String(userId), evaluatorId: evaluatorId || null, clubName: clubName || null, ...vals, overall, notes: notes ? String(notes).slice(0, 1000) : null, evaluatedAt: evaluatedAt ? new Date(evaluatedAt) : new Date() } });
+  return { ok: true, evaluation: ev };
+}
+async function listEvaluations(tournamentId, userId) {
+  return prisma.athleteEvaluation.findMany({ where: { tournamentId, userId: String(userId) }, orderBy: [{ evaluatedAt: 'desc' }, { createdAt: 'desc' }] });
+}
+async function deleteEvaluation(tournamentId, evalId) {
+  await prisma.athleteEvaluation.deleteMany({ where: { id: String(evalId), tournamentId } }).catch(() => {});
+  return { ok: true };
 }
 
 // Treinos dos clubes em que o atleta está vinculado (pra ele ver/confirmar).
@@ -280,4 +309,4 @@ async function deleteTemplate(tournamentId, templateId) {
   return { ok: true };
 }
 
-module.exports = { clubOfEntry, create, createRecurring, remind, list, get, update, remove, confirm, mark, forUser, prontuario, sessionClub, createTemplate, listTemplates, applyTemplate, deleteTemplate };
+module.exports = { clubOfEntry, create, createRecurring, remind, list, get, update, remove, confirm, mark, forUser, prontuario, sessionClub, createTemplate, listTemplates, applyTemplate, deleteTemplate, createEvaluation, listEvaluations, deleteEvaluation, EVAL_CORNERS };

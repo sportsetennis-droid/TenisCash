@@ -849,6 +849,30 @@ async function saveProd(sid,uid){
   const body={userId:uid,goals:v('pr-g'),passes:v('pr-p'),efficiency:v('pr-e'),rating:v('pr-r'),note:(document.getElementById('pr-n').value||'')};
   try{await api('/trainings/'+sid+'/mark',{method:'POST',body});closeSheet();toast('Produção salva');treinoReload();}catch(e){toast(e.message);}
 }
+// Mini-gráfico (sparkline) da nota geral ao longo do tempo (0–10).
+function sparkline(curve){
+  const vals=curve.map(p=>Number(p.overall)||0);const n=vals.length;if(n<2)return '';
+  const W=280,H=44,pad=5,max=10,min=0;
+  const xy=(v,i)=>{const x=pad+(i*(W-2*pad))/(n-1);const y=H-pad-((v-min)/(max-min))*(H-2*pad);return [x,y];};
+  const line=vals.map((v,i)=>{const[x,y]=xy(v,i);return x.toFixed(1)+','+y.toFixed(1);}).join(' ');
+  const dots=vals.map((v,i)=>{const[x,y]=xy(v,i);return '<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="2.6" fill="var(--orange-d)"/>';}).join('');
+  return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="44" preserveAspectRatio="none" role="img" aria-label="evolução da nota geral"><polyline points="'+line+'" fill="none" stroke="var(--orange-d)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>'+dots+'</svg>';
+}
+const EVAL_CORNERS_UI=[['technical','Técnico'],['tactical','Tático'],['physical','Físico'],['psychological','Psicológico'],['social','Social']];
+function sheetEval(tid,uid){
+  openSheet('<h3 style="margin:0 0 4px">Nova avaliação</h3><p class="muted" style="margin:0 0 10px;font-size:12px">Four Corner Model (FA) — nota 1 a 10 por dimensão. Preencha as que quiser.</p>'+
+    EVAL_CORNERS_UI.map(c=>'<label>'+c[1]+'</label><input id="ev-'+c[0]+'" type="number" inputmode="decimal" step="0.5" min="0" max="10" placeholder="0-10">').join('')+
+    '<label>Observação (desenvolvimento, pontos a melhorar)</label><textarea id="ev-notes" placeholder="o que evoluiu, o que focar..."></textarea>'+
+    '<div style="height:12px"></div><button class="btn" data-act="eval-save" data-tid="'+tid+'" data-uid="'+uid+'">Salvar avaliação</button>');
+}
+async function saveEval(tid,uid){
+  const g=id=>{const el=document.getElementById(id);return el&&el.value!==''?Number(el.value):undefined;};
+  const scores={};EVAL_CORNERS_UI.forEach(c=>{const v=g('ev-'+c[0]);if(v!==undefined)scores[c[0]]=v;});
+  const notes=(document.getElementById('ev-notes').value||'').trim();
+  if(!Object.keys(scores).length&&!notes)return toast('Preencha ao menos uma nota');
+  try{await api('/'+tid+'/athletes/'+uid+'/evaluations',{method:'POST',body:{scores,notes}});closeSheet();toast('Avaliação salva');renderProntuario(tid,uid);}catch(e){toast(e.message);}
+}
+async function delEval(tid,uid,eid){if(!confirm('Apagar esta avaliação?'))return;try{await api('/'+tid+'/evaluations/'+eid,{method:'DELETE'});toast('Apagada');renderProntuario(tid,uid);}catch(e){toast(e.message);}}
 // PRONTUÁRIO do atleta: resumo de rendimento + histórico treino a treino.
 async function renderProntuario(tid,uid){
   loading();
@@ -868,7 +892,20 @@ async function renderProntuario(tid,uid){
     tile('passes',s.passes||0)+
     tile('efic. média',(s.eficienciaMedia==null?'—':s.eficienciaMedia+'%'))+
     tile('nota média',(s.notaMedia==null?'—':s.notaMedia))+'</div></div>';
-  html+='<div class="card"><h2 style="margin:0 0 6px">Histórico</h2>';
+  // Avaliação Four Corner + curva de evolução
+  const ev=d.evaluation||{};const lt=ev.latest;
+  let ec='<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="margin:0">🧭 Avaliação (desenvolvimento)</h2>'+(d.canEvaluate?'<button class="btn sm gho" data-act="eval-new" data-tid="'+tid+'" data-uid="'+uid+'">+ Avaliar</button>':'')+'</div>';
+  if(!lt)ec+='<div class="empty" style="padding:10px">Sem avaliação ainda.'+(d.canEvaluate?' Toque em "+ Avaliar" (Técnico, Tático, Físico, Psicológico, Social).':'')+'</div>';
+  else{
+    const corners=[['technical','Técnico'],['tactical','Tático'],['physical','Físico'],['psychological','Psicológico'],['social','Social']];
+    ec+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><div style="font-size:30px;font-weight:900;color:var(--orange-d)">'+(lt.overall!=null?lt.overall:'—')+'</div><div class="sub">nota geral · '+(lt.evaluatedAt?fmtDate(lt.evaluatedAt):'')+'</div></div>';
+    corners.forEach(c=>{const v=lt[c[0]];if(v==null)return;ec+='<div style="margin-bottom:6px"><div style="display:flex;justify-content:space-between;font-size:13px"><span>'+c[1]+'</span><span style="font-weight:700">'+v+'</span></div><div style="height:7px;background:var(--soft);border-radius:4px;overflow:hidden"><div style="height:100%;width:'+(v*10)+'%;background:var(--grad)"></div></div></div>';});
+    if(lt.notes)ec+='<div style="font-size:13px;margin-top:6px">📝 '+esc(lt.notes)+'</div>';
+    if((ev.curve||[]).length>=2)ec+='<div style="margin-top:10px"><div class="sub" style="margin-bottom:2px">Evolução (nota geral 0–10)</div>'+sparkline(ev.curve)+'</div>';
+    if((ev.history||[]).length>1){ec+='<div style="margin-top:8px">';ev.history.slice(0,8).forEach(h=>{ec+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;border-top:1px solid var(--line)"><span class="sub">'+(h.evaluatedAt?fmtDate(h.evaluatedAt):'')+'</span><span style="font-weight:700;margin-left:auto">'+(h.overall!=null?h.overall:'—')+'</span>'+(d.canEvaluate?'<button class="btn sm dang" data-act="eval-del" data-tid="'+tid+'" data-uid="'+uid+'" data-eid="'+h.id+'">✕</button>':'')+'</div>';});ec+='</div>';}
+  }
+  ec+='</div>';html+=ec;
+  html+='<div class="card"><h2 style="margin:0 0 6px">Histórico de treinos</h2>';
   if(!(d.history||[]).length)html+='<div class="empty" style="padding:12px">Nenhum treino registrado ainda.</div>';
   else d.history.forEach(h=>{const pres=h.present===true?'<span class="pill ok">presente</span>':(h.present===false?'<span class="pill g">faltou</span>':'<span class="pill g">—</span>');
     const prod=[h.goals!=null?'⚽'+h.goals:'',h.passes!=null?'🅰'+h.passes:'',h.efficiency!=null?'⚡'+h.efficiency+'%':'',h.rating!=null?'⭐'+h.rating:''].filter(Boolean).join(' ');
@@ -1565,6 +1602,9 @@ document.addEventListener('click',async(ev)=>{
   if(a==='train-prod'){sheetProd(el.dataset);return;}
   if(a==='prod-save'){saveProd(el.dataset.sid,el.dataset.uid);return;}
   if(a==='open-prontuario'){go('prontuario/'+el.dataset.tid+'/'+el.dataset.uid);return;}
+  if(a==='eval-new'){sheetEval(el.dataset.tid,el.dataset.uid);return;}
+  if(a==='eval-save'){saveEval(el.dataset.tid,el.dataset.uid);return;}
+  if(a==='eval-del'){delEval(el.dataset.tid,el.dataset.uid,el.dataset.eid);return;}
   if(a==='add-role'){sheetAddRole(el.dataset.tid);return;}
   if(a==='save-role'){saveAddRole(el.dataset.tid);return;}
   if(a==='del-role'){if(confirm('Remover esta pessoa do papel?')){try{await api('/'+el.dataset.tid+'/roles/'+el.dataset.rid,{method:'DELETE'});toast('Removido');loadRoles(el.dataset.tid);}catch(e){toast(e.message);}}return;}
