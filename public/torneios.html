@@ -1036,13 +1036,16 @@ async function renderSumula(mid){
     ((s.match.decidedByPenalties)?'<div class="pill g" style="margin-top:6px">Pênaltis '+(s.match.homePenalties!=null?s.match.homePenalties:'-')+'×'+(s.match.awayPenalties!=null?s.match.awayPenalties:'-')+'</div>':'')+'</div>';
   // Arbitragem
   var mt=s.match;
-  if(!done)html+='<div class="card"><h2 style="margin:0 0 8px;font-size:14px">Arbitragem</h2>'+
-    '<label>Árbitro 1</label><input id="ref1" value="'+esc(mt.referee1||'')+'" placeholder="árbitro principal">'+
-    '<label>Árbitro 2</label><input id="ref2" value="'+esc(mt.referee2||'')+'" placeholder="árbitro auxiliar">'+
+  if(!done)html+='<div class="card"><h2 style="margin:0 0 4px;font-size:14px">Arbitragem</h2>'+
+    '<p class="muted" style="margin:0 0 8px;font-size:11px">Quadro oficial de futsal: 2 árbitros + mesa + cronometrista (3º árbitro opcional).</p>'+
+    '<label>Árbitro 1 (principal)</label><input id="ref1" value="'+esc(mt.referee1||'')+'" placeholder="árbitro principal">'+
+    '<label>Árbitro 2 (auxiliar)</label><input id="ref2" value="'+esc(mt.referee2||'')+'" placeholder="árbitro auxiliar">'+
+    '<label>3º árbitro</label><input id="ref3" value="'+esc(mt.referee3||'')+'" placeholder="opcional">'+
     '<label>Mesa / anotador</label><input id="refm" value="'+esc(mt.scorer||'')+'" placeholder="anotador">'+
+    '<label>Cronometrista</label><input id="reft" value="'+esc(mt.timekeeper||'')+'" placeholder="cronometrista">'+
     '<div style="height:10px"></div><button class="btn sm sec" data-act="sum-officials" data-mid="'+mid+'">Salvar arbitragem</button></div>';
-  else if(mt.referee1||mt.referee2||mt.scorer)html+='<div class="card"><h2 style="margin:0 0 6px;font-size:14px">Arbitragem</h2><div class="muted" style="font-size:12px;line-height:1.7">'+
-    (mt.referee1?'Árbitro 1: <b>'+esc(mt.referee1)+'</b><br>':'')+(mt.referee2?'Árbitro 2: <b>'+esc(mt.referee2)+'</b><br>':'')+(mt.scorer?'Mesa: <b>'+esc(mt.scorer)+'</b>':'')+'</div></div>';
+  else if(mt.referee1||mt.referee2||mt.referee3||mt.scorer||mt.timekeeper)html+='<div class="card"><h2 style="margin:0 0 6px;font-size:14px">Arbitragem</h2><div class="muted" style="font-size:12px;line-height:1.7">'+
+    (mt.referee1?'Árbitro 1: <b>'+esc(mt.referee1)+'</b><br>':'')+(mt.referee2?'Árbitro 2: <b>'+esc(mt.referee2)+'</b><br>':'')+(mt.referee3?'3º árbitro: <b>'+esc(mt.referee3)+'</b><br>':'')+(mt.scorer?'Mesa: <b>'+esc(mt.scorer)+'</b><br>':'')+(mt.timekeeper?'Cronometrista: <b>'+esc(mt.timekeeper)+'</b>':'')+'</div></div>';
   [['home',h],['away',a]].forEach(function(pair){
     var sd=pair[1];if(!sd.entry)return;
     html+='<div class="card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'+
@@ -1132,7 +1135,7 @@ function pickTeamLogo(eid){
 }
 async function sumOfficials(mid){
   var g=function(id){var e=document.getElementById(id);return e?e.value:undefined;};
-  try{await api('/matches/'+mid+'/officials',{method:'POST',body:{referee1:g('ref1'),referee2:g('ref2'),scorer:g('refm')}});toast('Arbitragem salva');}catch(e){toast(e.message);}
+  try{await api('/matches/'+mid+'/officials',{method:'POST',body:{referee1:g('ref1'),referee2:g('ref2'),referee3:g('ref3'),scorer:g('refm'),timekeeper:g('reft')}});toast('Arbitragem salva');}catch(e){toast(e.message);}
 }
 function sumFinalize(mid){
   if(!SUMULA||!SUMULA.last)return;

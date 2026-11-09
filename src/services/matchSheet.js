@@ -45,7 +45,8 @@ async function buildSheet(matchId) {
       id: match.id, status: match.status, stage: match.stage, groupName: match.groupName,
       scheduledAt: match.scheduledAt, location: match.location,
       homeScore: match.homeScore, awayScore: match.awayScore, winnerEntryId: match.winnerEntryId,
-      referee1: match.referee1, referee2: match.referee2, scorer: match.scorer,
+      referee1: match.referee1, referee2: match.referee2, referee3: match.referee3,
+      scorer: match.scorer, timekeeper: match.timekeeper,
       homePenalties: match.homePenalties, awayPenalties: match.awayPenalties,
       decidedByPenalties: match.decidedByPenalties,
       tournamentId: match.tournamentId, categoryId: match.categoryId,
@@ -97,11 +98,13 @@ async function setOfficials(matchId, body = {}) {
   const data = {};
   if ('referee1' in body) data.referee1 = clean(body.referee1);
   if ('referee2' in body) data.referee2 = clean(body.referee2);
+  if ('referee3' in body) data.referee3 = clean(body.referee3);
   if ('scorer' in body) data.scorer = clean(body.scorer);
+  if ('timekeeper' in body) data.timekeeper = clean(body.timekeeper);
   if (!Object.keys(data).length) return { ok: false, error: 'nada pra gravar' };
   const match = await prisma.tournamentMatch.update({ where: { id: matchId }, data }).catch(() => null);
   if (!match) return { ok: false, error: 'partida não encontrada' };
-  return { ok: true, match: { id: match.id, referee1: match.referee1, referee2: match.referee2, scorer: match.scorer } };
+  return { ok: true, match: { id: match.id, referee1: match.referee1, referee2: match.referee2, referee3: match.referee3, scorer: match.scorer, timekeeper: match.timekeeper } };
 }
 
 // Fecha a súmula: conta os gols (eventos GOAL) e aplica o placar pelo engine
