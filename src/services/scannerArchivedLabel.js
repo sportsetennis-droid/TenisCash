@@ -19,6 +19,24 @@ function printedReferences(words) {
     if(separator&&/^[\/|\-]$/.test(separator.text.trim())&&colour&&/^[A-Z]{2,8}$/.test(colour.text.trim())&&
       colour.bbox.x0-separator.bbox.x1<=h*1.5)references.add(norm(model.text)+norm(colour.text));
   }
+  // Some labels print a nine-digit model followed by a colour token without
+  // punctuation (including alphanumeric colours). Preserve the exact token;
+  // never reorder a colour number, attach another line, or append a size.
+  const joinedNineDigitReferences=new Set([...references].filter(ref=>/^\d{9}[A-Z]{2,8}(?:\d{1,3})?$/.test(ref)));
+  for (const model of words.filter(w => /^\d{9}$/.test(w.text.trim()))) {
+    const a=model.bbox,h=a.y1-a.y0,cy=(a.y0+a.y1)/2;
+    const next=words.filter(w=>w!==model&&w.bbox.x0>=a.x1&&
+      Math.abs((w.bbox.y0+w.bbox.y1)/2-cy)<=Math.max(h,w.bbox.y1-w.bbox.y0)*.35&&
+      w.bbox.x0-a.x1<=h*2).sort((x,y)=>x.bbox.x0-y.bbox.x0);
+    const separated=next[0]&&/^[\/|\-\u2013\u2014]$/.test(next[0].text.trim()),colour=next[separated?1:0];
+    if(!colour)continue;
+    const token=colour.text.trim(),ch=colour.bbox.y1-colour.bbox.y0;
+    if(!/^[A-Z]{2,8}(?:\d{1,3})?$/.test(token)||/^(?:BR|BRA|USA?|UK|EUR|EU|CM|CHN|JP|SIZE|TAM)\d*$/.test(token))continue;
+    if(ch<h*.6||ch>h*1.5||colour.bbox.x0-(separated?next[0].bbox.x1:a.x1)>h)continue;
+    const joined=norm(model.text)+token;
+    references.add(joined);joinedNineDigitReferences.add(joined);
+  }
+  if(joinedNineDigitReferences.size>1)return [];
   return [...references];
 }
 
