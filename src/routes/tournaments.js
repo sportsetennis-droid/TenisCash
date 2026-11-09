@@ -224,16 +224,16 @@ router.post('/trainings/:sid/confirm', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Treinador faz a chamada: marca um atleta. body { userId, present:true|false|null, note }.
+// Treinador/coordenador faz a chamada + lança a PRODUÇÃO do atleta no treino.
+// body { userId, present, goals, passes, efficiency, rating, note } — patch parcial.
 router.post('/trainings/:sid/mark', authMiddleware, async (req, res) => {
   try {
     const s = await training.sessionClub(req.params.sid);
     if (!s) return res.status(404).json({ error: 'treino não encontrado' });
-    if (!(await canTrainClub(req, s.tournamentId, s.clubName))) return res.status(403).json({ error: 'sem permissão (arbitragem do treino é o treinador)' });
+    if (!(await canTrainClub(req, s.tournamentId, s.clubName))) return res.status(403).json({ error: 'sem permissão (só treinador/coordenador lança produção)' });
     const b = req.body || {};
     if (!b.userId) return res.status(400).json({ error: 'userId do atleta obrigatório' });
-    const present = b.present === null || b.present === 'null' ? null : b.present;
-    const r = await training.mark(req.params.sid, b.userId, present, b.note);
+    const r = await training.mark(req.params.sid, b.userId, b);
     if (!r.ok) return res.status(r.code || 400).json(r);
     res.json(r);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -244,6 +244,32 @@ router.get('/:id/my-trainings', authMiddleware, async (req, res) => {
   try {
     res.set('Cache-Control', 'no-store');
     res.json(await training.forUser(req.params.id, req.userId));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Meu prontuário (rendimento do próprio atleta neste torneio).
+router.get('/:id/my-prontuario', authMiddleware, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json(await training.prontuario(req.params.id, req.userId));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Prontuário de um atleta (o próprio, OU treinador/coordenador/admin de um clube dele).
+router.get('/:id/athletes/:userId/prontuario', authMiddleware, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const target = req.params.userId;
+    let allowed = target === req.userId || roles.isGlobalAdmin(req.userRole);
+    if (!allowed) {
+      // treinador/coord pode ver se o atleta está num clube que ele gere
+      const mine = await prisma.teamMembership.findMany({ where: { tournamentId: req.params.id, userId: target, status: 'ACTIVE' }, select: { clubName: true } });
+      for (const m of [...new Set(mine.map((x) => x.clubName))]) {
+        if (await canTrainClub(req, req.params.id, m)) { allowed = true; break; }
+      }
+    }
+    if (!allowed) return res.status(403).json({ error: 'sem permissão' });
+    res.json(await training.prontuario(req.params.id, target));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

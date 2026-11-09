@@ -4069,14 +4069,19 @@ model TrainingSession {
 }
 
 model TrainingAttendance {
-  id        String   @id @default(cuid())
-  sessionId String
-  userId    String
-  confirmed Boolean  @default(false) // atleta confirmou (RSVP)
-  present   Boolean? // chamada do treinador: presente/faltou (null = não marcado)
-  note      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(cuid())
+  sessionId  String
+  userId     String
+  confirmed  Boolean  @default(false) // atleta confirmou (RSVP)
+  present    Boolean? // chamada do treinador: presente/faltou (null = não marcado)
+  // Produção do atleta no treino (prontuário)
+  goals      Int? // gols (quando tem coletivo)
+  passes     Int? // passes
+  efficiency Int? // eficiência 0-100%
+  rating     Float? // nota do treinador 0-10
+  note       String? // observação do treinador
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@unique([sessionId, userId])
   @@index([sessionId])

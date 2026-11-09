@@ -184,6 +184,7 @@ function route(){
   if(view==='avisos')return renderNotifications();
   if(view==='sumula'&&arg)return renderSumula(arg);
   if(view==='treino'&&arg)return renderTreino(arg);
+  if(view==='prontuario'&&arg){const p=h.split('/');return renderProntuario(p[1],p[2]);}
   return renderHome();
 }
 
@@ -578,6 +579,7 @@ async function loadMyMembership(tid){
   let h='';
   (d.active||[]).forEach(m=>{h+='<div class="listitem"><div class="av" style="background:var(--grad);color:#fff">⚽</div>'+
     '<div class="grow"><div class="nm">Você joga pelo '+esc(m.clubName)+'</div><div class="sub">vínculo ativo</div></div>'+
+    '<button class="btn sm gho" data-act="open-prontuario" data-tid="'+tid+'" data-uid="'+esc(ME.id)+'" style="margin-right:6px">📋 Prontuário</button>'+
     '<button class="btn sm dang" data-act="mem-remove" data-tid="'+tid+'" data-mid="'+m.id+'">Sair</button></div>';});
   (d.invites||[]).forEach(m=>{h+='<div class="listitem" style="background:var(--soft);border-radius:10px;padding:8px"><div class="grow"><div class="nm">Convite do '+esc(m.clubName)+'</div><div class="sub">o time te convidou</div></div>'+
     '<button class="btn sm" data-act="mem-resp" data-tid="'+tid+'" data-mid="'+m.id+'" data-ac="accept" style="margin-right:6px">Aceitar</button>'+
@@ -626,6 +628,7 @@ async function renderMembers(eid){
   if(!(d.active||[]).length)h+='<div class="empty" style="padding:10px">Nenhum atleta vinculado ainda.</div>';
   else (d.active||[]).forEach(m=>{h+='<div class="listitem" style="padding:7px 4px"><div class="av" style="font-size:13px">'+initials((m.user&&m.user.name)||'?')+'</div>'+
     '<div class="grow"><div class="nm" style="font-size:14px">'+esc((m.user&&m.user.name)||'—')+((m.user&&m.user.username)?' <span class="sub">@'+esc(m.user.username)+'</span>':'')+'</div><div class="sub">vinculado</div></div>'+
+    '<button class="btn sm gho" data-act="open-prontuario" data-tid="'+tid+'" data-uid="'+esc((m.user&&m.user.id)||'')+'" style="margin-right:4px">📋</button>'+
     '<button class="btn sm dang" data-act="mem-remove-team" data-tid="'+tid+'" data-mid="'+m.id+'" data-eid="'+eid+'">✕</button></div>';});
   h+='<div style="height:6px"></div><button class="btn sm sec" data-act="invite-athlete" data-eid="'+eid+'" style="width:100%">+ Convidar atleta</button></div>';
   box.innerHTML=h;
@@ -704,10 +707,13 @@ async function renderTreino(sid){
   if(!d.roster.length)html+='<div class="empty" style="padding:12px">Nenhum atleta vinculado ainda. Vincule atletas ao time pra fazer a chamada.</div>';
   else d.roster.forEach(p=>{
     const badge=p.present===true?'<span class="pill ok">presente</span>':(p.present===false?'<span class="pill dang" style="background:#fde8e8;color:#c0392b">faltou</span>':(p.confirmed?'<span class="pill w">confirmou</span>':'<span class="pill g">—</span>'));
+    const prod=[p.goals!=null?'⚽'+p.goals:'',p.passes!=null?'🅰'+p.passes:'',p.efficiency!=null?'⚡'+p.efficiency+'%':'',p.rating!=null?'⭐'+p.rating:''].filter(Boolean).join(' ');
     html+='<div class="listitem"><div class="av" style="font-size:13px">'+initials(p.name)+'</div>'+
-      '<div class="grow"><div class="nm" style="font-size:14px">'+esc(p.name)+'</div><div class="sub">'+(p.confirmed?'confirmou presença':'sem confirmar')+'</div></div>'+badge+
+      '<div class="grow"><div class="nm" style="font-size:14px">'+esc(p.name)+'</div><div class="sub">'+(prod||(p.confirmed?'confirmou presença':'sem confirmar'))+'</div></div>'+badge+
       (canManage&&!done?'<div style="display:flex;gap:4px;margin-left:6px"><button class="btn sm '+(p.present===true?'':'sec')+'" data-act="train-mark" data-sid="'+sid+'" data-uid="'+p.userId+'" data-v="1">✓</button>'+
-        '<button class="btn sm '+(p.present===false?'dang':'sec')+'" data-act="train-mark" data-sid="'+sid+'" data-uid="'+p.userId+'" data-v="0">✕</button></div>':'')+'</div>';});
+        '<button class="btn sm '+(p.present===false?'dang':'sec')+'" data-act="train-mark" data-sid="'+sid+'" data-uid="'+p.userId+'" data-v="0">✕</button>'+
+        '<button class="btn sm sec" data-act="train-prod" data-sid="'+sid+'" data-uid="'+p.userId+'" data-pn="'+esc(p.name)+'" data-g="'+(p.goals==null?'':p.goals)+'" data-p="'+(p.passes==null?'':p.passes)+'" data-e="'+(p.efficiency==null?'':p.efficiency)+'" data-r="'+(p.rating==null?'':p.rating)+'" data-n="'+esc(p.note||'')+'">📊</button></div>':'')+
+      (canManage?'<button class="btn sm gho" data-act="open-prontuario" data-tid="'+s.tournamentId+'" data-uid="'+p.userId+'" style="margin-left:4px">📋</button>':'')+'</div>';});
   html+='</div>';
   // O que foi feito (notas) — gestor edita
   if(canManage){
@@ -746,6 +752,49 @@ async function loadMyTrainings(tid){
 }
 async function trainConfirm(sid,confirmed,tid){
   try{await api('/trainings/'+sid+'/confirm',{method:'POST',body:{confirmed:confirmed==='1'}});toast(confirmed==='1'?'Presença confirmada':'Desmarcado');loadMyTrainings(tid);}catch(e){toast(e.message);}
+}
+// Produção do atleta no treino (prontuário): gols/passes/eficiência/nota/obs.
+function sheetProd(ds){
+  openSheet('<h3 style="margin:0 0 4px">Produção · '+esc(ds.pn)+'</h3><p class="muted" style="margin:0 0 10px;font-size:12px">O que o atleta produziu neste treino. Vai pro prontuário dele.</p>'+
+    '<div class="row"><div style="flex:1"><label>Gols (coletivo)</label><input id="pr-g" type="number" inputmode="numeric" value="'+esc(ds.g||'')+'" placeholder="0"></div>'+
+    '<div style="flex:1"><label>Passes</label><input id="pr-p" type="number" inputmode="numeric" value="'+esc(ds.p||'')+'" placeholder="0"></div></div>'+
+    '<div class="row"><div style="flex:1"><label>Eficiência (%)</label><input id="pr-e" type="number" inputmode="numeric" value="'+esc(ds.e||'')+'" placeholder="0-100"></div>'+
+    '<div style="flex:1"><label>Nota (0-10)</label><input id="pr-r" type="number" inputmode="decimal" step="0.1" value="'+esc(ds.r||'')+'" placeholder="0-10"></div></div>'+
+    '<label>Observação do treinador</label><textarea id="pr-n" placeholder="como foi, o que melhorar...">'+esc(ds.n||'')+'</textarea>'+
+    '<div style="height:12px"></div><button class="btn" data-act="prod-save" data-sid="'+ds.sid+'" data-uid="'+ds.uid+'">Salvar produção</button>');
+}
+async function saveProd(sid,uid){
+  const v=id=>{const el=document.getElementById(id);return el&&el.value!==''?el.value:null;};
+  const body={userId:uid,goals:v('pr-g'),passes:v('pr-p'),efficiency:v('pr-e'),rating:v('pr-r'),note:(document.getElementById('pr-n').value||'')};
+  try{await api('/trainings/'+sid+'/mark',{method:'POST',body});closeSheet();toast('Produção salva');treinoReload();}catch(e){toast(e.message);}
+}
+// PRONTUÁRIO do atleta: resumo de rendimento + histórico treino a treino.
+async function renderProntuario(tid,uid){
+  loading();
+  let d;try{d=await api('/'+tid+'/athletes/'+uid+'/prontuario');}catch(e){app.innerHTML=topbar('Prontuário',true)+'<div class="wrap"><div class="card"><div class="empty">'+esc(e.message)+'</div></div></div>';return;}
+  const s=d.summary||{};const nm=(d.user&&d.user.name)||'Atleta';
+  let html=topbar('Prontuário',true)+'<div class="wrap">';
+  html+='<div class="card" style="background:var(--grad);color:#fff"><div style="font-size:18px;font-weight:900">'+esc(nm)+'</div>'+
+    '<div style="font-size:12px;opacity:.9">'+((d.clubs||[]).join(' · ')||'sem time')+' · rendimento nos treinos</div></div>';
+  const tile=(lbl,val)=>'<div style="flex:1;min-width:88px;background:var(--soft);border-radius:12px;padding:10px;text-align:center"><div style="font-size:22px;font-weight:900;color:var(--orange-d)">'+val+'</div><div class="sub">'+lbl+'</div></div>';
+  html+='<div class="card"><div style="display:flex;flex-wrap:wrap;gap:8px">'+
+    tile('presença',(s.presencaPct==null?'—':s.presencaPct+'%'))+
+    tile('treinos',s.treinos||0)+
+    tile('presenças',s.presencas||0)+
+    tile('faltas',s.faltas||0)+'</div>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">'+
+    tile('gols',s.gols||0)+
+    tile('passes',s.passes||0)+
+    tile('efic. média',(s.eficienciaMedia==null?'—':s.eficienciaMedia+'%'))+
+    tile('nota média',(s.notaMedia==null?'—':s.notaMedia))+'</div></div>';
+  html+='<div class="card"><h2 style="margin:0 0 6px">Histórico</h2>';
+  if(!(d.history||[]).length)html+='<div class="empty" style="padding:12px">Nenhum treino registrado ainda.</div>';
+  else d.history.forEach(h=>{const pres=h.present===true?'<span class="pill ok">presente</span>':(h.present===false?'<span class="pill g">faltou</span>':'<span class="pill g">—</span>');
+    const prod=[h.goals!=null?'⚽'+h.goals:'',h.passes!=null?'🅰'+h.passes:'',h.efficiency!=null?'⚡'+h.efficiency+'%':'',h.rating!=null?'⭐'+h.rating:''].filter(Boolean).join(' ');
+    html+='<div style="padding:10px 0;border-bottom:1px solid var(--line)"><div style="display:flex;justify-content:space-between;align-items:center"><div class="nm" style="font-size:14px">'+esc(h.title)+'</div>'+pres+'</div>'+
+      '<div class="sub">'+(h.scheduledAt?fmtDate(h.scheduledAt):'sem data')+(prod?' · '+prod:'')+'</div>'+
+      (h.note?'<div style="font-size:13px;margin-top:3px">📝 '+esc(h.note)+'</div>':'')+'</div>';});
+  html+='</div></div>';app.innerHTML=html;
 }
 
 // Mural/avisos do torneio (texto). isOwner mostra o compositor + remover.
@@ -1423,6 +1472,9 @@ document.addEventListener('click',async(ev)=>{
   if(a==='train-notes'){trainSaveNotes(el.dataset.sid);return;}
   if(a==='train-finalize'){trainFinalize(el.dataset.sid);return;}
   if(a==='train-confirm'){trainConfirm(el.dataset.sid,el.dataset.v,el.dataset.tid);return;}
+  if(a==='train-prod'){sheetProd(el.dataset);return;}
+  if(a==='prod-save'){saveProd(el.dataset.sid,el.dataset.uid);return;}
+  if(a==='open-prontuario'){go('prontuario/'+el.dataset.tid+'/'+el.dataset.uid);return;}
   if(a==='add-role'){sheetAddRole(el.dataset.tid);return;}
   if(a==='save-role'){saveAddRole(el.dataset.tid);return;}
   if(a==='del-role'){if(confirm('Remover esta pessoa do papel?')){try{await api('/'+el.dataset.tid+'/roles/'+el.dataset.rid,{method:'DELETE'});toast('Removido');loadRoles(el.dataset.tid);}catch(e){toast(e.message);}}return;}
