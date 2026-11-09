@@ -16,4 +16,6 @@ Aplicar somente a migração aditiva `20261109010000_scan_action_photos` antes d
 
 ## Validação
 
-`npm run test:scanner` inclui captura do inventário e 85 grupos da interface de ações, usando DOM/câmera/rede simulados. `scripts/test-scan-action-photos.cjs` exige PostgreSQL local isolado e testa bytes reais de imagem, concorrência, recapturas, autorização, HTTP e trava de confirmação. Históricos e transferências têm testes próprios no mesmo ambiente isolado. Isso não constitui teste físico com o telefone do operador.
+`npm run test:scanner` inclui captura do inventário, integridade de JPEG/PNG/WebP e 88 grupos da interface de ações, usando DOM/câmera/rede simulados. O visualizador é testado com fotos pendentes, fotos arquivadas, logout e respostas atrasadas. `scripts/test-scan-action-photos.cjs` exige PostgreSQL local isolado e testa bytes reais de imagem, concorrência, recapturas, autorização, HTTP e trava de confirmação. Históricos e transferências têm testes próprios no mesmo ambiente isolado. Isso não constitui teste físico com o telefone do operador.
+
+Teste solicitado em 08/11/2026 encontrou JPEG truncado aceito porque o cabeçalho continuava legível. O servidor agora decodifica todos os pixels antes de reconhecer o arquivamento; os bytes originais são preservados, sem converter a imagem. Imagem incompleta permanece pendente para reenvio da mesma peça.
