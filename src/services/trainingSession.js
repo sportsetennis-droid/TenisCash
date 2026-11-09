@@ -46,16 +46,63 @@ async function create({ tournamentId, entryId, createdByUserId, title, focus, sc
   return { ok: true, session: s };
 }
 
+// Cria uma SÉRIE recorrente (ex: toda terça e quinta por N semanas). padrão Spond/TeamSnap.
+// weekdays: array 0-6 (0=domingo). time: "HH:MM". weeks: nº de semanas.
+async function createRecurring({ tournamentId, entryId, createdByUserId, title, focus, location, weekdays, time, weeks, startDate }) {
+  const clubName = await clubOfEntry(entryId, tournamentId);
+  if (!clubName) return { ok: false, code: 404, error: 'time não encontrado neste torneio' };
+  const wd = [...new Set((Array.isArray(weekdays) ? weekdays : [weekdays]).map(Number).filter((n) => n >= 0 && n <= 6))];
+  if (!wd.length) return { ok: false, code: 400, error: 'escolha ao menos um dia da semana' };
+  const parts = String(time || '19:00').split(':');
+  const hh = Math.min(23, Math.max(0, Number(parts[0]) || 19));
+  const mm = Math.min(59, Math.max(0, Number(parts[1]) || 0));
+  const nWeeks = Math.min(Math.max(Number(weeks) || 4, 1), 26);
+  const start = startDate ? new Date(startDate) : new Date();
+  const groupId = 'rec_' + Math.random().toString(36).slice(2, 10);
+  const dates = [];
+  for (const d of wd) {
+    const first = new Date(start); first.setHours(hh, mm, 0, 0);
+    first.setDate(first.getDate() + ((d - first.getDay() + 7) % 7));
+    for (let w = 0; w < nWeeks; w++) {
+      const dt = new Date(first); dt.setDate(first.getDate() + w * 7);
+      if (dt.getTime() >= Date.now() - 3600000) dates.push(dt);
+    }
+  }
+  dates.sort((a, b) => a - b);
+  const sessions = [];
+  for (const dt of dates) {
+    sessions.push(await prisma.trainingSession.create({
+      data: { tournamentId, clubName, title: (title && String(title).slice(0, 120)) || 'Treino', focus: focus ? String(focus).slice(0, 300) : null, scheduledAt: dt, location: location ? String(location).slice(0, 160) : null, createdByUserId: createdByUserId || null, recurrenceGroupId: groupId },
+    }));
+  }
+  const members = await clubMemberUserIds(tournamentId, clubName);
+  await notifyMany(members, { type: 'training', title: 'Treinos agendados', body: `${clubName}: ${sessions.length} treinos de "${(title || 'Treino')}" marcados. Confirme presença.`, link: `/torneios.html#t/${tournamentId}` }, createdByUserId);
+  return { ok: true, sessions, count: sessions.length, groupId };
+}
+
+// Lembra quem ainda não respondeu o RSVP (in-app; WhatsApp quando a API liberar).
+async function remind(sessionId, byUserId) {
+  const s = await prisma.trainingSession.findUnique({ where: { id: String(sessionId) } });
+  if (!s) return { ok: false, code: 404, error: 'treino não encontrado' };
+  const members = await clubMemberUserIds(s.tournamentId, s.clubName);
+  const att = await prisma.trainingAttendance.findMany({ where: { sessionId: s.id }, select: { userId: true, rsvp: true } });
+  const responded = new Set(att.filter((a) => a.rsvp).map((a) => a.userId));
+  const pending = members.filter((u) => !responded.has(u));
+  const quando = s.scheduledAt ? new Date(s.scheduledAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'em breve';
+  await notifyMany(pending, { type: 'training', title: 'Confirma o treino?', body: `${s.clubName}: ${s.title} — ${quando}. Você ainda não respondeu.`, link: `/torneios.html#t/${s.tournamentId}` }, byUserId);
+  return { ok: true, reminded: pending.length };
+}
+
 // Lista os treinos do clube (histórico), com contadores de presença.
 async function list(tournamentId, entryId) {
   const clubName = await clubOfEntry(entryId, tournamentId);
   if (!clubName) return { clubName: null, sessions: [] };
   const sessions = await prisma.trainingSession.findMany({ where: { tournamentId, clubName, status: { not: 'CANCELED' } }, orderBy: [{ scheduledAt: 'desc' }, { createdAt: 'desc' }] });
   const ids = sessions.map((s) => s.id);
-  const att = ids.length ? await prisma.trainingAttendance.findMany({ where: { sessionId: { in: ids } }, select: { sessionId: true, confirmed: true, present: true } }) : [];
+  const att = ids.length ? await prisma.trainingAttendance.findMany({ where: { sessionId: { in: ids } }, select: { sessionId: true, confirmed: true, present: true, rsvp: true } }) : [];
   const by = {};
-  att.forEach((a) => { const c = (by[a.sessionId] = by[a.sessionId] || { confirmed: 0, present: 0, absent: 0 }); if (a.confirmed) c.confirmed++; if (a.present === true) c.present++; if (a.present === false) c.absent++; });
-  return { clubName, sessions: sessions.map((s) => ({ ...s, counts: by[s.id] || { confirmed: 0, present: 0, absent: 0 } })) };
+  att.forEach((a) => { const c = (by[a.sessionId] = by[a.sessionId] || { confirmed: 0, going: 0, maybe: 0, declined: 0, present: 0, absent: 0 }); if (a.confirmed) c.confirmed++; if (a.rsvp === 'GOING') c.going++; if (a.rsvp === 'MAYBE') c.maybe++; if (a.rsvp === 'DECLINED') c.declined++; if (a.present === true) c.present++; if (a.present === false) c.absent++; });
+  return { clubName, sessions: sessions.map((s) => ({ ...s, counts: by[s.id] || { confirmed: 0, going: 0, maybe: 0, declined: 0, present: 0, absent: 0 } })) };
 }
 
 // Súmula do treino: dados + chamada (todos os atletas do clube + marcação).
@@ -71,7 +118,7 @@ async function get(sessionId) {
     const a = attByUser[u.id] || {};
     return {
       userId: u.id, name: u.name, username: u.username,
-      confirmed: !!a.confirmed, present: a.present == null ? null : a.present,
+      confirmed: !!a.confirmed, rsvp: a.rsvp || null, present: a.present == null ? null : a.present,
       goals: a.goals == null ? null : a.goals, passes: a.passes == null ? null : a.passes,
       efficiency: a.efficiency == null ? null : a.efficiency, rating: a.rating == null ? null : a.rating,
       note: a.note || null, attendanceId: a.id || null,
@@ -100,14 +147,19 @@ async function remove(sessionId) {
   return { ok: true };
 }
 
-// Atleta confirma/desmarca presença (RSVP).
-async function confirm(sessionId, userId, confirmed) {
+// Atleta responde o RSVP: GOING | MAYBE | DECLINED (3 estados, padrão Spond/TeamSnap).
+// Aceita também boolean (compat): true=GOING, false=DECLINED. confirmed espelha GOING.
+const RSVP_STATES = ['GOING', 'MAYBE', 'DECLINED'];
+async function confirm(sessionId, userId, rsvp) {
   const s = await sessionClub(sessionId);
   if (!s) return { ok: false, code: 404, error: 'treino não encontrado' };
+  let val = typeof rsvp === 'string' ? String(rsvp).toUpperCase() : (rsvp === false ? 'DECLINED' : 'GOING');
+  if (!RSVP_STATES.includes(val)) val = 'GOING';
+  const confirmed = val === 'GOING';
   const a = await prisma.trainingAttendance.upsert({
     where: { sessionId_userId: { sessionId: s.id, userId } },
-    create: { sessionId: s.id, userId, confirmed: !!confirmed },
-    update: { confirmed: !!confirmed },
+    create: { sessionId: s.id, userId, rsvp: val, confirmed },
+    update: { rsvp: val, confirmed },
   });
   return { ok: true, attendance: a };
 }
@@ -178,12 +230,17 @@ async function prontuario(tournamentId, userId) {
 async function forUser(tournamentId, userId) {
   const mine = await prisma.teamMembership.findMany({ where: { tournamentId, userId, status: 'ACTIVE' }, select: { clubName: true } });
   const clubs = [...new Set(mine.map((m) => m.clubName))];
-  if (!clubs.length) return { sessions: [] };
+  if (!clubs.length) return { sessions: [], upcoming: [], past: [] };
   const sessions = await prisma.trainingSession.findMany({ where: { tournamentId, clubName: { in: clubs }, status: { not: 'CANCELED' } }, orderBy: [{ scheduledAt: 'desc' }, { createdAt: 'desc' }] });
   const ids = sessions.map((s) => s.id);
-  const mineAtt = ids.length ? await prisma.trainingAttendance.findMany({ where: { sessionId: { in: ids }, userId }, select: { sessionId: true, confirmed: true, present: true } }) : [];
+  const mineAtt = ids.length ? await prisma.trainingAttendance.findMany({ where: { sessionId: { in: ids }, userId }, select: { sessionId: true, confirmed: true, rsvp: true, present: true } }) : [];
   const byId = Object.fromEntries(mineAtt.map((a) => [a.sessionId, a]));
-  return { sessions: sessions.map((s) => ({ ...s, myConfirmed: !!(byId[s.id] && byId[s.id].confirmed), myPresent: byId[s.id] ? byId[s.id].present : null })) };
+  const mapped = sessions.map((s) => ({ ...s, myRsvp: (byId[s.id] && byId[s.id].rsvp) || null, myConfirmed: !!(byId[s.id] && byId[s.id].confirmed), myPresent: byId[s.id] ? byId[s.id].present : null }));
+  const now = Date.now();
+  const isUpcoming = (s) => s.status === 'SCHEDULED' && (!s.scheduledAt || new Date(s.scheduledAt).getTime() >= now - 6 * 3600000);
+  const upcoming = mapped.filter(isUpcoming).sort((a, b) => new Date(a.scheduledAt || 0) - new Date(b.scheduledAt || 0));
+  const past = mapped.filter((s) => !isUpcoming(s));
+  return { sessions: mapped, upcoming, past };
 }
 
-module.exports = { clubOfEntry, create, list, get, update, remove, confirm, mark, forUser, prontuario, sessionClub };
+module.exports = { clubOfEntry, create, createRecurring, remind, list, get, update, remove, confirm, mark, forUser, prontuario, sessionClub };

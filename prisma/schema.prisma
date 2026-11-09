@@ -4058,21 +4058,24 @@ model TrainingSession {
   focus           String?
   scheduledAt     DateTime?
   location        String?
-  status          String    @default("SCHEDULED") // SCHEDULED | DONE | CANCELED
-  notes           String?
-  createdByUserId String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  status            String    @default("SCHEDULED") // SCHEDULED | DONE | CANCELED
+  notes             String?
+  recurrenceGroupId String? // agrupa uma série recorrente (toda terça/quinta...)
+  createdByUserId   String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   @@index([tournamentId])
   @@index([tournamentId, clubName])
+  @@index([recurrenceGroupId])
 }
 
 model TrainingAttendance {
   id         String   @id @default(cuid())
   sessionId  String
   userId     String
-  confirmed  Boolean  @default(false) // atleta confirmou (RSVP)
+  confirmed  Boolean  @default(false) // RSVP = GOING (compat); espelha rsvp
+  rsvp       String? // GOING | MAYBE | DECLINED (3 estados, padrão Spond/TeamSnap)
   present    Boolean? // chamada do treinador: presente/faltou (null = não marcado)
   // Produção do atleta no treino (prontuário)
   goals      Int? // gols (quando tem coletivo)
