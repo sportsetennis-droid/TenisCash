@@ -913,7 +913,7 @@ router.post('/etiqueta',
           if (!bipe) {
             const rows = await prisma.productSize.findMany({
               where: { barcode: { in: variants } },
-              include: { product: { select: { name: true, brand: true, active: true } } },
+              include: { product: { select: { id: true, name: true, brand: true, active: true } } },
               take: 3,
             });
             if(!rows.length)rows.push(...await aliasRows(prisma,eanCam));

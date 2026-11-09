@@ -49,7 +49,7 @@
       canvas.width = Math.round(img.naturalWidth * scale); canvas.height = Math.round(img.naturalHeight * scale);
       canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
       return canvas;
-    } finally { if (blobURL) URL.revokeObjectURL(blobURL); }
+    } finally { img.src = ''; if (blobURL) URL.revokeObjectURL(blobURL); }
   }
   function textCrop(canvas, region) {
     const crop = document.createElement('canvas');
@@ -70,6 +70,10 @@
   }
   function hasSize(text) { return /\bBRA?\s*[:\-]?\s*\d{2}\b/i.test(text) || /^\s*(?:SIZE\s+)?(?:XXXL|XXL|XL|XS|L|M|S|P|G|GG|PP)\s*$/im.test(text); }
   let queue = Promise.resolve();
+  async function recognizeTemporary(ready, canvas) {
+    try { return await ready.recognize(canvas); }
+    finally { canvas.width = 0; canvas.height = 0; }
+  }
   function recognize(image, progress) {
     const task = queue.then(() => recognizeNow(image, progress));
     queue = task.catch(() => {});
@@ -84,13 +88,16 @@
         const ready = await getWorker();
         if (expired) throw new Error('Leitura local demorou demais');
         const canvas = await imageCanvas(image);
-        const pixels = canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, canvas.width, canvas.height);
-        const regions = window.ScannerRegions.findRegions(pixels);
+        try {
+        const regions = (() => {
+          const pixels = canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, canvas.width, canvas.height);
+          return window.ScannerRegions.findRegions(pixels);
+        })();
         let best = '';
         // Read the reference strip apart from the barcode and packaging text.
         for (const region of regions) {
           if (expired) throw new Error('Leitura local demorou demais');
-          const { data } = await ready.recognize(textCrop(canvas, region));
+          const { data } = await recognizeTemporary(ready, textCrop(canvas, region));
           let text = String(data.text || '').slice(0, 3500);
           if (data.confidence >= 40 && usefulReference(text)) {
             if (region.kind === 'header-text') {
@@ -99,7 +106,7 @@
                 y: region.y + Math.round(region.height * .52), width: Math.round(region.width * .20),
                 height: Math.round(region.height * .42) };
               await ready.setParameters({ tessedit_pageseg_mode: '7' });
-              const sizeResult = await ready.recognize(textCrop(canvas, sizeRegion));
+              const sizeResult = await recognizeTemporary(ready, textCrop(canvas, sizeRegion));
               await ready.setParameters({ tessedit_pageseg_mode: '11' });
               const size = String(sizeResult.data.text || '').trim().toUpperCase();
               if (sizeResult.data.confidence >= 60 && /^(XXXL|XXL|XL|XS|L|M|S|P|G|GG|PP)$/.test(size)) text += '\n' + size;
@@ -113,22 +120,25 @@
         for(const angle of [270,90,180,0]){
           if(expired)throw new Error('Leitura local demorou demais');
           const turned=rotatedCanvas(canvas,angle);
+          try {
           const whole=await ready.recognize(turned);
           const wholeText=String(whole.data.text||'').slice(0,3500);
           if(whole.data.confidence>=40&&usefulReference(wholeText)){if(hasSize(wholeText))return wholeText;if(!best)best=wholeText;}
           const region={x:Math.round(turned.width*.12),y:Math.round(turned.height*.12),width:Math.round(turned.width*.78),height:Math.round(turned.height*.76),kind:'label'};
           await ready.setParameters({tessedit_pageseg_mode:'6'});
-          const result=await ready.recognize(textCrop(turned,region));
+          const result=await recognizeTemporary(ready,textCrop(turned,region));
           await ready.setParameters({tessedit_pageseg_mode:'11'});
           const text=String(result.data.text||'').slice(0,3500);
           if(result.data.confidence>=40&&usefulReference(text)){
             if(hasSize(text))return text;
             if(!best)best=text;
           }
+          } finally { if(turned!==canvas){turned.width=0;turned.height=0;} }
         }
         if (best) return best;
         const result = await ready.recognize(canvas);
         return (result.data.confidence >= 45 ? result.data.text : '').slice(0, 4000);
+        } finally { if(canvas!==image){canvas.width=0;canvas.height=0;} }
       })();
       return await Promise.race([work, new Promise((_, reject) => {
         deadline = setTimeout(() => { expired = true; stop(); reject(new Error('Leitura local demorou demais')); }, 45000);

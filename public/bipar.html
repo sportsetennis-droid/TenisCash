@@ -311,8 +311,8 @@
   </section>
   </details>
 
-<script src="/scanner-barcode-policy.js?v=20261027-internal-codes-1"></script><script src="/scanner-confirm.js?v=20260915-resume-2"></script><script src="/scanner-view.js?v=20261018-recent-reads-1"></script><script src="/scanner-camera.js?v=20261018-live-fast-2"></script><script src="/scanner-round.js?v=20261109-replacement-1"></script><script src="/bipar-transfer.js?v=20261002-actions-1"></script><script src="/scanner-photo-storage.js?v=20261109-action-archive-1"></script><script src="/scan-action-photos.js?v=20261109-archive-1"></script><script src="/bipar-actions.js?v=20261109-replacement-1"></script>
-<script src="/vendor/barcode/zxing-reader-3.1.4.js"></script><script src="/scanner-auto.js?v=20261027-internal-codes-1"></script><script src="/scanner-regions.js?v=20260914-worker-1"></script><script src="/scanner-ocr.js?v=20260914-auto-3"></script>
+<script src="/scanner-barcode-policy.js?v=20261027-internal-codes-1"></script><script src="/scanner-confirm.js?v=20260915-resume-2"></script><script src="/scanner-view.js?v=20261018-recent-reads-1"></script><script src="/scanner-camera.js?v=20261018-live-fast-2"></script><script src="/scanner-round.js?v=20261109-replacement-1"></script><script src="/bipar-transfer.js?v=20261002-actions-1"></script><script src="/scanner-photo-storage.js?v=20261109-bounded-memory-1"></script><script src="/scan-action-photos.js?v=20261109-archive-1"></script><script src="/bipar-actions.js?v=20261109-replacement-1"></script>
+<script src="/vendor/barcode/zxing-reader-3.1.4.js"></script><script src="/scanner-auto.js?v=20261109-bounded-memory-1"></script><script src="/scanner-regions.js?v=20260914-worker-1"></script><script src="/scanner-ocr.js?v=20261109-bounded-memory-1"></script>
 
 <script>
   function stocktakeFetch(url,options={}) { return fetch(url,{...options,headers:{...(window.BiparActions?.headers?.()||{}),...(options.headers||{})}}); }
@@ -843,41 +843,60 @@
   }
   function etiqIdentity(item) { return item.clientScanId ? 'id:' + (item.roundId || '') + ':' + item.clientScanId : item.lid ? 'lid:' + item.lid : 'legacy:' + JSON.stringify(item); }
   function etiqCopy(item) { return JSON.parse(JSON.stringify(item)); }
+  function etiqMetadata(item) {
+    const fields = { ...item };
+    if (fields.photoRef) delete fields.b64;
+    return etiqCopy(fields);
+  }
+  function etiqReleasePhotos() {
+    // Originals stay in IndexedDB. Only the current manual preview needs RAM.
+    for (const item of etiqFila) {
+      const base = etiqSave.baseline.get(etiqIdentity(item));
+      if (item.photoRef && base?.photoRef === item.photoRef && base.photoRevision === item.photoRevision &&
+          item.lid !== etiqAtivo) delete item.b64;
+    }
+  }
+  async function etiqReadPhoto(item) {
+    if (item.b64) return item.b64;
+    return etiqPhotoStorage.readPhoto(item.photoRef);
+  }
   function etiqMergeStored(rows) {
     const known = new Map(etiqFila.map(item => [etiqIdentity(item), item]));
     for (const row of rows) {
       const identity = etiqIdentity(row), current = known.get(identity);
       if (!current) {
         etiqFila.push(row); known.set(identity, row);
-        etiqSave.baseline.set(identity, etiqCopy(row));
+        etiqSave.baseline.set(identity, etiqMetadata(row));
         continue;
       }
       const base = etiqSave.baseline.get(identity) || {};
       // OCR, network replies and a newer frame can change this object while
       // IDB commits. Merge only fields which have not changed locally.
-      const dirtyPhoto = JSON.stringify(current.b64) !== JSON.stringify(base.b64);
+      const dirtyPhoto = Number(current.photoRevision || 0) !== Number(base.photoRevision || 0) ||
+        (current.b64 && !current.photoRef && current.b64 !== base.b64);
+      if (!dirtyPhoto && row.photoRef && row.photoRef !== current.photoRef) delete current.b64;
       for (const [key, value] of Object.entries(row)) {
         if ((key === 'b64' || key === 'photoRef') && dirtyPhoto) continue;
         if (JSON.stringify(current[key]) === JSON.stringify(base[key])) current[key] = value;
       }
-      etiqSave.baseline.set(identity, etiqCopy(row));
+      etiqSave.baseline.set(identity, etiqMetadata(row));
     }
   }
   function etiqSave(capturedFrame) {
     // A tap freezes its own image before any asynchronous work. Keep every
     // revision until its transaction commits, even if another tap arrives.
-    if (capturedFrame) etiqPendingFrames.push(etiqCopy(capturedFrame));
+    if (capturedFrame) etiqPendingFrames.push({ ...capturedFrame });
     const run = etiqSave.queue.catch(() => {}).then(async () => {
       const wasBlocked = etiqStorageFailed;
       try {
         await etiqRestorePromise;
         if (!etiqPhotoStorage) throw new Error('Armazenamento de fotos não carregado');
-        if (!etiqStorageReady) { etiqMergeStored(await etiqPhotoStorage.read()); etiqStorageReady = true; }
+        if (!etiqStorageReady) { etiqMergeStored(await etiqPhotoStorage.read({ includeImages: false })); etiqStorageReady = true; }
         await etiqPhotoStorage.migrateLegacy();
         while (etiqPendingFrames.length) {
           const frame = etiqPendingFrames[0], identity = etiqIdentity(frame);
           const saved = await etiqPhotoStorage.append(identity, frame);
-          etiqSave.baseline.set(identity, etiqCopy(saved));
+          etiqSave.baseline.set(identity, etiqMetadata(saved));
           const current = etiqFila.find(row => etiqIdentity(row) === identity);
           if (current?.photoRevision === frame.photoRevision && current.b64 === frame.b64 && saved.photoRef) current.photoRef = saved.photoRef;
           etiqPendingFrames.shift();
@@ -885,7 +904,7 @@
           // queue refresh or the network before offering Next for this piece.
           renderEtiqCaptureState();
         }
-        const snapshot = etiqFila.map(etiqCopy);
+        const snapshot = etiqFila.map(etiqMetadata);
         for (const item of snapshot) {
           const identity = etiqIdentity(item), base = etiqSave.baseline.get(identity);
           const fields = Object.fromEntries(Object.entries(item).filter(([key, value]) => !base || JSON.stringify(base[key]) !== JSON.stringify(value)));
@@ -893,11 +912,12 @@
           const saved = await etiqPhotoStorage.append(identity, fields);
           // Advance after each committed piece, even if the next piece fails.
           // A retry cannot duplicate the already durable full photo.
-          etiqSave.baseline.set(identity, { ...(base || {}), ...etiqCopy(saved) });
+          etiqSave.baseline.set(identity, etiqMetadata({ ...(base || {}), ...saved }));
           const current = etiqFila.find(row => etiqIdentity(row) === identity);
           if (saved.photoRef && current && current.b64 === item.b64) current.photoRef = saved.photoRef;
         }
-        etiqMergeStored(await etiqPhotoStorage.read());
+        etiqMergeStored(await etiqPhotoStorage.read({ includeImages: false }));
+        etiqReleasePhotos();
         etiqStorageFailed = false;
       } catch (_) { etiqStorageFailed = true; etiqAuto?.stop(); }
       etiqStorageNotice();
@@ -912,8 +932,8 @@
   etiqSave.baseline = new Map(); etiqSave.queue = Promise.resolve();
   const etiqRestorePromise = Promise.resolve().then(async () => {
     if (!etiqPhotoStorage) throw new Error('Armazenamento de fotos não carregado');
-    etiqMergeStored(await etiqPhotoStorage.read());
-    etiqFila.forEach(item => { if (item.needsSize && !item.sizeDismissed) item.sizeQueued = false; });
+    etiqMergeStored(await etiqPhotoStorage.read({ includeImages: false }));
+    etiqFila.forEach(item => { if (item.ocrStarted) item.ocrStarted = false; if (item.needsSize && !item.sizeDismissed) item.sizeQueued = false; });
     etiqStorageReady = true;
   }).catch(() => { etiqStorageFailed = true; etiqStorageNotice(); });
   window.addEventListener('storage', event => {
@@ -994,6 +1014,7 @@
         decode: frame => window.ScannerAuto.decodeInWorker(frame),
         recognize: frame => window.ScannerOCR.recognize(frame),
         recognizeMissing: false,
+        releaseSnapshots: true,
         // A pending network upload must not disable local barcode reading.
         canRead: () => etiqStorageReady && !etiqStorageFailed && etiqLeituraArmada && !etiqPausado && cameraCurrent(),
         onHint: message => { const h=document.getElementById('etiq-hint');if(h)h.textContent=message; },
@@ -1015,7 +1036,7 @@
   window.fecharScanner = function () {
     etiqCameraEpoch++; etiqCameraContext = null;
     window.ScannerConfirm?.cancel();etiqIgnoredCode='';etiqIgnoreUntil=0;
-    etiqAtivo=null;etiqRetryAt=0;
+    etiqAtivo=null;etiqRetryAt=0;etiqReleasePhotos();
     etiqAuto?.stop(); etiqAuto = null; window.ScannerAuto.stopDecoder(); clearInterval(etiqWatch);
     try { etiqReader && etiqReader.reset(); } catch (_) {}
     try { if (etiqStream) etiqStream.getTracks().forEach((t) => t.stop()); } catch (_) {}
@@ -1028,8 +1049,8 @@
   let etiqPausado = true, etiqLeituraArmada = false, etiqWatch = null, etiqAtivo = null, etiqRetryAt = 0, etiqIgnoredCode = '', etiqIgnoreUntil=0;
   function etiqPhotoDurable(item) {
     const saved = item && etiqSave.baseline.get(etiqIdentity(item));
-    return !!(item?.b64 && saved && Number(saved.photoRevision || 0) === Number(item.photoRevision || 0) &&
-      (saved.b64 === item.b64 || (item.photoRef && saved.photoRef === item.photoRef)) &&
+    return !!(item && saved && Number(saved.photoRevision || 0) === Number(item.photoRevision || 0) &&
+      ((item.b64 && saved.b64 === item.b64) || (item.photoRef && saved.photoRef === item.photoRef)) &&
       String(saved.ean || '') === String(item.ean || ''));
   }
   function renderEtiqCaptureState() {
@@ -1058,6 +1079,15 @@
       if (it.manualPhoto && it.b64 && preview.src !== it.b64) preview.src = it.b64;
       preview.hidden = !it.manualPhoto || !it.b64;
       preview.style.display = preview.hidden ? 'none' : 'block';
+      if (it.manualPhoto && !it.b64 && it.photoRef && preview._loadingRef !== it.photoRef) {
+        const revision = it.photoRevision, ref = it.photoRef;
+        preview._loadingRef = ref;
+        etiqReadPhoto(it).then(image => {
+          if (etiqAtivo !== it.lid || it.photoRevision !== revision || it.photoRef !== ref ||
+              document.getElementById('etiq-photo-preview') !== preview) return;
+          it.b64 = image; renderEtiqCaptureState();
+        }).catch(() => { if (preview._loadingRef === ref) preview._loadingRef = null; });
+      }
     }
     Object.assign(panel.style, { display: 'flex', inset: '0', padding: '24px', pointerEvents: 'none', background: 'rgba(0,0,0,.78)' });
     next.style.pointerEvents = 'auto';
@@ -1159,6 +1189,9 @@
     if(current && !current.complete && !queuedAuto && !savedManualPhoto && !queuedPhoto)return;
     clearInterval(etiqWatch);etiqRetryAt=0;
     if (!savedManualPhoto) etiqAtivo=null;
+    etiqReleasePhotos();
+    const preview=document.getElementById('etiq-photo-preview');
+    if(preview && !savedManualPhoto){preview.removeAttribute?.('src');preview._loadingRef=null;}
     const pane=document.getElementById('etiq-confirm');if(pane)pane.style.display='none';
     etiqUltimo='';etiqUltimoTs=0;etiqPausado=false;etiqLeituraArmada=true;
     // Próximo authorizes another physical piece, including the same code.
@@ -1199,7 +1232,7 @@
       const hint = document.getElementById('etiq-hint');
       if (hint) hint.textContent = 'Não foi possível fotografar este quadro. Mantenha a câmera aberta e toque novamente.';
       return null;
-    }
+    } finally { c.width = 0; c.height = 0; }
     delete item.photoRef;
     item.photoRevision = Number(item.photoRevision || 0) + 1; item.photoTakenAt = new Date().toISOString();
     item.ean = ean; item.st = 'fila'; item.complete = false; item.ocrDone = false; item.ocrStarted = false; item.ocrText = '';
@@ -1217,10 +1250,16 @@
     return lid;
   }
 
+  let etiqOcrBusy = false;
   function etiqStartOcr(item, revision, image, barcode) {
-    if (item.ocrDone || item.ocrStarted || !window.ScannerOCR) return;
+    if (etiqOcrBusy || item.ocrDone || item.ocrStarted || !window.ScannerOCR) return;
+    etiqOcrBusy = true;
     item.ocrStarted = true;
-    Promise.resolve().then(() => window.ScannerOCR.readForScan(image, barcode)).then(text => {
+    Promise.resolve().then(async () => {
+      const photo = image || await etiqReadPhoto(item);
+      if (Number(item.photoRevision || 0) !== revision || item.complete) return '';
+      return window.ScannerOCR.readForScan(photo, barcode);
+    }).then(text => {
       if (Number(item.photoRevision || 0) !== revision) return;
       item.ocrText = text || ''; item.ocrDone = true; item.ocrStarted = false;
       if (text && !item.complete && item.st !== 'revisao') item.st = 'fila';
@@ -1228,6 +1267,12 @@
     }).catch(() => {
       if (Number(item.photoRevision || 0) !== revision) return;
       item.ocrDone = true; item.ocrStarted = false; etiqSave();
+    }).finally(() => {
+      etiqOcrBusy = false;
+      // Keep only IDs/metadata waiting for OCR, not a closure holding every photo.
+      const next = etiqFila.find(row => !row.ocrDone && !row.ocrStarted && !row.complete &&
+        !row.excluded && row.st !== 'revisao' && (row.capId || row.bipeId) && (row.photoRef || row.b64));
+      if (next) etiqStartOcr(next, Number(next.photoRevision || 0), null, next.ean || '');
     });
   }
 
@@ -1288,16 +1333,26 @@
     let progressed = false;
     let transferActivity = null;
     let sendingItem = null;
+    let sendingRevision = null;
+    const attempts = enviarFila.attempts || (enviarFila.attempts = new Map());
     try {
       await etiqRestorePromise;
       // Retry storage recovery while paused, but never post a new photograph
       // which exists only in memory and could be lost on reload.
       if (!await etiqSave()) return;
       if (window.BiparActions && !window.BiparActions.isInventory()) return;
-      const queued = x => x.st === 'fila' && (x.b64 || (x.autoRecognition && x.ean));
-      const item = etiqFila.find(x => x.lid === etiqAtivo && queued(x)) || etiqFila.find(queued);
+      const queued = x => x.st === 'fila' && (x.b64 || x.photoRef || (x.autoRecognition && x.ean));
+      // One outbox for all captured pieces. A failed piece waits its own turn;
+      // it never keeps the active camera item or the rest of the queue hostage.
+      const eligible = etiqFila.filter(x => queued(x) &&
+        (attempts.get(etiqIdentity(x))?.retryAt || 0) <= Date.now());
+      const item = eligible.reduce((first, x) => !first ||
+        (attempts.get(etiqIdentity(x))?.order || 0) < (attempts.get(etiqIdentity(first))?.order || 0) ? x : first, null);
       if (item) {
         sendingItem = item;
+        sendingRevision = Number(item.photoRevision || 0);
+        const key = etiqIdentity(item);
+        attempts.set(key, { ...attempts.get(key), order: enviarFila.sequence = (enviarFila.sequence || 0) + 1 });
         transferActivity = 'camera:' + item.roundId + ':' + item.clientScanId;
         window.ScannerTransfer?.activity(transferActivity, item);
         if(!item.roundId || !item.storeId || (!item.sellerId && !item.sellerName)){
@@ -1309,7 +1364,8 @@
         const storeId = item.storeId;
         const sellerId = item.sellerId || '';
         const sellerName = item.sellerName || '';
-        const revision = Number(item.photoRevision || 0), image = item.b64, sentBarcode = item.ean || '', sentOcr = item.ocrText || '';
+        const revision = Number(item.photoRevision || 0), sentBarcode = item.ean || '', sentOcr = item.ocrText || '';
+        const image = await etiqReadPhoto(item);
         const blob = await (await fetch(image)).blob();
         if (window.BiparActions && !window.BiparActions.isInventory()) return;
         if (Number(item.photoRevision || 0) !== revision) return;
@@ -1381,19 +1437,27 @@
     } finally {
       if (transferActivity) window.ScannerTransfer?.activity(transferActivity, null);
       etiqBusy = false;
+      if (sendingItem) {
+        const attempt = attempts.get(etiqIdentity(sendingItem));
+        const sameRevision = Number(sendingItem.photoRevision || 0) === sendingRevision;
+        if (sendingItem.st === 'fila' && sameRevision && !progressed) {
+          attempt.delay = Math.min((attempt.delay || 1000) * 2, 30000);
+          attempt.retryAt = Date.now() + attempt.delay;
+        } else { attempt.delay = 0; attempt.retryAt = 0; }
+      }
       const sameAction = !window.BiparActions || window.BiparActions.isInventory();
-      if (sameAction && etiqFila.some(item => item.st === 'fila' && (item.b64 || (item.autoRecognition && item.ean)))) {
+      const waiting = etiqFila.filter(item => item.st === 'fila' && (item.b64 || item.photoRef || (item.autoRecognition && item.ean)));
+      if (sameAction && waiting.length) {
         // A second frame can arrive while the first HTTP request is pending.
         // Wake that queue after the request finishes even if the camera closed.
-        const requested = enviarFila.requested;
-        const delay = requested || progressed ? 100 : (enviarFila.retryDelay || 2000);
-        enviarFila.retryDelay = progressed ? 2000 : Math.min(Math.max(delay * 2, 2000), 30000);
+        const nextAt = Math.min(...waiting.map(item => attempts.get(etiqIdentity(item))?.retryAt || 0));
+        const delay = Math.max(etiqStorageFailed ? 2000 : 100, nextAt - Date.now());
         clearTimeout(enviarFila.wakeTimer);
         enviarFila.wakeTimer = setTimeout(() => {
           enviarFila.wakeTimer = null;
           if (!window.BiparActions || window.BiparActions.isInventory()) enviarFila();
         }, delay);
-      } else enviarFila.retryDelay = 2000;
+      }
       enviarFila.requested = false;
     }
   }

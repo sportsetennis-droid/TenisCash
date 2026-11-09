@@ -27,7 +27,7 @@ const state = { window: { BiparActions: { isInventory: () => true }, ScannerRoun
   enviarFila: async () => { if (!state.etiqStorageFailed) uploads.push(...saved.slice(uploads.length)); }, etiqStorageNotice() {},
 };
 state.etiqSave.baseline = new Map();
-vm.createContext(state); vm.runInContext(durableCode + captureCode, state);
+vm.createContext(state); vm.runInContext(html.slice(html.indexOf('  function etiqReleasePhotos('),html.indexOf('  async function etiqReadPhoto(')) + durableCode + captureCode, state);
 const settle = () => new Promise(setImmediate);
 (async () => {
   const frame = { width: 800, height: 1200, marker: 'EXACT-DECODED-LABEL' };

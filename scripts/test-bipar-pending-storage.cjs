@@ -15,7 +15,7 @@ function retryHarness(localStorage = storage()) {
   const wait = new Promise(resolve => { reply = resolve; });
   const context = vm.createContext({ localStorage, Date, Math, window: { BiparActions: { isInventory: () => true } },
     document: { getElementById: () => badge }, bipes: [], renderLista() {}, renderStats() {},
-    fetch: (_url, options) => { requests.push(JSON.parse(options.body)); return wait; } });
+    stocktakeFetch: (_url, options) => { requests.push(JSON.parse(options.body)); return wait; } });
   const source = html.slice(html.indexOf("  const RETRY_KEY = 'tc_bipe_retry_queue';"), html.indexOf('  // Auto-retry a cada 10s'));
   vm.runInContext(source + '\nglobalThis.api={enqueueRetry,processRetryQueue,loadRetryQueue};', context);
   return { api: context.api, localStorage, requests, reply: (status = 200) => reply({ status, ok: status < 400, json: async () => ({ bipeId: 'saved-A' }) }) };

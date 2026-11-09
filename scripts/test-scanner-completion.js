@@ -32,7 +32,7 @@ const ctx = {
   Date: class extends Date { static now() { return clock; } }, setInterval: fn => (timer = fn, 1), clearInterval() {},
 };
 vm.createContext(ctx);
-vm.runInContext(section, ctx);
+vm.runInContext(html.slice(html.indexOf('  function etiqReleasePhotos('),html.indexOf('  async function etiqReadPhoto(')) + section, ctx);
 (async () => {
   ctx.window.capturaManual();
   await Promise.resolve();
@@ -49,11 +49,11 @@ vm.runInContext(section, ctx);
   autoRequests = 0;
 
   const panel = doc.getElementById('etiq-confirm');
-  ctx.window.capturaAutomatica({ ean: cap.barcode });
+  clock++; ctx.window.capturaAutomatica({ ean: cap.barcode, frame: {width:100,height:200} });
   assert.equal(ctx.etiqFila.length, 1, 'a code cannot be registered before the operator clicks Próximo');
   ctx.window.proximaEtiqueta();
   assert.equal(vm.runInContext('etiqLeituraArmada', ctx), true, 'Próximo authorizes one barcode read');
-  ctx.window.capturaAutomatica({ ean: cap.barcode });
+  clock++; ctx.window.capturaAutomatica({ ean: cap.barcode, frame: {width:100,height:200} });
   await Promise.resolve();
   const firstAuto = ctx.etiqFila[1];
   assert.equal(vm.runInContext('etiqAtivo', ctx), firstAuto.lid, 'the read remains selected until confirmed');
@@ -62,14 +62,14 @@ vm.runInContext(section, ctx);
   assert.equal(autoRequests, 1, 'the first read begins server verification without awaiting its response');
 
   // Another code in view is ignored until the user explicitly clicks Próximo.
-  ctx.window.capturaAutomatica({ ean: cap.barcode });
+  clock++; ctx.window.capturaAutomatica({ ean: cap.barcode, frame: {width:100,height:200} });
   await Promise.resolve();
   assert.equal(ctx.etiqFila.length, 2, 'a second visible barcode is ignored without another click');
   assert.equal(autoRequests, 1);
   firstAuto.bipeId = 'bipe1'; firstAuto.st = 'vinculado';
   ctx.window.proximaEtiqueta();
   assert.equal(vm.runInContext('etiqLeituraArmada', ctx), true, 'the next click authorizes the next physical piece');
-  ctx.window.capturaAutomatica({ ean: cap.barcode });
+  clock++; ctx.window.capturaAutomatica({ ean: cap.barcode, frame: {width:100,height:200} });
   await Promise.resolve();
   const secondAuto = ctx.etiqFila[2];
   assert(secondAuto, 'a second piece is accepted after the second explicit click');
