@@ -10,8 +10,8 @@ const url = process.env.TRANSFER_TEST_DATABASE_URL;
 const target = url && new URL(url);
 if (!target || !['postgres:', 'postgresql:'].includes(target.protocol)
   || !['localhost', '127.0.0.1'].includes(target.hostname)
-  || target.port !== '55329' || target.pathname !== '/bipar_transfer_20261002') {
-  throw Error('Use isolated TRANSFER_TEST_DATABASE_URL on localhost:55329/bipar_transfer_20261002');
+  || target.port !== '55329' || !['/bipar_transfer_20261002', '/scan_photo_link_final_20261109'].includes(target.pathname)) {
+  throw Error('Use isolated TRANSFER_TEST_DATABASE_URL on localhost:55329 with an explicitly allowed test database');
 }
 process.env.DATABASE_URL = url;
 const { PrismaClient } = require('@prisma/client');

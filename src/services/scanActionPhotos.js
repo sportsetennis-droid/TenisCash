@@ -38,7 +38,7 @@ async function save(db, actor, sessionId, scanId, input = {}) {
   // Authorize before processing bytes; verify again inside the write transaction.
   await access(db, actor, sessionId, scanId, true);
   const data = await decode(input);
-  return db.$transaction(async tx => {
+  const saved = await db.$transaction(async tx => {
     const { actual, scan } = await access(tx, actor, sessionId, scanId, true);
     const codes = [scan.barcode, scan.originalBarcode, ...(Array.isArray(scan.barcodeHistory) ? scan.barcodeHistory.flatMap(h => [h.from, h.to]) : [])].filter(Boolean);
     if (!codes.includes(data.barcode)) fail('O código da foto não corresponde a esta leitura.', 409);
@@ -49,6 +49,11 @@ async function save(db, actor, sessionId, scanId, input = {}) {
     }
     return { photo, archived: true };
   }, { timeout: 15000 });
+  // The image is durable even if recognition is unavailable. A bounded local
+  // OCR attempt completes this same scan; retries never create another piece.
+  try { saved.identification = await require('./scanPhotoRecognition').identify(db, actor, sessionId, scanId, saved.photo.id); }
+  catch (_) { saved.identification = { status: 'pending', retry: true, reason: 'identification_unavailable' }; }
+  return saved;
 }
 async function image(db, actor, sessionId, scanId, photoId) {
   if (!uuid(photoId)) fail('Identificador da foto inválido.');
@@ -57,4 +62,4 @@ async function image(db, actor, sessionId, scanId, photoId) {
   if (!photo) fail('Foto não encontrada nesta leitura.', 404);
   return photo;
 }
-module.exports = { metadataSelect, save, image, decode };
+module.exports = { metadataSelect, save, image, decode, access };

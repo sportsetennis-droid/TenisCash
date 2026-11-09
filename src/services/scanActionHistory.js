@@ -61,7 +61,8 @@ async function resolveSnapshots(db, scans) {
   const sizes = ids.length ? await db.productSize.findMany({ where: { id: { in: ids } }, include: { product: true } }) : [];
   const cache = new Map();
   const output = [];
-  for (const scan of scans) {
+  for (const inputScan of scans) {
+    const scan = { ...inputScan };
     let matches = [];
     if (barcodePolicy.isScanCode(scan.barcode) && key(scan.barcode)) {
       if (!cache.has(key(scan.barcode))) {
@@ -72,7 +73,18 @@ async function resolveSnapshots(db, scans) {
       }
       matches = cache.get(key(scan.barcode));
     }
-    const ps = sizes.find(s => s.id === scan.productSizeId), exact = matches.length === 1 && matches[0].id === ps?.id;
+    let ps = sizes.find(s => s.id === scan.productSizeId);
+    // A slow browser may resend the pending snapshot after server-side photo
+    // identification. Preserve only this scan's audited, still-matching proof.
+    if (!scan.removed && matches.length === 1 && db.adminAction?.findUnique) {
+      const audit = await db.adminAction.findUnique({ where: { id: 'scan-photo-link:' + scan.clientScanId + ':' + key(scan.barcode) } });
+      let proof; try { proof = JSON.parse(audit?.metadata || '{}'); } catch (_) { proof = {}; }
+      if (proof.barcode === scan.barcode && proof.productSizeId === matches[0].id && proof.size === matches[0].size
+        && (!scan.productSizeId || scan.productSizeId === proof.productSizeId) && (!scan.confirmedSize || sizeKey(scan.confirmedSize) === sizeKey(proof.size))) {
+        ps = matches[0]; scan.productSizeId = ps.id; scan.confirmedSize = proof.size; scan.error = '';
+      }
+    }
+    const exact = matches.length === 1 && matches[0].id === ps?.id;
     const requiresSizeConfirmation = /adidas/i.test(ps?.product?.brand || '');
     const confirmed = !requiresSizeConfirmation || (validSize(scan.confirmedSize) && sizeKey(scan.confirmedSize) === sizeKey(ps?.size));
     const recognized = !!(exact && ps.product.active && validSize(ps.size) && confirmed && (!scan.confirmedSize || sizeKey(scan.confirmedSize) === sizeKey(ps.size)) && !scan.error);

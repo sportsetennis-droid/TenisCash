@@ -136,7 +136,7 @@ async function fiscalBarcodeTarget(db,barcode){
 
 // Learns a barcode only after one exact target is established. The optional
 // confirmedProductId is used exclusively by the authenticated review endpoint.
-async function learnScannerBarcode(db, { barcode, read, size, confirmedProductId }) {
+async function learnScannerBarcode(db, { barcode, read, size, confirmedProductId, archivedLabel }) {
   barcode = String(barcode || '').trim();
   if (!validGtin(barcode)) return { reason: 'invalid_barcode' };
   const codes = referencesFrom(read);
@@ -150,17 +150,20 @@ async function learnScannerBarcode(db, { barcode, read, size, confirmedProductId
     const rawOwners = await tx.productSize.findMany({ where: { barcode: { in: variants(barcode) } }, include: { product: true } });
     const owners=await resolveBarcodeRows(tx,rawOwners);
     if(!owners.length)owners.push(...await aliasRows(tx,barcode));
+    if(archivedLabel){const aliases=await aliasRows(tx,barcode);if(aliases.some(a=>owners.some(o=>o.id!==a.id)))return {reason:'barcode_conflict'};}
     if (owners.length > 1) return { reason: 'barcode_conflict' };
     const candidates = await referenceCandidates(tx, codes);
     if (!confirmedProductId && candidates.length > 1) return { reason: 'reference_conflict' };
-    const fiscal = !owners.length || !owners[0].sizeConfirmedAt ? await fiscalBarcodeTarget(tx,barcode) : null;
+    const photoTarget = archivedLabel ? await require('./scannerArchivedLabel').target(tx, barcode, archivedLabel) : null;
+    if (archivedLabel && !photoTarget?.productId) return { reason: photoTarget?.reason || 'photo_evidence_conflict' };
+    const fiscal = photoTarget || (!owners.length || !owners[0].sizeConfirmedAt ? await fiscalBarcodeTarget(tx,barcode) : null);
     if(fiscal?.reason && !owners.length && !confirmedProductId)return {reason:fiscal.reason};
     if(fiscal?.productId && candidates.some(c=>c.id!==fiscal.productId))return {reason:'reference_conflict'};
     if(fiscal?.size && size && size!==fiscal.size)return {reason:'size_conflict'};
     if(!size && fiscal?.size)size=fiscal.size;
     const pid = confirmedProductId || candidates[0]?.id || owners[0]?.productId || fiscal?.productId;
     if (!pid) return { reason: 'reference_not_found' };
-    if(fiscal?.officialEvidence&&fiscal.productId!==pid)return {reason:'reference_conflict'};
+    if((fiscal?.officialEvidence||fiscal?.photoEvidence)&&fiscal.productId!==pid)return {reason:'reference_conflict'};
     if (owners.length && owners[0].productId !== pid) return { reason: 'barcode_conflict' };
     await tx.$queryRaw`SELECT id FROM "Product" WHERE id = ${pid} FOR UPDATE`;
     const product = await tx.product.findUnique({ where: { id: pid }, include: { sizes: true } });
@@ -216,7 +219,7 @@ async function learnScannerBarcode(db, { barcode, read, size, confirmedProductId
     const existing = Array.isArray(context.scannerReferences) ? context.scannerReferences : [];
     if (confirmedProductId || previousReference || fiscal?.itemId) await tx.product.update({ where: { id: pid }, data: { aiContext: { ...context,
       scannerReferences: [...new Set([...existing, ...(confirmedProductId ? codes : []), ...(previousReference ? [previousReference] : [])])],
-      scannerReferenceEvidence: { source: fiscal?.officialEvidence ? 'exact-incoming-nfe-and-confirmed-official-variant' : fiscal?.itemId ? 'exact-incoming-nfe-gtin-product-and-size' : confirmedProductId ? 'operator-confirmed-label' : 'existing-variant-reference', fiscalItemId:fiscal?.itemId||null, barcode, size, ...(fiscal?.officialEvidence?{officialVariant:fiscal.officialEvidence}:{}), confirmedAt: new Date().toISOString() },
+      scannerReferenceEvidence: { source: fiscal?.photoEvidence ? 'archived-photo-and-exact-incoming-nfe' : fiscal?.officialEvidence ? 'exact-incoming-nfe-and-confirmed-official-variant' : fiscal?.itemId ? 'exact-incoming-nfe-gtin-product-and-size' : confirmedProductId ? 'operator-confirmed-label' : 'existing-variant-reference', fiscalItemId:fiscal?.itemId||null, barcode, size, ...(fiscal?.photoEvidence?{photoEvidence:fiscal.photoEvidence}:{}), ...(fiscal?.officialEvidence?{officialVariant:fiscal.officialEvidence}:{}), confirmedAt: new Date().toISOString() },
     } } });
     return { productId: pid, productSizeId: ps.id, name: product.name, barcode, reason: 'matched' };
   }, { isolationLevel: 'Serializable', timeout: 15000 });

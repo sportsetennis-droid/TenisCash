@@ -28,7 +28,17 @@
   const photoArchive = window.ScanActionPhotos?.create({
     canUpload: row => !!actor && !!token && (row.operatorId === actor.id || canRecoverOthers()),
     beforeUpload: async row => { const draft = [...drafts.values()].find(d => d.sessionId === row.lotId); return draft ? flushSync(draft) : true; },
-    upload: row => api('/history/' + row.lotId + '/scans/' + row.scanId + '/photos', { photo: row.b64, barcode: row.barcode, capturedAt: row.capturedAt, ocrText: row.ocrText }),
+    upload: async row => {
+      const requestToken = token, data = await api('/history/' + row.lotId + '/scans/' + row.scanId + '/photos', { photo: row.b64, barcode: row.barcode, capturedAt: row.capturedAt, ocrText: row.ocrText });
+      const draft = [...drafts.values()].find(d => d.sessionId === row.lotId), item = draft?.scans.find(s => s.clientScanId === row.scanId);
+      if (data.identification?.status === 'linked' && item && !item.removed && item.barcode === row.barcode && token === requestToken && actor?.id === row.operatorId) {
+        await resolveRead(draft, item, '', true);
+        if (token === requestToken && !item.removed && item.barcode === row.barcode && item.product?.productSizeId === data.identification.product?.productSizeId) {
+          item.confirmedSize = data.identification.confirmedSize; persist(draft); if (draft === currentDraft) { renderReadings(); refresh(); }
+        }
+      }
+      return data;
+    },
     changed: row => {
       const draft = [...drafts.values()].find(d => d.sessionId === row.lotId), item = draft?.scans.find(s => s.clientScanId === row.scanId);
       if (item) { item.photoSaved = true; item.photoRequired = true; item.photoArchived = row.allArchived; item.photoError = row.error || ''; persist(draft); }
@@ -656,13 +666,13 @@
       invalidate(); renderReadings(); refresh(); refreshLegacyReads();
     } catch (error) { if (request === shipmentRequest && action === 'receipt' && $('loja').value === selectedStore && token === authToken) { setOptions($('action-shipment'), [], 'Falha na consulta — atualize', ''); message(error.message + ' Você pode continuar bipando; atualize a lista antes de confirmar.', true); refresh(); } }
   }
-  async function resolveRead(draft, item, ocrText = '') {
+  async function resolveRead(draft, item, ocrText = '', force = false) {
     if (!draft || currentDraft !== draft || item.removed || !activeReads(draft).includes(item) || !validContext() || read(pendingKey, null)) return false;
     const authToken = token, owner = actor?.id, gen = generation, cameraAtRequest = cameraGeneration, barcode = item.barcode, selected = JSON.stringify(context());
     const current = () => currentDraft === draft && generation === gen && selected === JSON.stringify(context()) && owner === draft.context.actorId && token === authToken && actor?.id === owner && item.barcode === barcode && !item.removed && activeReads(draft).includes(item) && validContext() && !read(pendingKey, null);
     const existing = lookups.get(item.clientScanId);
     if (existing) {
-      if (existing.gen === gen && existing.selected === selected && existing.barcode === barcode && existing.authToken === authToken && !String(ocrText).trim()) return existing.promise;
+      if (!force && existing.gen === gen && existing.selected === selected && existing.barcode === barcode && existing.authToken === authToken && !String(ocrText).trim()) return existing.promise;
       await existing.promise;
       if (!current()) return false;
       return resolveRead(draft, item, ocrText);

@@ -38,7 +38,7 @@
     async function flush() {
       if (running) return running;
       running = (async () => {
-        const rows = await storage.read({ filter: row => row.status !== 'archived' && options.canUpload(row) });
+        const rows = await storage.read({ filter: row => (row.status !== 'archived' || row.identificationPending) && options.canUpload(row) });
         for (const row of rows) {
           if (!options.canUpload(row)) break;
           try {
@@ -48,7 +48,7 @@
             // Another OCR update may have arrived during this upload. Keep it pending.
             const latest = (await storage.read({ includeImages: false, filter: x => x.clientScanId === row.clientScanId }))[0];
             const status = (latest?.ocrText || '') === (row.ocrText || '') ? 'archived' : 'pending';
-            const update = { status, photoId: data.photo.id, error: '' };
+            const update = { status, photoId: data.photo.id, error: '', identificationPending: data.identification?.retry === true };
             await storage.append('id:' + row.clientScanId, update); await changed({ ...row, ...update });
           } catch (error) {
             const update = { status: 'pending', error: error.message || 'Sem conexão. Foto preservada neste aparelho.' };
