@@ -1,5 +1,5 @@
 'use strict';
-const assert=require('node:assert/strict'),{randomUUID}=require('node:crypto'),fs=require('node:fs'),vm=require('node:vm'),express=require('express'),jwt=require('jsonwebtoken');
+const assert=require('node:assert/strict'),{randomUUID,createHash}=require('node:crypto'),fs=require('node:fs'),vm=require('node:vm'),express=require('express'),jwt=require('jsonwebtoken');
 const url=process.env.ROUND_TEST_DATABASE_URL;
 if(!url?.startsWith('postgresql://roundtest@127.0.0.1:55329/stock_replacement_'))throw Error('Somente PostgreSQL isolado local55329 stock_replacement_.');
 process.env.DATABASE_URL=url;
@@ -33,14 +33,17 @@ async function excludeUnderLock(f,{entered,release}={}){
 function realIdentify(f,{beforeUpdate,releaseUpdate}){
  // Execute the actual route functions; only OCR/catalog identification is a
  // deterministic test input. All state, exclusion and stock use real PG.
- let transactions=0;
+ let transactions=0,callback;
  const prisma=new Proxy(db,{get(target,key){if(key==='$transaction')return async(...args)=>{if(++transactions===2){beforeUpdate.resolve();await releaseUpdate.promise;}return target.$transaction(...args);};if(key!=='productCapture')return target[key];return new Proxy(target.productCapture,{get(t,k){if(k!=='updateMany')return typeof t[k]==='function'?t[k].bind(t):t[k];return async args=>{beforeUpdate.resolve();await releaseUpdate.promise;return t.updateMany(args);};}});}});
- const context={prisma,capturePhotos:photos,barcodePolicy:policy,barcodeVariants:policy.variants,parseScannerText:()=>({sku:'RACE001',tamanho:'41',marca:'PUMA'}),normalizeScannedSize:x=>x,
+ const context={prisma,capturePhotos:photos,barcodePolicy:policy,barcodeVariants:policy.variants,parseScannerText:()=>({sku:'RACE001',tamanho:'41',marca:'PUMA'}),require,
   learnScannerBarcode:async()=>({reason:'matched',name:f.product.name,productId:f.product.id,productSizeId:f.ps.id}),matchInternalBarcode:async()=>{throw Error('unexpected internal code');},needsManualSize:()=>false,
-  applyBipeIfReady:async()=>({applied:false,reason:'replacement_validation_pending'}),scannerPendingMessage:()=> 'pending',replacement:service,console,module:{exports:null}};
- const a=source.indexOf('async function garantirBipeDaCaptura('),b=source.indexOf('\n// Extrai o PRIMEIRO objeto',a),c=source.indexOf('async function processarEtiqueta('),d=source.indexOf('\n// Automatic recognition',c);
- assert.ok(a>=0&&b>a&&c>b&&d>c);vm.runInNewContext(source.slice(a,b)+'\n'+source.slice(c,d)+'\nmodule.exports=processarEtiqueta;',context);
- return context.module.exports;
+  applyBipeIfReady:async()=>({applied:false,reason:'replacement_validation_pending'}),scannerPendingMessage:()=> 'pending',replacement:service,
+  replacementQueue:{get:()=>({setIdentify:fn=>{callback=fn;}})},console,module:{exports:null}};
+ const a=source.indexOf('async function garantirBipeDaCaptura('),b=source.indexOf('\n// Extrai o PRIMEIRO objeto',a),c=source.indexOf('function archivedCaptureRead('),d=source.indexOf('\n// Automatic recognition',c);
+ const n=source.indexOf('function normalizeScannedSize('),ne=source.indexOf('// Variantes do código',n),r=source.indexOf('const replacementReadToken='),re=source.indexOf('let replacementRecoveryRunning=',r);
+ assert.ok(a>=0&&b>a&&c>b&&d>c&&n>=0&&ne>n&&r>=0&&re>r);vm.runInNewContext(source.slice(n,ne)+'\n'+source.slice(a,b)+'\n'+source.slice(c,d)+'\n'+source.slice(r,re),context);
+ return (captureId,photo,barcode,meta)=>callback(captureId,photo,barcode,{...meta,captureId:f.capture.id,
+  photoHash:createHash('sha256').update(f.capture.photo).digest('hex'),captureContext:{roundId:f.capture.roundId,storeId:f.capture.storeId,scanKey:f.capture.scanKey,sellerId:f.capture.sellerId}});
 }
 (async()=>{
  photo='data:image/png;base64,'+(await require('sharp')({create:{width:40,height:40,channels:3,background:'#fff'}}).png().toBuffer()).toString('base64');

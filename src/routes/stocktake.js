@@ -56,7 +56,12 @@ async function authorizeReplacement(req,res,roundId=req.body?.roundId){
   return true;
 }
 const replacementQueue=require('../services/stockReplacementQueue');
-replacementQueue.get(prisma).setIdentify(processarEtiqueta);
+const replacementReadToken=Symbol('archived-capture-worker');
+replacementQueue.get(prisma).setIdentify((capId,photo,ean,meta)=>processarEtiqueta(capId,photo,ean,{
+  captureId:meta?.captureId,photoHash:meta?.photoHash,photoRevision:meta?.photoRevision,
+  captureContext:meta?.captureContext,
+  ocrText:meta?.ocrText,serverRead:meta?.serverRead,serverReadToken:replacementReadToken,
+}));
 let replacementRecoveryRunning=false;
 const replacementRecovery=setInterval(async()=>{
   if(replacementRecoveryRunning)return;replacementRecoveryRunning=true;
@@ -785,6 +790,7 @@ async function garantirBipeDaCaptura(capId, pid, psId, barcodePref, expectedPhot
       // with a decoded barcode, never through OCR or the background status job.
       if (capturePhotos.revisionOf(cap.note) && !cap.bipeId) return null;
       if (expectedPhoto && (cap.photo !== expectedPhoto.photo || capturePhotos.revisionOf(cap.note) !== expectedPhoto.photoRevision)) return null;
+      if (expectedPhoto?.context && ['roundId','storeId','scanKey','sellerId'].some(key=>cap[key]!==expectedPhoto.context[key])) return null;
       // A reference/size or a saved photograph is not an actually read barcode.
       if (!cap.barcode || !barcodePref || !barcodeVariants(cap.barcode).includes(barcodePref)) return null;
       if (cap.roundId) {
@@ -833,17 +839,44 @@ function parseJsonSeguro(t) {
   return null;
 }
 
+function archivedCaptureRead(capture,photo,ean,meta){
+  const observed=meta?.serverRead;
+  // Only the server's queue callback can provide this capability. HTTP text
+  // and stored notes never acquire an archived-photo verdict by naming fields.
+  if(meta?.serverReadToken!==replacementReadToken||!observed||observed.pending||observed.conflict||observed.reason||
+    observed.source!=='archived-photo-local-ocr-v1'||meta.captureId!==capture.id||
+    !meta.captureContext||['roundId','storeId','scanKey','sellerId'].some(key=>capture[key]!==meta.captureContext[key])||
+    !meta.photoRevision||capturePhotos.revisionOf(capture.note)!==meta.photoRevision||capture.photo!==photo||
+    typeof photo!=='string'||!photo.startsWith('data:image/')||
+    !/^[a-f0-9]{64}$/.test(meta.photoHash||'')||require('node:crypto').createHash('sha256').update(photo).digest('hex')!==meta.photoHash||
+    !barcodePolicy.isScanCode(ean)||barcodePolicy.identity(ean)!==barcodePolicy.identity(capture.barcode)||
+    !Array.isArray(observed.decodedBarcodes)||observed.decodedBarcodes.length!==1||
+    barcodePolicy.identity(observed.decodedBarcodes[0])!==barcodePolicy.identity(capture.barcode)||
+    !Array.isArray(observed.references)||!observed.references.length||
+    observed.references.some(ref=>typeof ref!=='string'||!ref.trim()||ref.length>50)||typeof observed.size!=='string')return null;
+  const size=normalizeScannedSize('BR '+observed.size);
+  if(!size||size!==observed.size)return null;
+  const brands=[...new Set([...String(observed.text||'').toUpperCase().matchAll(/\b(SKECHERS|NIKE|ADIDAS|FIBER|TOPPER|MIZUNO|ASICS|PUMA|FILA|REEBOK|OLYMPIKUS|UMBRO|EVERLAST|NEW BALANCE|UNDER ARMOUR)\b/g)].map(match=>match[1]))];
+  if(brands.length>1)return null;
+  // Geometry already paired the Brazilian scale and full printed reference.
+  // Re-parsing flattened OCR text here would discard that same-photo evidence.
+  return {codigos:[...observed.references],sku:observed.references[0],ean,
+    tamanho:'BR '+size,marca:brands[0]||null,source:observed.source};
+}
+
 async function processarEtiqueta(capId, photo, eanLocal, meta) {
   const capture = await prisma.productCapture.findUnique({ where: { id: capId } });
   if (!capture || capture.excludedAt || capture.status === 'descartado') return;
   if (capturePhotos.revisionOf(capture.note) && !capture.bipeId) return;
   if (meta?.photoRevision && (capturePhotos.revisionOf(capture.note) !== meta.photoRevision || capture.photo !== photo)) return;
   if (!capture.barcode) return { vinculado: false, mensagem: 'Foto salva. Aguardando código de barras.' };
-  const lido = parseScannerText(meta?.ocrText) || meta?.previousRead || null;
   const ean = eanLocal || capture.barcode;
   // An unreadable photograph stays saved and pending. Never substitute SKU,
   // catalogue barcode or OCR digits for the barcode actually decoded/received.
   if (!ean || !capture.barcode) return { vinculado: false, mensagem: 'Foto salva. Aguardando código de barras.' };
+  const hasServerRead=!!meta&&Object.prototype.hasOwnProperty.call(meta,'serverRead');
+  const lido=hasServerRead?archivedCaptureRead(capture,photo,ean,meta):(parseScannerText(meta?.ocrText)||meta?.previousRead||null);
+  if(hasServerRead&&!lido)return {vinculado:false,reason:'photo_evidence_conflict',mensagem:'A conferência não corresponde à foto atual desta peça.'};
   const scannedSize = normalizeScannedSize(lido?.tamanho);
   const match = barcodePolicy.isInternalCode(ean)
     ? await matchInternalBarcode(prisma, ean, scannedSize)
@@ -852,7 +885,9 @@ async function processarEtiqueta(capId, photo, eanLocal, meta) {
   let bipesCasados = 0;
   const cardNome = match.name, matchedProductId = match.productId, psId = match.productSizeId;
   if (vinculado && psId) {
-    const linked = await garantirBipeDaCaptura(capId, matchedProductId, psId, ean, meta?.photoRevision ? { photo, photoRevision: meta.photoRevision } : null);
+    const linked = await garantirBipeDaCaptura(capId, matchedProductId, psId, ean, meta?.photoRevision ? {
+      photo,photoRevision:meta.photoRevision,...(hasServerRead?{context:meta.captureContext}:{}),
+    } : null);
     bipesCasados = linked ? 1 : 0;
     if (!linked) vinculado = false;
   }
@@ -935,7 +970,12 @@ router.post('/etiqueta',
       const queue=req.replacementRound?replacementQueue.get(prisma):null;
       if(queue)await queue.start();
       const savedPhoto = await capturePhotos.savePhoto(prisma, { storeId, sellerId, sellerName,
-        roundId, scanKey: key, photo, barcode: eanCam, photoRevision }, queue?{afterSave:(tx,capture)=>queue.enqueueCapture(capture,{tx})}:{});
+        roundId, scanKey: key, photo, barcode: eanCam, photoRevision }, queue?{afterSave:async(tx,capture)=>{
+          const confirmed=await require('../services/scannerRepeatConfirmation').record(tx,capture,{
+            actorId:req.userId,confirmedCount:req.body.repeatConfirmedCount,photo,photoRevision,barcode:eanCam,
+          });
+          return queue.enqueueCapture(confirmed,{tx});
+        }}:{});
       const previousCapture = savedPhoto.capture;
       const photoAck = { ok: true, salvo: true, photoSaved: true, capId: previousCapture.id,
         photoRevision: savedPhoto.photoRevision, receivedPhotoRevision: savedPhoto.receivedPhotoRevision };
@@ -1158,7 +1198,7 @@ router.get('/etiqueta-status', async (req, res) => {
         status: discarded?'descartado':live&&check?.appliedAt&&!check.reversedAt?'vinculado':live&&reasonCode&&!check?.appliedAt?'pendente':row.status,
         excludedAt,
         reasonCode,
-        mensagem: live ? (check?.appliedAt&&!check.reversedAt?'Uma peça incluída no novo estoque oficial.':replacement.reasonText(reasonCode)) : capturePhotos.visibleNote(row.note).replace(/^etiqueta\s*/, '').replace(/\s*\{.*$/, '').trim(),
+        mensagem: live ? (check?.appliedAt&&!check.reversedAt?'Uma peça incluída no novo estoque oficial.':replacement.reasonText(reasonCode,{autoReprocess:outcome?.autoReprocess===true})) : capturePhotos.visibleNote(row.note).replace(/^etiqueta\s*/, '').replace(/\s*\{.*$/, '').trim(),
         bipeId: bipe?.id || null,
         appliedToStock: Boolean(bipe?.applied),
         needsSize,

@@ -3,6 +3,7 @@ const barcodePolicy=require('../../public/scanner-barcode-policy');
 const photos=require('./scannerCapturePhoto');
 const catalog=require('./scannerCatalog');
 const staff=require('./scanTransfers');
+const repeatConfirmation=require('./scannerRepeatConfirmation');
 
 function eligible(capture,round){
  if(!capture||capture.excludedAt||capture.status==='descartado')return 'capture_inactive';
@@ -34,6 +35,13 @@ function createRecovery({decode=photo=>require('./barcodeDecoder').decodeBarcode
   const originalRound=original?.roundId?await db.stocktakeRound.findUnique({where:{id:original.roundId},select:roundSelect}):null;
   const early=eligible(original,originalRound);if(early)return {recovered:false,reason:early};
   if(!await authorized(db,original))return {recovered:false,reason:'operator_not_authorized'};
+  // A blocked repeat needs no expensive decoder pass. A historical photo or
+  // distinct scan key does not constitute approval of another physical pair.
+  const existingBefore=await db.stocktakeBipe.findUnique({where:{scanKey:original.scanKey}});
+  if(!existingBefore){
+   const repeats=await db.stocktakeBipe.count({where:{roundId:original.roundId,storeId:original.storeId,excludedAt:null,barcode:{in:barcodePolicy.variants(original.barcode)}}});
+   if(repeats>0&&!repeatConfirmation.confirmed(original,repeats))return {recovered:false,reason:'repeat_confirmation_required'};
+  }
   let decoded;
   try{decoded=await decode(original.photo)}catch(error){const suffix={SCANNER_IMAGE_BUSY:'busy',SCANNER_IMAGE_TIMEOUT:'timeout',SCANNER_IMAGE_UNAVAILABLE:'unavailable',SCANNER_IMAGE_MEMORY_LIMIT:'memory_limit'}[error.code];return {recovered:false,reason:suffix?'photo_decode_'+suffix:'photo_decode_failed'}}
   if(!decoded?.length)return {recovered:false,reason:'photo_barcode_not_found'};
@@ -57,8 +65,8 @@ function createRecovery({decode=photo=>require('./barcodeDecoder').decodeBarcode
      barcodePolicy.identity(bipe.barcode)!==barcodePolicy.identity(capture.barcode)||capture.bipeId&&capture.bipeId!==bipe.id)return {recovered:false,reason:'bipe_context_conflict'};
    }else{
     if(capture.bipeId)return {recovered:false,reason:'capture_already_linked'};
-    const repeated=await tx.stocktakeBipe.findFirst({where:{roundId:round.id,storeId:capture.storeId,excludedAt:null,barcode:{in:barcodePolicy.variants(capture.barcode)}},select:{id:true}});
-    if(repeated)return {recovered:false,reason:'repeat_confirmation_required'};
+    const repeated=await tx.stocktakeBipe.count({where:{roundId:round.id,storeId:capture.storeId,excludedAt:null,barcode:{in:barcodePolicy.variants(capture.barcode)}}});
+    if(repeated>0&&!repeatConfirmation.confirmed(capture,repeated))return {recovered:false,reason:'repeat_confirmation_required'};
     let rows=await catalog.resolveBarcodeRows(tx,await tx.productSize.findMany({where:{barcode:{in:barcodePolicy.variants(capture.barcode)}},include:{product:true},take:3}));
     if(!rows.length)rows=await catalog.aliasRows(tx,capture.barcode);
     const chosen=rows.length===1&&rows[0].product?.active?rows[0]:null;

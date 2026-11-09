@@ -24,21 +24,31 @@ function createProcessor(deps = {}) {
     let stretched=false;
     // Retain contradictory partial evidence within this photo only. A pass
     // without a complete answer may still contain a reliable BR or colour.
-    const seenSizes=new Set(),seenReferences=new Set();
+    const seenSizes=new Set(),seenReferences=new Set(),seenNumericColours=new Set(),seenNumericTokens=new Set();
     const consistent=data=>{const parts=readParts(data);if(parts.conflict)return false;
       if(parts.size)seenSizes.add(parts.size);
       for(const ref of parts.identityReferences||[])seenReferences.add(ref);
-      return seenSizes.size<=1&&seenReferences.size<=1;};
+      for(const ref of parts.numericColourReferences||[])seenNumericColours.add(ref);
+      for(const ref of parts.numericReferenceTokens||[])seenNumericTokens.add(ref);
+      return seenSizes.size<=1&&seenReferences.size<=1&&
+        (!seenNumericColours.size||new Set([...seenNumericColours,...seenNumericTokens]).size<=1);};
     for (const angle of [0, 90, 270, 180]) {
       const frame = angle ? await input(image).rotate(angle).png().toBuffer() : image;
       const metadata = await input(frame).metadata();
-      const enhanced = await input(frame).resize({ width: Math.min(3000, metadata.width * 2) }).greyscale().normalize().png().toBuffer();
+      let enhanced;
       // Same original/enhanced pixels and literal-scale guards. No database
       // product/size information is sent to this process.
       let nineDigitText=false,partial=null;
       for (const psm of ['11', '6']) {
         await worker.setParameters({ tessedit_pageseg_mode: psm });
-        for (const candidate of [frame, enhanced]) {
+        for (const enhance of [false, true]) {
+          // Try the original first, without preparing an unused enhanced
+          // raster. Preserve the exact existing enhancement pixels: reducing
+          // resolution can change the literal characters recognized by OCR.
+          if (enhance && !enhanced) {
+            enhanced = await input(frame).resize({ width: Math.min(3000, metadata.width * 2) }).greyscale().normalize().png().toBuffer();
+          }
+          const candidate = enhance ? enhanced : frame;
           const data=(await worker.recognize(candidate, {}, { text: true, blocks: true })).data;
           if(!consistent(data))return {pending:true,reason:'photo_size_or_reference_pending'};
           // This is only a trigger for another attempt, never identity/size

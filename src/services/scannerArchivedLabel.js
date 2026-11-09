@@ -42,13 +42,38 @@ function sizeWords(words) {
 }
 // Only complete printed identity shapes take part in the conflict veto.
 // Bare numeric fragments can also be manufacturing codes and are not joined.
-function identityReferences(words,references){
+function identityReferences(words,references,numericColours=[]){
   // Do not turn a field such as "SAC:0800" into an apparent model SAC0800
   // by stripping its punctuation. Require a printed model token itself.
   const literal=new Set(words.filter(w=>/^[A-Z]{1,3}\d{4,10}(?:[-/]\d{2,4})?$/.test(w.text.normalize('NFKC').toUpperCase().trim())).map(w=>norm(w.text)));
-  return references.filter(ref=>/^\d{9}[A-Z]{2,8}(?:\d{1,3})?$/.test(ref)||literal.has(ref));
+  return references.filter(ref=>/^\d{9}[A-Z]{2,8}(?:\d{1,3})?$/.test(ref)||literal.has(ref)||numericColours.includes(ref));
 }
-function printedReferences(words) {
+// Puma prints a six-digit model followed by its two-digit colour, for example
+// "107952 01". Preserve both literal tokens only when their typography and
+// spacing form one field. Size columns and weak/intervening words are vetoes.
+function numericColourReferences(words) {
+  const all=words.filter(w=>w.bbox),height=w=>w.bbox.y1-w.bbox.y0;
+  const cy=w=>(w.bbox.y0+w.bbox.y1)/2,cx=w=>(w.bbox.x0+w.bbox.x1)/2;
+  const text=w=>String(w.text||'').trim(),joined=[];
+  const following=w=>all.filter(z=>z!==w&&z.bbox.x0>=w.bbox.x1&&
+    Math.abs(cy(z)-cy(w))<=Math.max(height(w),height(z))*.3&&
+    z.bbox.x0-w.bbox.x1<=height(w)).sort((a,b)=>a.bbox.x0-b.bbox.x0);
+  for(const model of all.filter(w=>w.confidence>=75&&/^\d{6}$/.test(text(w)))){
+    const colour=following(model)[0];
+    if(!colour||colour.confidence<75||!/^\d{2}$/.test(text(colour))||
+      height(colour)<height(model)*.7||height(colour)>height(model)*1.4)continue;
+    // An extra adjacent numeric/slash token makes the printed chain incomplete.
+    if(following(colour).some(w=>/^[\d/.,-]+$/.test(text(w))))continue;
+    const ownedByScale=all.some(w=>w!==model&&w!==colour&&/^(BR|BRA|USA?|UK|EUR|EU|F|CM|CHN|JP|J|SIZE|TAM)$/i.test(text(w))&&(
+      Math.abs(cy(w)-cy(colour))<=Math.max(height(w),height(colour))*.6&&
+        Math.max(0,w.bbox.x0-colour.bbox.x1,colour.bbox.x0-w.bbox.x1)<=Math.max(height(w),height(colour))*5||
+      Math.abs(cx(w)-cx(colour))<=Math.max(w.bbox.x1-w.bbox.x0,colour.bbox.x1-colour.bbox.x0)*.6&&
+        Math.max(0,w.bbox.y0-colour.bbox.y1,colour.bbox.y0-w.bbox.y1)<=Math.max(height(w),height(colour))*1.5));
+    if(!ownedByScale)joined.push(text(model)+text(colour));
+  }
+  return [...new Set(joined)];
+}
+function printedReferences(words,numericColours=[]) {
   const references = new Set(words.filter(w=>!/^(?:BR|BRA|USA?|UK|EUR|EU|F|CM|CHN|JP|J)\s*\d{1,2}(?:[.,]5|\s*\/\s*\d{2})?$/i.test(w.text)).map(w => norm(w.text)).filter(x => /^\d{5,10}$/.test(x) ||
     (x.length >= 5 && x.length <= 25 && /[A-Z]/.test(x) && /\d/.test(x))));
   // Model and colour can be separate OCR words: "220644 / BKW". Keep
@@ -79,7 +104,8 @@ function printedReferences(words) {
     const joined=norm(model.text)+token;
     references.add(joined);joinedNineDigitReferences.add(joined);
   }
-  if(joinedNineDigitReferences.size>1 || new Set(identityReferences(words,[...references])).size>1)return null;
+  numericColours.forEach(ref=>references.add(ref));
+  if(joinedNineDigitReferences.size>1 || new Set(identityReferences(words,[...references],numericColours)).size>1)return null;
   return [...references];
 }
 
@@ -145,9 +171,15 @@ function readParts(data) {
     sizes.add(sizeKey(nearby[0].text));
   }
   if(sizes.size>1)return {conflict:true};
-  const references = printedReferences(reliable);
+  const numericColours=numericColourReferences(words);
+  // Eight digits alone can be a manufacturing code or a clipped OCR token.
+  // They become contradictory to a model/colour only after that printed
+  // six-plus-two field is present; retain candidates for the cross-pass veto.
+  const numericReferenceTokens=[...new Set(reliable.filter(w=>/^\d{6}[\s/-]?\d{2}$/.test(w.text.normalize('NFKC').trim())).map(w=>norm(w.text)))];
+  if(numericColours.length&&new Set([...numericColours,...numericReferenceTokens]).size>1)return {conflict:true};
+  const references = printedReferences(reliable,numericColours);
   if(!references)return {conflict:true};
-  return {size:sizes.size?[...sizes][0]:null,references,identityReferences:identityReferences(reliable,references),text:String(data.text||'').slice(0,12000)};
+  return {size:sizes.size?[...sizes][0]:null,references,identityReferences:identityReferences(reliable,references,numericColours),numericColourReferences:numericColours,numericReferenceTokens,text:String(data.text||'').slice(0,12000)};
 }
 
 function readWords(data){const parts=readParts(data);return !parts.conflict&&parts.size&&parts.references.length?{size:parts.size,references:parts.references,text:parts.text,source:'archived-photo-local-ocr-v1'}:null;}

@@ -15,7 +15,7 @@ function getMod() {
 }
 async function read(buf) {
   const { data, info } = await sharp(buf, { limitInputPixels: MAX_PIXELS }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  const rows = await getMod().readBarcodes({ data: new Uint8ClampedArray(data), width: info.width, height: info.height },
+  const rows = await getMod().readBarcodes({ data: new Uint8ClampedArray(data.buffer, data.byteOffset, data.byteLength), width: info.width, height: info.height },
     { tryHarder: true, tryRotate: true, tryInvert: true, formats: ['EAN-13', 'UPC-A', 'EAN-8', 'Code128', 'ITF'], maxNumberOfSymbols: 3 });
   return [...new Set(rows.map(r => String(r.text || '').trim()).filter(barcodePolicy.isScanCode))];
 }

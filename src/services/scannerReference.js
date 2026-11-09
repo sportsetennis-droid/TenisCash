@@ -6,6 +6,75 @@ const barcodePolicy = require('../../public/scanner-barcode-policy');
 function normalizeReference(value) {
   return String(value || '').normalize('NFKC').toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
+// Fiber imports keep the first imported size in the unified product's SKU.
+// Separate only that documented terminal size; model, colour and version are
+// all retained. This is not a generic suffix stripper for other manufacturers.
+function fiberReferenceIdentity(value) {
+  const ref=normalizeReference(value);
+  const match=ref.match(/^(?:0110)?(TFBU(?:BLACK|WHITE)|TFERS?(?:BLACK|WHITE))(\d{2})?$/)
+    ||ref.match(/^(?:0110)?(FBRFLYR(?:BLACK|BW)V[1-9])(\d{2})?$/)
+    ||ref.match(/^(?:0110)?(SFBMUL\d{4}V[1-9])(\d{4}|\d{6})?$/);
+  return match?{identity:match[1],size:match[2]||null}:null;
+}
+function matchFiberReference(product,read) {
+  const ctx=product.aiContext||{};
+  const expected=[product.sku,ctx.supplierRef].map(fiberReferenceIdentity).filter(Boolean);
+  if(!expected.length)return {handled:false,reference:null};
+  const identities=new Set(expected.map(ref=>ref.identity));
+  if(identities.size!==1)return {handled:true,reference:null};
+  const size=normalizeReference(read?.size);
+  if(!size)return {handled:true,reference:null};
+  const observed=(read.references||[]).map(reference=>({reference,parsed:fiberReferenceIdentity(reference)})).filter(item=>item.parsed);
+  // A reference printed with a size must agree with the separate BR field.
+  // A second model/colour/version in the frame cannot be silently ignored.
+  if(observed.some(item=>!identities.has(item.parsed.identity)||item.parsed.size&&item.parsed.size!==size))return {handled:true,reference:null};
+  return {handled:true,reference:observed.find(item=>identities.has(item.parsed.identity))?.reference||null};
+}
+function asicsReferenceIdentity(value) {
+  const match=normalizeReference(value).match(/^(\d{4}[A-Z]\d{3})(\d{3})(?:0?(\d{2}))?$/);
+  return match?{identity:match[1]+match[2],size:match[3]||null}:null;
+}
+function matchIncomingManufacturerReference(product,read,fiscal) {
+  const brand=normalizeReference(product.brand),size=String(read.size||'').trim();
+  const ctx=product.aiContext||{},catalog=[product.sku,ctx.supplierRef];
+  const incoming=fiscal.filter(row=>row.productId===product.id);
+  let expected=[],observed=[];
+  if(brand==='PUMA'){
+    // This supplier import encodes printed colour 01 as 0010 (03 as 0030).
+    // Permit only the photographed six-digit model + two-digit colour, with
+    // the exact incoming EAN row independently carrying that colour and BR.
+    const imported=value=>{const m=normalizeReference(value).match(/^(\d{6})00([1-9])0(\d{2})?$/);return m?{identity:m[1]+'0'+m[2],size:m[3]||null}:null;};
+    const records=incoming.map(row=>imported(row.supplierCode)).filter(Boolean);
+    if(!records.length)return {handled:false,reference:null};
+    if(!/^\d{2}$/.test(size)||records.some(ref=>ref.size!==size))return {handled:true,reference:null};
+    expected=[...catalog.map(imported).filter(Boolean),...records].map(ref=>ref.identity);
+    observed=(read.references||[]).filter(ref=>/^\d{8}$/.test(normalizeReference(ref))).map(reference=>({reference,identity:normalizeReference(reference)}));
+  }else if(brand==='ASICS'){
+    const records=incoming.map(row=>asicsReferenceIdentity(row.supplierCode)).filter(Boolean);
+    if(!records.length)return {handled:false,reference:null};
+    if(records.some(ref=>ref.size&&ref.size!==size))return {handled:true,reference:null};
+    expected=[...catalog.map(asicsReferenceIdentity).filter(Boolean),...records].map(ref=>ref.identity);
+    observed=(read.references||[]).map(reference=>({reference,parsed:asicsReferenceIdentity(reference)})).filter(item=>item.parsed);
+    if(observed.some(item=>item.parsed.size&&item.parsed.size!==size))return {handled:true,reference:null};
+    observed=observed.map(item=>({reference:item.reference,identity:item.parsed.identity}));
+  }else if(brand==='OUS'){
+    // These exact incoming items carry manufacturer model AND variation in
+    // the description; supplierCode is a different distributor identifier.
+    const records=incoming.map(row=>{
+      const text=String(row.description||'').normalize('NFKC').toUpperCase();
+      const model=text.match(/^(\d{6})\s+TENIS\s+COURO\s+(\d{1,3})\s/);
+      const tail=text.match(/\s(\d{2}(?:[.,]5)?)$/);
+      return model&&tail?{identity:model[1]+model[2],size:tail[1].replace(',','.')}:null;
+    }).filter(Boolean);
+    if(!records.length)return {handled:false,reference:null};
+    if(records.some(ref=>ref.size!==size))return {handled:true,reference:null};
+    expected=records.map(ref=>ref.identity);
+    observed=(read.references||[]).filter(ref=>/^\d{7,9}$/.test(normalizeReference(ref))).map(reference=>({reference,identity:normalizeReference(reference)}));
+  }else return {handled:false,reference:null};
+  const identities=new Set(expected);
+  if(identities.size!==1||observed.some(ref=>!identities.has(ref.identity)))return {handled:true,reference:null};
+  return {handled:true,reference:observed.find(ref=>identities.has(ref.identity))?.reference||null};
+}
 function referencesFrom(read) {
   const values = [read?.sku, ...(Array.isArray(read?.codigos) ? read.codigos : [])];
   return [...new Set(values.map(normalizeReference).filter(x => x.length >= 5 && x.length <= 50))].slice(0, 12);
@@ -41,6 +110,27 @@ async function referenceCandidates(db, codes) {
   if(found.length>=12)return [{id:null},{id:null}]; // bounded search must not hide a conflict
   const resolved=[];for(const row of found){const p=await canonicalProduct(db,await db.product.findUnique({where:{id:row.id},include:{sizes:true}}));if(p)resolved.push({id:p.id});}
   return [...new Map(resolved.map(r=>[r.id,r])).values()];
+}
+
+async function referenceCandidatesForRead(db,read,size) {
+  const codes=referencesFrom(read),exact=await referenceCandidates(db,codes);
+  if(exact.length||!size)return exact;
+  const sizeKey=normalizeReference(size);
+  const qualified=[...new Set(codes.map(fiberReferenceIdentity).filter(ref=>ref&&(!ref.size||ref.size===sizeKey)).map(ref=>ref.identity+sizeKey))];
+  if(!qualified.length)return [];
+  // Some Fiber boxes print the complete model/colour but keep BR in its own
+  // field. Their incoming invoice stores model/colour/size as one exact SKU.
+  // Join only a size already read from this piece, then recheck the active
+  // product's full identity. Never infer a size from an imported product name.
+  const candidates=await referenceCandidates(db,qualified),out=[];
+  if(candidates.some(candidate=>!candidate.id))return candidates;
+  for(const candidate of candidates){
+    const product=await db.product.findUnique({where:{id:candidate.id},include:{sizes:true}});
+    if(normalizeReference(product?.brand)!=='FIBER')continue;
+    const matched=matchFiberReference(product,{references:codes,size});
+    if(matched.reference)out.push({...candidate,source:'fiber-reference-plus-physical-size'});
+  }
+  return out;
 }
 
 function gtinKey(value) { return validGtin(value) ? String(value).trim().replace(/^0+/, '') : ''; }
@@ -152,7 +242,7 @@ async function learnScannerBarcode(db, { barcode, read, size, confirmedProductId
     if(!owners.length)owners.push(...await aliasRows(tx,barcode));
     if(archivedLabel){const aliases=await aliasRows(tx,barcode);if(aliases.some(a=>owners.some(o=>o.id!==a.id)))return {reason:'barcode_conflict'};}
     if (owners.length > 1) return { reason: 'barcode_conflict' };
-    const candidates = await referenceCandidates(tx, codes);
+    const candidates = await referenceCandidatesForRead(tx, read, size);
     if (!confirmedProductId && candidates.length > 1) return { reason: 'reference_conflict' };
     const photoTarget = archivedLabel ? await require('./scannerArchivedLabel').target(tx, barcode, archivedLabel) : null;
     if (archivedLabel && !photoTarget?.productId) return { reason: photoTarget?.reason || 'photo_evidence_conflict' };
@@ -183,6 +273,9 @@ async function learnScannerBarcode(db, { barcode, read, size, confirmedProductId
       if (!size) return { reason: 'size_required' };
       ps = product.sizes.find(s => s.size === size);
       if (ps?.barcode && validGtin(ps.barcode) && !variants(barcode).includes(ps.barcode)) {
+        // A different existing Fiber GTIN may be assigned to the wrong size
+        // (observed 40/41 conflict). Do not hide that conflict as a new alias.
+        if(!confirmedProductId&&normalizeReference(product.brand)==='FIBER')return {reason:'size_barcode_conflict'};
         // An occupied size is reusable only when both GTINs independently have
         // exact incoming invoices and official evidence for this same colour.
         if(fiscal?.officialEvidence){
@@ -240,4 +333,4 @@ async function matchScannerReference(db,read,size){
   if(!ps)return {reason:'size_required'};
   return {reason:'matched',productId:p.id,productSizeId:ps.id,name:p.name};
 }
-module.exports = { documentedFiscalVariant, fiscalBarcodeTarget, matchScannerReference, normalizeReference, referencesFrom, validGtin, referenceCandidates, learnScannerBarcode };
+module.exports = { documentedFiscalVariant, fiscalBarcodeTarget, matchScannerReference, normalizeReference, fiberReferenceIdentity, matchFiberReference, asicsReferenceIdentity, matchIncomingManufacturerReference, referencesFrom, validGtin, referenceCandidates, referenceCandidatesForRead, learnScannerBarcode };

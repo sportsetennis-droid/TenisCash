@@ -54,6 +54,6 @@ const db={async $queryRaw(){return []}};
  assert.equal(service.validateRead(c,{...read,decodedBarcodes:['0196989405988']}),'codigo_da_foto_divergente');
  assert.equal(service.validateRead(c,{...read,size:'42'}),'tamanho_da_foto_divergente');
  assert.equal(service.validateRead(c,{...read,source:'client-ocr'}),'codigo_da_foto_divergente');
- assert.equal(scope.classification({name:'SAPATO CASUAL FEMININA DE USO COMUM COM SOLA SINTE',category:'tenis',ncm:'64041900'}),'outside','Existing footwear scope is not broadened from ambiguous imported category');
+ assert.equal(scope.classification({name:'SAPATO CASUAL FEMININA DE USO COMUM COM SOLA SINTE',category:'tenis',ncm:'64041900'}),'footwear','Concordant footwear category and NCM resolve a legacy shoe name without admitting clothing or accessories');
  console.log('PASS: Skechers catalog prefixes preserve full model/colour, reject model-only and conflicting aliases/fiscal/brand, and retain archived photo/code/BR requirements.');
 })().catch(error=>{console.error(error);process.exitCode=1});

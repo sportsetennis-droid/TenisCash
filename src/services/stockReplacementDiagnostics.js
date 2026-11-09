@@ -16,6 +16,7 @@ function build(report, queue = { available: false, items: [] }, now = new Date()
     const captures = event.captures;
     const captureIds = new Set(captures.map(p => p.id));
     const jobs = (queue.items || []).filter(j => (b && j.bipeId === b.id) || captureIds.has(j.captureId));
+    const latestJob=[...jobs].sort((a,b)=>new Date(b.createdAt||b.startedAt||b.completedAt||0)-new Date(a.createdAt||a.startedAt||a.completedAt||0))[0];
     const terminalJob=[...jobs].filter(j=>j.reason&&['completed','failed','cancelled'].includes(j.state)).sort((a,b)=>new Date(b.createdAt||b.completedAt||0)-new Date(a.createdAt||a.completedAt||0))[0];
     const movements = (report.movements || []).filter(m => m.metadata?.bipeId === b?.id && !!b);
     const excluded = !!b?.excludedAt || !!c?.reversedAt || (!b && captures.every(p => p.excludedAt || p.status === 'descartado'));
@@ -23,19 +24,28 @@ function build(report, queue = { available: false, items: [] }, now = new Date()
     const active = jobs.some(j => ['active', 'running'].includes(j.state));
     const waiting = jobs.some(j => ['created', 'retry', 'queued', 'pending'].includes(j.state));
     const failed = jobs.some(j => ['failed', 'cancelled'].includes(j.state));
+    const scheduledTime = latestJob?.nextAttemptAt ? new Date(latestJob.nextAttemptAt).getTime() : NaN;
+    const nextAttemptAt = Number.isFinite(scheduledTime) ? new Date(scheduledTime).toISOString() : null;
+    // A completed job can be an ACK of a pending piece with its next pass
+    // committed atomically. A cause alone or an older ACK is not that proof.
+    const automaticWait = latestJob?.autoReprocess === true && !!nextAttemptAt && ['created', 'retry', 'queued', 'pending', 'completed'].includes(latestJob.state);
+    const automaticActive = latestJob?.autoReprocess === true && ['active', 'running'].includes(latestJob.state);
+    const autoReprocess = !excluded && !applied && (automaticWait || automaticActive);
     const transient = !c?.reason || ['ocr_busy', 'ocr_timeout', 'ocr_unavailable', 'ocr_memory_limit',
       'photo_decode_busy', 'photo_decode_timeout', 'photo_decode_unavailable', 'photo_decode_memory_limit',
       'aguardando_conferencia_da_etiqueta'].includes(c.reason);
-    const state = excluded ? 'excluded' : applied ? 'applied' : active || (waiting && transient) ? 'processing' : 'review';
+    const state = excluded ? 'excluded' : applied ? 'applied' : active || automaticWait || (waiting && transient) ? 'processing' : 'review';
     counts[state]++;
     const reason = state === 'applied' ? null : state === 'excluded' ? (b?.exclusionReason || c?.reason || 'Leitura excluída ou estornada.')
+      : autoReprocess ? require('./stockReplacement').reasonText(latestJob?.reason || c?.reason || terminalJob?.reason || 'queue_recheck_wait', {autoReprocess:true,processing:automaticActive})
       : c?.reasonText || (terminalJob?.reason?require('./stockReplacement').reasonText(terminalJob.reason):null) || (failed ? 'Processamento interrompido; aguardando revisão ou nova tentativa.'
         : state === 'processing' ? 'Arquivo no servidor; conferência em andamento.' : 'Arquivo/identificação aguardando conferência.');
     return { id, bipeId: b?.id || null, captureIds: [...captureIds], barcode: b?.barcode || captures.find(p => p.barcode)?.barcode || null,
       state, reason, capturedAt: b?.bipedAt || captures[0]?.createdAt || null, checkedAt: c?.checkedAt || null,
       appliedAt: applied ? c.appliedAt : null, movementIds: movements.map(m => m.id),
+      autoReprocess, nextAttemptAt: autoReprocess && automaticWait ? nextAttemptAt : null,
       attempts: jobs.reduce((n, j) => n + (Number(j.attempts) || 0), 0),
-      processingJobs: jobs.map(j => ({ id: j.jobId, state: j.state, attempts: j.attempts, nextAttemptAt: j.nextAttemptAt || null })) };
+      processingJobs: jobs.map(j => ({ id: j.jobId, state: j.state, attempts: j.attempts, autoReprocess: j.autoReprocess === true, nextAttemptAt: j.nextAttemptAt || null })) };
   });
   const pendingTimes = rows.filter(r => ['review', 'processing'].includes(r.state))
     .map(r => new Date(r.capturedAt).getTime()).filter(Number.isFinite);
