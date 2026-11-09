@@ -33,6 +33,24 @@ router.get('/:id/my-roles', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Tela da arbitragem: jogos que EU devo apitar neste torneio. Requer login.
+router.get('/:id/my-matches', authMiddleware, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const matches = await roles.myMatches(req.userId, req.userRole, req.params.id);
+    res.json({ matches });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Tela do time (admin/treinador): meu clube com inscrições por categoria + elenco. Requer login.
+router.get('/:id/my-team', authMiddleware, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const r = await roles.myTeam(req.userId, req.userRole, req.params.id);
+    res.json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Lista os papéis do torneio (fundador/coordenador). Requer login + permissão.
 router.get('/:id/roles', authMiddleware, async (req, res) => {
   try {
@@ -288,7 +306,7 @@ router.post('/', authMiddleware, async (req, res) => {
 // suficiente porque é IDEMPOTENTE e cria só este torneio fixo (sem parâmetros,
 // sem dinheiro, sem dados de usuário). Re-proteger depois de carregado.
 // Sem token, o organizador vira o primeiro admin (findOwner trata null).
-router.post('/import/futsal-master-cup', async (req, res) => {
+router.post('/import/futsal-master-cup', authMiddleware, async (req, res) => {
   try {
     const r = await importFutsalMasterCup(req.userId || null);
     if (!r.ok) return res.status(400).json(r);
@@ -1041,11 +1059,15 @@ router.get('/entries/:entryId/players', async (req, res) => {
   }
 });
 
-// Adiciona jogador ao elenco (nome + número, opcional goleiro/capitão)
-router.post('/entries/:entryId/players', async (req, res) => {
+// Adiciona jogador ao elenco (nome + número, opcional goleiro/capitão).
+// Permissão: coordenador/fundador/admin OU admin/treinador do PRÓPRIO time.
+router.post('/entries/:entryId/players', authMiddleware, async (req, res) => {
   try {
-    const entry = await prisma.tournamentEntry.findUnique({ where: { id: req.params.entryId }, select: { id: true } });
+    const entry = await prisma.tournamentEntry.findUnique({ where: { id: req.params.entryId }, select: { id: true, tournamentId: true } });
     if (!entry) return res.status(404).json({ error: 'time não encontrado' });
+    if (!(await roles.can(req.userId, req.userRole, entry.tournamentId, 'SET_LINEUP', { entryId: entry.id }))) {
+      return res.status(403).json({ error: 'sem permissão (coordenador, admin ou treinador do time)' });
+    }
     const b = req.body || {};
     const name = String(b.name || '').trim();
     if (!name) return res.status(400).json({ error: 'nome do jogador obrigatório' });
@@ -1065,12 +1087,16 @@ router.post('/entries/:entryId/players', async (req, res) => {
   }
 });
 
-// Define/limpa o escudo (logo) de um time — sem token (igual súmula/elenco).
+// Define/limpa o escudo (logo) de um time.
+// Permissão: coordenador/fundador/admin OU admin do PRÓPRIO time.
 // body { logo: dataURI } ou { logo: null } pra limpar. Guarda data URI pequeno.
-router.post('/entries/:entryId/logo', async (req, res) => {
+router.post('/entries/:entryId/logo', authMiddleware, async (req, res) => {
   try {
     const entry = await prisma.tournamentEntry.findUnique({ where: { id: req.params.entryId }, select: { id: true, name: true, tournamentId: true } });
     if (!entry) return res.status(404).json({ error: 'time não encontrado' });
+    if (!(await roles.can(req.userId, req.userRole, entry.tournamentId, 'MANAGE_TEAM', { entryId: entry.id }))) {
+      return res.status(403).json({ error: 'sem permissão (coordenador ou admin do time)' });
+    }
     const raw = (req.body || {}).logo;
     let logoUrl = null;
     if (raw && typeof raw === 'string' && raw.trim()) {
@@ -1092,9 +1118,14 @@ router.post('/entries/:entryId/logo', async (req, res) => {
   }
 });
 
-// Remove jogador do elenco
-router.delete('/players/:playerId', async (req, res) => {
+// Remove jogador do elenco — coordenador/admin/treinador do time.
+router.delete('/players/:playerId', authMiddleware, async (req, res) => {
   try {
+    const ctx = await roles.playerContext(req.params.playerId);
+    if (!ctx || !ctx.entry) return res.json({ ok: true }); // já não existe
+    if (!(await roles.can(req.userId, req.userRole, ctx.entry.tournamentId, 'SET_LINEUP', { entryId: ctx.entry.id }))) {
+      return res.status(403).json({ error: 'sem permissão (coordenador, admin ou treinador do time)' });
+    }
     await prisma.rosterPlayer.delete({ where: { id: req.params.playerId } }).catch(() => {});
     res.json({ ok: true });
   } catch (err) {
@@ -1113,9 +1144,15 @@ router.get('/matches/:matchId/sheet', async (req, res) => {
   }
 });
 
-// Registra um evento da súmula (gol, assistência, cartão, falta, tempo)
-router.post('/matches/:matchId/events', async (req, res) => {
+// Registra um evento da súmula (gol, assistência, cartão, falta, tempo).
+// Permissão: árbitro nomeado pro jogo, árbitro do torneio, coordenador/fundador/admin.
+router.post('/matches/:matchId/events', authMiddleware, async (req, res) => {
   try {
+    const m = await roles.matchContext(req.params.matchId);
+    if (!m) return res.status(404).json({ error: 'jogo não encontrado' });
+    if (!(await roles.can(req.userId, req.userRole, m.tournamentId, 'REFEREE', { matchId: m.id }))) {
+      return res.status(403).json({ error: 'sem permissão (arbitragem do jogo)' });
+    }
     const r = await sheet.addEvent(req.params.matchId, req.body || {});
     if (!r.ok) return res.status(400).json(r);
     res.status(201).json(r.event);
@@ -1124,9 +1161,14 @@ router.post('/matches/:matchId/events', async (req, res) => {
   }
 });
 
-// Remove um evento da súmula
-router.delete('/events/:eventId', async (req, res) => {
+// Remove um evento da súmula — arbitragem do jogo.
+router.delete('/events/:eventId', authMiddleware, async (req, res) => {
   try {
+    const ctx = await roles.eventContext(req.params.eventId);
+    if (!ctx || !ctx.match) return res.json({ ok: true }); // já não existe
+    if (!(await roles.can(req.userId, req.userRole, ctx.match.tournamentId, 'REFEREE', { matchId: ctx.match.id }))) {
+      return res.status(403).json({ error: 'sem permissão (arbitragem do jogo)' });
+    }
     await sheet.deleteEvent(req.params.eventId);
     res.json({ ok: true });
   } catch (err) {
@@ -1134,9 +1176,14 @@ router.delete('/events/:eventId', async (req, res) => {
   }
 });
 
-// Grava a arbitragem da partida (árbitro 1/2, mesa) — sem finalizar
-router.post('/matches/:matchId/officials', async (req, res) => {
+// Grava a arbitragem da partida (árbitro 1/2, mesa) — sem finalizar. Arbitragem do jogo.
+router.post('/matches/:matchId/officials', authMiddleware, async (req, res) => {
   try {
+    const m = await roles.matchContext(req.params.matchId);
+    if (!m) return res.status(404).json({ error: 'jogo não encontrado' });
+    if (!(await roles.can(req.userId, req.userRole, m.tournamentId, 'REFEREE', { matchId: m.id }))) {
+      return res.status(403).json({ error: 'sem permissão (arbitragem do jogo)' });
+    }
     const r = await sheet.setOfficials(req.params.matchId, req.body || {});
     if (!r.ok) return res.status(400).json(r);
     res.json(r);
@@ -1146,9 +1193,14 @@ router.post('/matches/:matchId/officials', async (req, res) => {
 });
 
 // Fecha a súmula: conta os gols e aplica o placar (classificação + chave).
-// body opcional: { homePenalties, awayPenalties, referee1, referee2, scorer }
-router.post('/matches/:matchId/finalize', async (req, res) => {
+// Arbitragem do jogo. body opcional: { homePenalties, awayPenalties, referee1, referee2, scorer }
+router.post('/matches/:matchId/finalize', authMiddleware, async (req, res) => {
   try {
+    const m = await roles.matchContext(req.params.matchId);
+    if (!m) return res.status(404).json({ error: 'jogo não encontrado' });
+    if (!(await roles.can(req.userId, req.userRole, m.tournamentId, 'REFEREE', { matchId: m.id }))) {
+      return res.status(403).json({ error: 'sem permissão (arbitragem do jogo)' });
+    }
     const r = await sheet.finalizeMatch(req.params.matchId, req.body || {});
     if (!r.ok) return res.status(400).json(r);
     res.json(r);

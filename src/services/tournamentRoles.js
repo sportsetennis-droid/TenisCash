@@ -163,6 +163,103 @@ async function listRoles(tournamentId) {
   return out;
 }
 
+// ---------------------------------------------------------------------
+// Resolvers de contexto (pra checar permissão a partir de entry/partida/jogador/evento)
+// ---------------------------------------------------------------------
+async function entryContext(entryId) {
+  if (!entryId) return null;
+  return prisma.tournamentEntry.findUnique({ where: { id: String(entryId) }, select: { id: true, tournamentId: true, name: true, categoryId: true } });
+}
+async function matchContext(matchId) {
+  if (!matchId) return null;
+  return prisma.tournamentMatch.findUnique({ where: { id: String(matchId) }, select: { id: true, tournamentId: true, homeEntryId: true, awayEntryId: true } });
+}
+async function playerContext(playerId) {
+  if (!playerId) return null;
+  const p = await prisma.rosterPlayer.findUnique({ where: { id: String(playerId) }, select: { id: true, entryId: true } });
+  if (!p) return null;
+  return { player: p, entry: await entryContext(p.entryId) };
+}
+async function eventContext(eventId) {
+  if (!eventId) return null;
+  const ev = await prisma.matchEvent.findUnique({ where: { id: String(eventId) }, select: { id: true, matchId: true } });
+  if (!ev) return null;
+  return { event: ev, match: await matchContext(ev.matchId) };
+}
+
+// Jogos que EU devo apitar neste torneio (pra tela da arbitragem).
+// Coordenador/fundador/admin → todos. Árbitro → os que foi nomeado + os sem árbitro definido.
+async function myMatches(userId, userRole, tournamentId) {
+  const rs = await rolesFor(userId, tournamentId);
+  const admin = isGlobalAdmin(userRole);
+  const isCoord = admin || rs.some((r) => r.role === 'FOUNDER' || r.role === 'COORDINATOR');
+  const isRef = rs.some((r) => r.role === 'REFEREE');
+  if (!isCoord && !isRef) return [];
+  const matches = await prisma.tournamentMatch.findMany({
+    where: { tournamentId },
+    orderBy: [{ scheduledAt: 'asc' }, { round: 'asc' }, { ordering: 'asc' }],
+    select: {
+      id: true, tournamentId: true, categoryId: true, stage: true, round: true, groupName: true,
+      homeEntryId: true, awayEntryId: true, homeSourceLabel: true, awaySourceLabel: true,
+      scheduledAt: true, location: true, homeScore: true, awayScore: true, status: true,
+    },
+  });
+  if (!matches.length) return [];
+  const officials = await prisma.matchOfficial.findMany({ where: { matchId: { in: matches.map((m) => m.id) } }, select: { matchId: true, userId: true } });
+  const nominatedMine = {}; const hasOfficial = {};
+  officials.forEach((o) => { hasOfficial[o.matchId] = true; if (o.userId === userId) nominatedMine[o.matchId] = true; });
+  const entryIds = [...new Set(matches.flatMap((m) => [m.homeEntryId, m.awayEntryId]).filter(Boolean))];
+  const catIds = [...new Set(matches.map((m) => m.categoryId).filter(Boolean))];
+  const [entries, cats] = await Promise.all([
+    prisma.tournamentEntry.findMany({ where: { id: { in: entryIds } }, select: { id: true, name: true } }),
+    prisma.tournamentCategory.findMany({ where: { id: { in: catIds } }, select: { id: true, name: true } }),
+  ]);
+  const eById = Object.fromEntries(entries.map((e) => [e.id, e.name]));
+  const cById = Object.fromEntries(cats.map((c) => [c.id, c.name]));
+  const out = [];
+  for (const m of matches) {
+    const nominated = !!nominatedMine[m.id];
+    const open = !hasOfficial[m.id];
+    if (!isCoord && !nominated && !open) continue; // árbitro só vê os seus + os livres
+    out.push({
+      id: m.id, tournamentId: m.tournamentId, categoryId: m.categoryId, category: cById[m.categoryId] || '',
+      stage: m.stage, round: m.round, groupName: m.groupName, status: m.status,
+      scheduledAt: m.scheduledAt, location: m.location, homeScore: m.homeScore, awayScore: m.awayScore,
+      home: m.homeEntryId ? (eById[m.homeEntryId] || '') : (m.homeSourceLabel || 'A definir'),
+      away: m.awayEntryId ? (eById[m.awayEntryId] || '') : (m.awaySourceLabel || 'A definir'),
+      nominated,
+    });
+  }
+  return out;
+}
+
+// Meu(s) time(s) neste torneio (pra tela do admin do time / treinador): clube com
+// suas inscrições por categoria + contagem de elenco. Clube único = todas as categorias.
+async function myTeam(userId, userRole, tournamentId) {
+  const rs = await rolesFor(userId, tournamentId);
+  const teamEntryIds = rs.filter((r) => (r.role === 'TEAM_ADMIN' || r.role === 'COACH') && r.entryId).map((r) => r.entryId);
+  if (!teamEntryIds.length) return { clubs: [] };
+  const named = await prisma.tournamentEntry.findMany({ where: { id: { in: teamEntryIds } }, select: { name: true } });
+  const clubNames = [...new Set(named.map((e) => e.name))];
+  if (!clubNames.length) return { clubs: [] };
+  const entries = await prisma.tournamentEntry.findMany({ where: { tournamentId, name: { in: clubNames } }, select: { id: true, name: true, categoryId: true, logoUrl: true } });
+  const catIds = [...new Set(entries.map((e) => e.categoryId).filter(Boolean))];
+  const cats = await prisma.tournamentCategory.findMany({ where: { id: { in: catIds } }, select: { id: true, name: true } });
+  const cById = Object.fromEntries(cats.map((c) => [c.id, c.name]));
+  let rosterCount = {};
+  try {
+    const g = await prisma.rosterPlayer.groupBy({ by: ['entryId'], where: { entryId: { in: entries.map((e) => e.id) } }, _count: { _all: true } });
+    rosterCount = Object.fromEntries(g.map((r) => [r.entryId, r._count._all]));
+  } catch (e) { /* groupBy pode faltar em bases antigas */ }
+  const byClub = {};
+  entries.forEach((e) => {
+    const c = (byClub[e.name] = byClub[e.name] || { name: e.name, logoUrl: null, entries: [] });
+    if (e.logoUrl && !c.logoUrl) c.logoUrl = e.logoUrl;
+    c.entries.push({ entryId: e.id, category: cById[e.categoryId] || '', categoryId: e.categoryId, roster: rosterCount[e.id] || 0 });
+  });
+  return { clubs: Object.values(byClub) };
+}
+
 // "Meus papéis" neste torneio + o que posso fazer (pra UI rotear).
 async function myRoles(userId, userRole, tournamentId) {
   const roles = await rolesFor(userId, tournamentId);
@@ -179,4 +276,5 @@ async function myRoles(userId, userRole, tournamentId) {
 module.exports = {
   ROLES, ROLE_LABEL, TEAM_SCOPED, OFFICIAL_ROLES, isGlobalAdmin,
   rolesFor, can, resolveUser, assignRole, removeRole, listRoles, myRoles,
+  entryContext, matchContext, playerContext, eventContext, myMatches, myTeam,
 };

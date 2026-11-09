@@ -214,6 +214,10 @@ async function renderHome(){
   loading();
   let mine=[];
   try{mine=(await api('/mine')).tournaments||[];}catch(e){}
+  let part=[];
+  try{part=(await api('/my-tournaments')).tournaments||[];}catch(e){}
+  const mineIds=new Set(mine.map(t=>t.id));
+  part=part.filter(t=>t.ownerId!==ME.id&&!mineIds.has(t.id));
   let unread=0;
   try{unread=(await api('/notifications/mine?limit=1')).unread||0;}catch(e){}
   const handle=ME.username||ME.id;
@@ -239,6 +243,19 @@ async function renderHome(){
     html+='<div style="height:8px"></div><button class="btn sm sec" data-act="import-futsal" style="width:100%">⚽ Importar II Futsal Master Cup 2026</button>';
   }
   html+='</div>';
+
+  if(part.length){
+    html+='<div class="card"><h2 style="margin:0 0 6px">Onde eu atuo</h2>'+
+      '<p class="muted" style="margin:0 0 8px;font-size:12px">Torneios em que você tem um papel (arbitragem, time, treinador...).</p>';
+    part.forEach(t=>{const st=ST_LABEL[t.status]||['',''];
+      const seen={};const badges=(t.myRoles||[]).filter(r=>{if(seen[r.role])return false;seen[r.role]=1;return true;}).map(r=>'<span class="pill g" style="margin-right:4px">'+(ROLE_EMOJI[r.role]||'•')+' '+esc((ROLE_LBL[r.role]||r.role))+'</span>').join('');
+      html+='<div class="listitem card-tap" data-act="open-t" data-id="'+t.id+'">'+
+        '<div class="av">'+esc((SPORT_LABEL[t.sport]||'🏅').split(' ')[0])+'</div>'+
+        '<div class="grow"><div class="nm">'+esc(t.name)+'</div>'+
+        '<div class="sub" style="margin-top:3px">'+badges+'</div></div>'+
+        '<span class="pill '+st[1]+'">'+esc(st[0])+'</span></div>';});
+    html+='</div>';
+  }
 
   html+='<div class="card"><div class="linkrow" data-act="nav" data-h="avisos"><div class="l"><span class="ic">🔔</span> Avisos'+(unread?' <span class="pill w">'+unread+'</span>':'')+'</div><span style="color:var(--mut)">›</span></div>'+
     '<div class="linkrow" data-act="nav" data-h="desafios"><div class="l"><span class="ic">⚔️</span> Desafios 1v1</div><span style="color:var(--mut)">›</span></div>'+
@@ -329,10 +346,11 @@ async function renderTournament(id){
   html+='</div>';
 
   if(!canManage){
-    const myRoles=(MR.roles||[]).filter(r=>r.role!=='PLAYER'||true);
-    if(myRoles.length){
-      html+=myRolePanel(t,MR);
-    }
+    const myRoles=MR.roles||[];
+    const rset=new Set(myRoles.map(r=>r.role));
+    if(myRoles.length)html+=myRolePanel(t,MR);
+    if(rset.has('REFEREE'))html+='<div class="card"><h2 style="margin:0 0 6px">🧑‍⚖️ Minha arbitragem</h2><div id="my-matches"><div class="spin"></div></div></div>';
+    if(rset.has('TEAM_ADMIN')||rset.has('COACH'))html+='<div class="card"><h2 style="margin:0 0 6px">🛡️ Meu time</h2><div id="my-team"><div class="spin"></div></div></div>';
     if(canRegister){
       html+='<div class="card" style="background:var(--soft)"><h2 style="margin:0 0 6px">Quer jogar?</h2>'+
         '<p class="muted" style="margin:0 0 10px">Peça sua inscrição neste torneio. O organizador aprova.</p>'+
@@ -341,7 +359,11 @@ async function renderTournament(id){
     html+=muralCard(t.id,false,posts);
     if(!myRoles.length)html+='<div class="card"><div class="empty"><div class="ic">👀</div>Você está vendo como visitante.<br>Só a organização gerencia a chave.</div></div>';
     html+='</div>';
-    app.innerHTML=html;return;
+    app.innerHTML=html;
+    TEAM_CTX={tid:t.id};
+    if(rset.has('REFEREE'))loadMyMatches(t.id);
+    if(rset.has('TEAM_ADMIN')||rset.has('COACH'))loadMyTeam(t.id,rset.has('TEAM_ADMIN'));
+    return;
   }
 
   // prêmio em TenisCash real (só dono/admin paga)
@@ -381,6 +403,7 @@ async function renderTournament(id){
 
 // ---------- Contas & Papéis ----------
 const ROLE_LBL={FOUNDER:'Fundador do campeonato',COORDINATOR:'Coordenador técnico',TEAM_ADMIN:'Administrador do time',COACH:'Treinador',REFEREE:'Arbitragem',PLAYER:'Jogador'};
+const ROLE_EMOJI={FOUNDER:'★',COORDINATOR:'🧭',TEAM_ADMIN:'🛡️',COACH:'🧢',REFEREE:'🧑‍⚖️',PLAYER:'🏃'};
 const TEAM_ROLES=['TEAM_ADMIN','COACH','PLAYER'];
 function rolesCard(tid){
   return '<div class="card" id="roles-card"><h2 style="margin:0 0 4px">👥 Contas & Papéis</h2>'+
@@ -437,15 +460,105 @@ async function saveAddRole(tid){
     else toast('Nomeado: '+(ROLE_LBL[role]||role));
   }catch(e){toast(e.message);}
 }
-// Painel do participante (não-organizador) com seus papéis e atalhos.
+// Painel do participante (não-organizador) com seus papéis.
 function myRolePanel(t,MR){
-  const rs=MR.roles||[];const seen={};const items=[];
-  rs.forEach(r=>{const k=r.role+'|'+(r.entryId||'');if(seen[k])return;seen[k]=1;
+  const rs=MR.roles||[];const seen={};const items=[];const handle=ME.username||ME.id;
+  rs.forEach(r=>{if(seen[r.role])return;seen[r.role]=1;
     let link='';
-    if(r.role==='REFEREE')link='<a class="btn sm gho plain" data-act="nav" data-h="t/'+t.id+'" style="margin-top:6px">Ver jogos pra apitar (na chave)</a>';
-    items.push('<div class="listitem"><div class="av" style="background:var(--grad);color:#fff">'+({FOUNDER:'★',COORDINATOR:'🧭',TEAM_ADMIN:'🛡️',COACH:'🧢',REFEREE:'🧑‍⚖️',PLAYER:'🏃'}[r.role]||'•')+'</div>'+
-      '<div class="grow"><div class="nm">'+esc(ROLE_LBL[r.role]||r.role)+'</div><div class="sub">neste torneio'+'</div>'+link+'</div></div>');});
+    if(r.role==='PLAYER')link='<a class="btn sm gho plain" href="/atleta/'+esc(handle)+'" style="margin-top:6px">Ver meu card de atleta</a>';
+    items.push('<div class="listitem"><div class="av" style="background:var(--grad);color:#fff">'+(ROLE_EMOJI[r.role]||'•')+'</div>'+
+      '<div class="grow"><div class="nm">'+esc(ROLE_LBL[r.role]||r.role)+'</div><div class="sub">neste torneio</div>'+link+'</div></div>');});
   return '<div class="card"><h2 style="margin:0 0 6px">Seu papel aqui</h2>'+items.join('')+'</div>';
+}
+
+// ---------- Worker: ARBITRAGEM (jogos que eu apito) ----------
+const STAGE_LBL={LEAGUE:'Rodada',GROUP:'Grupo',RO32:'32-avos',RO16:'Oitavas',QUARTER:'Quartas',SEMI:'Semi',THIRD:'3º lugar',FINAL:'Final'};
+async function loadMyMatches(tid){
+  const box=document.getElementById('my-matches');if(!box)return;
+  let ms=[];try{ms=(await api('/'+tid+'/my-matches')).matches||[];}catch(e){box.innerHTML='<div class="empty" style="padding:12px">'+esc(e.message)+'</div>';return;}
+  if(!ms.length){box.innerHTML='<div class="empty" style="padding:12px">Nenhum jogo pra você apitar ainda.<br>A coordenação te nomeia por jogo.</div>';return;}
+  box.innerHTML=ms.map(m=>{
+    const done=m.status==='FINISHED'||m.status==='WALKOVER';
+    const live=m.status==='LIVE';
+    const sc=(m.homeScore!=null&&m.awayScore!=null)?(m.homeScore+'×'+m.awayScore):'';
+    const stg=m.groupName?('Grupo '+esc(m.groupName)):(STAGE_LBL[m.stage]||m.stage)+(m.stage==='LEAGUE'?' '+m.round:'');
+    return '<div class="listitem"><div class="grow">'+
+      '<div class="nm">'+esc(m.home)+' <span style="color:var(--mut)">×</span> '+esc(m.away)+(sc?' <b style="color:var(--orange-d)">'+sc+'</b>':'')+'</div>'+
+      '<div class="sub">'+esc(m.category)+' · '+stg+(m.scheduledAt?' · '+fmtDate(m.scheduledAt):'')+(m.location?' · '+esc(m.location):'')+'</div>'+
+      '<div style="margin-top:3px">'+(m.nominated?'<span class="pill ok">você apita</span> ':'<span class="pill g">livre</span> ')+(live?'<span class="pill w">🔴 ao vivo</span>':'')+(done?'<span class="pill ok">encerrada</span>':'')+'</div></div>'+
+      '<button class="btn sm '+(done?'sec':'')+'" data-act="sumula" data-mid="'+m.id+'">'+(done?'Ver':'Súmula')+'</button></div>';
+  }).join('');
+}
+
+// ---------- Worker: MEU TIME (elenco + escudo) ----------
+let TEAM_CTX={tid:null,canLogo:false};
+async function loadMyTeam(tid,canLogo){
+  TEAM_CTX={tid:tid,canLogo:!!canLogo};
+  const box=document.getElementById('my-team');if(!box)return;
+  let clubs=[];try{clubs=(await api('/'+tid+'/my-team')).clubs||[];}catch(e){box.innerHTML='<div class="empty" style="padding:12px">'+esc(e.message)+'</div>';return;}
+  if(!clubs.length){box.innerHTML='<div class="empty" style="padding:12px">Nenhum time vinculado a você.</div>';return;}
+  box.innerHTML=clubs.map(c=>{
+    const logo=c.logoUrl?'<img src="'+esc(c.logoUrl)+'" style="width:40px;height:40px;border-radius:9px;object-fit:cover">':'<div class="av" style="background:var(--soft);color:var(--orange-d);font-weight:800">'+initials(c.name)+'</div>';
+    const ent=(c.entries||[]).map(e=>'<div class="listitem" style="padding-left:6px"><div class="grow"><div class="nm" style="font-size:14px">'+esc(e.category||'—')+'</div><div class="sub">'+e.roster+' no elenco</div></div>'+
+      '<button class="btn sm sec" data-act="team-roster" data-eid="'+e.entryId+'" data-cat="'+esc(e.category||'')+'">Elenco ›</button></div>'+
+      '<div id="roster-'+e.entryId+'"></div>').join('');
+    return '<div style="border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:10px">'+
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'+logo+'<div class="grow"><div class="nm" style="font-weight:800">'+esc(c.name)+'</div><div class="sub">'+(c.entries||[]).length+' categoria(s)</div></div>'+
+      (canLogo?'<button class="btn sm gho" data-act="team-logo-club" data-eid="'+((c.entries||[])[0]||{}).entryId+'">Escudo</button>':'')+'</div>'+ent+'</div>';
+  }).join('');
+}
+async function toggleRoster(eid,cat){
+  const box=document.getElementById('roster-'+eid);if(!box)return;
+  if(box.dataset.open==='1'){box.innerHTML='';box.dataset.open='';return;}
+  box.dataset.open='1';box.innerHTML='<div class="spin"></div>';
+  await renderRoster(eid,cat);
+}
+async function renderRoster(eid,cat){
+  const box=document.getElementById('roster-'+eid);if(!box)return;
+  let players=[];try{players=(await api('/entries/'+eid+'/players')).players||[];}catch(e){box.innerHTML='<div class="empty" style="padding:10px">'+esc(e.message)+'</div>';return;}
+  let h='<div style="background:var(--soft);border-radius:10px;padding:8px;margin:4px 0 8px">';
+  if(!players.length)h+='<div class="empty" style="padding:10px">Sem elenco. Adicione os jogadores'+(cat?' de '+esc(cat):'')+'.</div>';
+  else players.forEach(p=>{h+='<div class="listitem" style="padding:7px 4px"><div class="av" style="font-size:13px">'+(p.number!=null?p.number:'–')+'</div>'+
+    '<div class="grow"><div class="nm" style="font-size:14px">'+esc(p.name)+(p.isCaptain?' <span class="pill g">C</span>':'')+(p.isGoalkeeper?' <span class="pill g">GOL</span>':'')+(p.role==='COACH'?' <span class="pill w">TÉC</span>':'')+(p.role==='ASSISTANT'?' <span class="pill w">AUX</span>':'')+(p.started?' <span class="pill ok">titular</span>':'')+'</div></div>'+
+    '<button class="btn sm dang" data-act="team-delplayer" data-eid="'+eid+'" data-cat="'+esc(cat||'')+'" data-pid="'+p.id+'">✕</button></div>';});
+  h+='<div style="height:6px"></div><button class="btn sm sec" data-act="team-addplayer" data-eid="'+eid+'" data-cat="'+esc(cat||'')+'" style="width:100%">+ jogador / comissão</button></div>';
+  box.innerHTML=h;
+}
+function teamAddPlayerSheet(eid,cat){
+  openSheet('<h3>Adicionar ao elenco'+(cat?' · '+esc(cat):'')+'</h3>'+
+    '<label>Nome</label><input id="tp-name" placeholder="Nome do atleta / comissão">'+
+    '<label>Número</label><input id="tp-num" type="number" inputmode="numeric" placeholder="nº da camisa">'+
+    '<label>Função</label><select id="tp-role"><option value="PLAYER">Jogador</option><option value="COACH">Técnico</option><option value="ASSISTANT">Auxiliar</option></select>'+
+    '<div style="display:flex;gap:16px;margin-top:10px;flex-wrap:wrap"><label style="margin:0;text-transform:none;display:flex;align-items:center;gap:6px"><input type="checkbox" id="tp-gk" style="width:auto"> Goleiro</label>'+
+    '<label style="margin:0;text-transform:none;display:flex;align-items:center;gap:6px"><input type="checkbox" id="tp-cap" style="width:auto"> Capitão</label>'+
+    '<label style="margin:0;text-transform:none;display:flex;align-items:center;gap:6px"><input type="checkbox" id="tp-start" style="width:auto"> Titular</label></div>'+
+    '<div style="height:12px"></div><button class="btn" data-act="tp-save" data-eid="'+eid+'" data-cat="'+esc(cat||'')+'">Adicionar</button>');
+}
+async function teamSavePlayer(eid,cat){
+  const name=document.getElementById('tp-name').value.trim();if(!name)return toast('Nome do jogador');
+  const num=document.getElementById('tp-num').value;
+  const body={name:name,number:num!==''?Number(num):null,isGoalkeeper:document.getElementById('tp-gk').checked,isCaptain:document.getElementById('tp-cap').checked,role:document.getElementById('tp-role').value,started:document.getElementById('tp-start').checked};
+  try{await api('/entries/'+eid+'/players',{method:'POST',body:body});closeSheet();toast('Adicionado');renderRoster(eid,cat);}catch(e){toast(e.message);}
+}
+async function teamDelPlayer(eid,pid,cat){
+  if(!confirm('Remover do elenco?'))return;
+  try{await api('/players/'+pid,{method:'DELETE'});toast('Removido');renderRoster(eid,cat);}catch(e){toast(e.message);}
+}
+function teamPickLogo(eid){
+  var inp=document.createElement('input');inp.type='file';inp.accept='image/*';
+  inp.onchange=function(){
+    var f=inp.files&&inp.files[0];if(!f)return;toast('Processando escudo...');
+    var r=new FileReader();
+    r.onload=function(){var img=new Image();
+      img.onload=function(){
+        var max=160,w=img.width,h=img.height,s=Math.min(1,max/Math.max(w,h));
+        var cw=Math.max(1,Math.round(w*s)),ch=Math.max(1,Math.round(h*s));
+        var cv=document.createElement('canvas');cv.width=cw;cv.height=ch;cv.getContext('2d').drawImage(img,0,0,cw,ch);
+        var data=cv.toDataURL('image/png');if(data.length>760000)data=cv.toDataURL('image/jpeg',0.82);
+        api('/entries/'+eid+'/logo',{method:'POST',body:{logo:data}}).then(function(){toast('Escudo salvo');if(TEAM_CTX.tid)loadMyTeam(TEAM_CTX.tid,TEAM_CTX.canLogo);}).catch(function(e){toast(e.message);});
+      };img.onerror=function(){toast('Imagem inválida');};img.src=r.result;};
+    r.readAsDataURL(f);};
+  inp.click();
 }
 
 // Mural/avisos do torneio (texto). isOwner mostra o compositor + remover.
@@ -1099,6 +1212,11 @@ document.addEventListener('click',async(ev)=>{
   if(a==='ch-result'){sheetChallengeResult(el.dataset.id,el.dataset.h,el.dataset.a);return;}
   if(a==='save-ch-result'){saveChallengeResult(el.dataset.id,el.dataset.w);return;}
   if(a==='share-t'){const url=location.origin+'/t/'+el.dataset.slug;const txt=el.dataset.name+' — acompanhe no TenisCash';if(navigator.share){navigator.share({title:el.dataset.name,text:txt,url});}else{navigator.clipboard.writeText(url);toast('Link copiado');}return;}
+  if(a==='team-roster'){toggleRoster(el.dataset.eid,el.dataset.cat);return;}
+  if(a==='team-addplayer'){teamAddPlayerSheet(el.dataset.eid,el.dataset.cat);return;}
+  if(a==='tp-save'){teamSavePlayer(el.dataset.eid,el.dataset.cat);return;}
+  if(a==='team-delplayer'){teamDelPlayer(el.dataset.eid,el.dataset.pid,el.dataset.cat);return;}
+  if(a==='team-logo-club'){if(el.dataset.eid)teamPickLogo(el.dataset.eid);return;}
   if(a==='add-role'){sheetAddRole(el.dataset.tid);return;}
   if(a==='save-role'){saveAddRole(el.dataset.tid);return;}
   if(a==='del-role'){if(confirm('Remover esta pessoa do papel?')){try{await api('/'+el.dataset.tid+'/roles/'+el.dataset.rid,{method:'DELETE'});toast('Removido');loadRoles(el.dataset.tid);}catch(e){toast(e.message);}}return;}
