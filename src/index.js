@@ -1503,16 +1503,19 @@ app.get('/t/:slug', async (req, res) => {
       });
     });
   }
+  // cache-buster: URL única a cada chamada + fetch no-store → nunca pega resposta cacheada (iPhone/Safari)
+  var cb=function(u){return u+(u.indexOf('?')<0?'?':'&')+'_='+Date.now();};
+  var FO={cache:'no-store'};
   function load(catId, silent){
     if(POLL){clearTimeout(POLL);POLL=null;}
     CURID=catId;
     if(!silent){DATA=null;renderView();}
     var S='/api/tournaments/'+TID+'/stats/';
     var cq='?categoryId='+catId;
-    var J=function(u){return fetch(u).then(function(r){return r.json();}).catch(function(){return {};});};
+    var J=function(u){return fetch(cb(u),FO).then(function(r){return r.json();}).catch(function(){return {};});};
     Promise.all([
-      fetch('/api/tournaments/'+TID+'/categories/'+catId+'/matches').then(function(r){return r.json();}),
-      fetch('/api/tournaments/'+TID+'/categories/'+catId+'/standings').then(function(r){return r.json();}),
+      fetch(cb('/api/tournaments/'+TID+'/categories/'+catId+'/matches'),FO).then(function(r){return r.json();}),
+      fetch(cb('/api/tournaments/'+TID+'/categories/'+catId+'/standings'),FO).then(function(r){return r.json();}),
       J(S+'scorers'+cq), J(S+'assists'+cq), J(S+'cards'+cq)
     ]).then(function(res){
       if(CURID!==catId) return;
@@ -1533,6 +1536,8 @@ app.get('/t/:slug', async (req, res) => {
     });
   }
   if(CATS.length){renderTabs();renderViews();load(CATS[0].id);}else{elBody.innerHTML='<div class="empty">Nenhuma categoria criada ainda.</div>';}
+  // Safari restaura a página do bfcache (voltar pra aba) com dado velho → recarrega os dados.
+  window.addEventListener('pageshow',function(e){ if(e.persisted && CURID){ load(CURID); } });
 })();
 </script>
 </body>
