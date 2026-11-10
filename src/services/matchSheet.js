@@ -155,9 +155,21 @@ async function finalizeMatch(matchId, opts = {}) {
 async function playerStats(tournamentId, opts = {}) {
   const where = { tournamentId };
   if (opts.categoryId) where.categoryId = opts.categoryId;
-  const matches = await prisma.tournamentMatch.findMany({ where, select: { id: true } });
+  const matches = await prisma.tournamentMatch.findMany({
+    where,
+    select: { id: true, status: true, homeEntryId: true, awayEntryId: true },
+  });
   const matchIds = matches.map((m) => m.id);
   if (!matchIds.length) return [];
+
+  // Jogos disputados por time (entry) = partidas encerradas (FINISHED/WALKOVER).
+  // Serve pra coluna "J" e pra média (gols por jogo) do ranking.
+  const gamesByEntry = {};
+  for (const m of matches) {
+    if (m.status !== 'FINISHED' && m.status !== 'WALKOVER') continue;
+    if (m.homeEntryId) gamesByEntry[m.homeEntryId] = (gamesByEntry[m.homeEntryId] || 0) + 1;
+    if (m.awayEntryId) gamesByEntry[m.awayEntryId] = (gamesByEntry[m.awayEntryId] || 0) + 1;
+  }
 
   let types;
   if (opts.kind === 'assists') types = ['ASSIST'];
@@ -185,7 +197,7 @@ async function playerStats(tournamentId, opts = {}) {
     const p = pById[ev.playerId];
     if (!p) continue;
     const k = ev.playerId;
-    agg[k] = agg[k] || { playerId: k, name: p.name, number: p.number, team: teamById[p.entryId] || '', goals: 0, assists: 0, yellow: 0, red: 0, total: 0 };
+    agg[k] = agg[k] || { playerId: k, name: p.name, number: p.number, entryId: p.entryId, team: teamById[p.entryId] || '', games: gamesByEntry[p.entryId] || 0, goals: 0, assists: 0, yellow: 0, red: 0, total: 0 };
     if (ev.type === 'GOAL') agg[k].goals += 1;
     else if (ev.type === 'ASSIST') agg[k].assists += 1;
     else if (ev.type === 'YELLOW') agg[k].yellow += 1;
@@ -193,6 +205,11 @@ async function playerStats(tournamentId, opts = {}) {
     agg[k].total += 1;
   }
   const rows = Object.values(agg);
+  // Média por jogo do time (artilheiro/assistência). Null quando o time ainda não encerrou jogo.
+  for (const r of rows) {
+    const main = opts.kind === 'assists' ? r.assists : opts.kind === 'cards' ? r.total : r.goals;
+    r.avg = r.games > 0 ? Math.round((main / r.games) * 100) / 100 : null;
+  }
   const key = opts.kind === 'assists' ? 'assists' : opts.kind === 'cards' ? 'total' : 'goals';
   rows.sort((a, b) => b[key] - a[key] || String(a.name).localeCompare(String(b.name)));
   return rows;
