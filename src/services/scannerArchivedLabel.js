@@ -61,7 +61,7 @@ function numericColourReferences(words) {
   for(const model of all.filter(w=>w.confidence>=75&&/^\d{6}$/.test(text(w)))){
     const colour=following(model)[0];
     if(!colour||colour.confidence<75||!/^\d{2}$/.test(text(colour))||
-      height(colour)<height(model)*.7||height(colour)>height(model)*1.4)continue;
+      height(colour)<Math.floor(height(model)*.7)||height(colour)>height(model)*1.4)continue;
     // An extra adjacent numeric/slash token makes the printed chain incomplete.
     if(following(colour).some(w=>/^[\d/.,-]+$/.test(text(w))))continue;
     const ownedByScale=all.some(w=>w!==model&&w!==colour&&/^(BR|BRA|USA?|UK|EUR|EU|F|CM|CHN|JP|J|SIZE|TAM)$/i.test(text(w))&&(
@@ -76,7 +76,12 @@ function numericColourReferences(words) {
   return [...new Set(joined)];
 }
 function printedReferences(words,numericColours=[]) {
-  const references = new Set(words.filter(w=>!/^(?:BR|BRA|USA?|UK|EUR|EU|F|CM|CHN|JP|J)\s*\d{1,2}(?:[.,]5|\s*\/\s*\d{2})?$/i.test(w.text)).map(w => norm(w.text)).filter(x => /^\d{5,10}$/.test(x) ||
+  // OCR can merge two complete printed scale fields into one token. Require
+  // both scale labels and a literal separator; never treat US11/29CM as a model.
+  const scale='(?:BRA?|USA?|UK|EUR|EU|F|CM|CHN|JP|J)',value='\\d{1,2}(?:[.,]5)?';
+  const scaleField='(?:'+scale+'\\s*'+value+'|'+value+'\\s*'+scale+')';
+  const compoundScales=new RegExp('^'+scaleField+'\\s*/\\s*'+scaleField+'$','i');
+  const references = new Set(words.filter(w=>!compoundScales.test(w.text.trim())&&!/^(?:BR|BRA|USA?|UK|EUR|EU|F|CM|CHN|JP|J)\s*\d{1,2}(?:[.,]5|\s*\/\s*\d{2})?$/i.test(w.text)).map(w => norm(w.text)).filter(x => /^\d{5,10}$/.test(x) ||
     (x.length >= 5 && x.length <= 25 && /[A-Z]/.test(x) && /\d/.test(x))));
   // Model and colour can be separate OCR words: "220644 / BKW". Keep
   // their printed spatial relationship; never attach a colour from another row.
@@ -142,7 +147,16 @@ function readParts(data) {
       const pairs=scales.filter(s=>s!==label&&nums.some(w=>cy(w)>cy(s)&&w.bbox.y0-s.bbox.y1<=Math.max(s.bbox.y1-s.bbox.y0,w.bbox.y1-w.bbox.y0)*1.5&&!scales.some(t=>cy(t)>cy(s)&&cy(t)<cy(w))));
       belowOnly=!before&&pairs.length>=2;
     }
-    const nearby = numericWords.filter(w => w !== label).filter(w => {
+    // Discard values owned by a clearly closer foreign scale before counting
+    // BR candidates: EUR40 above BR38 must not make BR38 ambiguous.
+    const distance=(a,z)=>Math.hypot(Math.max(0,a.x0-z.x1,z.x0-a.x1),Math.max(0,a.y0-z.y1,z.y0-a.y1));
+    const foreignOwned=selected=>{const sh=selected.bbox.y1-selected.bbox.y0,brDistance=distance(b,selected.bbox);
+      return scaleWords.some(s=>{if(s===label)return false;const a=s.bbox,ah=a.y1-a.y0;
+        const row=Math.abs(cy(s)-cy(selected))<=Math.max(ah,sh)*.6;
+        const column=Math.abs(cx(s)-cx(selected))<=Math.max(a.x1-a.x0,selected.bbox.x1-selected.bbox.x0)*.6;
+        return (row||column)&&distance(a,selected.bbox)+Math.max(ah,sh)*.15<brDistance;
+      });};
+    const nearby = numericWords.filter(w => w !== label&&!foreignOwned(w)).filter(w => {
       const a = w.bbox, ah = a.y1 - a.y0;
       const sameRow = Math.abs((a.y0 + a.y1 - b.y0 - b.y1) / 2) <= Math.max(h, ah) * .6
         && Math.max(0, a.x0 - b.x1, b.x0 - a.x1) <= Math.max(h, ah) * 5;
@@ -160,16 +174,6 @@ function readParts(data) {
     // A number on the other side of a foreign scale belongs to that scale;
     // proximity alone must never turn "BR [unreadable] EUR 43" into BR 43.
     if(scaleWords.some(s=>s!==label&&Math.abs(cy(s)-cy(selected))<=Math.max(s.bbox.y1-s.bbox.y0,selected.bbox.y1-selected.bbox.y0)*.6&&cx(s)>Math.min(cx(label),cx(selected))&&cx(s)<Math.max(cx(label),cx(selected))))continue;
-    // Labels can follow their value as well ("43 F"). A clearly closer
-    // aligned foreign scale owns that value even when it is not between BR
-    // and the number. This only vetoes an ambiguous BR attachment.
-    const distance=(a,z)=>Math.hypot(Math.max(0,a.x0-z.x1,z.x0-a.x1),Math.max(0,a.y0-z.y1,z.y0-a.y1));
-    const sh=selected.bbox.y1-selected.bbox.y0,brDistance=distance(b,selected.bbox);
-    if(scaleWords.some(s=>{if(s===label)return false;const a=s.bbox,ah=a.y1-a.y0;
-      const row=Math.abs(cy(s)-cy(selected))<=Math.max(ah,sh)*.6;
-      const column=Math.abs(cx(s)-cx(selected))<=Math.max(a.x1-a.x0,selected.bbox.x1-selected.bbox.x0)*.6;
-      return (row||column)&&distance(a,selected.bbox)+Math.max(ah,sh)*.15<brDistance;
-    }))continue;
     sizes.add(sizeKey(nearby[0].text));
   }
   if(sizes.size>1)return {conflict:true};

@@ -9,7 +9,10 @@ const SOURCE='explicit-owner-chat-confirmation-v1',EXECUTOR='system-maintenance'
 const sha=x=>createHash('sha256').update(String(x||'')).digest('hex');
 const definitions=Object.freeze({'douglas-explicit-48-physical-pairs-20261109':Object.freeze({
  manifestSha256:'5c08214c1f48d1d6d57725cb519828f9facb037d6483de7d035596d6630d1c50',
- roundId:'ca042063-2801-4613-a82c-a47f1e07f140',storeId:'01b5a498-4dce-49b9-b359-5b031936aae9',count:48,canaryId:'cmw9rvc5c017f35kgtkqwixvd'})});
+ roundId:'ca042063-2801-4613-a82c-a47f1e07f140',storeId:'01b5a498-4dce-49b9-b359-5b031936aae9',count:48,canaryId:'cmw9rvc5c017f35kgtkqwixvd'}),
+ 'douglas-explicit-3-additional-physical-pairs-20261109':Object.freeze({
+ manifestSha256:'45395afa770811f741cd79a16058671cf98ca5e5a24d511a882cbe1e76f13b02',
+ roundId:'ca042063-2801-4613-a82c-a47f1e07f140',storeId:'01b5a498-4dce-49b9-b359-5b031936aae9',count:3,canaryId:'cmw9wzhiw00453ni1rtdm3kzx'})});
 function reject(code){const e=Error(code);e.maintenanceReason=code;throw e;}
 async function ensure(db){
  await db.$executeRawUnsafe(`CREATE SCHEMA IF NOT EXISTS ${SCHEMA}`);
