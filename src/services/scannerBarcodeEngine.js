@@ -24,6 +24,21 @@ async function decode(image) {
   if (codes.length) return codes;
   const frame = await sharp(image, { limitInputPixels: MAX_PIXELS }).rotate(270)
     .resize({ width: 2400, height: 2400, fit: 'inside' }).grayscale().normalize().png().toBuffer();
-  return read(frame);
+  const enhancedCodes = await read(frame);
+  if (enhancedCodes.length) return enhancedCodes;
+  // Reuse the camera's bounded all-candidate recovery only after both whole
+  // frame reads failed. No expected barcode or catalogue data selects a region.
+  const { data, info } = await sharp(image, { limitInputPixels: MAX_PIXELS }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const recovered = [];
+  const result = await require('../../public/scanner-auto').decodeFullFramePixels({
+    data: new Uint8ClampedArray(data.buffer, data.byteOffset, data.byteLength), width: info.width, height: info.height,
+  }, {
+    normalizePixels: require('../../public/scanner-regions').normalizePixels,
+    readBarcodes: async (pixels, options) => { const rows = await getMod().readBarcodes(pixels, options); recovered.push(...rows); return rows; },
+  });
+  // A candidate/pixel budget failure is not permission to accept the first
+  // recovered label. Preserve all distinct results when the scan is ambiguous.
+  if (!result.code && !result.ambiguous) return [];
+  return [...new Set(recovered.map(r => String(r.text || '').trim()).filter(barcodePolicy.isScanCode))];
 }
 module.exports = { decode, MAX_PIXELS };
