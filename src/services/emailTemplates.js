@@ -12,6 +12,9 @@
 //   const html = renderWelcome({ name: 'Douglas' });
 // =====================================================================
 
+const { publicBaseUrl, publicDomain } = require('../config/publicUrl');
+const BASE = publicBaseUrl();
+
 const BRAND = {
   name: 'TenisCash',
   tagline: 'Sports & Tennis · Loyalty Esportivo',
@@ -22,12 +25,14 @@ const BRAND = {
   text: '#0a0a0a',
   text2: '#6e6e73',
   border: '#e5e5ea',
-  domain: 'teniscash.com.br',
-  websiteUrl: 'https://teniscash.com.br',
-  appUrl: 'https://teniscash.com.br/app.html',
-  storeUrl: 'https://teniscash.com.br/loja.html',
+  // Links de página seguem PUBLIC_BASE_URL (vira o domínio novo ao setar a env).
+  domain: publicDomain(),
+  websiteUrl: BASE,
+  appUrl: BASE + '/app.html',
+  storeUrl: BASE + '/loja.html',
+  // E-mail segue em @teniscash até o domínio novo ser verificado no Resend.
   supportEmail: 'suporte@teniscash.com.br',
-  privacyUrl: 'https://teniscash.com.br/politica-privacidade.html',
+  privacyUrl: BASE + '/politica-privacidade.html',
   social: {
     instagram: 'https://instagram.com/sportsetennis',
     whatsapp: 'https://wa.me/558396713153',
