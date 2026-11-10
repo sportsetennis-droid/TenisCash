@@ -21,6 +21,22 @@ function classification(product) {
   if (otherCategory.test(category) || ncm) return 'outside';
   return 'outside';
 }
+// Mercadoria vendável (roupa, acessório, calçado). Material interno nunca entra no estoque.
+const nonMerchandiseName = /\b(?:PDVS?|TOTEM|DEPOSITO|INSUMOS?|EXPOSITOR(?:ES)?|MANEQUIM|EMBALAGE(?:M|NS)|SACOLAS?)\b/;
+function isMerchandise(product) {
+  const name=normalize(product?.name), category=normalize(product?.category);
+  return !!name && !nonMerchandiseName.test(name) && !/^(?:INSUMOS?|GERAL)$/.test(category);
+}
+// Tipo para a substituição: footwear (regra de calçado pela foto), other (roupa/acessório,
+// sem NENHUM sinal de calçado), review (sinais de calçado em conflito) ou blocked (não é mercadoria).
+function kind(product) {
+  const c=classification(product);
+  if (c==='footwear'||c==='review') return c;
+  const name=normalize(product?.name), category=normalize(product?.category), ncm=String(product?.ncm||'').replace(/\D/g,'');
+  if (footwearCategory.test(category) || /^640[1-5]/.test(ncm)) return 'review';
+  if (!excludedName.test(name) && footwearName.test(name)) return 'review';
+  return isMerchandise(product) ? 'other' : 'blocked';
+}
 function type(scope) { return scope?.type || 'all'; }
 function validateType(value) {
   const selected=value == null ? 'all' : value;
@@ -35,4 +51,4 @@ async function build(db, selected) {
 }
 function includes(scope, product) { return type(scope)==='all'||!!product&&Array.isArray(scope.productIds)&&scope.productIds.includes(product.id); }
 function description(scope) { return type(scope)==='footwear'?'Contagem de tênis, chuteiras e sandálias':'Todos os produtos da loja'; }
-module.exports={classification,type,validateType,build,includes,description};
+module.exports={classification,kind,isMerchandise,type,validateType,build,includes,description};
