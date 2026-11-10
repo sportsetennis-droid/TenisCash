@@ -86,13 +86,13 @@ function createProcessor(deps = {}) {
           const candidate = enhance ? enhanced : frame;
           await rasterDiagnostic(candidate,{pass:++pass,angle,psm,enhanced:enhance});
           const data=(await worker.recognize(candidate, {}, { text: true, blocks: true })).data;
-          if(!consistent(data))return {pending:true,reason:'photo_size_or_reference_pending'};
+          if(!consistent(data))return {pending:true,reason:'photo_size_or_reference_pending',decodedBarcodes:codes,observedSizes:[...seenSizes]};
           // This is only a trigger for another attempt, never identity/size
           // evidence. The next read still has to pass every literal guard.
           nineDigitText ||= (data.blocks||[]).some(b=>(b.paragraphs||[]).some(p=>(p.lines||[]).some(l=>(l.words||[]).some(w=>w.confidence>=75&&/^\d{9}$/.test(String(w.text||'').trim())))));
           const observed = readWords(data);
           if (observed) {
-            if(partial&&partial.size!==observed.size)return {pending:true,reason:'photo_size_or_reference_pending'};
+            if(partial&&partial.size!==observed.size)return {pending:true,reason:'photo_size_or_reference_pending',decodedBarcodes:codes,observedSizes:[...seenSizes]};
             if(incompleteNineDigitReference(observed)&&!stretched)partial=partial||observed;
             else return { ...observed, decodedBarcodes: codes };
           }
@@ -113,9 +113,9 @@ function createProcessor(deps = {}) {
           const candidate=await wide.png().toBuffer();
           await rasterDiagnostic(candidate,{pass:++pass,angle,psm:'11',enhanced:normalized});
           const data=(await worker.recognize(candidate,{}, {text:true,blocks:true})).data;
-          if(!consistent(data))return {pending:true,reason:'photo_size_or_reference_pending'};
+          if(!consistent(data))return {pending:true,reason:'photo_size_or_reference_pending',decodedBarcodes:codes,observedSizes:[...seenSizes]};
           const observed=readWords(data);
-          if(observed&&partial&&partial.size!==observed.size)return {pending:true,reason:'photo_size_or_reference_pending'};
+          if(observed&&partial&&partial.size!==observed.size)return {pending:true,reason:'photo_size_or_reference_pending',decodedBarcodes:codes,observedSizes:[...seenSizes]};
           if(observed){
             if(incompleteNineDigitReference(observed))partial=partial||observed;
             else return {...observed,decodedBarcodes:codes};
@@ -124,7 +124,7 @@ function createProcessor(deps = {}) {
       }
       if(partial)return {...partial,decodedBarcodes:codes};
     }
-    return { pending: true, reason: 'photo_size_or_reference_pending' };
+    return { pending: true, reason: 'photo_size_or_reference_pending', decodedBarcodes: codes, observedSizes: [...seenSizes] };
   }
   async function run(kind, image, barcode, onDiagnostic = deps.onDiagnostic, hint = null) {
     if (busy) throw Error('image_process_busy');
