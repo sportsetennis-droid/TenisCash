@@ -160,8 +160,13 @@ function catalogTypeKey(value) {
   let key = String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/\s+/g, ' ');
   if (key === 'chuteira') key = 'chuteiras';
   if (key === 'calcado') key = 'calcados';
+  // Mesmo tipo na tela de Estoque (o cadastro mantém o nome que o site usa).
+  if (key === 'vestuario' || key === 'roupa') key = 'roupas';
+  if (key === 'acessorio' || key === 'bola') key = 'acessorios';
+  if (key === 'a definir' || key === 'geral') key = 'a classificar';
   return key;
 }
+const TYPE_LABELS = { tenis: 'Tênis', chuteiras: 'Chuteiras', sandalias: 'Sandálias', roupas: 'Roupas', acessorios: 'Acessórios', 'a classificar': 'A classificar', calcados: 'Calçados', insumo: 'Insumo' };
 function groupFacet(rows, field, keyOf) {
   const map = new Map();
   for (const row of rows || []) {
@@ -366,7 +371,8 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
         prisma.product.groupBy({ by: ['category'], where: { AND: andConds.filter(c => c !== categoryCond) }, _count: { _all: true } }),
       ]);
       brandOptions = groupFacet(brandRows, 'brand', v => String(v || '').trim().toUpperCase());
-      typeOptions = groupFacet(typeRows, 'category', catalogTypeKey);
+      typeOptions = groupFacet(typeRows, 'category', catalogTypeKey).map(o => ({ ...o, label: TYPE_LABELS[o.key] || o.label }))
+        .sort((a, b) => String(a.label).localeCompare(String(b.label), 'pt-BR'));
     }
 
     // Busca da tela Vender: primeiro exige todas as palavras úteis; se não achar,
