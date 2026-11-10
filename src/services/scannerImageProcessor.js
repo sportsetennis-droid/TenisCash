@@ -1,7 +1,7 @@
 'use strict';
 const path = require('node:path');
 const barcodePolicy = require('../../public/scanner-barcode-policy');
-const incompleteNineDigitReference=observed=>observed.references.some(ref=>/^\d{9}$/.test(ref))&&!observed.references.some(ref=>/^\d{9}[A-Z]{2,8}(?:\d{1,3})?$/.test(ref));
+const incompleteNineDigitReference=observed=>observed.references.some(ref=>/^\d{9}$/.test(ref)&&!observed.completeOusReferences?.includes(ref))&&!observed.references.some(ref=>/^\d{9}[A-Z]{2,8}(?:\d{1,3})?$/.test(ref));
 // One reusable OCR worker per isolated process; the parent owns deadlines.
 // Never terminate while Tesseract is preparing an image asynchronously.
 function createProcessor(deps = {}) {
@@ -33,13 +33,18 @@ function createProcessor(deps = {}) {
     let stretched=false,pass=0;
     // Retain contradictory partial evidence within this photo only. A pass
     // without a complete answer may still contain a reliable BR or colour.
-    const seenSizes=new Set(),seenReferences=new Set(),seenNumericColours=new Set(),seenNumericTokens=new Set();
+    const seenSizes=new Set(),seenReferences=new Set(),seenNumericColours=new Set(),seenNumericTokens=new Set(),seenOusTokens=new Set();
+    let hasOusField=false;
+    const ousIdentity=ref=>/^350\d{3}\d{1,3}$/.test(ref)?ref.slice(0,6)+':'+Number(ref.slice(6)):ref;
     const consistent=data=>{const parts=readParts(data);if(parts.conflict)return false;
       if(parts.size)seenSizes.add(parts.size);
       for(const ref of parts.identityReferences||[])seenReferences.add(ref);
       for(const ref of parts.numericColourReferences||[])seenNumericColours.add(ref);
       for(const ref of parts.numericReferenceTokens||[])seenNumericTokens.add(ref);
-      return seenSizes.size<=1&&seenReferences.size<=1&&
+      for(const ref of parts.ousReferenceTokens||[])seenOusTokens.add(ref);
+      hasOusField ||= !!parts.completeOusReferences?.length;
+      const identities=hasOusField?new Set([...seenReferences,...seenOusTokens].map(ousIdentity)):seenReferences;
+      return seenSizes.size<=1&&identities.size<=1&&
         (!seenNumericColours.size||new Set([...seenNumericColours,...seenNumericTokens]).size<=1);};
     for (const angle of [0, 90, 270, 180]) {
       diagnostic('metadata',{angle});

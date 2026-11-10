@@ -60,16 +60,22 @@ function matchIncomingManufacturerReference(product,read,fiscal) {
   }else if(brand==='OUS'){
     // These exact incoming items carry manufacturer model AND variation in
     // the description; supplierCode is a different distributor identifier.
+    // Only the 1-3 digit colour suffix may have padding (05 and 5). Keep all
+    // six model digits intact and retain both components in conflict checks.
+    const identity=(model,colour)=>model+':'+Number(colour);
     const records=incoming.map(row=>{
       const text=String(row.description||'').normalize('NFKC').toUpperCase();
-      const model=text.match(/^(\d{6})\s+TENIS\s+COURO\s+(\d{1,3})\s/);
+      const model=text.match(/^(\d{6})\s+TENIS\s+(?:COURO|TEXTIL|SINT)\s+(\d{1,3})\s/);
       const tail=text.match(/\s(\d{2}(?:[.,]5)?)$/);
-      return model&&tail?{identity:model[1]+model[2],size:tail[1].replace(',','.')}:null;
+      return model&&tail?{identity:identity(model[1],model[2]),size:tail[1].replace(',','.')}:null;
     }).filter(Boolean);
     if(!records.length)return {handled:false,reference:null};
     if(records.some(ref=>ref.size!==size))return {handled:true,reference:null};
     expected=records.map(ref=>ref.identity);
-    observed=(read.references||[]).filter(ref=>/^\d{7,9}$/.test(normalizeReference(ref))).map(reference=>({reference,identity:normalizeReference(reference)}));
+    observed=(read.references||[]).map(reference=>{
+      const match=normalizeReference(reference).match(/^(\d{6})(\d{1,3})$/);
+      return match?{reference,identity:identity(match[1],match[2])}:null;
+    }).filter(Boolean);
   }else return {handled:false,reference:null};
   const identities=new Set(expected);
   if(identities.size!==1||observed.some(ref=>!identities.has(ref.identity)))return {handled:true,reference:null};

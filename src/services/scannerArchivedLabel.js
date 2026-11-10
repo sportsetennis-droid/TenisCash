@@ -75,13 +75,64 @@ function numericColourReferences(words) {
   }
   return [...new Set(joined)];
 }
+// OUS labels in this import print a 350xxx model and a one-to-three-digit
+// variation. This is a field grammar, not brand evidence: require literal
+// Ref punctuation or a printed dash, and keep both model and colour. Never
+// assemble bare numbers across a gap or repair a weak/missing OCR character.
+const ousIdentity=ref=>/^350\d{3}\d{1,3}$/.test(ref)?ref.slice(0,6)+':'+Number(ref.slice(6)):ref;
+function ousReferenceFields(words){
+  const all=words.filter(w=>w.bbox),text=w=>String(w.text||'').normalize('NFKC').trim();
+  const h=w=>w.bbox.y1-w.bbox.y0,cy=w=>(w.bbox.y0+w.bbox.y1)/2;
+  const dash=/^[-\u2013\u2014]$/;
+  const nearby=(a,b,height)=>Math.abs(cy(a)-cy(b))<=Math.max(height,h(b))*.35&&
+    b.bbox.x0>=a.bbox.x1&&b.bbox.x0-a.bbox.x1<=height*1.5;
+  const next=(a,height)=>all.filter(b=>b!==a&&nearby(a,b,height)).sort((a,b)=>a.bbox.x0-b.bbox.x0)[0];
+  const fields=[];let conflict=false;
+  for(const first of all.filter(w=>w.confidence>=75)){
+    const raw=text(first),full=raw.match(/^(?:REF[.:]+\s*)?(350\d{3})\s*[-\u2013\u2014]\s*(\d{1,3})$/i);
+    const head=raw.match(/^(REF[.:]+\s*)?(350\d{3})\s*([-\u2013\u2014])?$/i);
+    let members=[first],model,colour,last=first;
+    if(full){model=full[1];colour=full[2];}
+    else if(head){
+      model=head[2];let context=!!head[1]||!!head[3],candidate=next(first,h(first));
+      if(candidate&&dash.test(text(candidate))){members.push(candidate);last=candidate;context=true;candidate=next(candidate,h(first));}
+      if(!context){
+        const prefix=all.find(w=>w!==first&&w.confidence>=75&&/^REF[.:]+$/i.test(text(w))&&nearby(w,first,h(first))&&next(w,h(first))===first);
+        if(prefix){members.unshift(prefix);context=true;}
+      }
+      if(!context)continue;
+      if(!candidate||!/^\d{1,3}$/.test(text(candidate))){conflict=true;continue;}
+      if(h(candidate)<Math.floor(h(first)*.7)||h(candidate)>h(first)*1.4){conflict=true;continue;}
+      members.push(candidate);last=candidate;colour=text(candidate);
+    }else{
+      if(/^(?:REF[.:]+\s*)?350\d{3}\s*[-\u2013\u2014]\s*\d/i.test(raw))conflict=true;
+      continue;
+    }
+    if(members.some(w=>w.confidence<75)){conflict=true;continue;}
+    // Consume the complete numeric field, including weak continuations. A
+    // nearby scale or an extra slash/digit cannot be hidden by normalization.
+    const before=members[0],height=h(first);
+    if(all.some(w=>!members.includes(w)&&/^[A-Z\d/.,-]+$/i.test(text(w))&&!/^REF[.:]+$/i.test(text(w))&&
+      (nearby(last,w,height)||nearby(w,before,height)))){conflict=true;continue;}
+    const ownedByScale=all.some(w=>!members.includes(w)&&/^(BR|BRA|USA?|UK|EUR|EU|F|CM|CHN|JP|J|SIZE|TAM)$/i.test(text(w))&&(
+      Math.abs(cy(w)-cy(last))<=Math.max(height,h(w))*.6&&
+      Math.max(0,w.bbox.x0-last.bbox.x1,last.bbox.x0-w.bbox.x1)<=height*5||
+      Math.abs((w.bbox.x0+w.bbox.x1-last.bbox.x0-last.bbox.x1)/2)<=Math.max(w.bbox.x1-w.bbox.x0,last.bbox.x1-last.bbox.x0)*.6&&
+      Math.max(0,w.bbox.y0-last.bbox.y1,last.bbox.y0-w.bbox.y1)<=Math.max(height,h(w))*1.5));
+    if(ownedByScale)conflict=true;else fields.push(model+colour);
+  }
+  return {references:[...new Set(fields)],conflict};
+}
 function printedReferences(words,numericColours=[]) {
   // OCR can merge two complete printed scale fields into one token. Require
   // both scale labels and a literal separator; never treat US11/29CM as a model.
   const scale='(?:BRA?|USA?|UK|EUR|EU|F|CM|CHN|JP|J)',value='\\d{1,2}(?:[.,]5)?';
   const scaleField='(?:'+scale+'\\s*'+value+'|'+value+'\\s*'+scale+')';
   const compoundScales=new RegExp('^'+scaleField+'\\s*/\\s*'+scaleField+'$','i');
-  const references = new Set(words.filter(w=>!compoundScales.test(w.text.trim())&&!/^(?:BR|BRA|USA?|UK|EUR|EU|F|CM|CHN|JP|J)\s*\d{1,2}(?:[.,]5|\s*\/\s*\d{2})?$/i.test(w.text)).map(w => norm(w.text)).filter(x => /^\d{5,10}$/.test(x) ||
+  // Sparse OCR often emits "US" and "8/25.5CM" as separate words. The
+  // literal number/number-CM token is still a scale field, never a model.
+  const splitCentimetres=/^\d{1,2}(?:[.,]5)?\s*\/\s*\d{1,3}(?:[.,]5)?\s*CM$/i;
+  const references = new Set(words.filter(w=>!compoundScales.test(w.text.trim())&&!splitCentimetres.test(w.text.trim())&&!/^(?:BR|BRA|USA?|UK|EUR|EU|F|CM|CHN|JP|J)\s*\d{1,2}(?:[.,]5|\s*\/\s*\d{2})?$/i.test(w.text)).map(w => norm(w.text)).filter(x => /^\d{5,10}$/.test(x) ||
     (x.length >= 5 && x.length <= 25 && /[A-Z]/.test(x) && /\d/.test(x))));
   // Model and colour can be separate OCR words: "220644 / BKW". Keep
   // their printed spatial relationship; never attach a colour from another row.
@@ -185,10 +236,19 @@ function readParts(data) {
   if(numericColours.length&&new Set([...numericColours,...numericReferenceTokens]).size>1)return {conflict:true};
   const references = printedReferences(reliable,numericColours);
   if(!references)return {conflict:true};
-  return {size:sizes.size?[...sizes][0]:null,references,identityReferences:identityReferences(reliable,references,numericColours),numericColourReferences:numericColours,numericReferenceTokens,text:String(data.text||'').slice(0,12000)};
+  const ousFields=ousReferenceFields(words);
+  if(ousFields.conflict)return {conflict:true};
+  const completeOusReferences=ousFields.references;
+  const ousReferenceTokens=[...new Set(reliable.map(w=>w.text.normalize('NFKC').trim().match(/^(?:REF[.:]+\s*)?(350\d{3})(?:\s*[-/\u2013\u2014]\s*|\s*)(\d{1,3})$/i))
+    .filter(Boolean).map(match=>match[1]+match[2]))];
+  const identities=[...new Set([...identityReferences(reliable,references,numericColours),...completeOusReferences])];
+  if(completeOusReferences.length&&new Set([...identities,...ousReferenceTokens].map(ousIdentity)).size>1)return {conflict:true};
+  for(const ref of completeOusReferences)if(!references.includes(ref))references.push(ref);
+  return {size:sizes.size?[...sizes][0]:null,references,identityReferences:identities,numericColourReferences:numericColours,numericReferenceTokens,
+    completeOusReferences,ousReferenceTokens,text:String(data.text||'').slice(0,12000)};
 }
 
-function readWords(data){const parts=readParts(data);return !parts.conflict&&parts.size&&parts.references.length?{size:parts.size,references:parts.references,text:parts.text,source:'archived-photo-local-ocr-v1'}:null;}
+function readWords(data){const parts=readParts(data);return !parts.conflict&&parts.size&&parts.references.length?{size:parts.size,references:parts.references,text:parts.text,source:'archived-photo-local-ocr-v1',...(parts.completeOusReferences.length?{completeOusReferences:parts.completeOusReferences}:{})}:null;}
 
 async function readImage(image, barcode) {
   try { return await require('./scannerImageBroker').run('label', image, barcode); }
