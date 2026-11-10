@@ -815,7 +815,8 @@
           <select id="invStoreSize" aria-label="Numeração" onchange="loadStoreInventory()" style="flex:1 1 140px;min-height:44px;padding:10px;border:1px solid #d2d2d7;border-radius:8px;"><option value="">Todas as numerações</option></select>
           <button class="btn btn-secondary btn-small" type="button" onclick="clearStoreFilters()" style="min-height:44px;">✕ Limpar filtros</button>
         </div>
-        <select id="invStoreVerification" aria-label="Situação da conferência por loja" onchange="loadStoreInventory()" style="padding:10px;margin-bottom:10px;border-radius:8px"><option value="">Todas as situações</option><option value="verified">✓ Conferidos nesta rodada</option><option value="pending">⚠ Com pendência</option><option value="unverified">○ Ainda não conferidos</option></select><div id="invStoreResults"></div>
+        <!-- Filtro de situação da conferência removido desta tela (pedido do dono 10/11/2026); valor fixo = todas -->
+        <input type="hidden" id="invStoreVerification" value=""><div id="invStoreResults"></div>
       </div>
     </div>
 
