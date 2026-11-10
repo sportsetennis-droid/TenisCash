@@ -9,6 +9,36 @@ const photoDigest=value=>createHash('sha256').update(Buffer.from(value.slice(val
 const normalized=value=>String(value||'').normalize('NFKC').toUpperCase().replace(/[^A-Z0-9]/g,'');
 const sizeKey=value=>String(value||'').replace(',','.').trim();
 const CONFIRMED_CODE='archived-photo-confirmed-code-v1';
+// Roupa/acessório: o OCR só lê tamanho numérico de calçado (BR). O tamanho vem da
+// NF-e de ENTRADA do MESMO código (literal na descrição), com o código decodificado
+// da própria foto. Regra 15 do dono. Nunca usado para calçado.
+const FISCAL_SIZE='archived-photo-code-plus-incoming-nfe-size-v1';
+const SIZE_TOKEN=/^(?:PP|P|M|G|GG|XG|XGG|EG|EGG|EXG|XXG|XXXG|G[1-5]|U|UN|UNICO|UNICA|\d{1,2}(?:[.,]5)?|\d{2}\/\d{2})$/;
+// Mesma grafia de tamanho: único, faixa 33-38 = 33/38 e códigos Puma do cProd
+// (PEQ/MED/GRD/EGR) e letra internacional S/L/XL, confirmados pela própria NF-e Puma (EGR ↔ GG, GRD ↔ G, S ↔ P, L ↔ G).
+const PUMA_CODES={PEQ:'P',MED:'M',GRD:'G',EGR:'GG',S:'P',L:'G',XL:'GG'};
+const sizeLabel=value=>{const v=String(value||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(',','.').replace(/\s+/g,'').replace(/^(\d{2})-(\d{2})$/,'$1/$2').trim();
+ if(/^(?:U|UN|UNICO|UNICA|TU|TAMANHOUNICO)$/.test(v))return 'UNICO';
+ return PUMA_CODES[v]||v;};
+const placeholderSize=value=>{const v=String(value||'').trim();return !v||v==='?'||/^T-/i.test(v)||/^[uú]nico-/i.test(v)||/^A ?DEFINIR$/i.test(v);};
+function fiscalLiteralSizes(description){
+ const d=String(description||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase();
+ const found=new Set();
+ for(const m of d.matchAll(/\bTAM(?:ANHO)?\s*[:.]?\s*([A-Z0-9]{1,5}(?:[.,]5)?)(?![A-Z0-9])/g))if(SIZE_TOKEN.test(m[1]))found.add(sizeLabel(m[1]));
+ // Último termo: letra de tamanho vale sozinha; número só com marcador antes ("T 10", "TAM 10").
+ const words=d.trim().split(/[\s-]+/).filter(Boolean),last=words[words.length-1],before=words[words.length-2]||'';
+ if(last&&SIZE_TOKEN.test(last)&&(!/^\d/.test(last)||/^(?:T|TAM|TAM\.|TAMANHO)$/.test(before)))found.add(sizeLabel(last));
+ for(const m of d.matchAll(/\b(\d{2})\s*[-\/]\s*(\d{2})\s*$/g))found.add(sizeLabel(m[1]+'/'+m[2]));
+ return [...found];
+}
+const PRINTED_BRANDS=/\b(REEBOK|NIKE|ADIDAS|PUMA|FILA|ASICS|SKECHERS|MIZUNO|OLYMPIKUS|FIBER)\b/gi;
+// Visão normalizada do que a foto mostrou (lida ou não lida).
+function photoView(read){
+ if(!read)return null;
+ if(read.pending)return read.reason==='photo_size_or_reference_pending'&&read.ocrConflict===false&&Array.isArray(read.observedSizes)&&Array.isArray(read.printedBrands)
+  ?{decodedBarcodes:read.decodedBarcodes||[],observedSizes:read.observedSizes,printedBrands:read.printedBrands,ocrConflict:false}:null;
+ return {decodedBarcodes:read.decodedBarcodes||[],observedSizes:read.size?[String(read.size)]:[],printedBrands:[...String(read.text||'').matchAll(PRINTED_BRANDS)].map(m=>m[1]),ocrConflict:false};
+}
 // Evidence that may serve as the basis of a confirmed code: literal local OCR
 // and the reviewed archived-photo applications of this replacement.
 const CONFIRMATION_SOURCES=new Set(['archived-photo-local-ocr-v1','archived-photo-assistant-review-manufacturer-label-v1','archived-photo-assistant-review-v1',
@@ -18,7 +48,7 @@ function reasonText(reason,options={}){
  if(options.autoReprocess===true)return reasonText(reason)+(options.processing===true?' Reprocessamento automático em andamento.':' Aguardando reprocessamento automático.')+' Esta leitura ainda não foi aplicada ao estoque.';
  if(reason==='photo_barcode_not_found')return 'O código de barras não ficou legível nesta foto. Reenquadre a mesma etiqueta.';
  if(reason==='photo_barcode_mismatch')return 'O código confirmado na foto é diferente do código lido. Confira a mesma peça.';
- return ({produto_ou_variante_pendente:'Produto ou variante ainda não identificados.',foto_ou_codigo_pendente:'Falta a foto arquivada com o código desta peça.',tipo_de_produto_pendente:'Conferir a classificação do produto para esta contagem de calçados.',codigo_da_foto_divergente:'O código da foto não confirmou o código lido.',tamanho_da_foto_divergente:'O tamanho BR da foto difere do cadastro. Conferir antes de incluir.',referencia_ou_marca_divergente:'A referência e a marca da etiqueta ainda precisam ser confirmadas.',photo_barcode_conflict:'A foto não permitiu confirmar um único código de barras.',photo_size_or_reference_pending:'Falta confirmar o tamanho BR e a referência na foto.',ocr_busy:'Conferência da foto na fila.',ocr_timeout:'A conferência da foto excedeu o tempo disponível; leitura preservada.',ocr_unavailable:'Conferência local da foto temporariamente indisponível.',
+ return ({produto_ou_variante_pendente:'Produto ou variante ainda não identificados.',foto_ou_codigo_pendente:'Falta a foto arquivada com o código desta peça.',tipo_de_produto_pendente:'Conferir o tipo do produto no cadastro (categoria/NCM em conflito ou item que não é mercadoria).',codigo_da_foto_divergente:'O código da foto não confirmou o código lido.',tamanho_da_foto_divergente:'O tamanho BR da foto difere do cadastro. Conferir antes de incluir.',referencia_ou_marca_divergente:'A referência e a marca da etiqueta ainda precisam ser confirmadas.',photo_barcode_conflict:'A foto não permitiu confirmar um único código de barras.',photo_size_or_reference_pending:'Falta confirmar o tamanho BR e a referência na foto.',ocr_busy:'Conferência da foto na fila.',ocr_timeout:'A conferência da foto excedeu o tempo disponível; leitura preservada.',ocr_unavailable:'Conferência local da foto temporariamente indisponível.',
  queue_recheck_wait:'Foto arquivada; conferência ainda pendente.',
  ocr_memory_limit:'A conferência da foto excedeu a memória disponível; leitura preservada.',
  photo_input_invalid:'O arquivo da foto não pôde ser processado. Confira a foto desta peça.',
@@ -52,7 +82,8 @@ async function start(db,{storeId,requestId,reviewToken},actorId){
   const current=await preview(tx,storeId);
   if(current.active)fail('Já há uma substituição em andamento nesta loja. Abra a operação existente.');
   if(reviewToken!==current.reviewToken)fail('O estoque mudou. Atualize a conferência de início; nada foi substituído.');
-  const productScope=await scope.build(tx,'footwear');
+  // Todas as mercadorias entram (calçado pela foto; roupa/acessório pela foto + NF-e).
+  const productScope=await scope.build(tx,'all');
   const [clock]=await tx.$queryRaw`SELECT clock_timestamp() AS "startedAt"`;
   const round=await tx.stocktakeRound.create({data:{id:requestId,storeId,name:'Substituição de estoque · '+current.store.code,
    operationType:'replacement',activeReplacementStoreId:storeId,createdById:actorId,baseline:current.baseline,productScope,startedAt:clock.startedAt}});
@@ -82,9 +113,12 @@ function validateRead(c,read){
  if(bipe.excludedAt||!['counting','review'].includes(c.round.status))return 'leitura_encerrada';
  if(!bipe.found||bipe.duplicate||!p?.active||size.productId!==bipe.productId)return 'produto_ou_variante_pendente';
  if(!policy.isScanCode(bipe.barcode)||!capture?.photo||policy.identity(capture.barcode)!==policy.identity(bipe.barcode))return 'foto_ou_codigo_pendente';
- if(scope.classification(p)!=='footwear')return 'tipo_de_produto_pendente';
+ const kind=scope.kind(p);
+ // Calçado: regra de sempre. Roupa/acessório ('other'): só pelo caminho fiscal.
+ if(kind==='review'||kind==='blocked')return 'tipo_de_produto_pendente';
  if(!read||read.pending)return read?.reason||'etiqueta_pendente';
- if(!['archived-photo-local-ocr-v1',CONFIRMED_CODE].includes(read.source)||read.decodedBarcodes?.length!==1||policy.identity(read.decodedBarcodes[0])!==policy.identity(bipe.barcode))return 'codigo_da_foto_divergente';
+ if(read.source===FISCAL_SIZE&&kind!=='other')return 'tipo_de_produto_pendente';
+ if(!['archived-photo-local-ocr-v1',CONFIRMED_CODE,FISCAL_SIZE].includes(read.source)||read.decodedBarcodes?.length!==1||policy.identity(read.decodedBarcodes[0])!==policy.identity(bipe.barcode))return 'codigo_da_foto_divergente';
  if(sizeKey(read.size)!==sizeKey(size.size))return 'tamanho_da_foto_divergente';
  return null;
 }
@@ -162,6 +196,42 @@ function confirmedCodeRead(c,read){
  if(read.observedSizes.some(size=>sizeKey(size)!==sizeKey(c.size.size)))return false;
  return read.printedBrands.every(brand=>normalized(brand)===normalized(c.size.product?.brand));
 }
+// Roupa/acessório: código da própria foto + tamanho literal da NF-e de entrada do mesmo código.
+async function fiscalSize(db,c,view){
+ const p=c.size?.product,code=c.bipe?.barcode,ident=policy.identity(code);
+ if(!p||!view||view.ocrConflict!==false||!policy.isScanCode(code))return null;
+ if(scope.kind(p)!=='other'||placeholderSize(c.size.size))return null;
+ if(!Array.isArray(view.decodedBarcodes)||view.decodedBarcodes.length!==1||policy.identity(view.decodedBarcodes[0])!==ident)return null;
+ const want=sizeLabel(c.size.size);
+ if(!Array.isArray(view.observedSizes)||view.observedSizes.some(size=>sizeLabel(size)!==want))return null;
+ if(!Array.isArray(view.printedBrands)||view.printedBrands.some(brand=>normalized(brand)!==normalized(p.brand)))return null;
+ const aliases=policy.variants(code);
+ const owners=await db.productSize.findMany({where:{barcode:{in:aliases}},select:{id:true,productId:true,product:{select:{active:true}}}});
+ if(owners.some(o=>o.id!==c.size.id&&o.product?.active))return null;
+ const rows=(await require('./scannerArchivedLabel').fiscalRows(db,code)).filter(r=>policy.identity(r.ean)===ident);
+ if(!rows.length||!rows.some(r=>r.productId===p.id))return null;
+ const literal=new Set(rows.flatMap(r=>fiscalLiteralSizes(r.description)));
+ if(literal.size>1)return null;
+ if(literal.size===1){if([...literal][0]!==want)return null;}
+ else{
+  // Sem tamanho escrito na nota: só acessório de variante única (tamanho único).
+  if(want!=='UNICO')return null;
+  const variants=await db.productSize.count({where:{productId:p.id}});
+  if(variants!==1)return null;
+ }
+ const bipes=(await db.stocktakeBipe.findMany({where:{barcode:{in:aliases},excludedAt:null,NOT:{id:c.bipe.id}},select:{id:true,barcode:true}})).filter(b=>policy.identity(b.barcode)===ident);
+ if(bipes.length){const live=(await db.stockReplacementCheck.findMany({where:{bipeId:{in:bipes.map(b=>b.id)}},select:{appliedAt:true,reversedAt:true,appliedProductSizeId:true}})).filter(k=>k.appliedAt&&!k.reversedAt);
+  if(live.some(k=>k.appliedProductSizeId!==c.size.id))return null;}
+ const own=rows.find(r=>r.productId===p.id);
+ return {fiscalItemIds:rows.map(r=>r.id).sort(),literalSize:literal.size?[...literal][0]:'UNICO',reference:own?.supplierCode||null,description:own?.description||null};
+}
+async function applyFiscalSize(db,c,read,options){
+ const view=photoView(read);
+ if(!view||!await fiscalSize(db,c,view))return null;
+ const evidence={source:FISCAL_SIZE,size:c.size.size,references:[],text:read.text||'',decodedBarcodes:view.decodedBarcodes,photoRead:view};
+ const result=await applyVerified(db,c,evidence,null,options);
+ return result.applied||result.reason!=='photo_size_or_reference_pending'?result:null;
+}
 async function applyConfirmedCode(db,c,read,options){
  if(!confirmedCodeRead(c,read)||!await confirmedCode(db,c))return null;
  const evidence={source:CONFIRMED_CODE,size:c.size.size,references:[],text:read.text||'',decodedBarcodes:read.decodedBarcodes,
@@ -185,12 +255,13 @@ async function applyVerified(db,c,read,reference,options={}){
   const reason=now&&validateRead(now,read);
   if(!now||reason||!require('./stockReplacementQueue').matches(now.capture,require('./stockReplacementQueue').snapshot(c.capture))||now.size.id!==c.size.id||now.size.product.sku!==c.size.product.sku||now.size.product.brand!==c.size.product.brand)return {applied:false,reason:reason||'leitura_alterada'};
   if(options.beforeCommit&&!await require('./stockReplacementCaptureRecovery').authorized(tx,now.capture))return {applied:false,reason:'operator_not_authorized'};
-  let confirmation=null;
-  if(read.source===CONFIRMED_CODE){confirmation=await confirmedCode(tx,now);if(!confirmation)return {applied:false,reason:'photo_size_or_reference_pending'};reference=confirmation.reference;}
+  let confirmation=null,fiscal=null;
+  if(read.source===FISCAL_SIZE){fiscal=await fiscalSize(tx,now,read.photoRead);if(!fiscal)return {applied:false,reason:'photo_size_or_reference_pending'};reference=fiscal.reference;}
+  else if(read.source===CONFIRMED_CODE){confirmation=await confirmedCode(tx,now);if(!confirmation)return {applied:false,reason:'photo_size_or_reference_pending'};reference=confirmation.reference;}
   else if(!await referenceMatches(tx,now,read))return {applied:false,reason:'referencia_ou_marca_divergente'};
   const snapshot={captureId:now.capture.id,photoSha256:photoDigest(now.capture.photo),barcode:now.bipe.barcode,reference,size:now.size.size,
    productId:now.size.productId,productSizeId:now.size.id,name:now.size.product.name,brand:now.size.product.brand,
-   source:read.source,...(read.reader?{reader:read.reader}:{}),...(confirmation?{confirmedBy:{bipeIds:confirmation.bipeIds,sources:confirmation.sources},photoRead:read.photoRead}:{}),verifiedAt:new Date().toISOString()};
+   source:read.source,...(read.reader?{reader:read.reader}:{}),...(confirmation?{confirmedBy:{bipeIds:confirmation.bipeIds,sources:confirmation.sources},photoRead:read.photoRead}:{}),...(fiscal?{fiscalSize:{itemIds:fiscal.fiscalItemIds,literalSize:fiscal.literalSize,description:fiscal.description},photoRead:read.photoRead}:{}),verifiedAt:new Date().toISOString()};
   const movement=await applyStoreStockDelta(tx,{storeId:now.round.storeId,productSizeId:now.size.id,quantity:1,type:'inventory_adjustment',source:'stock-replacement-scan',reason:'Bipe validado da substituição #'+now.round.number,metadata:{roundId:now.round.id,bipeId:now.bipe.id,captureId:now.capture.id}});
   const imageReview={status:'pending',reason:now.size.product.imageUrl?'Conferir correspondência visual da imagem de catálogo com este modelo e cor.':'Produto sem imagem de catálogo.',imageUrl:now.size.product.imageUrl||null};
   await tx.stockReplacementCheck.upsert({where:{bipeId:now.bipe.id},create:{bipeId:now.bipe.id,roundId:now.round.id,status:'applied',evidence:snapshot,imageReview,appliedProductSizeId:now.size.id,appliedAt:new Date()},update:{status:'applied',reason:null,evidence:snapshot,imageReview,appliedProductSizeId:now.size.id,appliedAt:new Date(),checkedAt:new Date()}});
@@ -212,6 +283,8 @@ async function check(db,bipeId,options={}){
  // timed-out image cannot repeatedly push every untouched piece behind itself.
  if(read?.reason==='ocr_busy')return {applied:false,reason:'ocr_busy'};
  const reason=validateRead(c,read);
+ // Roupa/acessório: tenta o caminho fiscal antes de deixar pendente.
+ if((reason==='photo_size_or_reference_pending'||!reason)&&scope.kind(c.size?.product)==='other'){const fiscal=await applyFiscalSize(db,c,read,options);if(fiscal){if(fiscal.applied)await images.check(db,bipeId);return fiscal;}}
  if(reason==='photo_size_or_reference_pending'){const confirmed=await applyConfirmedCode(db,c,read,options);if(confirmed){if(confirmed.applied)await images.check(db,bipeId);return confirmed;}}
  if(reason){if(!options.deferPending)await pending(db,c,reason,{captureId:c.capture.id,photoSha256:photoDigest(c.capture.photo)});return {applied:false,reason};}
  const reference=await referenceMatches(db,c,read);
@@ -266,4 +339,4 @@ async function finish(db,id){
   return {ok:true,totals:final.totals};
  },{timeout:30000});
 }
-module.exports={preview,start,context,check,enqueue,resume,report,finish,exclude,validateRead,referenceMatches,applyVerified,reasonText,confirmedCode,confirmedCodeRead,CONFIRMED_CODE};
+module.exports={preview,start,context,check,enqueue,resume,report,finish,exclude,validateRead,referenceMatches,applyVerified,reasonText,confirmedCode,confirmedCodeRead,CONFIRMED_CODE,fiscalSize,fiscalLiteralSizes,applyFiscalSize,photoView,FISCAL_SIZE};
