@@ -98,7 +98,7 @@
     for(let y=0;y<height;y++)data.set(image.data.subarray(((top+y)*image.width+left)*4,((top+y)*image.width+left+width)*4),y*width*4);
     return {width,height,data};
   }
-  function rotatedEnhancedPixels(image){
+  function rotatedEnhancedPixels(image,normalizePixels){
     const scale=Math.min(2,2000/Math.max(image.width,image.height));
     const width=Math.max(1,Math.round(image.height*scale)),height=Math.max(1,Math.round(image.width*scale));
     const data=new Uint8ClampedArray(width*height*4);
@@ -107,7 +107,7 @@
       const from=(sy*image.width+sx)*4,to=(y*width+x)*4;
       data[to]=image.data[from];data[to+1]=image.data[from+1];data[to+2]=image.data[from+2];data[to+3]=image.data[from+3];
     }
-    root.ScannerRegions?.normalizePixels(data);
+    (normalizePixels||root.ScannerRegions?.normalizePixels)?.(data);
     return {width,height,data};
   }
   function barcodeRegions(image){
@@ -209,7 +209,7 @@
       }
     }
   }
-  async function recoverBarcodeRegions(image,regions){
+  async function recoverBarcodeRegions(image,regions,readBarcodes,normalizePixels){
     // Do not select the first label or silently skip candidates when a crowded
     // frame exceeds budget. A null result means the frame cannot be accepted.
     if(!regions.length)return [];if(regions.length>maxBarcodeRegions)return null;
@@ -217,9 +217,9 @@
     const results=[],unresolved=[];
     for(const region of regions){
       // Keep only one amplified image resident at a time on mobile devices.
-      const candidate=enlargedRegionPixels(image,region),first=await root.ZXingWASM.readBarcodes(candidate,readerOptions);
-      root.ScannerRegions?.normalizePixels(candidate.data);
-      const second=await root.ZXingWASM.readBarcodes(candidate,readerOptions);
+      const candidate=enlargedRegionPixels(image,region),first=await readBarcodes(candidate,readerOptions);
+      (normalizePixels||root.ScannerRegions?.normalizePixels)?.(candidate.data);
+      const second=await readBarcodes(candidate,readerOptions);
       results.push(...first,...second);if(!first.length&&!second.length)unresolved.push(region);
     }
     // Only failed regions get the bounded multiscale video-recovery passes. Never
@@ -232,13 +232,14 @@
     }
     for(const {region,scale,radius,amount} of recovery){
       const candidate=enlargedRegionPixels(image,region,scale);sharpenBars(candidate,region.verticalBars,radius,amount);
-      results.push(...await root.ZXingWASM.readBarcodes(candidate,readerOptions));
+      results.push(...await readBarcodes(candidate,readerOptions));
     }
     return results;
   }
   const codesOf=items=>[...new Set(items.map(r=>String(r.text||'').trim()).filter(t=>barcodePolicy.isScanCode(t)))];
-  async function decodePixelFrame(image,initialResults){
-    let results=initialResults||await root.ZXingWASM.readBarcodes(image,readerOptions);
+  async function decodePixelFrame(image,initialResults,dependencies){
+    const readBarcodes=dependencies?.readBarcodes||((...args)=>root.ZXingWASM.readBarcodes(...args));
+    let results=initialResults||await readBarcodes(image,readerOptions);
     // Ambiguity is already decisive; do not enlarge and decode the same labels
     // another four times before refusing to choose between them.
     if(codesOf(results).length>1)return {code:'',ambiguous:true};
@@ -248,7 +249,7 @@
     if(regions.length>maxBarcodeRegions)return {code:'',ambiguous:false};
     // A sharp label must not hide a second blurry label in the same frame.
     if(!results.length||regions.length>1){
-      const recovered=await recoverBarcodeRegions(image,regions);if(recovered===null)return {code:'',ambiguous:false};
+      const recovered=await recoverBarcodeRegions(image,regions,readBarcodes,dependencies?.normalizePixels);if(recovered===null)return {code:'',ambiguous:false};
       results.push(...recovered);
     }
     if(!results.length){
@@ -256,10 +257,16 @@
       // use the large rotated pass if it could still add useful information.
       let min=255,max=0;
       for(let i=0;i<image.data.length;i+=16){const value=(image.data[i]+image.data[i+1]+image.data[i+2])/3;min=Math.min(min,value);max=Math.max(max,value);if(max-min>=3)break;}
-      if(max-min>=3)results=await root.ZXingWASM.readBarcodes(rotatedEnhancedPixels(image),readerOptions);
+      if(max-min>=3)results=await readBarcodes(rotatedEnhancedPixels(image,dependencies?.normalizePixels),readerOptions);
     }
     const codes=codesOf(results);
     return {code:codes.length===1?codes[0]:'',ambiguous:codes.length>1};
+  }
+  // Server recovery examines the complete archived frame and every detected
+  // barcode candidate. It never applies the camera's central framing crop.
+  async function decodeFullFramePixels(image,dependencies){
+    if(!Number.isInteger(image?.width)||!Number.isInteger(image?.height)||image.width<1||image.height<1||image.width*image.height>24000000||image.data?.length!==image.width*image.height*4)throw new Error('Quadro de leitura inválido');
+    return decodePixelFrame(image,undefined,dependencies);
   }
   async function decodePixels(image){
     if(!Number.isInteger(image?.width)||!Number.isInteger(image?.height)||image.width<1||image.height<1||image.width*image.height>16000000||image.data?.length!==image.width*image.height*4)throw new Error('Quadro de leitura inválido');
@@ -368,6 +375,6 @@
     }
     return '';
   }
-  const api={create,decodeCanvas,decodePixels,decodeInWorker,warmupDecoder,prepareReader,stopDecoder,labelText,decoderStatus:()=>({...decoderState})};
+  const api={create,decodeCanvas,decodePixels,decodeFullFramePixels,decodeInWorker,warmupDecoder,prepareReader,stopDecoder,labelText,decoderStatus:()=>({...decoderState})};
   if(typeof module==='object'&&module.exports)module.exports=api;else root.ScannerAuto=api;
 })(typeof window!=='undefined'?window:globalThis);
