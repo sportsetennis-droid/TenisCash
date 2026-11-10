@@ -40,15 +40,29 @@ function matchIncomingManufacturerReference(product,read,fiscal) {
   const incoming=fiscal.filter(row=>row.productId===product.id);
   let expected=[],observed=[];
   if(brand==='PUMA'){
-    // This supplier import encodes printed colour 01 as 0010 (03 as 0030).
+    // This supplier import encodes printed colour 01 as 0010 (03 as 0030,
+    // 14 as 0140): model, "0", two-digit colour, "0", then BR.
     // Permit only the photographed six-digit model + two-digit colour, with
     // the exact incoming EAN row independently carrying that colour and BR.
-    const imported=value=>{const m=normalizeReference(value).match(/^(\d{6})00([1-9])0(\d{2})?$/);return m?{identity:m[1]+'0'+m[2],size:m[3]||null}:null;};
+    const imported=value=>{const m=normalizeReference(value).match(/^(\d{6})0(\d{2})0(\d{2})?$/);return m&&m[2]!=='00'?{identity:m[1]+m[2],size:m[3]||null}:null;};
     const records=incoming.map(row=>imported(row.supplierCode)).filter(Boolean);
     if(!records.length)return {handled:false,reference:null};
     if(!/^\d{2}$/.test(size)||records.some(ref=>ref.size!==size))return {handled:true,reference:null};
     expected=[...catalog.map(imported).filter(Boolean),...records].map(ref=>ref.identity);
     observed=(read.references||[]).filter(ref=>/^\d{8}$/.test(normalizeReference(ref))).map(reference=>({reference,identity:normalizeReference(reference)}));
+  }else if(brand==='CONVERSE'){
+    // The exact incoming EAN row names the printed Converse reference in its
+    // description ("TENIS CT09830001 CHUCK ... 38"); its last field is BR.
+    const records=incoming.map(row=>{
+      const text=String(row.description||'').normalize('NFKC').toUpperCase();
+      const refs=[...new Set([...text.matchAll(/(?:^|\s)(C[A-Z]\d{8}|[A-Z]\d{9})(?=\s|$)/g)].map(m=>m[1]))];
+      const tail=text.match(/\s(\d{2}(?:[.,]5)?)$/);
+      return refs.length===1?{identity:refs[0],size:tail?tail[1].replace(',','.'):null}:null;
+    }).filter(Boolean);
+    if(!records.length)return {handled:false,reference:null};
+    if(records.some(ref=>ref.size&&ref.size!==size))return {handled:true,reference:null};
+    expected=records.map(ref=>ref.identity);
+    observed=(read.references||[]).filter(ref=>/^(?:C[A-Z]\d{8}|[A-Z]\d{9})$/.test(normalizeReference(ref))).map(reference=>({reference,identity:normalizeReference(reference)}));
   }else if(brand==='ASICS'){
     const records=incoming.map(row=>asicsReferenceIdentity(row.supplierCode)).filter(Boolean);
     if(!records.length)return {handled:false,reference:null};

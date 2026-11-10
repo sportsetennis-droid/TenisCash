@@ -26,7 +26,7 @@ process.on('message', async message => {
    phaseElapsedMs:Date.now()-startedAt,rssBytes:process.memoryUsage().rss})});
   try {
     report({phase:'starting'});
-    const result = await processor.run(message.kind, message.image, message.barcode,report);
+    const result = await processor.run(message.kind, message.image, message.barcode,report,typeof message.hint==='string'?message.hint:null);
     memory(); send({ type: 'result', id: message.id, result });
   } catch (_) {
     // Native/worker errors invalidate this process. Don't expose photo/vendor

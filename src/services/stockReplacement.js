@@ -105,7 +105,8 @@ async function referenceMatches(db,c,read){
  if(normalized(p.brand)==='SKECHERS'){
   // These catalog prefixes do not appear on the box. Keep the complete
   // printed model AND colour; never match a model-only or historical colour.
-  const printedRef=value=>normalized(value).match(/^(?:GTM|GTW|T|R)?(\d{5,6}(?:BR)?[A-Z]{2,6})$/)?.[1];
+  // Prefixes seen in this catalogue: GTM GTW GRM GRW ODM BOS T R.
+  const printedRef=value=>normalized(value).match(/^(?:GTM|GTW|GRM|GRW|ODM|BOS|T|R)?(\d{5,6}(?:BR)?[A-Z]{2,6})$/)?.[1];
   const expected=new Set(catalogRefs.map(printedRef).filter(Boolean));
   if(expected.size){
    if(expected.size!==1)return null;
@@ -137,7 +138,7 @@ async function applyVerified(db,c,read,reference,options={}){
   if(!await referenceMatches(tx,now,read))return {applied:false,reason:'referencia_ou_marca_divergente'};
   const snapshot={captureId:now.capture.id,photoSha256:photoDigest(now.capture.photo),barcode:now.bipe.barcode,reference,size:now.size.size,
    productId:now.size.productId,productSizeId:now.size.id,name:now.size.product.name,brand:now.size.product.brand,
-   source:read.source,verifiedAt:new Date().toISOString()};
+   source:read.source,...(read.reader?{reader:read.reader}:{}),verifiedAt:new Date().toISOString()};
   const movement=await applyStoreStockDelta(tx,{storeId:now.round.storeId,productSizeId:now.size.id,quantity:1,type:'inventory_adjustment',source:'stock-replacement-scan',reason:'Bipe validado da substituição #'+now.round.number,metadata:{roundId:now.round.id,bipeId:now.bipe.id,captureId:now.capture.id}});
   const imageReview={status:'pending',reason:now.size.product.imageUrl?'Conferir correspondência visual da imagem de catálogo com este modelo e cor.':'Produto sem imagem de catálogo.',imageUrl:now.size.product.imageUrl||null};
   await tx.stockReplacementCheck.upsert({where:{bipeId:now.bipe.id},create:{bipeId:now.bipe.id,roundId:now.round.id,status:'applied',evidence:snapshot,imageReview,appliedProductSizeId:now.size.id,appliedAt:new Date()},update:{status:'applied',reason:null,evidence:snapshot,imageReview,appliedProductSizeId:now.size.id,appliedAt:new Date(),checkedAt:new Date()}});
@@ -154,7 +155,7 @@ async function check(db,bipeId,options={}){
  const early=validateRead(c,{pending:true,reason:'aguardando_conferencia_da_etiqueta'});
  if(early!=='aguardando_conferencia_da_etiqueta'){if(!options.deferPending)await pending(db,c,early);return {applied:false,reason:early};}
  const bytes=Buffer.from(c.capture.photo.slice(c.capture.photo.indexOf(',')+1),'base64');
- const read=options.read||await require('./scannerArchivedLabel').readImage(bytes,c.bipe.barcode);
+ const read=options.read||await require('./scannerArchivedLabel').readImage(bytes,c.bipe.barcode,{brand:c.size?.product?.brand||null});
  // A busy worker has not examined this piece. Keep its queue age so an older
  // timed-out image cannot repeatedly push every untouched piece behind itself.
  if(read?.reason==='ocr_busy')return {applied:false,reason:'ocr_busy'};

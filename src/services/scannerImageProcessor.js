@@ -10,10 +10,14 @@ function createProcessor(deps = {}) {
   const readWords = deps.readWords || require('./scannerArchivedLabel').readWords;
   const readParts = deps.readParts || require('./scannerArchivedLabel').readParts;
   const createWorker = deps.createWorker || require('tesseract.js').createWorker;
+  // Barcode-anchored per-brand label readers (local OCR only). Tests that inject
+  // a fake OCR stack keep the generic pass alone unless they inject a reader.
+  const brandReader = deps.brandReader !== undefined ? deps.brandReader : (deps.readWords || deps.createWorker ? null : require('./brandLabelReaders').readBrandLabel);
+  const readPositions = deps.readPositions || require('./scannerBarcodeEngine').readPositions;
   let worker, busy = false;
   const input = image => sharp(image, { limitInputPixels: 24000000 });
   // Diagnostics cannot change recognition or participate in its evidence.
-  async function label(image, barcode, diagnostic) {
+  async function label(image, barcode, diagnostic, hint = null) {
    const rasterDiagnostic=async(bytes,fields)=>{
     if(!diagnostic.enabled)return;
     diagnostic('raster-metadata',fields);
@@ -30,6 +34,21 @@ function createProcessor(deps = {}) {
       langPath: path.join(__dirname, '../../public/vendor/ocr'), cacheMethod: 'none', errorHandler: () => {},
     });
     await worker.setParameters({ preserve_interword_spaces: '1' });
+    // First: the anchored label of THIS code, read with its brand layout. It
+    // answers only when all of its own guards agree; otherwise the generic
+    // pass below runs unchanged. No catalogue size is sent to this process;
+    // the optional hint is the catalogue brand name and only selects a layout
+    // (a different printed brand vetoes it). validateRead/referenceMatches
+    // still compare the literal size and reference with the catalogue.
+    if (brandReader) {
+      let branded = null;
+      try { branded = await brandReader({ sharp, readPositions, worker, image, barcode, hint, diagnostic }); }
+      catch (_) { branded = null; }
+      await worker.setParameters({ tessedit_char_whitelist: '', preserve_interword_spaces: '1' });
+      if (branded?.size && branded.references?.length)
+        return { size: branded.size, references: branded.references, text: branded.text, source: 'archived-photo-local-ocr-v1', reader: branded.reader, decodedBarcodes: codes };
+      diagnostic('brand-label-fallback');
+    }
     let stretched=false,pass=0;
     // Retain contradictory partial evidence within this photo only. A pass
     // without a complete answer may still contain a reliable BR or colour.
@@ -107,7 +126,7 @@ function createProcessor(deps = {}) {
     }
     return { pending: true, reason: 'photo_size_or_reference_pending' };
   }
-  async function run(kind, image, barcode, onDiagnostic = deps.onDiagnostic) {
+  async function run(kind, image, barcode, onDiagnostic = deps.onDiagnostic, hint = null) {
     if (busy) throw Error('image_process_busy');
     busy = true;
     // The callback belongs to this invocation, never a mutable current-job ID.
@@ -115,7 +134,7 @@ function createProcessor(deps = {}) {
     diagnostic.enabled=typeof onDiagnostic==='function';
     try {
       if (kind === 'barcode') {diagnostic('decode');return await decode(image);}
-      if (kind === 'label') return await label(image, barcode,diagnostic);
+      if (kind === 'label') return await label(image, barcode,diagnostic,typeof hint==='string'&&/^[A-Z0-9 ]{2,30}$/.test(hint)?hint:null);
       throw Error('image_operation_invalid');
     } finally { busy = false; }
   }

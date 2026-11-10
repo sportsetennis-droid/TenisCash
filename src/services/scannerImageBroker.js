@@ -102,7 +102,7 @@ function createBroker(options = {}) {
     active.sent = true;
     const job = active;
     try {
-      state.child.send({ type: 'run', id: job.id, kind: job.kind, image: job.image, barcode: job.barcode }, error => {
+      state.child.send({ type: 'run', id: job.id, kind: job.kind, image: job.image, barcode: job.barcode, ...(job.hint ? { hint: job.hint } : {}) }, error => {
         if (error && active === job) retire(state, failure('SCANNER_IMAGE_UNAVAILABLE'));
       });
     } catch (_) { retire(state, failure('SCANNER_IMAGE_UNAVAILABLE')); }
@@ -128,7 +128,7 @@ function createBroker(options = {}) {
       idleTimer = setTimeout(() => retire(current), cfg.idleMs); idleTimer.unref?.();
     }
   }
-  function run(kind, image, barcode, { queue: allowQueue = false } = {}) {
+  function run(kind, image, barcode, { queue: allowQueue = false, hint = null } = {}) {
     if (!['label', 'barcode'].includes(kind) || !Buffer.isBuffer(image) || !image.length || image.length > cfg.maxImageBytes) {
       return Promise.reject(failure('SCANNER_IMAGE_INVALID'));
     }
@@ -138,7 +138,9 @@ function createBroker(options = {}) {
       return Promise.reject(failure('SCANNER_IMAGE_BUSY'));
     }
     return new Promise((resolve, reject) => {
-      const job = { id: randomUUID(), kind, image, barcode, resolve, reject, done: false };
+      // A catalogue brand name may select a label layout; never a size.
+      const brandHint = typeof hint === 'string' ? hint.normalize('NFD').toUpperCase().replace(/[^A-Z0-9 ]/g, '').trim().slice(0, 30) || null : null;
+      const job = { id: randomUUID(), kind, image, barcode, hint: brandHint, resolve, reject, done: false };
       if (waiting) { queue.push(job); queuedBytes += image.length; pump(); } else start(job);
     });
   }
