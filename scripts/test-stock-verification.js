@@ -13,6 +13,18 @@ assert.equal(result([b],[],size,[sale]).status,'verified');
 assert.equal(result([b],[],size,[{...sale,quantity:-2}]).status,'pending');
 assert.equal(result([b],[],size,[{...sale,type:'transfer_in',quantity:1}]).status,'pending');
 assert.equal(result([b,{...b,id:'b2',bipedAt:'2026-09-16T12:00:00Z'}],[],size,[sale]).status,'pending');
+// Stock-replacement entry of the same bipe is not a later change; applied check confirms box size.
+const ownEntry={createdAt:'2026-09-16T10:00:05Z',type:'inventory_adjustment',quantity:1,source:'stock-replacement-scan',metadata:{bipeId:'b'}};
+assert.equal(result([b],[],size,[ownEntry]).status,'verified');
+assert.equal(result([b],[],size,[{...ownEntry,metadata:{bipeId:'outro'}}]).status,'pending');
+assert.equal(result([b],[],size,[ownEntry,{...sale,createdAt:'2026-09-16T12:00:00Z'}]).available,0);
+const nike={...size,product:{active:true,brand:'Nike'},sizeConfirmedAt:null};
+const applied={bipeId:'b',appliedAt:'2026-09-16T10:00:05Z',reversedAt:null,appliedProductSizeId:'s'};
+assert.equal(summarizeVariant([b],[],nike,[ownEntry]).status,'pending');
+assert.equal(summarizeVariant([b],[],nike,[ownEntry],[applied]).status,'verified');
+assert.equal(summarizeVariant([b],[],{...size,product:{active:true,brand:'Adidas'},sizeConfirmedAt:'2026-08-01'},[ownEntry],[applied]).status,'verified');
+assert.equal(summarizeVariant([b],[],nike,[ownEntry],[{...applied,appliedProductSizeId:'outra'}]).status,'pending');
+assert.equal(summarizeVariant([b],[],size,[ownEntry],[{...applied,reversedAt:'2026-09-16T11:00:00Z'}]).status,'pending');
 const products=[{id:'p',sizes:[{id:'s',stock:20}]}];attachVerification(products,{rows:[{productId:'p',productSizeId:'s',available:1}]});assert.equal(products[0].sizes[0].stock,20);
 const fs=require('fs'),vm=require('vm');for(const file of ['public/admin.html','public/index.html','public/loja.html']){const text=fs.readFileSync(file,'utf8');for(const m of text.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)){if(m[1].trim())new vm.Script(m[1],{filename:file});}}
 console.log('PASS verification: quantities, pending, Adidas, movements, unchanged stock and inline JS');
