@@ -58,13 +58,22 @@ async function activeJob(q,c){await q.enqueueCapture(c);return fetchJob(q);}
  await assert.rejects(()=>q.processJob(expired),/queue_claim_lost/);assert.equal(await stock(f),2);assert.equal((await db.stocktakeBipe.findUnique({where:{id:fenced.bipe.id}})).applied,false);
  await settle(q,fresh);assert.equal(await stock(f),3);
  console.log('PASS expired attempt fencing rolls back stock, movement and bipe; the current lease applies exactly once');
- const failFirst=await piece(f,q),good=await piece(f,q);job=await fetchJob(q);readHook=async()=>({pending:true,reason:'ocr_memory_limit'});
+ const diagnostic=require('../src/services/scannerRuntimeDiagnostic');
+ const measurement={source:diagnostic.SOURCE,phase:'ocr',platform:'linux',rssBytes:410000000,width:2026,height:3600,elapsedMs:17800,photo:'private-photo',text:'private-ocr',token:'private-token'};
+ const failFirst=await piece(f,q),good=await piece(f,q);job=await fetchJob(q);readHook=async()=>({pending:true,reason:'ocr_memory_limit',scannerDiagnostic:measurement});
  const resourceWait=await q.processJob(job);assert.equal(resourceWait.reason,'ocr_memory_limit');assert.equal(resourceWait.autoReprocess,true);
+ assert.deepEqual(resourceWait.scannerDiagnostic,diagnostic.sanitize(measurement));
+ const completedResource=await q.boss.getJobById(queueModule.QUEUE,job.id);
+ assert.deepEqual(completedResource.output.scannerDiagnostic,diagnostic.sanitize(measurement));assert.equal(await stock(f),3);
+ assert.equal(completedResource.data.scannerDiagnostic,undefined,'No metric enters identity/job request data');
+ const pendingCheck=await db.stockReplacementCheck.findUnique({where:{bipeId:failFirst.bipe.id}});
+ assert.ok(!JSON.stringify(pendingCheck.evidence).includes('scannerDiagnostic'),'No metric becomes identity evidence');
+ assert.ok(!JSON.stringify(await queueModule.health(db,{roundId:f.round.id})).includes('scannerDiagnostic'),'No metric enters HTTP health output');
  const scheduled=(await queueModule.health(db,{roundId:f.round.id})).items.find(x=>x.captureId===failFirst.cap.id&&x.state==='created');assert.ok(scheduled?.autoReprocess);assert.ok(new Date(scheduled.nextAttemptAt)>new Date());
  readHook=async()=>readFor(good.cap);let following=await fetchJob(q);
  if(following.data.captureId===failFirst.cap.id){await q.boss.fail(queueModule.QUEUE,following,{reason:'test_delay'});following=await q.boss.fetch(queueModule.QUEUE,{batchSize:1,includeMetadata:true,minPriority:priority,maxPriority:priority});following=following[0];}
  assert.equal(following.data.captureId,good.cap.id);await settle(q,following);assert.equal(await stock(f),4);
- console.log('PASS costly OCR failure commits pending plus a future lower-priority job and does not block the next piece');
+ console.log('PASS costly OCR failure commits sanitized diagnostic only to its internal pending job output, preserves stock/identity and public health, and schedules future work without blocking the next piece');
  const wrong=await piece(f,q);await db.user.update({where:{id:f.seller.id},data:{active:false}});readHook=async()=>readFor(wrong.cap);
  const revoked=await fetchJob(q);assert.equal((await settle(q,revoked)).reason,'operator_not_authorized');
  assert.equal(await stock(f),4);await db.user.update({where:{id:f.seller.id},data:{active:true}});

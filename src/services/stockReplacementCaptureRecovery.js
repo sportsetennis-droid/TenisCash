@@ -43,7 +43,12 @@ function createRecovery({decode=photo=>require('./barcodeDecoder').decodeBarcode
    if(repeats>0&&!repeatConfirmation.confirmed(original,repeats))return {recovered:false,reason:'repeat_confirmation_required'};
   }
   let decoded;
-  try{decoded=await decode(original.photo)}catch(error){const suffix={SCANNER_IMAGE_BUSY:'busy',SCANNER_IMAGE_TIMEOUT:'timeout',SCANNER_IMAGE_UNAVAILABLE:'unavailable',SCANNER_IMAGE_MEMORY_LIMIT:'memory_limit'}[error.code];return {recovered:false,reason:suffix?'photo_decode_'+suffix:'photo_decode_failed'}}
+  try{decoded=await decode(original.photo)}catch(error){
+   const measured=require('./scannerRuntimeDiagnostic').sanitize(error.scannerDiagnostic);
+   // Queue-only callback: recovery results and HTTP callers never receive metrics.
+   if(measured)try{options.onRuntimeDiagnostic?.(measured)}catch(_){}
+   const suffix={SCANNER_IMAGE_BUSY:'busy',SCANNER_IMAGE_TIMEOUT:'timeout',SCANNER_IMAGE_UNAVAILABLE:'unavailable',SCANNER_IMAGE_MEMORY_LIMIT:'memory_limit'}[error.code];return {recovered:false,reason:suffix?'photo_decode_'+suffix:'photo_decode_failed'};
+  }
   if(!decoded?.length)return {recovered:false,reason:'photo_barcode_not_found'};
   if(decoded.length!==1)return {recovered:false,reason:'photo_barcode_conflict'};
   if(barcodePolicy.identity(decoded[0])!==barcodePolicy.identity(original.barcode))return {recovered:false,reason:'photo_barcode_mismatch'};

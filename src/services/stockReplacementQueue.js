@@ -46,7 +46,7 @@ async function syncPendingCheck(tx,capture,bipeId,reason){
  await tx.stockReplacementCheck.upsert({where:{bipeId},create:{bipeId,roundId:capture.roundId,status:'pending',reason,evidence},update:{status:'pending',reason,evidence,checkedAt:new Date()}});
  return bipeId;
 }
-async function persistPending(db,data,reason,{complete,autoReprocess=false,nextAttemptAt,ownerConfirmation:owner}={}){
+async function persistPending(db,data,reason,{complete,autoReprocess=false,nextAttemptAt,ownerConfirmation:owner,scannerDiagnostic:rawDiagnostic}={}){
  if(!/^[a-z_]{1,80}$/.test(reason||''))reason='photo_size_or_reference_pending';
  return db.$transaction(async tx=>{
   await tx.$queryRaw`SELECT id FROM "StocktakeRound" WHERE id=${data.roundId} FOR SHARE`;
@@ -63,7 +63,8 @@ async function persistPending(db,data,reason,{complete,autoReprocess=false,nextA
   }
   await tx.productCapture.update({where:{id:capture.id},data:{status:'pendente',resolvedAt:null,
    note:photos.photoNote(capture.note,'etiqueta '+require('./stockReplacement').reasonText(reason,{autoReprocess})+' [scanner-queue-pending:'+reason+']')},select:{id:true}});
-  const result={status:'pending',reason,captureId:capture.id,bipeId,...(autoReprocess?{autoReprocess:true,nextAttemptAt}:{}),...(owner?{ownerConfirmation:owner}:{})};
+  const scannerDiagnostic=require('./scannerRuntimeDiagnostic').sanitize(rawDiagnostic);
+  const result={status:'pending',reason,captureId:capture.id,bipeId,...(autoReprocess?{autoReprocess:true,nextAttemptAt}:{}),...(owner?{ownerConfirmation:owner}:{}),...(scannerDiagnostic?{scannerDiagnostic}:{})};
   if(complete)await complete(tx,result);
   return result;
  },{timeout:20000});
@@ -136,7 +137,7 @@ function createQueue(db,options={}){
   // attests that this finite owner confirmation is authentic. Never expose HMAC.
   const owner=ownerConfirmation(capture),attestation=owner?{ownerConfirmation:owner}:{};
   const recovery=require('./stockReplacementCaptureRecovery');
-  const pending=(reason,automatic=false)=>{const nextAttemptAt=new Date(Date.now()+pendingAgeMs).toISOString();return persistPending(db,data,reason,{autoReprocess:automatic,nextAttemptAt,ownerConfirmation:owner,complete:async(tx,result)=>{
+  const pending=(reason,automatic=false,scannerDiagnostic)=>{const nextAttemptAt=new Date(Date.now()+pendingAgeMs).toISOString();return persistPending(db,data,reason,{autoReprocess:automatic,nextAttemptAt,ownerConfirmation:owner,scannerDiagnostic,complete:async(tx,result)=>{
    const completed=await boss.complete(QUEUE,job,result,{db:adapter(tx)});if(completed.affected!==1)throw failure('queue_claim_lost');
    if(automatic){const next={...data,autoReprocess:true,nextAttemptAt,reprocessReason:reason};
     const sent=await boss.send(QUEUE,next,{db:adapter(tx),singletonKey:singleton(data),startAfter:new Date(nextAttemptAt),priority:recheckPriority,group:{id:data.storeId}});
@@ -144,8 +145,9 @@ function createQueue(db,options={}){
   }});};
   if(!await recovery.authorized(db,capture))return pending('operator_not_authorized');
   if(!capture.bipeId){
-   const result=await recovery.recover(db,capture.id,{enqueue:false});
-   if(!result.recovered){if(costly.has(result.reason))return pending(result.reason,true);if(transient.has(result.reason))throw failure(result.reason);return pending(result.reason);}
+   let recoveryDiagnostic;
+   const result=await recovery.recover(db,capture.id,{enqueue:false,onRuntimeDiagnostic:value=>{recoveryDiagnostic=value;}});
+   if(!result.recovered){if(costly.has(result.reason))return pending(result.reason,true,recoveryDiagnostic);if(transient.has(result.reason))throw failure(result.reason);return pending(result.reason);}
    capture=await db.productCapture.findUnique({where:{id:data.captureId}});
   }
   if(!matches(capture,data))return {status:'obsolete',reason:'capture_changed'};
@@ -161,7 +163,7 @@ function createQueue(db,options={}){
   // observed frame is bound to the same revision again inside applyVerified.
   const bytes=Buffer.from(capture.photo.slice(capture.photo.indexOf(',')+1),'base64');
   const observed=await readImage(bytes,capture.barcode);
-  if(costly.has(observed?.reason))return pending(observed.reason,true);
+  if(costly.has(observed?.reason))return pending(observed.reason,true,observed.scannerDiagnostic);
   if(transient.has(observed?.reason))throw failure(observed.reason);
   const fresh=await db.productCapture.findUnique({where:{id:data.captureId}});
   if(!matches(fresh,data)||fresh.excludedAt||fresh.status==='descartado')return {status:'obsolete',reason:'capture_changed'};

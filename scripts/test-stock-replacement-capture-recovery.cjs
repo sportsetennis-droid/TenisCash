@@ -36,6 +36,16 @@ async function unchanged(f,c,reason,s=service){
  return result;
 }
 (async()=>{
+ const diagnostic=require('../src/services/scannerRuntimeDiagnostic'),resource=await fixture(),resourceCapture=await capture(resource);
+ for(const [code,reason] of [['SCANNER_IMAGE_MEMORY_LIMIT','photo_decode_memory_limit'],['SCANNER_IMAGE_TIMEOUT','photo_decode_timeout']]){
+  const measured={source:diagnostic.SOURCE,phase:'decode',rssBytes:410000000,elapsedMs:8000,photo:'private-photo',text:'private-text',token:'private-token'};let internal;
+  const failing=createRecovery({decode:async()=>{throw Object.assign(Error('private'),{code,scannerDiagnostic:measured});},enqueue:()=>{throw Error('must not enqueue');}});
+  const result=await failing.recover(db,resourceCapture.id,{onRuntimeDiagnostic:value=>{internal=value;}});
+  assert.deepEqual(result,{recovered:false,reason});assert.deepEqual(internal,diagnostic.sanitize(measured));
+  assert.deepEqual(await failing.recover(db,resourceCapture.id,{onRuntimeDiagnostic:()=>{throw Error('ignored');}}),result);
+  assert.equal(await db.stocktakeBipe.count({where:{roundId:resource.round.id}}),0);assert.equal(await db.storeStockMovement.count({where:{storeId:resource.store.id}}),0);
+ }
+ console.log('PASS barcode resource failures preserve reason and photo, expose sanitized metrics only to internal callback, create no bipe or stock and ignore diagnostic callback failure');
  const f=await fixture(),c=await capture(f),{p,ps}=await product(c.barcode);
  await db.storeStock.create({data:{storeId:f.store.id,productSizeId:ps.id,stock:0}});
  const copies=await Promise.all(Array.from({length:6},()=>service.recover(db,c.id)));
