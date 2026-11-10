@@ -50,6 +50,41 @@ function stockUnits(product) {
   );
 }
 
+// Replacement scans must never trigger paid catalogue work. Keep both capture
+// and bipe identities: a later catalogue correction can move just one of them.
+async function replacementProductIds(productId = null, db = prisma) {
+  const rows = await db.$queryRaw`
+    WITH open_rounds AS (
+      SELECT id FROM "StocktakeRound"
+      WHERE "operationType" = 'replacement' AND status IN ('counting', 'review')
+    ), active_captures AS (
+      SELECT c."matchedProductId", c."createdProductId", c."bipeId", c.barcode
+      FROM "ProductCapture" c JOIN open_rounds r ON r.id = c."roundId"
+      WHERE c."excludedAt" IS NULL AND c.status <> 'descartado'
+    ), linked_bipes AS (
+      SELECT b."productId", b."productSizeId" FROM "StocktakeBipe" b
+      JOIN open_rounds r ON r.id = b."roundId" WHERE b."excludedAt" IS NULL
+      UNION
+      SELECT b."productId", b."productSizeId" FROM "StocktakeBipe" b
+      JOIN active_captures c ON c."bipeId" = b.id WHERE b."excludedAt" IS NULL
+    ), product_ids AS (
+      SELECT "productId" AS id FROM linked_bipes
+      UNION SELECT s."productId" FROM "ProductSize" s JOIN linked_bipes b ON b."productSizeId" = s.id
+      UNION SELECT "matchedProductId" FROM active_captures
+      UNION SELECT "createdProductId" FROM active_captures
+      -- A restored original can still have a capture pointing to the former
+      -- consolidated product. Its exact UPC/EAN owner is also replacement work.
+      UNION SELECT s."productId" FROM "ProductSize" s JOIN active_captures c
+        ON LTRIM(s.barcode, '0') = LTRIM(c.barcode, '0')
+        WHERE s.barcode ~ '^[0-9]+$' AND LENGTH(s.barcode) IN (8, 12, 13, 14)
+          AND c.barcode ~ '^[0-9]+$' AND LENGTH(c.barcode) IN (8, 12, 13, 14)
+    )
+    SELECT id FROM product_ids WHERE id IS NOT NULL
+      AND (CAST(${productId} AS text) IS NULL OR id = ${productId})
+  `;
+  return rows.map((row) => row.id);
+}
+
 async function recordAttempt(productId, review) {
   const current = await prisma.product.findUnique({
     where: { id: productId },
@@ -102,9 +137,10 @@ async function runImageRepairBatch(options = {}) {
     const batchSize = Math.min(Math.max(Number(options.batchSize || process.env.IMAGE_REPAIR_BATCH || 50), 1), 250);
     const now = new Date();
     state.phase = 'loading';
+    const replacementIds = await replacementProductIds();
     const [products, mappings] = await Promise.all([
       prisma.product.findMany({
-        where: { active: true, OR: [{ imageUrl: null }, { imageUrl: '' }] },
+        where: { active: true, id: { notIn: replacementIds }, OR: [{ imageUrl: null }, { imageUrl: '' }] },
         select: {
           id: true,
           sku: true,
@@ -134,6 +170,7 @@ async function runImageRepairBatch(options = {}) {
       accepted: 0,
       rejected: 0,
       errors: 0,
+      skippedReplacement: 0,
       costBRL: 0,
       recentIssues: [],
     };
@@ -141,6 +178,12 @@ async function runImageRepairBatch(options = {}) {
     state.phase = candidates.length ? 'curating' : 'complete';
 
     for (const product of candidates) {
+      // Re-read after selection: a queued product may have been linked by a
+      // committed scan/correction meanwhile. Failure here aborts before spending.
+      if ((await replacementProductIds(product.id)).length) {
+        progress.skippedReplacement++;
+        continue;
+      }
       let report;
       try {
         report = await curateProduct(product.id, {
@@ -238,6 +281,7 @@ function startImageRepairCron() {
 module.exports = {
   getImageRepairCronState,
   parseContext,
+  replacementProductIds,
   reviewState,
   runImageRepairBatch,
   shouldAttemptImage,

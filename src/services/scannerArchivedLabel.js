@@ -66,7 +66,9 @@ function numericColourReferences(words) {
     if(following(colour).some(w=>/^[\d/.,-]+$/.test(text(w))))continue;
     const ownedByScale=all.some(w=>w!==model&&w!==colour&&/^(BR|BRA|USA?|UK|EUR|EU|F|CM|CHN|JP|J|SIZE|TAM)$/i.test(text(w))&&(
       Math.abs(cy(w)-cy(colour))<=Math.max(height(w),height(colour))*.6&&
-        Math.max(0,w.bbox.x0-colour.bbox.x1,colour.bbox.x0-w.bbox.x1)<=Math.max(height(w),height(colour))*5||
+        // A tall, weak OCR artifact must not claim a distant model/colour
+        // field. Reliable large scales and nearby weak scales retain vetoes.
+        Math.max(0,w.bbox.x0-colour.bbox.x1,colour.bbox.x0-w.bbox.x1)<=Math.max(height(colour),w.confidence>=75?height(w):height(model))*5||
       Math.abs(cx(w)-cx(colour))<=Math.max(w.bbox.x1-w.bbox.x0,colour.bbox.x1-colour.bbox.x0)*.6&&
         Math.max(0,w.bbox.y0-colour.bbox.y1,colour.bbox.y0-w.bbox.y1)<=Math.max(height(w),height(colour))*1.5));
     if(!ownedByScale)joined.push(text(model)+text(colour));

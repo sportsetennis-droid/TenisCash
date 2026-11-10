@@ -84,4 +84,4 @@ async function recordOwnerReview(tx,capture,{manifestText}={}){
  if(confirmed(saved,count)?.manifestSha256!==hash)fail('Confirmação do manifesto não foi preservada.',503);
  return saved;
 }
-module.exports={record,recordOwnerReview,confirmed,marker,strip,source};
+module.exports={record,recordOwnerReview,confirmed,marker,strip,source,signingAvailable:()=>!!secret()};
