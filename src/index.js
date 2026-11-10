@@ -1314,6 +1314,8 @@ app.get('/t/:slug', async (req, res) => {
   .views+#catbody .sec-h:first-child,.views~#catbody>.sec-h:first-child{margin-top:16px}
   .sec-h:before{content:"";width:4px;height:17px;background:linear-gradient(var(--red),var(--gold));border-radius:3px;display:inline-block}
   .grp-h{font-family:'Oswald',sans-serif;font-size:16px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--gold);margin:20px 2px 10px;padding-left:10px;border-left:3px solid var(--red)}
+  .stbar{margin:16px 0 4px}
+  .stteam{width:100%;min-height:44px;background:var(--card);color:#fff;border:1px solid var(--line);border-radius:12px;padding:0 14px;font-family:'Chakra Petch',sans-serif;font-size:14px;font-weight:600;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23c9a24a' stroke-width='3'><path d='M6 9l6 6 6-6'/></svg>");background-repeat:no-repeat;background-position:right 14px center}
   .rnd{margin-bottom:16px}
   .rnd-h{font-size:11px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:1.5px;margin:0 2px 9px}
   /* MATCH CARD */
@@ -1395,7 +1397,7 @@ app.get('/t/:slug', async (req, res) => {
   var elTabs = document.getElementById('cats');
   var elViews = document.getElementById('views');
   var elBody = document.getElementById('catbody');
-  var VIEW = 'jogos', DATA = null, CURID = null;
+  var VIEW = 'jogos', DATA = null, CURID = null, STATS_TEAM = '';
   var VIEWS = [['jogos','Jogos'],['tabela','Classificação'],['mata','Mata-mata'],['stats','Estatísticas']];
   var STAGE = {FINAL:'Final',THIRD:'Disputa de 3º lugar',SEMI:'Semifinais',QUARTER:'Quartas de final',RO16:'Oitavas de final',RO32:'16-avos',RO64:'32-avos'};
   function esc(s){s=(s==null?'':''+s);return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -1491,22 +1493,39 @@ app.get('/t/:slug', async (req, res) => {
   }
   function rankTable(rows, kind){
     if(!rows||!rows.length) return '';
+    if(STATS_TEAM) rows=rows.filter(function(r){return r.entryId===STATS_TEAM;});
     var top=rows.filter(function(r){return (kind==='cards'?(r.yellow+r.red):(kind==='assists'?r.assists:r.goals))>0;}).slice(0,10);
     if(!top.length) return '';
     var MED=['🥇','🥈','🥉'];
     var pos=function(i){return '<td class="pos">'+(i<3?MED[i]:(i+1))+'</td>';};
     var nm=function(r){return esc((r.number!=null?r.number+' ':'')+r.name);};
     var tm=function(r){return '<td style="text-align:left;color:#8e8e93">'+esc(r.team||'')+'</td>';};
+    var av=function(v){return (v==null?'—':(Math.round(v*100)/100).toString().replace('.',','));};
     var head,body;
     if(kind==='cards'){
-      head='<th>🟨</th><th>🟥</th>';
-      body=top.map(function(r,i){return '<tr>'+pos(i)+'<td class="tl">'+nm(r)+'</td>'+tm(r)+'<td>'+r.yellow+'</td><td>'+r.red+'</td></tr>';}).join('');
+      head='<th>J</th><th>🟨</th><th>🟥</th>';
+      body=top.map(function(r,i){return '<tr>'+pos(i)+'<td class="tl">'+nm(r)+'</td>'+tm(r)+'<td>'+(r.games||0)+'</td><td>'+r.yellow+'</td><td>'+r.red+'</td></tr>';}).join('');
     }else{
-      var col=kind==='assists'?'assists':'goals', label=kind==='assists'?'Assist.':'Gols';
-      head='<th>'+label+'</th>';
-      body=top.map(function(r,i){return '<tr>'+pos(i)+'<td class="tl">'+nm(r)+'</td>'+tm(r)+'<td><b>'+r[col]+'</b></td></tr>';}).join('');
+      var col=kind==='assists'?'assists':'goals', label=kind==='assists'?'A':'G';
+      head='<th>J</th><th>'+label+'</th><th>Méd</th>';
+      body=top.map(function(r,i){return '<tr>'+pos(i)+'<td class="tl">'+nm(r)+'</td>'+tm(r)+'<td>'+(r.games||0)+'</td><td><b>'+r[col]+'</b></td><td>'+av(r.avg)+'</td></tr>';}).join('');
     }
     return '<table class="tbl" style="margin-bottom:10px"><thead><tr><th>#</th><th class="tl">Jogador</th><th class="tl">Equipe</th>'+head+'</tr></thead><tbody>'+body+'</tbody></table>';
+  }
+  // Times presentes nos rankings (pro filtro da aba Estatísticas), únicos por entryId.
+  function statsTeams(){
+    var seen={},out=[];
+    ['scorers','assists','cards'].forEach(function(k){
+      (DATA&&DATA[k]||[]).forEach(function(r){ if(r.entryId&&!seen[r.entryId]){seen[r.entryId]=1;out.push({id:r.entryId,name:r.team||''});} });
+    });
+    out.sort(function(a,b){return String(a.name).localeCompare(String(b.name));});
+    return out;
+  }
+  function teamFilterHtml(){
+    var ts=statsTeams();
+    if(ts.length<2) return '';
+    var opts='<option value="">Todos os times</option>'+ts.map(function(t){return '<option value="'+esc(t.id)+'"'+(t.id===STATS_TEAM?' selected':'')+'>'+esc(t.name)+'</option>';}).join('');
+    return '<select id="stTeam" class="stteam">'+opts+'</select>';
   }
   function teamStatTable(stand, kind){
     var map={},arr=[];
@@ -1547,15 +1566,24 @@ app.get('/t/:slug', async (req, res) => {
     }else if(VIEW==='mata'){
       html=renderBracket(DATA.matches);
     }else if(VIEW==='stats'){
-      html+='<div class="sec-h">⚽ Artilheiros</div>'+(rankTable(DATA.scorers,'scorers')||ek('Sem gols ainda — aparece quando os jogos começarem.'));
-      html+='<div class="sec-h">🅰 Assistências</div>'+(rankTable(DATA.assists,'assists')||ek('Sem assistências ainda.'));
-      html+='<div class="sec-h">🟨 Cartões</div>'+(rankTable(DATA.cards,'cards')||ek('Sem cartões ainda.'));
-      html+='<div class="sec-h">🎯 Melhor ataque (gols marcados)</div>'+(teamStatTable(DATA.stand,'attack')||ek('Aparece quando os jogos começarem.'));
-      html+='<div class="sec-h">🛡 Melhor defesa (gols sofridos)</div>'+(teamStatTable(DATA.stand,'defense')||ek('Aparece quando os jogos começarem.'));
+      var tf=teamFilterHtml();
+      if(tf) html+='<div class="stbar">'+tf+'</div>';
+      var nt=STATS_TEAM?' deste time':'';
+      html+='<div class="sec-h">⚽ Artilheiros</div>'+(rankTable(DATA.scorers,'scorers')||ek('Sem gols'+nt+' ainda — aparece quando os jogos começarem.'));
+      html+='<div class="sec-h">🅰 Assistências</div>'+(rankTable(DATA.assists,'assists')||ek('Sem assistências'+nt+' ainda.'));
+      html+='<div class="sec-h">🟨 Cartões</div>'+(rankTable(DATA.cards,'cards')||ek('Sem cartões'+nt+' ainda.'));
+      if(!STATS_TEAM){
+        html+='<div class="sec-h">🎯 Melhor ataque (gols marcados)</div>'+(teamStatTable(DATA.stand,'attack')||ek('Aparece quando os jogos começarem.'));
+        html+='<div class="sec-h">🛡 Melhor defesa (gols sofridos)</div>'+(teamStatTable(DATA.stand,'defense')||ek('Aparece quando os jogos começarem.'));
+      }
     }else{
       html=renderMatches(DATA.matches);
     }
     elBody.innerHTML=html;
+    if(VIEW==='stats'){
+      var sel=document.getElementById('stTeam');
+      if(sel) sel.addEventListener('change',function(){ STATS_TEAM=this.value; renderView(); });
+    }
   }
   function renderViews(){
     elViews.innerHTML=VIEWS.map(function(v){return '<button class="vtab'+(v[0]===VIEW?' active':'')+'" data-v="'+v[0]+'">'+esc(v[1])+'</button>';}).join('');
@@ -1573,7 +1601,7 @@ app.get('/t/:slug', async (req, res) => {
   function load(catId, silent){
     if(POLL){clearTimeout(POLL);POLL=null;}
     CURID=catId;
-    if(!silent){DATA=null;renderView();}
+    if(!silent){STATS_TEAM='';DATA=null;renderView();}
     var S='/api/tournaments/'+TID+'/stats/';
     var cq='?categoryId='+catId;
     var J=function(u){return fetch(cb(u),FO).then(function(r){return r.json();}).catch(function(){return {};});};
