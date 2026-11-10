@@ -16,6 +16,10 @@ function createBroker(options = {}) {
   const spawn = options.spawn || (() => fork(path.join(__dirname, 'scannerImageWorker.js'), [], {
     stdio: ['ignore', 'ignore', 'ignore', 'ipc'], serialization: 'advanced', windowsHide: true,
     execArgv: [`--max-old-space-size=${cfg.heapMb}`],
+    // Bound glibc arenas only in a Linux image child. Respect any explicit
+    // allocator setting and never mutate the API parent's environment.
+    env: process.platform === 'linux' && process.env.MALLOC_ARENA_MAX === undefined
+      ? { ...process.env, MALLOC_ARENA_MAX: '2' } : undefined,
   }));
   let state = null, active = null, queuedBytes = 0, idleTimer, closed = false;
   const queue = [];

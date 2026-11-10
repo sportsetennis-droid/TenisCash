@@ -4,7 +4,44 @@ const {createBroker}=require('../src/services/scannerImageBroker');
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const until=async(test)=>{for(let i=0;i<100;i++){if(test())return;await delay(10)}assert.fail('process did not settle');};
 const failed=(promise,code)=>assert.rejects(promise,error=>error.code===code);
+async function checkForkEnvironment(platform, explicit) {
+  const fs=require('node:fs'),vm=require('node:vm'),calls=[];
+  const env={PATH:'synthetic-path',SCANNER_TEST_SENTINEL:'preserved'};
+  if(explicit!==undefined)env.MALLOC_ARENA_MAX=explicit;
+  const before={...env},module={exports:{}};
+  const filename=path.resolve(__dirname,'../src/services/scannerImageBroker.js');
+  vm.runInNewContext(fs.readFileSync(filename,'utf8'),{
+    module,__dirname:path.dirname(filename),process:{platform,env},Buffer,setTimeout,clearTimeout,
+    require(name) {
+      if(name!=='node:child_process')return name==='./scannerRuntimeDiagnostic'
+        ? require('../src/services/scannerRuntimeDiagnostic'):require(name);
+      return {fork(file,args,options) {
+        const child=new EventEmitter();calls.push({file,args,options,child});
+        Object.assign(child,{pid:123,ref(){},unref(){},channel:{ref(){},unref(){}},
+          send(message){setImmediate(()=>child.emit('message',{type:'result',id:message.id,result:['ok']}));},
+          kill(){setImmediate(()=>child.emit('exit',0));return true;}});
+        setImmediate(()=>child.emit('message',{type:'ready'}));return child;
+      }};
+    },
+  });
+  const broker=module.exports.createBroker();
+  assert.deepEqual(await broker.run('barcode',Buffer.from('synthetic'),null),['ok']);
+  await broker.shutdown();assert.equal(calls.length,1);
+  const options=calls[0].options;
+  if(platform==='linux'&&explicit===undefined) {
+    assert.deepEqual({...options.env},{...before,MALLOC_ARENA_MAX:'2'});
+    assert.notEqual(options.env,env,'Linux defaults must be a child-only copy');
+  } else assert.equal(options.env,undefined,'Explicit settings and other platforms inherit unchanged');
+  assert.deepEqual(env,before,'API parent environment must remain unchanged');
+  assert.deepEqual(Array.from(options.execArgv),['--max-old-space-size=128']);
+  assert.deepEqual(Array.from(options.stdio),['ignore','ignore','ignore','ipc']);
+  assert.equal(options.serialization,'advanced');assert.equal(options.windowsHide,true);
+  assert.equal(calls[0].file,filename.replace(/scannerImageBroker\.js$/,'scannerImageWorker.js'));
+}
 (async()=>{
+  for(const explicit of [undefined,'1','2','8','','invalid'])await checkForkEnvironment('linux',explicit);
+  for(const platform of ['win32','darwin'])for(const explicit of [undefined,'1'])await checkForkEnvironment(platform,explicit);
+  console.log('PASS Linux fork defaults to two allocator arenas only when absent; explicit values, other platforms, parent environment and child options remain unchanged');
   // Hold exit explicitly: deadline must not release process ownership early.
   const children=[];
   const mock=createBroker({limits:{labelTimeoutMs:35,idleMs:5000},spawn(){
