@@ -520,6 +520,33 @@ app.post('/api/wa/sent', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Teste de envio pela Cloud API oficial (eu disparo daqui p/ validar). Guardado por WA_BRIDGE_KEY.
+app.post('/api/wa/test', async (req, res) => {
+  try {
+    const key = process.env.WA_BRIDGE_KEY;
+    const got = (req.query && req.query.key) || (req.body && req.body.key) || '';
+    if (!key || String(got) !== String(key)) return res.status(401).json({ error: 'chave inválida' });
+    const whatsappCloud = require('./services/whatsappCloud');
+    if (!whatsappCloud.enabled()) return res.status(503).json({ error: 'cloud desligado (faltam WHATSAPP_TOKEN / WHATSAPP_PHONE_NUMBER_ID)' });
+    const to = (req.query && req.query.to) || (req.body && req.body.to);
+    if (!to) return res.status(400).json({ error: 'informe to=<telefone>' });
+    const text = (req.body && req.body.text) || 'Teste TenisCash — WhatsApp oficial funcionando.';
+    const r = await whatsappCloud.sendNotification(to, text);
+    res.status(r.ok ? 200 : 400).json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+// Status da config do WhatsApp (sem vazar segredo): o que falta ligar.
+app.get('/api/wa/status', (req, res) => {
+  const whatsappCloud = require('./services/whatsappCloud');
+  res.json({
+    cloudOficial: whatsappCloud.enabled(),
+    temToken: !!process.env.WHATSAPP_TOKEN,
+    temPhoneId: !!process.env.WHATSAPP_PHONE_NUMBER_ID,
+    template: process.env.WHATSAPP_TEMPLATE || 'hello_world',
+    chaveTeste: !!process.env.WA_BRIDGE_KEY,
+  });
+});
+
 app.get('/api/health', (req, res) => {
   let nuvemshopCatalog = null;
   try {
