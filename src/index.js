@@ -4,6 +4,8 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { designIsolationMiddleware } = require('./middleware');
+const { publicDomain, canonicalRedirectUrl } = require('./config/publicUrl');
+const PUBLIC_DOMAIN = publicDomain();
 
 const authRoutes = require('./routes/auth');
 const webauthnRoutes = require('./routes/webauthn');
@@ -116,6 +118,27 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
+
+// Redirect canônico pro domínio principal (OPT-IN via env CANONICAL_HOST).
+// Desligado por padrão: sem a env, nada muda. Quando o dono setar
+// CANONICAL_HOST=clubsportsetennis.com.br, os hosts antigos (teniscash + www)
+// fazem 301 pro novo — SÓ páginas GET/HEAD; /api, /webhooks, /oauth e
+// /.well-known ficam de fora (não quebra OAuth/webhook/integração).
+const CANONICAL_HOST = String(process.env.CANONICAL_HOST || '').trim().toLowerCase();
+if (CANONICAL_HOST) {
+  app.use((req, res, next) => {
+    try {
+      const dest = canonicalRedirectUrl({
+        host: req.hostname,
+        method: req.method,
+        path: req.path,
+        originalUrl: req.originalUrl,
+        canonicalHost: CANONICAL_HOST,
+      });
+      return dest ? res.redirect(301, dest) : next();
+    } catch (_) { return next(); }
+  });
+}
 app.use(express.json({
   // 1.5mb pra acomodar foto/audio em base64 do /api/messages-v2
   limit: '1.5mb',
@@ -941,7 +964,7 @@ app.get('/p/:id', async (req, res) => {
       ${Object.keys(byStore).length ? `<div class="section"><h3>📦 Estoque por loja</h3>${storesHtml}</div>` : ''}
     </div>
 
-    <div class="footer">teniscash.com.br · Sports &amp; Tennis</div>
+    <div class="footer">${PUBLIC_DOMAIN} · Sports &amp; Tennis</div>
   </div>
   <script>
   (function(){
@@ -1388,7 +1411,7 @@ app.get('/t/:slug', async (req, res) => {
     <div class="views" id="views"></div>
     <div id="catbody"></div>
 
-    <div class="footer">teniscash.com.br · Sports &amp; Tennis</div>
+    <div class="footer">${PUBLIC_DOMAIN} · Sports &amp; Tennis</div>
   </div>
 <script>
 (function(){
@@ -1747,7 +1770,7 @@ app.get('/atleta/:username', async (req, res) => {
         <a class="btn btn-s" href="/" style="text-decoration:none;text-align:center">Abrir o app</a>
       </div>
     </div>
-    <div class="foot">teniscash.com.br · Sports &amp; Tennis</div>
+    <div class="foot">${PUBLIC_DOMAIN} · Sports &amp; Tennis</div>
   </div>
 <script>
 (function(){

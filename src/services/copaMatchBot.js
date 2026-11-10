@@ -4,6 +4,7 @@
 
 const { PrismaClient } = require('@prisma/client');
 const { sendEvolutionText } = require('../whatsapp');
+const { publicDomain } = require('../config/publicUrl');
 
 const prisma = new PrismaClient();
 
@@ -61,7 +62,7 @@ function buildMessage(me, matches, missing) {
   }
 
   lines.push(`Você ainda precisa de *${missing} figurinhas* no total.`);
-  lines.push(`👉 Cruce as coleções agora: teniscash.com.br/copa-figurinhas?t=${me.token}`);
+  lines.push(`👉 Cruce as coleções agora: ${publicDomain()}/copa-figurinhas?t=${me.token}`);
 
   return lines.join('\n');
 }
