@@ -3435,7 +3435,8 @@ async function onInventorySearch(page = 1) {
   // Permite carregar sem texto (mostra produtos mais recentes)
   invSearchTimer = setTimeout(async () => {
     try {
-      const params = ['limit=24', 'includeSizeOptions=1', 'page=' + page];
+      // Aba Estoque: só saldo conferido (lojas com contagem atual aplicada).
+      const params = ['limit=24', 'includeSizeOptions=1', 'page=' + page, 'countedOnly=1'];
       if (q) params.push('q=' + encodeURIComponent(q));
       // A numeração precisa ter saldo físico, não apenas existir na grade histórica.
       if (size) params.push('size=' + encodeURIComponent(size), 'exactSize=1', 'inStore=1');
@@ -3479,7 +3480,7 @@ async function onInventorySearch(page = 1) {
 
 async function checkInventory(id, name) {
   try {
-    const d = await api('/api/seller/inventory/check?productId=' + id);
+    const d = await api('/api/seller/inventory/check?countedOnly=1&productId=' + id);
     const stores = d.stores || [];
 
     // Cabeçalho: tamanho + uma coluna por loja + total
@@ -3644,6 +3645,10 @@ async function loadStoreInventory(page=1) {
     _storeInvProducts = new Map((d.products || []).map(p => [p.id, p]));
     const sitLabel = { transferidos: ['🔁', 'transferido(s)'], vendidos: ['🧾', 'vendido(s)'], trocas: ['↩️', 'em troca(s)'] }[situation];
     const sitSince = d.situation?.since ? new Date(d.situation.since).toLocaleDateString('pt-BR', { timeZone: 'America/Fortaleza' }) : '';
+    if (d.storeNotCounted && !sitLabel) {
+      el.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:20px;">📋 Esta loja ainda não foi conferida.<br>O estoque fica zerado até a contagem ser feita.</p>';
+      return;
+    }
     if (!d.products?.length) {
       el.innerHTML = `<p style="text-align:center;color:var(--text-muted);padding:20px;">${sitLabel ? `Nenhum produto ${sitLabel[1].replace('(s)', '')} ${sitSince ? 'desde ' + sitSince : ''} com esses filtros.` : 'Nada encontrado nessa loja com esses filtros.'}</p>`;
       return;
