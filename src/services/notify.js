@@ -9,6 +9,7 @@
 
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+const whatsappCloud = require('./whatsappCloud');
 
 async function notify(userId, { type, title, body, link } = {}) {
   if (!userId) return null;
@@ -22,9 +23,9 @@ async function notify(userId, { type, title, body, link } = {}) {
         link: link ? String(link).slice(0, 300) : null,
       },
     });
-    // WhatsApp (ponte não-oficial): só enfileira se a chave estiver configurada.
-    // A ponte externa (whatsapp-bridge) puxa a fila e envia. Nunca derruba o fluxo.
-    if (process.env.WA_BRIDGE_KEY) enqueueWhatsApp(userId, title, body).catch(() => {});
+    // WhatsApp: liga com a Cloud API oficial (WHATSAPP_TOKEN) OU a ponte (WA_BRIDGE_KEY).
+    // Sem nenhuma das duas, não faz nada (só o sininho). Nunca derruba o fluxo.
+    if (whatsappCloud.enabled() || process.env.WA_BRIDGE_KEY) enqueueWhatsApp(userId, title, body).catch(() => {});
     return n;
   } catch (e) {
     console.error('[notify] falhou:', e.message);
@@ -32,13 +33,21 @@ async function notify(userId, { type, title, body, link } = {}) {
   }
 }
 
-// Enfileira o aviso pra sair no WhatsApp (se o usuário tem telefone).
+// Enfileira o aviso e, se a Cloud API oficial estiver ligada, envia na hora.
 async function enqueueWhatsApp(userId, title, body) {
   try {
     const u = await prisma.user.findUnique({ where: { id: userId }, select: { phone: true } });
     if (!u || !u.phone) return;
-    const text = (title ? `*${title}*\n` : '') + String(body || '').slice(0, 900);
-    await prisma.whatsAppOutbox.create({ data: { phone: u.phone, body: text, userId } });
+    const text = (title ? `${title}: ` : '') + String(body || '').slice(0, 900);
+    const row = await prisma.whatsAppOutbox.create({ data: { phone: u.phone, body: text, userId } });
+    // Envio imediato pela API OFICIAL (se ligada). A ponte não-oficial, se usada, puxa o PENDING.
+    if (whatsappCloud.enabled()) {
+      const r = await whatsappCloud.sendNotification(u.phone, text);
+      await prisma.whatsAppOutbox.update({
+        where: { id: row.id },
+        data: r.ok ? { status: 'SENT', sentAt: new Date() } : { status: 'FAILED', error: String(r.error || '').slice(0, 300) },
+      }).catch(() => {});
+    }
   } catch (e) { /* silencioso: WhatsApp é best-effort */ }
 }
 
