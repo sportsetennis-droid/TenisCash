@@ -332,7 +332,11 @@ async function notifyClockEvent(p = {}) {
     const hora = fmtTime(p.at || new Date());
 
     const msg = `${meta.emoji} *${name} ${meta.verb}*\n🏬 ${loja} · 🕒 ${hora}`;
-    await sendEvolutionRaw(jid, msg);
+    const result = await sendEvolutionRaw(jid, msg);
+    // Sem este log, uma sessão do WhatsApp caída silenciava o grupo sem deixar rastro.
+    if (!result || !result.ok) {
+      console.error('[equipeReports] aviso de ponto NÃO enviado ao grupo:', (result && result.error) || 'sem resposta');
+    }
   } catch (e) {
     console.error('[equipeReports] notifyClockEvent falhou:', e.message);
   }

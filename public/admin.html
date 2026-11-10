@@ -15432,6 +15432,9 @@ function renderWaNumbers(){
       + '<div style="font-size:11px;color:#888;">'+(n.number?('+'+n.number):waEsc(n.instance))+'</div>'
       + '<div style="font-size:12px;margin-top:4px;color:#333;">'+n.total+' msgs · '+n.recebidas+' recebidas</div>'
       + '<div style="font-size:11px;color:#aaa;">'+(n.lastAt?('última: '+waFmt(n.lastAt)):'sem mensagens ainda')+'</div>'
+      + (n.instance===(waNumbers[0]&&waNumbers[0].instance) && n.status!=='open'
+          ? '<a href="/whatsapp-principal.html" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="display:inline-block;margin-top:6px;font-size:12px;font-weight:800;color:#d70015;">Desconectado: avisos de ponto parados · Reconectar (QR)</a>'
+          : '')
       + '</div>';
   }).join('') || '<span style="color:#999">Nenhum número configurado.</span>';
 }
