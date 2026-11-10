@@ -1031,10 +1031,13 @@ router.delete('/push/subscribe', async (req, res) => {
 
 router.post('/push/test', async (req, res) => {
   try {
+    // url opcional (só caminho interno do próprio site) — o app do atleta usa /torneios.html
+    const askedUrl = req.body && typeof req.body.url === 'string' ? req.body.url : '';
+    const safeUrl = askedUrl.startsWith('/') && !askedUrl.startsWith('//') ? askedUrl.slice(0, 200) : '/app.html';
     const r = await pushSvc.sendToUser(req.userId, {
       title: 'TenisCash',
-      body: 'Push notifications funcionando!',
-      url: '/app.html',
+      body: safeUrl.startsWith('/torneios') ? 'Avisos ativados! Treinos, jogos e resultados vão chegar aqui.' : 'Push notifications funcionando!',
+      url: safeUrl,
     });
     res.json(r);
   } catch (err) {

@@ -11,6 +11,7 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const { notifyMany } = require('./notify');
+const ftz = require('./fortalezaTime');
 
 async function clubOfEntry(entryId, tournamentId) {
   const e = await prisma.tournamentEntry.findFirst({ where: { id: String(entryId), tournamentId }, select: { name: true } });
@@ -34,14 +35,15 @@ async function create({ tournamentId, entryId, createdByUserId, title, focus, sc
       tournamentId, clubName,
       title: (title && String(title).slice(0, 120)) || 'Treino',
       focus: focus ? String(focus).slice(0, 300) : null,
-      scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
+      // datetime-local do app vem sem fuso → é hora de João Pessoa, não UTC
+      scheduledAt: ftz.parseLocal(scheduledAt),
       location: location ? String(location).slice(0, 160) : null,
       createdByUserId: createdByUserId || null,
     },
   });
   // avisa os atletas vinculados do clube
   const members = await clubMemberUserIds(tournamentId, clubName);
-  const quando = s.scheduledAt ? new Date(s.scheduledAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'em breve';
+  const quando = s.scheduledAt ? new Date(s.scheduledAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: ftz.TZ }) : 'em breve';
   await notifyMany(members, { type: 'training', title: 'Novo treino marcado', body: `${clubName}: ${s.title} — ${quando}. Confirme presença.`, link: `/torneios.html#t/${tournamentId}` }, createdByUserId);
   return { ok: true, session: s };
 }
@@ -57,14 +59,14 @@ async function createRecurring({ tournamentId, entryId, createdByUserId, title, 
   const hh = Math.min(23, Math.max(0, Number(parts[0]) || 19));
   const mm = Math.min(59, Math.max(0, Number(parts[1]) || 0));
   const nWeeks = Math.min(Math.max(Number(weeks) || 4, 1), 26);
-  const start = startDate ? new Date(startDate) : new Date();
+  // Dia da semana e "HH:MM" são do relógio de João Pessoa (o servidor roda em UTC).
+  const start = ftz.partsOf(ftz.parseLocal(startDate) || new Date());
   const groupId = 'rec_' + Math.random().toString(36).slice(2, 10);
   const dates = [];
   for (const d of wd) {
-    const first = new Date(start); first.setHours(hh, mm, 0, 0);
-    first.setDate(first.getDate() + ((d - first.getDay() + 7) % 7));
+    const offset = (d - start.weekday + 7) % 7;
     for (let w = 0; w < nWeeks; w++) {
-      const dt = new Date(first); dt.setDate(first.getDate() + w * 7);
+      const dt = ftz.wallClock(start.year, start.month, start.day + offset + w * 7, hh, mm);
       if (dt.getTime() >= Date.now() - 3600000) dates.push(dt);
     }
   }
@@ -88,7 +90,7 @@ async function remind(sessionId, byUserId) {
   const att = await prisma.trainingAttendance.findMany({ where: { sessionId: s.id }, select: { userId: true, rsvp: true } });
   const responded = new Set(att.filter((a) => a.rsvp).map((a) => a.userId));
   const pending = members.filter((u) => !responded.has(u));
-  const quando = s.scheduledAt ? new Date(s.scheduledAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'em breve';
+  const quando = s.scheduledAt ? new Date(s.scheduledAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: ftz.TZ }) : 'em breve';
   await notifyMany(pending, { type: 'training', title: 'Confirma o treino?', body: `${s.clubName}: ${s.title} — ${quando}. Você ainda não respondeu.`, link: `/torneios.html#t/${s.tournamentId}` }, byUserId);
   return { ok: true, reminded: pending.length };
 }
@@ -144,7 +146,7 @@ async function update(sessionId, body = {}) {
   if ('focus' in body) data.focus = body.focus ? String(body.focus).slice(0, 300) : null;
   if ('location' in body) data.location = body.location ? String(body.location).slice(0, 160) : null;
   if ('notes' in body) data.notes = body.notes ? String(body.notes).slice(0, 2000) : null;
-  if ('scheduledAt' in body) data.scheduledAt = body.scheduledAt ? new Date(body.scheduledAt) : null;
+  if ('scheduledAt' in body) data.scheduledAt = ftz.parseLocal(body.scheduledAt);
   if ('status' in body && ['SCHEDULED', 'DONE', 'CANCELED'].includes(String(body.status))) data.status = String(body.status);
   if (!Object.keys(data).length) return { ok: false, code: 400, error: 'nada pra atualizar' };
   const s = await prisma.trainingSession.update({ where: { id: String(sessionId) }, data }).catch(() => null);

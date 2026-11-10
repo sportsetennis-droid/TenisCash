@@ -1122,10 +1122,14 @@ async function renderNotifications(){
   try{if(data.unread)await api('/notifications/read-all',{method:'POST'});}catch(e){}
   const list=data.notifications||[];
   let html=topbar('Avisos',true)+'<div class="wrap">';
+  html+='<div class="card" id="push-card"><div style="display:flex;align-items:center;gap:10px"><div style="font-size:22px">📲</div>'+
+    '<div class="grow"><div class="nm" style="font-weight:700">Avisos no celular</div><div class="sub" id="push-status">Verificando…</div></div>'+
+    '<button class="btn sm" id="push-btn" data-act="push-toggle" style="display:none">Ativar</button></div>'+
+    '<div class="sub" id="push-hint" style="display:none;margin-top:8px;white-space:normal"></div></div>';
   if(!list.length)html+='<div class="card"><div class="empty"><div class="ic">🔔</div>Sem avisos ainda.<br>Desafios, inscrições, placares e jogos marcados aparecem aqui.</div></div>';
   else{
     html+='<div class="card" style="padding:4px 14px">';
-    const ICON={challenge:'⚔️',entry:'📝',result:'📋',schedule:'📅'};
+    const ICON={challenge:'⚔️',entry:'📝',result:'📋',schedule:'📅',training:'🏃',team:'👥'};
     list.forEach(n=>{
       const icon=ICON[n.type]||'🔔';
       const h=n.link?esc(n.link.replace(/^#\/?/,'')):'';
@@ -1139,6 +1143,56 @@ async function renderNotifications(){
     html+='</div>';
   }
   html+='</div>';app.innerHTML=html;
+  pushRefresh();
+}
+
+// ---------- push no celular (Web Push — grátis) ----------
+async function pushApi(path,method,body){
+  const r=await fetch('/api/messages-v2/push'+path,{method:method||'GET',headers:{'Content-Type':'application/json','Authorization':'Bearer '+TOKEN},body:body?JSON.stringify(body):undefined});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(j.error||('Erro '+r.status));
+  return j;
+}
+function pushSupported(){return 'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;}
+async function pushReg(){return (await navigator.serviceWorker.getRegistration('/'))||navigator.serviceWorker.register('/sw.js');}
+function b64ToBytes(b64){const p='='.repeat((4-b64.length%4)%4);const raw=atob((b64+p).replace(/-/g,'+').replace(/_/g,'/'));const o=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)o[i]=raw.charCodeAt(i);return o;}
+function bytesToB64(buf){return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');}
+async function pushRefresh(){
+  const st=document.getElementById('push-status'),btn=document.getElementById('push-btn'),hint=document.getElementById('push-hint');
+  if(!st)return;
+  const ios=/iphone|ipad|ipod/i.test(navigator.userAgent);
+  const standalone=window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+  if(!pushSupported()){
+    st.textContent='Este navegador não recebe avisos.';
+    if(ios&&!standalone){hint.style.display='block';hint.textContent='No iPhone: toque em Compartilhar → "Adicionar à Tela de Início", abra o TenisCash pelo ícone e ative aqui.';}
+    return;
+  }
+  if(Notification.permission==='denied'){st.textContent='Bloqueado nas configurações do celular.';hint.style.display='block';hint.textContent='Libere as notificações deste site nas configurações do navegador e volte aqui.';return;}
+  try{
+    const reg=await pushReg();const sub=await reg.pushManager.getSubscription();
+    btn.style.display='';
+    if(sub){st.textContent='✅ Ativos neste celular';btn.textContent='Desativar';btn.classList.add('gho');}
+    else{st.textContent='Receba treino, jogo e resultado na hora — grátis.';btn.textContent='Ativar';btn.classList.remove('gho');}
+  }catch(e){st.textContent='Não foi possível verificar: '+e.message;}
+}
+async function pushToggle(){
+  if(!TOKEN){toast('Entre na sua conta primeiro');return;}
+  const btn=document.getElementById('push-btn');if(btn)btn.disabled=true;
+  try{
+    const reg=await pushReg();await navigator.serviceWorker.ready;
+    const cur=await reg.pushManager.getSubscription();
+    if(cur){await pushApi('/subscribe','DELETE',{endpoint:cur.endpoint}).catch(()=>{});await cur.unsubscribe();toast('Avisos desativados');}
+    else{
+      const perm=await Notification.requestPermission();
+      if(perm!=='granted'){toast('Permissão não concedida');return;}
+      const {publicKey}=await pushApi('/vapid-public-key');
+      const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToBytes(publicKey)});
+      await pushApi('/subscribe','POST',{endpoint:sub.endpoint,keys:{p256dh:bytesToB64(sub.getKey('p256dh')),auth:bytesToB64(sub.getKey('auth'))},userAgent:navigator.userAgent});
+      toast('Avisos ativados ✅');
+      pushApi('/test','POST',{url:'/torneios.html#avisos'}).catch(()=>{});
+    }
+  }catch(e){toast('Erro: '+e.message);}
+  finally{if(btn)btn.disabled=false;pushRefresh();}
 }
 
 // ---------- sheets: categoria / inscrição / placar ----------
@@ -1557,6 +1611,7 @@ document.addEventListener('click',async(ev)=>{
   if(a==='fz-go'){sumFinalizeGo(el.dataset.mid);return;}
   if(a==='import-futsal'){if(confirm('Importar o II Futsal Master Cup 2026 (times + 65 jogos da tabela oficial)? Pode rodar de novo sem duplicar.')){toast('Importando...');try{const r=await api('/import/futsal-master-cup',{method:'POST'});toast('Pronto: '+r.teams+' times · '+r.matchesCreated+' jogos'+(r.matchesTBD?' ('+r.matchesTBD+' a confirmar)':''));go('t/'+r.tournamentId);}catch(e){toast(e.message);}}return;}
   if(a==='notif-go'){go(el.dataset.h);return;}
+  if(a==='push-toggle'){pushToggle();return;}
   if(a==='wo'){walkover(el.dataset.mid,el.dataset.w);return;}
   if(a==='live'){sheetLive(el.dataset.mid,el.dataset.h,el.dataset.a);return;}
   if(a==='lv'){const s=el.dataset.s;LIVE.cur[s]=Math.max(0,LIVE.cur[s]+Number(el.dataset.d));renderLiveSheet();return;}
