@@ -3405,9 +3405,16 @@ async function populateInvStoreSelect() {
     const d = await api('/api/seller/stores');
     const sel = document.getElementById('invStoreSelect');
     if (!sel) return;
+    const previous = sel.value;
     sel.innerHTML = '<option value="">— escolha a loja —</option>' +
       (d.stores || []).map(s => `<option value="${s.id}">${s.name}</option>`).join('');
-    sel.value = 'all';
+    // Já abre na loja escolhida antes ou na loja em que o vendedor está logado,
+    // e carrega produtos + filtros (tipo/marca/numeração) sem precisar de outro toque.
+    const ids = (d.stores || []).map(s => s.id);
+    const preferred = ids.includes(previous) ? previous : (activeStore && ids.includes(activeStore.id) ? activeStore.id : '');
+    sel.value = preferred;
+    if (preferred && preferred !== previous) loadStoreInventory();
+    else if (!preferred) document.getElementById('invStoreResults').innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:20px;">Escolha a loja na primeira caixa para ver o estoque e os filtros.</p>';
   } catch (e) { console.error(e); }
 }
 
