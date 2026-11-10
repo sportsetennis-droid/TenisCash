@@ -409,6 +409,17 @@ function adminOnly(req, res, next) {
   next();
 }
 
+// Mensagem de teste no grupo do ponto (só o titular), para conferir o canal depois
+// de reconectar o WhatsApp principal.
+router.post('/reports/ponto/test', adminOnly, async (req, res) => {
+  if (req.userRole !== 'superadmin') return res.status(403).json({ error: 'Restrito ao titular' });
+  try {
+    res.json(await equipeReports.sendPontoGroupTest());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Conferir o texto do relatório sem enviar nada. ?checkpoint=13|18|21
 router.get('/reports/sales/preview', adminOnly, async (req, res) => {
   try {

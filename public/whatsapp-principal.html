@@ -35,6 +35,7 @@
     </div>
     <p id="error" class="error" role="alert"></p>
     <div class="actions"><button id="refresh" type="button">Atualizar QR Code</button><span id="updated"></span></div>
+    <div class="actions" id="testBox" hidden><button id="test" type="button">Enviar teste ao grupo do ponto</button><span id="testResult" role="status"></span></div>
     <small>O código é atualizado automaticamente. Não compartilhe o QR Code com outras pessoas.</small>
     <footer>Enquanto esta conexão estiver desligada, os avisos de ponto não chegam ao grupo. Depois de conectar, a próxima batida de ponto já aparece no grupo.</footer>
   </section>
@@ -66,7 +67,7 @@
       if(typeof data.instance!=='string'||data.storeCode!==null)throw new Error('A resposta não corresponde ao WhatsApp principal.');
       const connected=data.state==='open';$('status').className='status'+(connected?' connected':'');
       $('status').textContent=connected?'WhatsApp principal conectado':'Aguardando a leitura do QR Code';
-      $('instructions').hidden=connected;$('refresh').hidden=connected;
+      $('instructions').hidden=connected;$('refresh').hidden=connected;$('testBox').hidden=!connected;
       hideQr();
       if(!connected){
         if(typeof data.qr!=='string'||!/^data:image\/png;base64,[A-Za-z0-9+/=\r\n]+$/.test(data.qr))throw new Error('O QR Code ainda não está disponível. Tentando novamente…');
@@ -82,6 +83,12 @@
     }finally{busy=false;$('refresh').disabled=false;if(signedIn)timer=setTimeout(refreshQr,15000);}
   }
   $('refresh').addEventListener('click',refreshQr);
+  $('test').addEventListener('click',async()=>{
+    $('test').disabled=true;$('testResult').textContent='Enviando…';
+    try{const r=await api('/seller/reports/ponto/test',{});
+      $('testResult').textContent=r.sent?'Mensagem de teste enviada ao grupo do ponto.':(r.reason==='no_group'?'Nenhum grupo do ponto configurado no servidor.':'Não foi enviada: '+(r.error||r.reason));}
+    catch(error){$('testResult').textContent=error.message;}finally{$('test').disabled=false;}
+  });
   $('login').addEventListener('submit',async event=>{
     event.preventDefault();$('loginButton').disabled=true;$('loginError').textContent='';
     const identity=$('identity').value.trim(),password=$('password').value;

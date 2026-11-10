@@ -1069,8 +1069,21 @@ function startEquipeReportsCron() {
   }).catch((e) => console.error('[equipeReports] leitura da escala', e.message));
 }
 
+// Teste manual do canal do ponto: mesma instância e mesmo grupo dos avisos reais,
+// sem citar nenhum vendedor. Devolve o erro do Evolution para o titular ver na hora.
+async function sendPontoGroupTest(now = new Date()) {
+  const jid = pontoGroupJid();
+  if (!jid) return { sent: false, reason: 'no_group' };
+  if (!isEvolutionConfigured()) return { sent: false, reason: 'no_evolution' };
+  const text = `✅ *Teste do aviso de ponto*\nConexão do WhatsApp restabelecida · 🕒 ${fmtTime(now)}`;
+  const result = await sendEvolutionRaw(jid, text);
+  if (!result || !result.ok) return { sent: false, reason: 'send_failed', error: (result && result.error) || 'sem resposta' };
+  return { sent: true };
+}
+
 module.exports = {
   startEquipeReportsCron,
+  sendPontoGroupTest,
   sendSalesReport,
   buildSalesReport,
   notifyClockEvent,
