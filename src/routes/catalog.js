@@ -148,6 +148,30 @@ function addStoreStockSummary(card, storeId, store = null, stockScope = 'mine') 
   };
 }
 
+
+// Chave de tipo sem acento/caixa; singular/plural de chuteira/calçado contam como o mesmo tipo.
+function catalogTypeKey(value) {
+  let key = String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/\s+/g, ' ');
+  if (key === 'chuteira') key = 'chuteiras';
+  if (key === 'calcado') key = 'calcados';
+  return key;
+}
+function groupFacet(rows, field, keyOf) {
+  const map = new Map();
+  for (const row of rows || []) {
+    const raw = row[field]; const key = keyOf(raw); const count = row._count?._all || 0;
+    if (!key) continue;
+    const cur = map.get(key) || { key, value: raw, count: 0, best: -1 };
+    cur.count += count;
+    // Rótulo: a grafia com acento/maiúscula mais usada.
+    const score = count + (/[^\x20-\x7e]/.test(raw) ? 1e6 : 0) + (/^[A-Z\u00c0-\u00da]/.test(raw) ? 1e5 : 0);
+    if (score > cur.best) { cur.best = score; cur.value = raw; }
+    map.set(key, cur);
+  }
+  return [...map.values()].map(({ key, value, count }) => ({ key, value, label: value, count }))
+    .sort((a, b) => String(a.label).localeCompare(String(b.label), 'pt-BR'));
+}
+
 router.get('/products', optionalCatalogAuth, async (req, res) => {
   try {
     // preço/estoque mudam o tempo todo — nunca deixar o navegador servir do cache
@@ -157,6 +181,9 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
     const salesSearch = String(req.query.salesSearch || '') === '1';
     const brand = String(req.query.brand || '').trim();
     const category = String(req.query.category || '').trim();
+    // Tipo agrupado (Tênis/tenis/TÊNIS = mesmo tipo). Usado pelo "Estoque de uma loja".
+    const typeKey = String(req.query.typeKey || '').trim();
+    const includeFacets = String(req.query.includeFacets || '') === '1';
     const page = Math.max(1, parseInt(req.query.page || '1', 10) || 1);
     const pageSize = Math.min(40, Math.max(1, parseInt(req.query.pageSize || req.query.limit || '12', 10) || 12));
     const skip = (page - 1) * pageSize;
@@ -227,8 +254,15 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
     const andConds = [
       isStaff ? staffVisibleProduct : { active: true },
     ];
-    if (brand) andConds.push({ brand: { equals: brand, mode: 'insensitive' } });
-    if (category) andConds.push({ category: { equals: category, mode: 'insensitive' } });
+    let brandCond = null, categoryCond = null;
+    if (brand) { brandCond = { brand: { equals: brand, mode: 'insensitive' } }; andConds.push(brandCond); }
+    if (category) { categoryCond = { category: { equals: category, mode: 'insensitive' } }; andConds.push(categoryCond); }
+    else if (typeKey) {
+      const raws = (await prisma.product.findMany({ distinct: ['category'], select: { category: true } }))
+        .map(r => r.category).filter(c => catalogTypeKey(c) === typeKey);
+      categoryCond = { category: { in: raws.length ? raws : ['__nenhum_tipo__'] } };
+      andConds.push(categoryCond);
+    }
     if (aiFilters.length) andConds.push(...aiFilters);
     const sizeCondition = Object.keys(sizesSome).length ? { sizes: { some: sizesSome } } : null;
     if (sizeCondition) andConds.push(sizeCondition);
@@ -294,6 +328,16 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
         select: { size: true },
       }) : Promise.resolve(null),
     ]);
+    // Facetas da loja: cada lista ignora o próprio filtro, para combinar sem beco sem saída.
+    let brandOptions, typeOptions;
+    if (includeFacets) {
+      const [brandRows, typeRows] = await Promise.all([
+        prisma.product.groupBy({ by: ['brand'], where: { AND: andConds.filter(c => c !== brandCond) }, _count: { _all: true } }),
+        prisma.product.groupBy({ by: ['category'], where: { AND: andConds.filter(c => c !== categoryCond) }, _count: { _all: true } }),
+      ]);
+      brandOptions = groupFacet(brandRows, 'brand', v => String(v || '').trim().toUpperCase());
+      typeOptions = groupFacet(typeRows, 'category', catalogTypeKey);
+    }
 
     // Busca da tela Vender: primeiro exige todas as palavras úteis; se não achar,
     // consulta cada palavra separadamente e ordena pelos produtos que mais coincidem.
@@ -389,6 +433,7 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
       total,
       totalPages: Math.ceil(total / pageSize) || 1,
       ...(includeSizeOptions ? { sizeOptions } : {}),
+      ...(includeFacets ? { brandOptions, typeOptions } : {}),
       ...(myStore.wantsMyStore ? { store: myStore.store, stockScope: myStore.stockScope } : {}),
     });
   } catch (err) {

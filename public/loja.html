@@ -780,6 +780,7 @@
   <div class="page" id="page-inventory">
     <h2 class="page-title">Estoque</h2>
     <p class="page-subtitle">Busque um produto e veja em quais lojas está disponível, ou escolha uma loja e veja o estoque dela.</p>
+    <a class="btn btn-small" href="/transferencia.html" style="display:inline-flex;align-items:center;min-height:44px;margin-bottom:12px;text-decoration:none;">🔁 Transferência entre lojas</a>
 
     <div class="card" style="margin-bottom:12px;">
       <div style="display:flex;gap:8px;margin-bottom:12px;">
@@ -800,12 +801,19 @@
 
       <!-- MODO B: escolhe loja, lista produtos com estoque la -->
       <div id="invModeStorePane" style="display:none;">
-        <div style="display:flex;gap:8px;margin-bottom:8px;">
-          <select id="invStoreSelect" style="flex:1;padding:10px;border:1px solid #d2d2d7;border-radius:8px;">
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+          <select id="invStoreSelect" onchange="onInvStoreChange()" style="flex:1 1 160px;min-height:44px;padding:10px;border:1px solid #d2d2d7;border-radius:8px;">
             <option value="">— escolha a loja —</option>
           </select>
-          <input type="text" id="invStoreQ" placeholder="Filtrar dentro da loja…" style="flex:1;padding:10px;border:1px solid #d2d2d7;border-radius:8px;">
-          <button class="btn btn-small" onclick="loadStoreInventory()">Buscar</button>
+          <input type="text" id="invStoreQ" placeholder="Filtrar dentro da loja…" onkeydown="if(event.key==='Enter')loadStoreInventory()" style="flex:1 1 160px;min-height:44px;padding:10px;border:1px solid #d2d2d7;border-radius:8px;">
+          <button class="btn btn-small" onclick="loadStoreInventory()" style="min-height:44px;">Buscar</button>
+        </div>
+        <!-- Filtros da loja: tipo, marca e numeração — sozinhos ou combinados -->
+        <div id="invStoreFilters" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+          <select id="invStoreType" aria-label="Tipo de produto" onchange="loadStoreInventory()" style="flex:1 1 140px;min-height:44px;padding:10px;border:1px solid #d2d2d7;border-radius:8px;"><option value="">Todos os tipos</option></select>
+          <select id="invStoreBrand" aria-label="Marca" onchange="loadStoreInventory()" style="flex:1 1 140px;min-height:44px;padding:10px;border:1px solid #d2d2d7;border-radius:8px;"><option value="">Todas as marcas</option></select>
+          <select id="invStoreSize" aria-label="Numeração" onchange="loadStoreInventory()" style="flex:1 1 140px;min-height:44px;padding:10px;border:1px solid #d2d2d7;border-radius:8px;"><option value="">Todas as numerações</option></select>
+          <button class="btn btn-secondary btn-small" type="button" onclick="clearStoreFilters()" style="min-height:44px;">✕ Limpar filtros</button>
         </div>
         <select id="invStoreVerification" aria-label="Situação da conferência por loja" onchange="loadStoreInventory()" style="padding:10px;margin-bottom:10px;border-radius:8px"><option value="">Todas as situações</option><option value="verified">✓ Conferidos nesta rodada</option><option value="pending">⚠ Com pendência</option><option value="unverified">○ Ainda não conferidos</option></select><div id="invStoreResults"></div>
       </div>
@@ -3552,16 +3560,73 @@ function storeInventoryPhotoNav(event, button, direction) {
   if (counter) counter.textContent = `${next + 1} / ${photos.length}`;
 }
 
+// Filtros do "Estoque de uma loja": opções vêm do servidor só com o que há na loja.
+function fillStoreFilter(id, options, allLabel) {
+  const sel = document.getElementById(id);
+  if (!sel || !Array.isArray(options)) return;
+  const current = sel.value;
+  const known = options.some(o => o.value === current);
+  sel.innerHTML = `<option value="">${allLabel}</option>`
+    + (current && !known ? `<option value="${escPreco(current)}">${escPreco(sel.dataset.label || current)} — sem estoque neste filtro</option>` : '')
+    + options.map(o => `<option value="${escPreco(o.value)}">${escPreco(o.label)}${o.count != null ? ` (${o.count})` : ''}</option>`).join('');
+  sel.value = current;
+  const picked = options.find(o => o.value === current);
+  if (picked) sel.dataset.label = picked.label;
+}
+function clearStoreFilters() {
+  for (const id of ['invStoreType', 'invStoreBrand', 'invStoreSize']) { const s = document.getElementById(id); if (s) { s.value = ''; delete s.dataset.label; } }
+  document.getElementById('invStoreQ').value = '';
+  if (document.getElementById('invStoreSelect').value) loadStoreInventory();
+}
+function onInvStoreChange() {
+  for (const id of ['invStoreType', 'invStoreBrand', 'invStoreSize']) { const s = document.getElementById(id); if (s) { s.value = ''; delete s.dataset.label; } }
+  if (document.getElementById('invStoreSelect').value) loadStoreInventory();
+}
+let _storeInvProducts = new Map(), _storeInvStoreId = '', storeInvRequestId = 0;
+function openStoreTransfer(productId) {
+  const p = _storeInvProducts.get(productId);
+  if (!p) return;
+  const sizes = (p.sizes || []).map(s => ({ ...s, here: (s.storeStocks || []).filter(ss => (ss.storeId || ss.store?.id) === _storeInvStoreId).reduce((n, ss) => n + Number(ss.stock || 0), 0) }))
+    .filter(s => s.here > 0)
+    .sort((a, b) => String(a.size).localeCompare(String(b.size), 'pt-BR', { numeric: true }));
+  const storeName = document.getElementById('invStoreSelect').selectedOptions[0]?.textContent || 'esta loja';
+  document.getElementById('productModalContent').innerHTML = `
+    <h3 class="modal-title">🔁 Transferir</h3>
+    <div style="font-size:14px;font-weight:600;margin-bottom:4px;">${escPreco(p.name || '')}</div>
+    <div style="font-size:13px;color:#8e8e93;margin-bottom:12px;">Origem: ${escPreco(storeName)}. Escolha o tamanho; na próxima tela você escolhe a loja de destino e confirma.</div>
+    ${sizes.length ? sizes.map(s => s.barcode
+      ? `<a class="btn" style="display:flex;justify-content:space-between;align-items:center;min-height:44px;margin-bottom:8px;text-decoration:none;" href="/transferencia.html?barcode=${encodeURIComponent(s.barcode)}&origem=${encodeURIComponent(_storeInvStoreId)}"><span>Tamanho ${escPreco(s.size)}</span><span>${s.here} un. ➡</span></a>`
+      : `<div class="btn btn-secondary" style="display:flex;justify-content:space-between;min-height:44px;margin-bottom:8px;opacity:.6;"><span>Tamanho ${escPreco(s.size)} · sem código</span><span>bipe na tela de transferência</span></div>`).join('')
+      : '<p style="color:#8e8e93;">Nenhum tamanho com estoque nesta loja.</p>'}
+    <button class="btn btn-secondary" type="button" onclick="closeModal()" style="width:100%;min-height:44px;margin-top:4px;">Fechar</button>`;
+  document.getElementById('productModal').classList.add('show');
+}
+
 async function loadStoreInventory(page=1) {
   const storeId = document.getElementById('invStoreSelect').value;
   const q = document.getElementById('invStoreQ').value;
   if (!storeId) { alert('Escolha a loja'); return; }
   const el = document.getElementById('invStoreResults');
+  const requestId = ++storeInvRequestId;
   el.innerHTML = '<p style="text-align:center;color:#8e8e93;padding:20px;">Carregando...</p>';
   try {
-    const d = await api(`/api/catalog/products?stockScope=store&storeId=${encodeURIComponent(storeId)}&q=${encodeURIComponent(q)}&pageSize=40&page=${page}&verification=${encodeURIComponent(document.getElementById("invStoreVerification").value)}`);
+    const typeKey = document.getElementById('invStoreType').value;
+    const brand = document.getElementById('invStoreBrand').value;
+    const size = document.getElementById('invStoreSize').value;
+    const params = [`stockScope=store`, `storeId=${encodeURIComponent(storeId)}`, `q=${encodeURIComponent(q)}`, `pageSize=40`, `page=${page}`,
+      `verification=${encodeURIComponent(document.getElementById("invStoreVerification").value)}`, 'includeFacets=1', 'includeSizeOptions=1'];
+    if (typeKey) params.push('typeKey=' + encodeURIComponent(typeKey));
+    if (brand) params.push('brand=' + encodeURIComponent(brand));
+    if (size) params.push('size=' + encodeURIComponent(size), 'exactSize=1');
+    const d = await api('/api/catalog/products?' + params.join('&'));
+    if (requestId !== storeInvRequestId) return;
+    fillStoreFilter('invStoreType', (d.typeOptions || []).map(o => ({ value: o.key, label: o.label, count: o.count })), 'Todos os tipos');
+    fillStoreFilter('invStoreBrand', (d.brandOptions || []).map(o => ({ value: o.value, label: o.label, count: o.count })), 'Todas as marcas');
+    fillStoreFilter('invStoreSize', (d.sizeOptions || []).map(v => ({ value: v, label: v })), 'Todas as numerações');
+    _storeInvStoreId = storeId;
+    _storeInvProducts = new Map((d.products || []).map(p => [p.id, p]));
     if (!d.products?.length) {
-      el.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:20px;">Nada encontrado nessa loja.</p>';
+      el.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:20px;">Nada encontrado nessa loja com esses filtros.</p>';
       return;
     }
     el.innerHTML = `
@@ -3576,6 +3641,7 @@ async function loadStoreInventory(page=1) {
               <div class="product-price">${fmt(p.promoPrice || p.price)}</div>
               <span class="product-badge">📦 ${p.storeStockTotal} un. no estoque anterior</span>
               ${StockVerification.render(p)}
+              ${Number(p.storeStockTotal) > 0 ? `<button class="btn btn-small" type="button" style="width:100%;min-height:44px;margin-top:8px;" onclick="event.stopPropagation();openStoreTransfer('${p.id}')">🔁 Transferir</button>` : ''}
             </div>
           </div>
         `).join('')}
