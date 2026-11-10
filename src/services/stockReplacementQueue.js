@@ -69,11 +69,16 @@ async function persistPending(db,data,reason,{complete,autoReprocess=false,nextA
  },{timeout:20000});
 }
 function createQueue(db,options={}){
- let boss,starting,ready=false,workerId,lastErrorCode=null,identify=options.identify,stopping=false,lastId=null;
+ let boss,starting,ready=false,ownerReady=false,workerId,lastErrorCode=null,identify=options.identify,stopping=false,lastId=null;
  const pendingAgeMs=options.pendingAgeMs??300000;
  const firstPriority=Number.isInteger(options.jobPriority)?options.jobPriority:10,recheckPriority=firstPriority-10,agedPriority=firstPriority+10;
  const recheckIntervalMs=options.recheckIntervalMs??120000;
  const readImage=options.readImage||((bytes,barcode)=>require('./scannerArchivedLabel').readImage(bytes,barcode));
+ async function ensureOwnerRequests(){
+  if(ownerReady)return true;
+  try{await require('./finiteOwnerConfirmation').ensure(db);ownerReady=true;return true;}
+  catch(_){console.warn('[replacement/queue] finite owner confirmation bootstrap awaits retry');return false;}
+ }
  async function start(){
   if(stopping)throw failure('queue_stopping');
   if(ready)return api;
@@ -88,6 +93,7 @@ function createQueue(db,options={}){
     await boss.start();
     await boss.createQueue(QUEUE,{policy:'exclusive',retryLimit:8,retryDelay:15,retryBackoff:true,retryDelayMax:300,
      expireInSeconds:120,heartbeatSeconds:15,retentionSeconds:604800,deleteAfterSeconds:2592000,...options.queueOptions});
+    await ensureOwnerRequests();
     await db.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS replacement_capture_job_age ON ${SCHEMA}.job (name,(data->>'captureId'),created_on)`);
     // Drain known backlog without an idle second between cheap jobs. This
     // retains one handler/photo at a time and returns to polling when empty.
@@ -200,6 +206,13 @@ function createQueue(db,options={}){
  }
  async function reconcile(){
   await start();
+  // Only the finite maintenance service may sign these pre-approved requests.
+  // The queue is ready, so note and enqueue share its transaction; OCR remains
+  // with the existing worker. A request failure must not block ordinary scans.
+  if(await ensureOwnerRequests()){
+   try{await require('./finiteOwnerConfirmation').reconcile(db,{enqueueCapture:(capture,tx)=>enqueueCapture(capture,{tx})});}
+   catch(_){ownerReady=false;console.warn('[replacement/queue] finite owner confirmation awaits retry');}
+  }
   const priorities=await prioritize();
   // Recovery only schedules stored events. It does not decode, create bipes,
   // or alter balances. A pending piece is retried on its own schedule.
