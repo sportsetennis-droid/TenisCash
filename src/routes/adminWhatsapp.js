@@ -39,9 +39,17 @@ function validQrPng(value) {
   return 'data:image/png;base64,' + raw;
 }
 
-// Pairing material is owner-only. The instance is fixed, and this endpoint never
+// Número principal (9671): é por ele que saem os avisos de ponto no grupo da
+// equipe. Quando a sessão cai e o waHealth esgota os restarts, só um QR novo
+// lido no celular religa — por isso o titular precisa conseguir gerar o QR.
+const MAIN_PAIRING = Object.freeze({ key: INSTANCES[0].key, storeCode: null });
+
+// Pairing material is owner-only. Each route pairs one fixed instance, and it never
 // creates/restarts/logs out an instance or sends a WhatsApp message.
-router.post('/loja05/connect', async (req, res) => {
+router.post('/loja05/connect', (req, res) => pairInstance(STORE_ARCHIVE, req, res));
+router.post('/main/connect', (req, res) => pairInstance(MAIN_PAIRING, req, res));
+
+async function pairInstance(target, req, res) {
   res.set('Cache-Control', 'no-store');
   let timer;
   try {
@@ -64,12 +72,12 @@ router.post('/loja05/connect', async (req, res) => {
       if (!reply.ok) throw new Error('provider unavailable');
       return reply.json();
     };
-    const identity = { instance: STORE_ARCHIVE.key, storeCode: STORE_ARCHIVE.storeCode };
-    const state = await providerGet('/instance/connectionState/' + STORE_ARCHIVE.key);
+    const identity = { instance: target.key, storeCode: target.storeCode };
+    const state = await providerGet('/instance/connectionState/' + encodeURIComponent(target.key));
     if ((state?.instance?.state || state?.state) === 'open') {
       return res.json({ ...identity, state: 'open', qr: null, generatedAt: new Date().toISOString() });
     }
-    const connected = await providerGet('/instance/connect/' + STORE_ARCHIVE.key);
+    const connected = await providerGet('/instance/connect/' + encodeURIComponent(target.key));
     if ((connected?.instance?.state || connected?.state) === 'open') {
       return res.json({ ...identity, state: 'open', qr: null, generatedAt: new Date().toISOString() });
     }
@@ -81,7 +89,7 @@ router.post('/loja05/connect', async (req, res) => {
   } finally {
     if (timer) clearTimeout(timer);
   }
-});
+}
 
 // status de conexão ao vivo de cada instância (open/close/connecting) + número
 async function fetchEvolutionStatus() {

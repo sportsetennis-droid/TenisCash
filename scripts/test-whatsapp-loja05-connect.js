@@ -39,9 +39,9 @@ function setup({ operator = { role: 'superadmin', active: true }, replies = [], 
     },
   });
   assert.deepEqual(middleware, [auth, admin], 'route inherits authentication and admin middleware');
-  const run = async (request = {}) => {
+  const run = async (request = {}, route = 'POST /loja05/connect') => {
     const response = { statusCode: 200, headers: {}, set(k, v) { this.headers[k] = v; return this; }, status(n) { this.statusCode = n; return this; }, json(value) { this.body = value; return this; } };
-    await routes['POST /loja05/connect']({ userId: 'owner-test', userRole: 'superadmin', body: {}, ...request }, response);
+    await routes[route]({ userId: 'owner-test', userRole: 'superadmin', body: {}, ...request }, response);
     assert.equal(response.headers['Cache-Control'], 'no-store');
     assert.doesNotMatch(JSON.stringify(response.body), /secret-test-key|provider\.test/);
     return response;
@@ -106,6 +106,24 @@ async function main() {
   const missing = setup({ configured: false });
   assert.equal((await missing.run()).statusCode, 503);
   assert.equal(missing.calls.length, 0);
-  console.log('PASS Loja 05 QR: owner authorization, fixed instance, no reconnect when open, PNG validation, bounded timeout, generic errors and no messages');
+  const main = setup({ replies: [
+    { body: { instance: { state: 'close' } } },
+    { body: { base64: 'data:image/png;base64,' + png } },
+  ] });
+  const mainQr = await main.run({ body: { instance: 'tambau' } }, 'POST /main/connect');
+  assert.equal(mainQr.statusCode, 200);
+  assert.equal(mainQr.body.instance, 'teniscash');
+  assert.equal(mainQr.body.storeCode, null);
+  assert.equal(mainQr.body.state, 'connecting');
+  assert.deepEqual(main.calls.map(call => call.url), [
+    'https://provider.test/instance/connectionState/teniscash',
+    'https://provider.test/instance/connect/teniscash',
+  ]);
+  for (const operator of [{ role: 'admin', active: true }, null]) {
+    const deniedMain = setup({ operator });
+    assert.equal((await deniedMain.run({}, 'POST /main/connect')).statusCode, 403);
+    assert.equal(deniedMain.calls.length, 0);
+  }
+  console.log('PASS Loja 05 + main QR: owner authorization, fixed instance, no reconnect when open, PNG validation, bounded timeout, generic errors and no messages');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
