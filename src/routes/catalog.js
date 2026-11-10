@@ -3,6 +3,7 @@ const express = require('express');
 const { prisma, authMiddleware, JWT_SECRET } = require('../middleware');
 const jwt = require('jsonwebtoken');
 const { formatProductCard, searchProductsForAI } = require('../services/catalogSearch');
+const { countedStoreIds } = require('../services/countedStock');
 
 const router = express.Router();
 
@@ -213,6 +214,11 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
       storeId = st ? st.id : '__none__';
     }
     if (myStore.wantsMyStore && !storeId) inStore = true;
+    // Aba Estoque: só saldo CONFERIDO (lojas com contagem atual aplicada); as demais aparecem zeradas.
+    const countedOnly = myStore.wantsMyStore || String(req.query.countedOnly || '') === '1';
+    const counted = countedOnly ? await countedStoreIds(prisma) : null;
+    const stockStoreFilter = counted ? (storeId ? (counted.includes(storeId) ? storeId : '__loja_nao_conferida__') : { in: counted }) : undefined;
+    const storeNotCounted = !!(counted && storeId && !counted.includes(storeId));
     const verification = ['seller','store','manager','admin','superadmin'].includes(req.userRole) ? await loadVerification(prisma,storeId) : {rows:[],rounds:[]};
     // Situação (Estoque de uma loja): produtos com venda / transferência / troca na loja
     // desde o início do estoque atual (última rodada não cancelada; sem rodada: 30 dias).
@@ -256,6 +262,7 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
     const sizesSome = {};
     if (size) sizesSome.size = size;
     if (situationSizeIds) sizesSome.id = { in: situationSizeIds };
+    else if (counted) sizesSome.storeStocks = { some: { stock: { gt: 0 }, storeId: stockStoreFilter } };
     else if (storeId) sizesSome.OR = [{storeStocks:{some:{stock:{gt:0},storeId}}},{id:{in:verification.rows.map(r=>r.productSizeId)}}];
     else if (inStore) sizesSome.OR = [{storeStocks:{some:{stock:{gt:0}}}},{id:{in:verification.rows.map(r=>r.productSizeId)}}];
     if(verificationFilter && verificationFilter!=='all') sizesSome.id = verificationFilter==='unverified'?{notIn:verification.rows.map(r=>r.productSizeId)}:{in:verificationSizeIds};
@@ -323,7 +330,7 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
         select: {
           id: true, size: true, stock: true, barcode: true, sizeConfirmedAt: true,
           storeStocks: {
-            ...(storeId ? { where: { storeId } } : {}),
+            ...(counted ? { where: { storeId: stockStoreFilter, stock: { gt: 0 } } } : storeId ? { where: { storeId } } : {}),
             include: { store: { select: { id: true, code: true, name: true } } },
           },
         },
@@ -344,7 +351,7 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
       includeSizeOptions ? prisma.productSize.findMany({
         where: {
           product: { AND: andConds.filter(condition => condition !== sizeCondition) },
-          OR: situationSizeIds ? [{ id: { in: situationSizeIds } }] : [{storeStocks:{some:{stock:{gt:0},...(storeId?{storeId}:{})}}},{id:{in:verification.rows.map(r=>r.productSizeId)}}],
+          OR: situationSizeIds ? [{ id: { in: situationSizeIds } }] : counted ? [{ storeStocks: { some: { stock: { gt: 0 }, storeId: stockStoreFilter } } }] : [{storeStocks:{some:{stock:{gt:0},...(storeId?{storeId}:{})}}},{id:{in:verification.rows.map(r=>r.productSizeId)}}],
           ...(verificationFilter && verificationFilter!=='all'?{id:verificationFilter==='unverified'?{notIn:verification.rows.map(r=>r.productSizeId)}:{in:verificationSizeIds}}:{}),
         },
         distinct: ['size'],
@@ -459,6 +466,7 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
       ...(includeSizeOptions ? { sizeOptions } : {}),
       ...(includeFacets ? { brandOptions, typeOptions } : {}),
       ...(situationCounts ? { situation: { key: situation, since: situationSince } } : {}),
+      ...(counted ? { countedStoreIds: counted, storeNotCounted } : {}),
       ...(myStore.wantsMyStore ? { store: myStore.store, stockScope: myStore.stockScope } : {}),
     });
   } catch (err) {

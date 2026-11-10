@@ -4,6 +4,7 @@ const multer = require('multer');
 const QRCode = require('qrcode');
 const { authMiddleware, storeScope, enforceStoreId, prisma } = require('../middleware');
 const pagbank = require('../services/pagbank');
+const { countedStoreIds } = require('../services/countedStock');
 const equipeReports = require('../services/equipeReports');
 const { SaleStockError, planSaleProductSize, applyStoreStockDelta } = require('../services/storeStockLedger');
 const { isWebsiteBarcode, WEBSITE_BARCODE_ERROR, WEBSITE_BARCODE_ERROR_CODE } = require('../services/barcodeInput');
@@ -1810,11 +1811,13 @@ router.get('/inventory/check', authMiddleware, sellerOnly, async (req, res) => {
       }),
       prisma.store.findMany({ where: { active: true }, orderBy: { code: 'asc' }, select: { id: true, name: true, code: true } }),
     ]);
+    // Aba Estoque (countedOnly=1): loja sem contagem aplicada aparece zerada; negativo vira 0.
+    const counted = String(req.query.countedOnly || '') === '1' ? new Set(await countedStoreIds(prisma)) : null;
 
     const result = sizes.map(s => {
       const byStore = {};
       stores.forEach(st => { byStore[st.id] = 0; });
-      s.storeStocks.forEach(ss => { byStore[ss.storeId] = ss.stock; });
+      s.storeStocks.forEach(ss => { byStore[ss.storeId] = counted ? (counted.has(ss.storeId) ? Math.max(0, ss.stock) : 0) : ss.stock; });
       return {
         size: s.size,
         barcode: s.barcode,

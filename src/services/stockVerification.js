@@ -36,7 +36,10 @@ function summarizeVariant(bipes, captures, size, movements, checks = []) {
  return {counted,available:Math.max(0,counted+delta),movementDelta:delta,pending,status:pending||uncertain?'pending':counted?'verified':'unverified',reconcile:uncertain,evidence};
 }
 async function loadVerification(db,storeId){
- const rounds=await db.stocktakeRound.findMany({where:{status:{in:['counting','review']},...(storeId?{storeId}:{})},select:{id:true,storeId:true,number:true,startedAt:true}});
+ const allRounds=await db.stocktakeRound.findMany({where:{status:{in:['counting','review']},...(storeId?{storeId}:{})},select:{id:true,storeId:true,number:true,startedAt:true}});
+ // Só a contagem ATUAL de cada loja (a mais recente); rodadas antigas ainda abertas não valem.
+ const latest=new Map();for(const r of allRounds){const cur=latest.get(r.storeId);if(!cur||+r.startedAt>+cur.startedAt)latest.set(r.storeId,r);}
+ const rounds=[...latest.values()];
  if(!rounds.length)return {rows:[],rounds:[],orphanPending:0};
  const ids=rounds.map(r=>r.id), stores=rounds.map(r=>r.storeId);
  const [bipes,captures,moves,storeRows]=await Promise.all([
