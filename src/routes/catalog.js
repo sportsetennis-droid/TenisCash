@@ -150,6 +150,11 @@ function addStoreStockSummary(card, storeId, store = null, stockScope = 'mine') 
 
 
 // Chave de tipo sem acento/caixa; singular/plural de chuteira/calçado contam como o mesmo tipo.
+const SITUATION_TYPES = {
+  transferidos: ['transfer_in', 'transfer_out', 'receipt', 'transfer_undo_in', 'transfer_undo_out'],
+  vendidos: ['sale'],
+  trocas: ['exchange_sale', 'exchange_return'],
+};
 function catalogTypeKey(value) {
   let key = String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/\s+/g, ' ');
   if (key === 'chuteira') key = 'chuteiras';
@@ -209,6 +214,23 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
     }
     if (myStore.wantsMyStore && !storeId) inStore = true;
     const verification = ['seller','store','manager','admin','superadmin'].includes(req.userRole) ? await loadVerification(prisma,storeId) : {rows:[],rounds:[]};
+    // Situação (Estoque de uma loja): produtos com venda / transferência / troca na loja
+    // desde o início do estoque atual (última rodada não cancelada; sem rodada: 30 dias).
+    const situation = myStore.wantsMyStore ? String(req.query.situation || '').trim() : '';
+    let situationSizeIds = null, situationCounts = null, situationSince = null;
+    if (SITUATION_TYPES[situation]) {
+      const rounds = await prisma.stocktakeRound.findMany({ where: { status: { not: 'cancelled' }, ...(storeId ? { storeId } : {}) }, orderBy: { startedAt: 'desc' }, select: { storeId: true, startedAt: true } });
+      const sinceByStore = new Map();
+      for (const r of rounds) if (!sinceByStore.has(r.storeId)) sinceByStore.set(r.storeId, r.startedAt);
+      const fallback = new Date(Date.now() - 30 * 864e5);
+      const storeIds = storeId ? [storeId] : (await prisma.store.findMany({ select: { id: true } })).map(s => s.id);
+      const windows = storeIds.map(id => ({ storeId: id, createdAt: { gte: sinceByStore.get(id) || fallback } }));
+      situationSince = windows.reduce((min, w) => (!min || w.createdAt.gte < min ? w.createdAt.gte : min), null);
+      const moves = windows.length ? await prisma.storeStockMovement.findMany({ where: { type: { in: SITUATION_TYPES[situation] }, OR: windows }, select: { productSizeId: true, quantity: true } }) : [];
+      situationCounts = new Map();
+      for (const m of moves) situationCounts.set(m.productSizeId, (situationCounts.get(m.productSizeId) || 0) + Math.abs(Number(m.quantity) || 0));
+      situationSizeIds = [...situationCounts.keys()];
+    }
     const verificationFilter = ['seller','store','manager','admin','superadmin'].includes(req.userRole) ? String(req.query.verification||'') : '';
     const verificationSizeIds = verification.rows.filter(r=> !verificationFilter || verificationFilter==='all' || r.status===verificationFilter).map(r=>r.productSizeId);
     const aiFilters = [];
@@ -233,7 +255,8 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
     // Condições sobre ProductSize (tamanho e/ou estoque em loja) — merge num único some
     const sizesSome = {};
     if (size) sizesSome.size = size;
-    if (storeId) sizesSome.OR = [{storeStocks:{some:{stock:{gt:0},storeId}}},{id:{in:verification.rows.map(r=>r.productSizeId)}}];
+    if (situationSizeIds) sizesSome.id = { in: situationSizeIds };
+    else if (storeId) sizesSome.OR = [{storeStocks:{some:{stock:{gt:0},storeId}}},{id:{in:verification.rows.map(r=>r.productSizeId)}}];
     else if (inStore) sizesSome.OR = [{storeStocks:{some:{stock:{gt:0}}}},{id:{in:verification.rows.map(r=>r.productSizeId)}}];
     if(verificationFilter && verificationFilter!=='all') sizesSome.id = verificationFilter==='unverified'?{notIn:verification.rows.map(r=>r.productSizeId)}:{in:verificationSizeIds};
 
@@ -321,7 +344,7 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
       includeSizeOptions ? prisma.productSize.findMany({
         where: {
           product: { AND: andConds.filter(condition => condition !== sizeCondition) },
-          OR:[{storeStocks:{some:{stock:{gt:0},...(storeId?{storeId}:{})}}},{id:{in:verification.rows.map(r=>r.productSizeId)}}],
+          OR: situationSizeIds ? [{ id: { in: situationSizeIds } }] : [{storeStocks:{some:{stock:{gt:0},...(storeId?{storeId}:{})}}},{id:{in:verification.rows.map(r=>r.productSizeId)}}],
           ...(verificationFilter && verificationFilter!=='all'?{id:verificationFilter==='unverified'?{notIn:verification.rows.map(r=>r.productSizeId)}:{in:verificationSizeIds}}:{}),
         },
         distinct: ['size'],
@@ -411,6 +434,7 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
     });
 
     attachVerification(products,verification);
+    if (situationCounts) for (const p of products) p.situationCount = (p.sizes || []).reduce((n, sz) => n + (situationCounts.get(sz.id) || 0), 0);
     let sizeOptions;
     if (includeSizeOptions) {
       const apparelOrder = ['PP', 'P', 'M', 'G', 'GG', 'XG', 'XXG', 'XXXG', 'G1', 'G2', 'G3', 'G4', 'G5'];
@@ -434,6 +458,7 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
       totalPages: Math.ceil(total / pageSize) || 1,
       ...(includeSizeOptions ? { sizeOptions } : {}),
       ...(includeFacets ? { brandOptions, typeOptions } : {}),
+      ...(situationCounts ? { situation: { key: situation, since: situationSince } } : {}),
       ...(myStore.wantsMyStore ? { store: myStore.store, stockScope: myStore.stockScope } : {}),
     });
   } catch (err) {

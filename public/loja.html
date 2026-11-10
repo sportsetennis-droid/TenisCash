@@ -813,6 +813,7 @@
           <select id="invStoreType" aria-label="Tipo de produto" onchange="loadStoreInventory()" style="flex:1 1 140px;min-height:44px;padding:10px;border:1px solid #d2d2d7;border-radius:8px;"><option value="">Todos os tipos</option></select>
           <select id="invStoreBrand" aria-label="Marca" onchange="loadStoreInventory()" style="flex:1 1 140px;min-height:44px;padding:10px;border:1px solid #d2d2d7;border-radius:8px;"><option value="">Todas as marcas</option></select>
           <select id="invStoreSize" aria-label="Numeração" onchange="loadStoreInventory()" style="flex:1 1 140px;min-height:44px;padding:10px;border:1px solid #d2d2d7;border-radius:8px;"><option value="">Todas as numerações</option></select>
+          <select id="invStoreSituation" aria-label="Situação" onchange="loadStoreInventory()" style="flex:1 1 140px;min-height:44px;padding:10px;border:1px solid #d2d2d7;border-radius:8px;"><option value="">Situação: Todos</option><option value="transferidos">🔁 Transferidos</option><option value="vendidos">🧾 Vendidos</option><option value="trocas">↩️ Trocas</option></select>
           <button class="btn btn-secondary btn-small" type="button" onclick="clearStoreFilters()" style="min-height:44px;">✕ Limpar filtros</button>
         </div>
         <!-- Filtro de situação da conferência removido desta tela (pedido do dono 10/11/2026); valor fixo = todas -->
@@ -3582,7 +3583,7 @@ function fillStoreFilter(id, options, allLabel) {
   if (picked) sel.dataset.label = picked.label;
 }
 function clearStoreFilters() {
-  for (const id of ['invStoreType', 'invStoreBrand', 'invStoreSize']) { const s = document.getElementById(id); if (s) { s.value = ''; delete s.dataset.label; } }
+  for (const id of ['invStoreType', 'invStoreBrand', 'invStoreSize', 'invStoreSituation']) { const s = document.getElementById(id); if (s) { s.value = ''; delete s.dataset.label; } }
   document.getElementById('invStoreQ').value = '';
   if (document.getElementById('invStoreSelect').value) loadStoreInventory();
 }
@@ -3632,6 +3633,8 @@ async function loadStoreInventory(page=1) {
     if (typeKey) params.push('typeKey=' + encodeURIComponent(typeKey));
     if (brand) params.push('brand=' + encodeURIComponent(brand));
     if (size) params.push('size=' + encodeURIComponent(size), 'exactSize=1');
+    const situation = document.getElementById('invStoreSituation').value;
+    if (situation) params.push('situation=' + encodeURIComponent(situation));
     const d = await api('/api/catalog/products?' + params.join('&'));
     if (requestId !== storeInvRequestId) return;
     fillStoreFilter('invStoreType', (d.typeOptions || []).map(o => ({ value: o.key, label: o.label, count: o.count })), 'Todos os tipos');
@@ -3639,12 +3642,14 @@ async function loadStoreInventory(page=1) {
     fillStoreFilter('invStoreSize', (d.sizeOptions || []).map(v => ({ value: v, label: v })), 'Todas as numerações');
     _storeInvStoreId = storeId;
     _storeInvProducts = new Map((d.products || []).map(p => [p.id, p]));
+    const sitLabel = { transferidos: ['🔁', 'transferido(s)'], vendidos: ['🧾', 'vendido(s)'], trocas: ['↩️', 'em troca(s)'] }[situation];
+    const sitSince = d.situation?.since ? new Date(d.situation.since).toLocaleDateString('pt-BR', { timeZone: 'America/Fortaleza' }) : '';
     if (!d.products?.length) {
-      el.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:20px;">Nada encontrado nessa loja com esses filtros.</p>';
+      el.innerHTML = `<p style="text-align:center;color:var(--text-muted);padding:20px;">${sitLabel ? `Nenhum produto ${sitLabel[1].replace('(s)', '')} ${sitSince ? 'desde ' + sitSince : ''} com esses filtros.` : 'Nada encontrado nessa loja com esses filtros.'}</p>`;
       return;
     }
     el.innerHTML = `
-      <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">📦 Mostrando ${d.products.length} de ${d.total} produtos</p>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">📦 Mostrando ${d.products.length} de ${d.total} produtos${sitLabel && sitSince ? ` · ${sitLabel[1].replace('(s)', 's')} desde ${sitSince}` : ''}</p>
       <div class="grid grid-3">
         ${d.products.map(p => `
           <div class="product-card" onclick="checkInventoryFromCard(this,'${p.id}')">
@@ -3654,6 +3659,7 @@ async function loadStoreInventory(page=1) {
               <div class="product-name">${p.name || ''}</div>
               <div class="product-price">${fmt(p.promoPrice || p.price)}</div>
               <span class="product-badge">📦 ${p.storeStockTotal} un. no estoque anterior</span>
+              ${sitLabel && p.situationCount ? `<span class="product-badge" style="background:#fff4e5;color:#8a4b00;">${sitLabel[0]} ${p.situationCount} un. ${sitLabel[1]}</span>` : ''}
               ${StockVerification.render(p)}
               ${Number(p.storeStockTotal) > 0 ? `<button class="btn btn-small" type="button" style="width:100%;min-height:44px;margin-top:8px;" onclick="event.stopPropagation();openStoreTransfer('${p.id}')">🔁 Transferir</button>` : ''}
             </div>
