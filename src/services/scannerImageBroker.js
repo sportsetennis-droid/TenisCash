@@ -59,8 +59,12 @@ function createBroker(options = {}) {
       if (!active || message.id !== active.id) return;
       if (message.type === 'failure') { retire(current, failure('SCANNER_IMAGE_UNAVAILABLE')); return; }
       if (message.type === 'result') {
+        const finishedLabel = active.kind === 'label';
         current.jobs++; settle(active, null, message.result);
-        if (current.jobs >= cfg.maxJobs) retire(current); else pump();
+        // OCR/WASM retains its largest allocations after a label finishes.
+        // Return that result, then retire this process before the next piece
+        // can inherit its resident memory. Barcode-only reuse stays bounded.
+        if (finishedLabel || current.jobs >= cfg.maxJobs) retire(current); else pump();
       }
     });
     child.once('error', () => {
