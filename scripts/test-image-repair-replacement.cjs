@@ -7,11 +7,11 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { Client } = require('pg');
 const openClients = new Set();
-const testUrl = process.env.IMAGE_REPAIR_TEST_DATABASE_URL;
+const testUrl = process.env.IMAGE_REPAIR_TEST_DATABASE_URL || process.env.ROUND_TEST_DATABASE_URL;
 assert.ok(testUrl, 'Set IMAGE_REPAIR_TEST_DATABASE_URL to the isolated local test PostgreSQL');
 const parsedUrl = new URL(testUrl);
 assert.ok(['localhost', '127.0.0.1', '[::1]'].includes(parsedUrl.hostname), 'Test PostgreSQL must be local');
-assert.ok(/test/i.test(parsedUrl.pathname) || parsedUrl.pathname === '/stock_replacement_live_20261109', 'Use the isolated test database');
+assert.ok(/test/i.test(parsedUrl.pathname) || ['/stock_replacement_live_20261109', '/stock_replacement_ci'].includes(parsedUrl.pathname), 'Use the isolated test database');
 
 async function fixture() {
   const db = new Client({ connectionString: testUrl });
