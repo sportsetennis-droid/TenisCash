@@ -195,7 +195,8 @@ async function readImage(image, barcode) {
   catch (error) {
     const reasons = { SCANNER_IMAGE_BUSY: 'ocr_busy', SCANNER_IMAGE_TIMEOUT: 'ocr_timeout',
       SCANNER_IMAGE_MEMORY_LIMIT: 'ocr_memory_limit', SCANNER_IMAGE_INVALID: 'photo_input_invalid' };
-    return { pending: true, retry: error.code !== 'SCANNER_IMAGE_INVALID', reason: reasons[error.code] || 'ocr_unavailable' };
+    const scannerDiagnostic=require('./scannerRuntimeDiagnostic').sanitize(error.scannerDiagnostic);
+    return { pending: true, retry: error.code !== 'SCANNER_IMAGE_INVALID', reason: reasons[error.code] || 'ocr_unavailable',...(scannerDiagnostic?{scannerDiagnostic}:{}) };
   }
 }
 

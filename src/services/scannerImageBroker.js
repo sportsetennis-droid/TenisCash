@@ -2,6 +2,7 @@
 const { fork } = require('node:child_process');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
+const diagnostic=require('./scannerRuntimeDiagnostic');
 
 const limits = Object.freeze({ maxImageBytes: 12 * 1024 * 1024, maxQueuedBytes: 24 * 1024 * 1024,
   maxQueued: 8, labelTimeoutMs: 24000, barcodeTimeoutMs: 8000, maxRssBytes: 384 * 1024 * 1024,
@@ -31,7 +32,13 @@ function createBroker(options = {}) {
     if (!current || current !== state || current.stopping) return;
     current.stopping = true; clearTimeout(idleTimer);
     current.child.ref(); current.child.channel?.ref();
-    if (active) settle(active, error || failure('SCANNER_IMAGE_UNAVAILABLE'));
+    if (active) {
+      if(['SCANNER_IMAGE_MEMORY_LIMIT','SCANNER_IMAGE_TIMEOUT'].includes(error?.code))error.scannerDiagnostic=diagnostic.sanitize({source:diagnostic.SOURCE,
+        phase:'starting',...active.diagnostic,kind:active.kind,rssBytes:active.rss,peakRssObservedBytes:active.peakRss,
+        elapsedMs:Date.now()-active.startedAt,maxRssBytes:cfg.maxRssBytes,
+        timeoutMs:active.kind==='label'?cfg.labelTimeoutMs:cfg.barcodeTimeoutMs});
+      settle(active, error || failure('SCANNER_IMAGE_UNAVAILABLE'));
+    }
     // Keep ownership until this PID exits: never overlap a replacement process
     // with old native code still running or terminating.
     try { current.child.kill('SIGKILL'); } catch (_) { /* exit/error owns cleanup */ }
@@ -52,11 +59,22 @@ function createBroker(options = {}) {
       if (current !== state || current.stopping || !message) return;
       if (message.type === 'ready') { current.ready = true; dispatch(); return; }
       if (message.type === 'memory') {
-        current.rss = Number(message.rss) || 0;
+        if(!active||message.id!==active.id)return;
+        // Resource enforcement is independent from the diagnostic field cap:
+        // an actual RSS above 16 GiB must still stop this 384 MiB worker.
+        if(!Number.isFinite(message.rss)||message.rss<0)return;
+        current.rss = Math.floor(message.rss);
+        active.rss=current.rss;active.peakRss=Math.max(active.peakRss||0,current.rss);
         if (current.rss > cfg.maxRssBytes) retire(current, failure('SCANNER_IMAGE_MEMORY_LIMIT'));
         return;
       }
       if (!active || message.id !== active.id) return;
+      if(message.type==='diagnostic'){
+        const next=diagnostic.sanitize(message.diagnostic);if(!next)return;
+        active.diagnostic=next;
+        if(Number.isFinite(next.rssBytes)){active.rss=next.rssBytes;active.peakRss=Math.max(active.peakRss||0,next.rssBytes);}
+        return;
+      }
       if (message.type === 'failure') { retire(current, failure('SCANNER_IMAGE_UNAVAILABLE')); return; }
       if (message.type === 'result') {
         const finishedLabel = active.kind === 'label';
@@ -86,7 +104,7 @@ function createBroker(options = {}) {
     } catch (_) { retire(state, failure('SCANNER_IMAGE_UNAVAILABLE')); }
   }
   function start(job) {
-    active = job; clearTimeout(idleTimer);
+    active = job;job.startedAt=Date.now(); clearTimeout(idleTimer);
     try {
       const current = ensureProcess();
       current.child.ref(); current.child.channel?.ref();
