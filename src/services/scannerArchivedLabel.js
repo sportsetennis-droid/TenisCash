@@ -250,8 +250,9 @@ function readParts(data) {
 
 function readWords(data){const parts=readParts(data);return !parts.conflict&&parts.size&&parts.references.length?{size:parts.size,references:parts.references,text:parts.text,source:'archived-photo-local-ocr-v1',...(parts.completeOusReferences.length?{completeOusReferences:parts.completeOusReferences}:{})}:null;}
 
-async function readImage(image, barcode) {
-  try { return await require('./scannerImageBroker').run('label', image, barcode); }
+// options.brand: catalogue brand name, used only to choose a brand label layout.
+async function readImage(image, barcode, options = {}) {
+  try { return await require('./scannerImageBroker').run('label', image, barcode, options.brand ? { hint: options.brand } : undefined); }
   catch (error) {
     const reasons = { SCANNER_IMAGE_BUSY: 'ocr_busy', SCANNER_IMAGE_TIMEOUT: 'ocr_timeout',
       SCANNER_IMAGE_MEMORY_LIMIT: 'ocr_memory_limit', SCANNER_IMAGE_INVALID: 'photo_input_invalid' };

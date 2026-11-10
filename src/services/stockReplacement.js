@@ -8,6 +8,12 @@ const hash=value=>createHash('sha256').update(typeof value==='string'?value:JSON
 const photoDigest=value=>createHash('sha256').update(Buffer.from(value.slice(value.indexOf(',')+1),'base64')).digest('hex');
 const normalized=value=>String(value||'').normalize('NFKC').toUpperCase().replace(/[^A-Z0-9]/g,'');
 const sizeKey=value=>String(value||'').replace(',','.').trim();
+const CONFIRMED_CODE='archived-photo-confirmed-code-v1';
+// Evidence that may serve as the basis of a confirmed code: literal local OCR
+// and the reviewed archived-photo applications of this replacement.
+const CONFIRMATION_SOURCES=new Set(['archived-photo-local-ocr-v1','archived-photo-assistant-review-manufacturer-label-v1','archived-photo-assistant-review-v1',
+ 'archived-photo-assistant-review-and-official-size-chart-v1','archived-photo-operator-review-v1','archived-photo-assistant-review-official-size-guide-v1',
+ 'archived-photo-assistant-review-manufacturer-paired-size-v1','archived-photo-regional-decoder-and-assistant-review-v1']);
 function reasonText(reason,options={}){
  if(options.autoReprocess===true)return reasonText(reason)+(options.processing===true?' Reprocessamento automático em andamento.':' Aguardando reprocessamento automático.')+' Esta leitura ainda não foi aplicada ao estoque.';
  if(reason==='photo_barcode_not_found')return 'O código de barras não ficou legível nesta foto. Reenquadre a mesma etiqueta.';
@@ -78,7 +84,7 @@ function validateRead(c,read){
  if(!policy.isScanCode(bipe.barcode)||!capture?.photo||policy.identity(capture.barcode)!==policy.identity(bipe.barcode))return 'foto_ou_codigo_pendente';
  if(scope.classification(p)!=='footwear')return 'tipo_de_produto_pendente';
  if(!read||read.pending)return read?.reason||'etiqueta_pendente';
- if(read.source!=='archived-photo-local-ocr-v1'||read.decodedBarcodes?.length!==1||policy.identity(read.decodedBarcodes[0])!==policy.identity(bipe.barcode))return 'codigo_da_foto_divergente';
+ if(!['archived-photo-local-ocr-v1',CONFIRMED_CODE].includes(read.source)||read.decodedBarcodes?.length!==1||policy.identity(read.decodedBarcodes[0])!==policy.identity(bipe.barcode))return 'codigo_da_foto_divergente';
  if(sizeKey(read.size)!==sizeKey(size.size))return 'tamanho_da_foto_divergente';
  return null;
 }
@@ -105,7 +111,8 @@ async function referenceMatches(db,c,read){
  if(normalized(p.brand)==='SKECHERS'){
   // These catalog prefixes do not appear on the box. Keep the complete
   // printed model AND colour; never match a model-only or historical colour.
-  const printedRef=value=>normalized(value).match(/^(?:GTM|GTW|T|R)?(\d{5,6}(?:BR)?[A-Z]{2,6})$/)?.[1];
+  // Prefixes seen in this catalogue: GTM GTW GRM GRW ODM BOS T R.
+  const printedRef=value=>normalized(value).match(/^(?:GTM|GTW|GRM|GRW|ODM|BOS|T|R)?(\d{5,6}(?:BR)?[A-Z]{2,6})$/)?.[1];
   const expected=new Set(catalogRefs.map(printedRef).filter(Boolean));
   if(expected.size){
    if(expected.size!==1)return null;
@@ -119,6 +126,50 @@ async function referenceMatches(db,c,read){
  for(const ref of [...refs])if(ref.startsWith('T')&&ref.length>5)refs.push(ref.slice(1));
  match=match||(read.references||[]).find(ref=>refs.includes(normalized(ref)));
  return match&&!brands.some(brand=>brand!==normalized(p.brand))?match:null;
+}
+// Código já conferido. The same scan code was already confirmed on its own
+// archived box photo (literal OCR or reviewed photo) as exactly this variant.
+// A later piece whose OWN archived photo decodes that single code, and whose
+// OCR saw no different BR size, is the same product and size. Applications
+// made by this rule never serve as a basis. Any conflict keeps it pending.
+async function confirmedCode(db,c){
+ const code=c.bipe?.barcode,ident=policy.identity(code);
+ if(!policy.isScanCode(code)||!c.size?.id)return null;
+ const aliases=policy.variants(code);
+ const owners=await db.productSize.findMany({where:{barcode:{in:aliases}},select:{id:true,product:{select:{active:true}}}});
+ if(owners.some(o=>o.id!==c.size.id&&o.product?.active))return null;
+ const bipes=(await db.stocktakeBipe.findMany({where:{barcode:{in:aliases},excludedAt:null,NOT:{id:c.bipe.id}},select:{id:true,barcode:true}})).filter(b=>policy.identity(b.barcode)===ident);
+ if(!bipes.length)return null;
+ const checks=await db.stockReplacementCheck.findMany({where:{bipeId:{in:bipes.map(b=>b.id)}},select:{bipeId:true,appliedAt:true,reversedAt:true,reason:true,appliedProductSizeId:true,evidence:true}});
+ // A box of this code whose literal BR differed from the catalogue is a conflict.
+ if(checks.some(k=>!k.appliedAt&&k.reason==='tamanho_da_foto_divergente'))return null;
+ const live=checks.filter(k=>k.appliedAt&&!k.reversedAt);
+ if(live.some(k=>k.appliedProductSizeId!==c.size.id))return null;
+ const basis=live.filter(k=>{const e=k.evidence&&typeof k.evidence==='object'&&!Array.isArray(k.evidence)?k.evidence:{};
+  return CONFIRMATION_SOURCES.has(e.source)&&e.productSizeId===c.size.id&&
+   e.productId===c.size.productId&&sizeKey(e.size)===sizeKey(c.size.size)&&(!e.barcode||policy.identity(e.barcode)===ident);});
+ if(!basis.length)return null;
+ return {bipeIds:basis.map(k=>k.bipeId).sort(),sources:[...new Set(basis.map(k=>k.evidence.source))].sort(),reference:basis.map(k=>k.evidence.reference).find(r=>typeof r==='string'&&r)||null};
+}
+// The photo of THIS piece: the label was simply not read. One decoded code
+// equal to the scanned code, no OCR/brand-reader conflict or veto, every BR
+// literal seen equal to the catalogue, and no other printed brand. A complete
+// read whose reference did not match is a contradiction, never "not read".
+function confirmedCodeRead(c,read){
+ if(!read?.pending||read.reason!=='photo_size_or_reference_pending'||!c.size)return false;
+ if(read.decodedBarcodes?.length!==1||policy.identity(read.decodedBarcodes[0])!==policy.identity(c.bipe.barcode))return false;
+ if(read.ocrConflict!==false||!Array.isArray(read.observedSizes)||!Array.isArray(read.printedBrands))return false;
+ if(read.observedSizes.some(size=>sizeKey(size)!==sizeKey(c.size.size)))return false;
+ return read.printedBrands.every(brand=>normalized(brand)===normalized(c.size.product?.brand));
+}
+async function applyConfirmedCode(db,c,read,options){
+ if(!confirmedCodeRead(c,read)||!await confirmedCode(db,c))return null;
+ const evidence={source:CONFIRMED_CODE,size:c.size.size,references:[],text:read.text||'',decodedBarcodes:read.decodedBarcodes,
+  photoRead:{reason:read.reason,observedSizes:read.observedSizes,printedBrands:read.printedBrands}};
+ const result=await applyVerified(db,c,evidence,null,options);
+ // A lock/authorization/changed-photo outcome is returned as is; only "no
+ // confirmation" falls back to the ordinary pending reason.
+ return result.applied||result.reason!=='photo_size_or_reference_pending'?result:null;
 }
 // Only server-generated evidence is accepted here. No HTTP route accepts an OCR verdict.
 async function applyVerified(db,c,read,reference,options={}){
@@ -134,10 +185,12 @@ async function applyVerified(db,c,read,reference,options={}){
   const reason=now&&validateRead(now,read);
   if(!now||reason||!require('./stockReplacementQueue').matches(now.capture,require('./stockReplacementQueue').snapshot(c.capture))||now.size.id!==c.size.id||now.size.product.sku!==c.size.product.sku||now.size.product.brand!==c.size.product.brand)return {applied:false,reason:reason||'leitura_alterada'};
   if(options.beforeCommit&&!await require('./stockReplacementCaptureRecovery').authorized(tx,now.capture))return {applied:false,reason:'operator_not_authorized'};
-  if(!await referenceMatches(tx,now,read))return {applied:false,reason:'referencia_ou_marca_divergente'};
+  let confirmation=null;
+  if(read.source===CONFIRMED_CODE){confirmation=await confirmedCode(tx,now);if(!confirmation)return {applied:false,reason:'photo_size_or_reference_pending'};reference=confirmation.reference;}
+  else if(!await referenceMatches(tx,now,read))return {applied:false,reason:'referencia_ou_marca_divergente'};
   const snapshot={captureId:now.capture.id,photoSha256:photoDigest(now.capture.photo),barcode:now.bipe.barcode,reference,size:now.size.size,
    productId:now.size.productId,productSizeId:now.size.id,name:now.size.product.name,brand:now.size.product.brand,
-   source:read.source,verifiedAt:new Date().toISOString()};
+   source:read.source,...(read.reader?{reader:read.reader}:{}),...(confirmation?{confirmedBy:{bipeIds:confirmation.bipeIds,sources:confirmation.sources},photoRead:read.photoRead}:{}),verifiedAt:new Date().toISOString()};
   const movement=await applyStoreStockDelta(tx,{storeId:now.round.storeId,productSizeId:now.size.id,quantity:1,type:'inventory_adjustment',source:'stock-replacement-scan',reason:'Bipe validado da substituição #'+now.round.number,metadata:{roundId:now.round.id,bipeId:now.bipe.id,captureId:now.capture.id}});
   const imageReview={status:'pending',reason:now.size.product.imageUrl?'Conferir correspondência visual da imagem de catálogo com este modelo e cor.':'Produto sem imagem de catálogo.',imageUrl:now.size.product.imageUrl||null};
   await tx.stockReplacementCheck.upsert({where:{bipeId:now.bipe.id},create:{bipeId:now.bipe.id,roundId:now.round.id,status:'applied',evidence:snapshot,imageReview,appliedProductSizeId:now.size.id,appliedAt:new Date()},update:{status:'applied',reason:null,evidence:snapshot,imageReview,appliedProductSizeId:now.size.id,appliedAt:new Date(),checkedAt:new Date()}});
@@ -154,11 +207,13 @@ async function check(db,bipeId,options={}){
  const early=validateRead(c,{pending:true,reason:'aguardando_conferencia_da_etiqueta'});
  if(early!=='aguardando_conferencia_da_etiqueta'){if(!options.deferPending)await pending(db,c,early);return {applied:false,reason:early};}
  const bytes=Buffer.from(c.capture.photo.slice(c.capture.photo.indexOf(',')+1),'base64');
- const read=options.read||await require('./scannerArchivedLabel').readImage(bytes,c.bipe.barcode);
+ const read=options.read||await require('./scannerArchivedLabel').readImage(bytes,c.bipe.barcode,{brand:c.size?.product?.brand||null});
  // A busy worker has not examined this piece. Keep its queue age so an older
  // timed-out image cannot repeatedly push every untouched piece behind itself.
  if(read?.reason==='ocr_busy')return {applied:false,reason:'ocr_busy'};
- const reason=validateRead(c,read);if(reason){if(!options.deferPending)await pending(db,c,reason,{captureId:c.capture.id,photoSha256:photoDigest(c.capture.photo)});return {applied:false,reason};}
+ const reason=validateRead(c,read);
+ if(reason==='photo_size_or_reference_pending'){const confirmed=await applyConfirmedCode(db,c,read,options);if(confirmed){if(confirmed.applied)await images.check(db,bipeId);return confirmed;}}
+ if(reason){if(!options.deferPending)await pending(db,c,reason,{captureId:c.capture.id,photoSha256:photoDigest(c.capture.photo)});return {applied:false,reason};}
  const reference=await referenceMatches(db,c,read);
  if(!reference){if(!options.deferPending)await pending(db,c,'referencia_ou_marca_divergente',{captureId:c.capture.id,photoSha256:photoDigest(c.capture.photo)});return {applied:false,reason:'referencia_ou_marca_divergente'};}
  const result=await applyVerified(db,c,read,reference,options);if(result.applied)await images.check(db,bipeId);return result;
@@ -211,4 +266,4 @@ async function finish(db,id){
   return {ok:true,totals:final.totals};
  },{timeout:30000});
 }
-module.exports={preview,start,context,check,enqueue,resume,report,finish,exclude,validateRead,referenceMatches,applyVerified,reasonText};
+module.exports={preview,start,context,check,enqueue,resume,report,finish,exclude,validateRead,referenceMatches,applyVerified,reasonText,confirmedCode,confirmedCodeRead,CONFIRMED_CODE};

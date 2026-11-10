@@ -41,4 +41,11 @@ async function decode(image) {
   if (!result.code && !result.ambiguous) return [];
   return [...new Set(recovered.map(r => String(r.text || '').trim()).filter(barcodePolicy.isScanCode))];
 }
-module.exports = { decode, MAX_PIXELS };
+// Positions are needed only by the brand label readers, which use the decoded
+// symbol as a geometric anchor. Same decoder, formats and pixel budget.
+async function readPositions(pixels) {
+  const rows = await getMod().readBarcodes(pixels, { tryHarder: true, tryRotate: true, tryInvert: true,
+    formats: ['EAN-13', 'UPC-A', 'EAN-8', 'Code128', 'ITF'], maxNumberOfSymbols: 8 });
+  return rows.map(r => ({ text: String(r.text || '').trim(), position: r.position })).filter(r => barcodePolicy.isScanCode(r.text) && r.position);
+}
+module.exports = { decode, readPositions, MAX_PIXELS };

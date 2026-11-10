@@ -1,0 +1,30 @@
+[
+ {
+  "file": "puma-34-1.jpg",
+  "barcode": "4067979368827",
+  "brand": "PUMA",
+  "size": "34",
+  "reference": "10795201"
+ },
+ {
+  "file": "converse-32-2.jpg",
+  "barcode": "7895491354014",
+  "brand": "CONVERSE",
+  "size": "32",
+  "reference": "CK12510001"
+ },
+ {
+  "file": "fiber-42-3.jpg",
+  "barcode": "7898707779946",
+  "brand": "FIBER",
+  "size": "42",
+  "reference": "TFBUWHITE42"
+ },
+ {
+  "file": "asics-pending-4.jpg",
+  "barcode": "4550457738606",
+  "brand": "ASICS",
+  "size": null,
+  "why": "MEN and WOMEN grids on one label (BR 36.5 and BR 37)"
+ }
+]

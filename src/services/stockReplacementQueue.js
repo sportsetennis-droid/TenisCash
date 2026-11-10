@@ -74,7 +74,7 @@ function createQueue(db,options={}){
  const pendingAgeMs=options.pendingAgeMs??300000;
  const firstPriority=Number.isInteger(options.jobPriority)?options.jobPriority:10,recheckPriority=firstPriority-10,agedPriority=firstPriority+10;
  const recheckIntervalMs=options.recheckIntervalMs??120000;
- const readImage=options.readImage||((bytes,barcode)=>require('./scannerArchivedLabel').readImage(bytes,barcode));
+ const readImage=options.readImage||((bytes,barcode,read)=>require('./scannerArchivedLabel').readImage(bytes,barcode,read));
  async function ensureOwnerRequests(){
   if(ownerReady)return true;
   try{await require('./finiteOwnerConfirmation').ensure(db);ownerReady=true;return true;}
@@ -162,7 +162,7 @@ function createQueue(db,options={}){
   // Decode and OCR entirely outside the short application transaction. The
   // observed frame is bound to the same revision again inside applyVerified.
   const bytes=Buffer.from(capture.photo.slice(capture.photo.indexOf(',')+1),'base64');
-  const observed=await readImage(bytes,capture.barcode);
+  const observed=await readImage(bytes,capture.barcode,{brand:bipe.productBrand||null});
   if(costly.has(observed?.reason))return pending(observed.reason,true,observed.scannerDiagnostic);
   if(transient.has(observed?.reason))throw failure(observed.reason);
   const fresh=await db.productCapture.findUnique({where:{id:data.captureId}});
