@@ -33,7 +33,7 @@ function world(){
  w.db=db;return w;
 }
 const c=w=>({bipe:w.bipe,round:w.round,capture:w.capture,size:w.size});
-const pendingRead=(extra={})=>({pending:true,reason:'photo_size_or_reference_pending',decodedBarcodes:[CODE],observedSizes:[],...extra});
+const pendingRead=(extra={})=>({pending:true,reason:'photo_size_or_reference_pending',decodedBarcodes:[CODE],ocrConflict:false,observedSizes:[],printedBrands:[],...extra});
 
 (async()=>{
  // 1. Confirmation found.
@@ -51,8 +51,12 @@ const pendingRead=(extra={})=>({pending:true,reason:'photo_size_or_reference_pen
  assert.equal(service.confirmedCodeRead(c(w),pendingRead({decodedBarcodes:[CODE,'7891234567895']})),false,'Two codes on the photo block');
  assert.equal(service.confirmedCodeRead(c(w),pendingRead({decodedBarcodes:['7891234567895']})),false,'Another code blocks');
  assert.equal(service.confirmedCodeRead(c(w),pendingRead({reason:'photo_barcode_conflict'})),false);
- assert.equal(service.confirmedCodeRead(c(w),{source:'archived-photo-local-ocr-v1',size:'40',references:['X'],decodedBarcodes:[CODE],text:'PUMA'}),true,'Literal matching BR with unmatched reference');
- assert.equal(service.confirmedCodeRead(c(w),{source:'archived-photo-local-ocr-v1',size:'40',references:['X'],decodedBarcodes:[CODE],text:'NIKE'}),false,'Another printed brand blocks');
+ assert.equal(service.confirmedCodeRead(c(w),{source:'archived-photo-local-ocr-v1',size:'40',references:['X'],decodedBarcodes:[CODE],text:'PUMA'}),false,'A complete read whose reference did not match is a contradiction');
+ assert.equal(service.confirmedCodeRead(c(w),pendingRead({ocrConflict:true})),false,'Two BR scales / OCR conflict on this photo blocks');
+ assert.equal(service.confirmedCodeRead(c(w),pendingRead({ocrConflict:undefined})),false,'Unknown conflict state blocks');
+ assert.equal(service.confirmedCodeRead(c(w),pendingRead({printedBrands:['NIKE']})),false,'Another printed brand blocks');
+ assert.equal(service.confirmedCodeRead(c(w),pendingRead({printedBrands:['PUMA']})),true,'Its own printed brand is fine');
+ assert.equal(service.confirmedCodeRead(c(w),pendingRead({printedBrands:undefined})),false,'Unknown printed brands block');
 
  // 3. Conflicts keep the piece pending.
  w=world();w.checks[0].appliedProductSizeId='ps-other';assert.equal(await service.confirmedCode(w.db,c(w)),null,'Code confirmed as another variant');
@@ -65,6 +69,7 @@ const pendingRead=(extra={})=>({pending:true,reason:'photo_size_or_reference_pen
  w=world();w.checks[0].reversedAt=new Date();assert.equal(await service.confirmedCode(w.db,c(w)),null,'Reversed confirmation is no basis');
  w=world();w.checks[0].evidence.size='41';assert.equal(await service.confirmedCode(w.db,c(w)),null,'Confirmed with another size');
  w=world();w.checks[0].evidence.source=service.CONFIRMED_CODE;assert.equal(await service.confirmedCode(w.db,c(w)),null,'Derived applications are never a basis');
+ w=world();w.checks[0].evidence.source='archived-photo-something-new-v9';assert.equal(await service.confirmedCode(w.db,c(w)),null,'Only listed confirmation sources count');
  w=world();w.checks[0].evidence.source='durable-queue';assert.equal(await service.confirmedCode(w.db,c(w)),null,'Only archived-photo evidence counts');
  w=world();w.others=[];assert.equal(await service.confirmedCode(w.db,c(w)),null,'Never confirmed');
  w=world();w.others=[{id:'b-old',barcode:'0'+CODE}];assert.ok(await service.confirmedCode(w.db,c(w)),'Leading-zero alias of the same code counts');
@@ -84,6 +89,12 @@ const pendingRead=(extra={})=>({pending:true,reason:'photo_size_or_reference_pen
  w=world();movements.length=0;
  r=await service.check(w.db,'b-new',{read:pendingRead({observedSizes:['41']})});
  assert.equal(r.applied,false);assert.equal(movements.length,0);
+ w=world();movements.length=0;
+ r=await service.check(w.db,'b-new',{read:{source:'archived-photo-local-ocr-v1',size:'40',references:['999999'],decodedBarcodes:[CODE],text:'PUMA'}});
+ assert.equal(r.applied,false);assert.equal(r.reason,'referencia_ou_marca_divergente');assert.equal(movements.length,0,'Contradicting reference stays pending');
+ w=world();movements.length=0;
+ r=await service.check(w.db,'b-new',{read:pendingRead({ocrConflict:true})});
+ assert.equal(r.applied,false);assert.equal(movements.length,0,'OCR conflict stays pending');
  w=world();movements.length=0;w.bipe.duplicate=true;
  r=await service.check(w.db,'b-new',{read:pendingRead()});
  assert.equal(r.applied,false);assert.equal(movements.length,0,'Repeated code still needs its own confirmation flow');

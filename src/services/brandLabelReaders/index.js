@@ -42,7 +42,8 @@ function decide(variants, { enabled = ENABLED, hint = null } = {}) {
   for (const p of parsed) for (const r of new Set(p.references || [])) votes.set(r, (votes.get(r) || 0) + 1);
   const top = Math.max(0, ...votes.values());
   const references = [...votes].filter(([, n]) => n === top).map(([r]) => r);
-  if (!references.length) return { reason: 'reference_not_read', brand, parsed };
+  // Not an answer, but the literal BR it saw is kept as evidence for callers.
+  if (!references.length) return { reason: 'reference_not_read', brand, parsed, literalSize: sizes[0] };
   const witness = parsed.find(p => p.size);
   return { brand, size: sizes[0], references, witness, support: parsed.filter(p => p.size).length, parsed };
 }
@@ -210,7 +211,7 @@ async function readAnchoredLabel({ sharp, worker, image, quad, frame, hint, dead
     }
   }
   const d = decide(read, { hint });
-  if (!d.size) return { reason: d.reason, brand: d.brand || null };
+  if (!d.size) return { reason: d.reason, brand: d.brand || null, ...(d.literalSize ? { literalSize: d.literalSize } : {}) };
   const v = read.find(x => x.key === d.witness.key);
   for (const token of d.witness.tokens) {
     const zoomed = await confirmValue({ sharp, worker, buffer: v.buffer, size: v.size, token });
@@ -232,7 +233,7 @@ async function readBrandLabel({ sharp, readPositions, worker, image, barcode, hi
   try { for (const quad of frame.anchors) reads.push(await readAnchoredLabel({ sharp, worker, image, quad, frame, hint, deadline, diagnostic })); }
   catch (error) { if (error.budget) return { reason: 'brand_budget_exceeded' }; throw error; }
   // Two equal codes in one photo (two identical labels) must read identically.
-  if (reads.some(r => !r.size)) { const bad = reads.find(r => !r.size); return { reason: bad.reason, brand: bad.brand || reads.find(r => r.brand)?.brand || null }; }
+  if (reads.some(r => !r.size)) { const bad = reads.find(r => !r.size); return { reason: bad.reason, brand: bad.brand || reads.find(r => r.brand)?.brand || null, literalSizes: [...new Set(reads.flatMap(r => [r.size, r.literalSize]).filter(Boolean))] }; }
   if (new Set(reads.map(r => r.brand + ':' + r.size)).size !== 1) return { reason: 'anchors_disagree' };
   const references = [...new Set(reads.flatMap(r => r.references))];
   return { size: reads[0].size, references, text: reads.map(r => r.text).join('\n'), reader: VERSION + ':' + reads[0].brand.toLowerCase(), brand: reads[0].brand };

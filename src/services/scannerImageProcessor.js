@@ -1,6 +1,7 @@
 'use strict';
 const path = require('node:path');
 const barcodePolicy = require('../../public/scanner-barcode-policy');
+const PRINTED_BRANDS=/\b(REEBOK|NIKE|ADIDAS|PUMA|FILA|ASICS|SKECHERS|MIZUNO|OLYMPIKUS|FIBER|CONVERSE|SALOMON|NEW BALANCE|VANS|UMBRO|PENALTY|KAPPA|DIADORA|HOKA)\b/gi;
 const incompleteNineDigitReference=observed=>observed.references.some(ref=>/^\d{9}$/.test(ref)&&!observed.completeOusReferences?.includes(ref))&&!observed.references.some(ref=>/^\d{9}[A-Z]{2,8}(?:\d{1,3})?$/.test(ref));
 // One reusable OCR worker per isolated process; the parent owns deadlines.
 // Never terminate while Tesseract is preparing an image asynchronously.
@@ -40,8 +41,11 @@ function createProcessor(deps = {}) {
     // the optional hint is the catalogue brand name and only selects a layout
     // (a different printed brand vetoes it). validateRead/referenceMatches
     // still compare the literal size and reference with the catalogue.
+    // Evidence kept only to qualify a "not read" answer: a literal BR or a
+    // printed brand seen by the brand reader, and whether it saw a conflict.
+    let branded = null;
+    const BENIGN_BRAND_REASONS = new Set(['anchor_not_found','anchor_too_small','brand_layout_unknown','brand_reader_disabled','br_not_read','reference_not_read','brand_budget_exceeded']);
     if (brandReader) {
-      let branded = null;
       try { branded = await brandReader({ sharp, readPositions, worker, image, barcode, hint, diagnostic }); }
       catch (_) { branded = null; }
       await worker.setParameters({ tessedit_char_whitelist: '', preserve_interword_spaces: '1' });
@@ -55,7 +59,14 @@ function createProcessor(deps = {}) {
     const seenSizes=new Set(),seenReferences=new Set(),seenNumericColours=new Set(),seenNumericTokens=new Set(),seenOusTokens=new Set();
     let hasOusField=false;
     const ousIdentity=ref=>/^350\d{3}\d{1,3}$/.test(ref)?ref.slice(0,6)+':'+Number(ref.slice(6)):ref;
-    const consistent=data=>{const parts=readParts(data);if(parts.conflict)return false;
+    const seenBrands=new Set();
+    const brandConflict=!!(branded&&branded.reason&&!BENIGN_BRAND_REASONS.has(branded.reason));
+    if(branded?.brand)seenBrands.add(String(branded.brand).toUpperCase());
+    for(const m of String(branded?.text||'').matchAll(PRINTED_BRANDS))seenBrands.add(m[1].toUpperCase());
+    const notRead=()=>({pending:true,reason:'photo_size_or_reference_pending',decodedBarcodes:codes,ocrConflict:brandConflict,
+      observedSizes:[...new Set([...seenSizes,...[branded?.size,branded?.literalSize,...(Array.isArray(branded?.literalSizes)?branded.literalSizes:[])].filter(Boolean).map(String)])],printedBrands:[...seenBrands]});
+    const consistent=data=>{for(const m of String(data?.text||'').matchAll(PRINTED_BRANDS))seenBrands.add(m[1].toUpperCase());
+      const parts=readParts(data);if(parts.conflict)return false;
       if(parts.size)seenSizes.add(parts.size);
       for(const ref of parts.identityReferences||[])seenReferences.add(ref);
       for(const ref of parts.numericColourReferences||[])seenNumericColours.add(ref);
@@ -86,13 +97,13 @@ function createProcessor(deps = {}) {
           const candidate = enhance ? enhanced : frame;
           await rasterDiagnostic(candidate,{pass:++pass,angle,psm,enhanced:enhance});
           const data=(await worker.recognize(candidate, {}, { text: true, blocks: true })).data;
-          if(!consistent(data))return {pending:true,reason:'photo_size_or_reference_pending',decodedBarcodes:codes,observedSizes:[...seenSizes]};
+          if(!consistent(data))return {pending:true,reason:'photo_size_or_reference_pending',decodedBarcodes:codes,ocrConflict:true};
           // This is only a trigger for another attempt, never identity/size
           // evidence. The next read still has to pass every literal guard.
           nineDigitText ||= (data.blocks||[]).some(b=>(b.paragraphs||[]).some(p=>(p.lines||[]).some(l=>(l.words||[]).some(w=>w.confidence>=75&&/^\d{9}$/.test(String(w.text||'').trim())))));
           const observed = readWords(data);
           if (observed) {
-            if(partial&&partial.size!==observed.size)return {pending:true,reason:'photo_size_or_reference_pending',decodedBarcodes:codes,observedSizes:[...seenSizes]};
+            if(partial&&partial.size!==observed.size)return {pending:true,reason:'photo_size_or_reference_pending',decodedBarcodes:codes,ocrConflict:true};
             if(incompleteNineDigitReference(observed)&&!stretched)partial=partial||observed;
             else return { ...observed, decodedBarcodes: codes };
           }
@@ -113,9 +124,9 @@ function createProcessor(deps = {}) {
           const candidate=await wide.png().toBuffer();
           await rasterDiagnostic(candidate,{pass:++pass,angle,psm:'11',enhanced:normalized});
           const data=(await worker.recognize(candidate,{}, {text:true,blocks:true})).data;
-          if(!consistent(data))return {pending:true,reason:'photo_size_or_reference_pending',decodedBarcodes:codes,observedSizes:[...seenSizes]};
+          if(!consistent(data))return {pending:true,reason:'photo_size_or_reference_pending',decodedBarcodes:codes,ocrConflict:true};
           const observed=readWords(data);
-          if(observed&&partial&&partial.size!==observed.size)return {pending:true,reason:'photo_size_or_reference_pending',decodedBarcodes:codes,observedSizes:[...seenSizes]};
+          if(observed&&partial&&partial.size!==observed.size)return {pending:true,reason:'photo_size_or_reference_pending',decodedBarcodes:codes,ocrConflict:true};
           if(observed){
             if(incompleteNineDigitReference(observed))partial=partial||observed;
             else return {...observed,decodedBarcodes:codes};
@@ -124,7 +135,7 @@ function createProcessor(deps = {}) {
       }
       if(partial)return {...partial,decodedBarcodes:codes};
     }
-    return { pending: true, reason: 'photo_size_or_reference_pending', decodedBarcodes: codes, observedSizes: [...seenSizes] };
+    return notRead();
   }
   async function run(kind, image, barcode, onDiagnostic = deps.onDiagnostic, hint = null) {
     if (busy) throw Error('image_process_busy');

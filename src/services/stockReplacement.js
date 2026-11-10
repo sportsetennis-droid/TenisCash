@@ -9,7 +9,11 @@ const photoDigest=value=>createHash('sha256').update(Buffer.from(value.slice(val
 const normalized=value=>String(value||'').normalize('NFKC').toUpperCase().replace(/[^A-Z0-9]/g,'');
 const sizeKey=value=>String(value||'').replace(',','.').trim();
 const CONFIRMED_CODE='archived-photo-confirmed-code-v1';
-const printedBrands=text=>[...String(text||'').matchAll(/\b(REEBOK|NIKE|ADIDAS|PUMA|FILA|ASICS|SKECHERS|MIZUNO|OLYMPIKUS|FIBER)\b/gi)].map(m=>normalized(m[1]));
+// Evidence that may serve as the basis of a confirmed code: literal local OCR
+// and the reviewed archived-photo applications of this replacement.
+const CONFIRMATION_SOURCES=new Set(['archived-photo-local-ocr-v1','archived-photo-assistant-review-manufacturer-label-v1','archived-photo-assistant-review-v1',
+ 'archived-photo-assistant-review-and-official-size-chart-v1','archived-photo-operator-review-v1','archived-photo-assistant-review-official-size-guide-v1',
+ 'archived-photo-assistant-review-manufacturer-paired-size-v1','archived-photo-regional-decoder-and-assistant-review-v1']);
 function reasonText(reason,options={}){
  if(options.autoReprocess===true)return reasonText(reason)+(options.processing===true?' Reprocessamento automático em andamento.':' Aguardando reprocessamento automático.')+' Esta leitura ainda não foi aplicada ao estoque.';
  if(reason==='photo_barcode_not_found')return 'O código de barras não ficou legível nesta foto. Reenquadre a mesma etiqueta.';
@@ -142,23 +146,26 @@ async function confirmedCode(db,c){
  const live=checks.filter(k=>k.appliedAt&&!k.reversedAt);
  if(live.some(k=>k.appliedProductSizeId!==c.size.id))return null;
  const basis=live.filter(k=>{const e=k.evidence&&typeof k.evidence==='object'&&!Array.isArray(k.evidence)?k.evidence:{};
-  return typeof e.source==='string'&&e.source.startsWith('archived-photo-')&&e.source!==CONFIRMED_CODE&&e.productSizeId===c.size.id&&
+  return CONFIRMATION_SOURCES.has(e.source)&&e.productSizeId===c.size.id&&
    e.productId===c.size.productId&&sizeKey(e.size)===sizeKey(c.size.size)&&(!e.barcode||policy.identity(e.barcode)===ident);});
  if(!basis.length)return null;
  return {bipeIds:basis.map(k=>k.bipeId).sort(),sources:[...new Set(basis.map(k=>k.evidence.source))].sort(),reference:basis.map(k=>k.evidence.reference).find(r=>typeof r==='string'&&r)||null};
 }
-// The photo of THIS piece: one decoded code equal to the scanned code, and no
-// BR size read that differs from the catalogue (no size read is allowed).
+// The photo of THIS piece: the label was simply not read. One decoded code
+// equal to the scanned code, no OCR/brand-reader conflict or veto, every BR
+// literal seen equal to the catalogue, and no other printed brand. A complete
+// read whose reference did not match is a contradiction, never "not read".
 function confirmedCodeRead(c,read){
- if(!read||!c.size||read.decodedBarcodes?.length!==1||policy.identity(read.decodedBarcodes[0])!==policy.identity(c.bipe.barcode))return false;
- if(printedBrands(read.text).some(brand=>brand!==normalized(c.size.product?.brand)))return false;
- if(read.pending)return read.reason==='photo_size_or_reference_pending'&&Array.isArray(read.observedSizes)&&read.observedSizes.every(size=>sizeKey(size)===sizeKey(c.size.size));
- return read.source==='archived-photo-local-ocr-v1'&&sizeKey(read.size)===sizeKey(c.size.size);
+ if(!read?.pending||read.reason!=='photo_size_or_reference_pending'||!c.size)return false;
+ if(read.decodedBarcodes?.length!==1||policy.identity(read.decodedBarcodes[0])!==policy.identity(c.bipe.barcode))return false;
+ if(read.ocrConflict!==false||!Array.isArray(read.observedSizes)||!Array.isArray(read.printedBrands))return false;
+ if(read.observedSizes.some(size=>sizeKey(size)!==sizeKey(c.size.size)))return false;
+ return read.printedBrands.every(brand=>normalized(brand)===normalized(c.size.product?.brand));
 }
 async function applyConfirmedCode(db,c,read,options){
  if(!confirmedCodeRead(c,read)||!await confirmedCode(db,c))return null;
  const evidence={source:CONFIRMED_CODE,size:c.size.size,references:[],text:read.text||'',decodedBarcodes:read.decodedBarcodes,
-  photoRead:read.pending?{reason:read.reason,observedSizes:read.observedSizes}:{size:read.size,references:read.references||[]}};
+  photoRead:{reason:read.reason,observedSizes:read.observedSizes,printedBrands:read.printedBrands}};
  const result=await applyVerified(db,c,evidence,null,options);
  // A lock/authorization/changed-photo outcome is returned as is; only "no
  // confirmation" falls back to the ordinary pending reason.
@@ -208,7 +215,6 @@ async function check(db,bipeId,options={}){
  if(reason==='photo_size_or_reference_pending'){const confirmed=await applyConfirmedCode(db,c,read,options);if(confirmed){if(confirmed.applied)await images.check(db,bipeId);return confirmed;}}
  if(reason){if(!options.deferPending)await pending(db,c,reason,{captureId:c.capture.id,photoSha256:photoDigest(c.capture.photo)});return {applied:false,reason};}
  const reference=await referenceMatches(db,c,read);
- if(!reference){const confirmed=await applyConfirmedCode(db,c,read,options);if(confirmed){if(confirmed.applied)await images.check(db,bipeId);return confirmed;}}
  if(!reference){if(!options.deferPending)await pending(db,c,'referencia_ou_marca_divergente',{captureId:c.capture.id,photoSha256:photoDigest(c.capture.photo)});return {applied:false,reason:'referencia_ou_marca_divergente'};}
  const result=await applyVerified(db,c,read,reference,options);if(result.applied)await images.check(db,bipeId);return result;
 }
