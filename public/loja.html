@@ -3406,11 +3406,11 @@ async function populateInvStoreSelect() {
     const sel = document.getElementById('invStoreSelect');
     if (!sel) return;
     const previous = sel.value;
-    sel.innerHTML = '<option value="">— escolha a loja —</option>' +
+    sel.innerHTML = '<option value="">— escolha a loja —</option><option value="all">🏬 Todas as lojas</option>' +
       (d.stores || []).map(s => `<option value="${s.id}">${s.name}</option>`).join('');
     // Já abre na loja escolhida antes ou na loja em que o vendedor está logado,
     // e carrega produtos + filtros (tipo/marca/numeração) sem precisar de outro toque.
-    const ids = (d.stores || []).map(s => s.id);
+    const ids = ['all', ...(d.stores || []).map(s => s.id)];
     const preferred = ids.includes(previous) ? previous : (activeStore && ids.includes(activeStore.id) ? activeStore.id : '');
     sel.value = preferred;
     if (preferred && preferred !== previous) loadStoreInventory();
@@ -3593,16 +3593,21 @@ let _storeInvProducts = new Map(), _storeInvStoreId = '', storeInvRequestId = 0;
 function openStoreTransfer(productId) {
   const p = _storeInvProducts.get(productId);
   if (!p) return;
-  const sizes = (p.sizes || []).map(s => ({ ...s, here: (s.storeStocks || []).filter(ss => (ss.storeId || ss.store?.id) === _storeInvStoreId).reduce((n, ss) => n + Number(ss.stock || 0), 0) }))
+  const allStores = _storeInvStoreId === 'all';
+  const sizes = (p.sizes || []).map(s => {
+    const rows = (s.storeStocks || []).filter(ss => Number(ss.stock || 0) > 0 && (allStores || (ss.storeId || ss.store?.id) === _storeInvStoreId));
+    return { ...s, here: rows.reduce((n, ss) => n + Number(ss.stock || 0), 0), where: rows.map(ss => `${ss.store?.code || ss.store?.name || 'loja'} ${Number(ss.stock)}`).join(', ') };
+  })
     .filter(s => s.here > 0)
     .sort((a, b) => String(a.size).localeCompare(String(b.size), 'pt-BR', { numeric: true }));
   const storeName = document.getElementById('invStoreSelect').selectedOptions[0]?.textContent || 'esta loja';
+  const origemParam = allStores ? '' : `&origem=${encodeURIComponent(_storeInvStoreId)}`;
   document.getElementById('productModalContent').innerHTML = `
     <h3 class="modal-title">🔁 Transferir</h3>
     <div style="font-size:14px;font-weight:600;margin-bottom:4px;">${escPreco(p.name || '')}</div>
-    <div style="font-size:13px;color:#8e8e93;margin-bottom:12px;">Origem: ${escPreco(storeName)}. Escolha o tamanho; na próxima tela você escolhe a loja de destino e confirma.</div>
+    <div style="font-size:13px;color:#8e8e93;margin-bottom:12px;">${allStores ? 'Escolha o tamanho; na próxima tela você escolhe de qual loja sai, para qual loja vai e confirma.' : `Origem: ${escPreco(storeName)}. Escolha o tamanho; na próxima tela você escolhe a loja de destino e confirma.`}</div>
     ${sizes.length ? sizes.map(s => s.barcode
-      ? `<a class="btn" style="display:flex;justify-content:space-between;align-items:center;min-height:44px;margin-bottom:8px;text-decoration:none;" href="/transferencia.html?barcode=${encodeURIComponent(s.barcode)}&origem=${encodeURIComponent(_storeInvStoreId)}"><span>Tamanho ${escPreco(s.size)}</span><span>${s.here} un. ➡</span></a>`
+      ? `<a class="btn" style="display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:44px;margin-bottom:8px;text-decoration:none;" href="/transferencia.html?barcode=${encodeURIComponent(s.barcode)}${origemParam}"><span>Tamanho ${escPreco(s.size)}${allStores ? `<br><small style="font-weight:400;opacity:.9;">${escPreco(s.where)}</small>` : ''}</span><span>${s.here} un. ➡</span></a>`
       : `<div class="btn btn-secondary" style="display:flex;justify-content:space-between;min-height:44px;margin-bottom:8px;opacity:.6;"><span>Tamanho ${escPreco(s.size)} · sem código</span><span>bipe na tela de transferência</span></div>`).join('')
       : '<p style="color:#8e8e93;">Nenhum tamanho com estoque nesta loja.</p>'}
     <button class="btn btn-secondary" type="button" onclick="closeModal()" style="width:100%;min-height:44px;margin-top:4px;">Fechar</button>`;
@@ -3620,7 +3625,8 @@ async function loadStoreInventory(page=1) {
     const typeKey = document.getElementById('invStoreType').value;
     const brand = document.getElementById('invStoreBrand').value;
     const size = document.getElementById('invStoreSize').value;
-    const params = [`stockScope=store`, `storeId=${encodeURIComponent(storeId)}`, `q=${encodeURIComponent(q)}`, `pageSize=40`, `page=${page}`,
+    const scope = storeId === 'all' ? ['stockScope=all'] : ['stockScope=store', `storeId=${encodeURIComponent(storeId)}`];
+    const params = [...scope, `q=${encodeURIComponent(q)}`, `pageSize=40`, `page=${page}`,
       `verification=${encodeURIComponent(document.getElementById("invStoreVerification").value)}`, 'includeFacets=1', 'includeSizeOptions=1'];
     if (typeKey) params.push('typeKey=' + encodeURIComponent(typeKey));
     if (brand) params.push('brand=' + encodeURIComponent(brand));
