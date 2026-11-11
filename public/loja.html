@@ -813,6 +813,7 @@
           <select id="invStoreType" aria-label="Tipo de produto" onchange="loadStoreInventory()" style="flex:1 1 140px;min-height:44px;padding:10px;border:1px solid #d2d2d7;border-radius:8px;"><option value="">Todos os tipos</option></select>
           <select id="invStoreBrand" aria-label="Marca" onchange="loadStoreInventory()" style="flex:1 1 140px;min-height:44px;padding:10px;border:1px solid #d2d2d7;border-radius:8px;"><option value="">Todas as marcas</option></select>
           <select id="invStoreSize" aria-label="Numeração" onchange="loadStoreInventory()" style="flex:1 1 140px;min-height:44px;padding:10px;border:1px solid #d2d2d7;border-radius:8px;"><option value="">Todas as numerações</option></select>
+          <select id="invStoreModality" aria-label="Modalidade da chuteira" onchange="loadStoreInventory()" style="display:none;flex:1 1 140px;min-height:44px;padding:10px;border:1px solid #d2d2d7;border-radius:8px;"><option value="">Todas as modalidades</option><option value="Campo">⚽ Campo</option><option value="Futsal">🏟️ Futsal</option><option value="Society">🥅 Society</option></select>
           <select id="invStoreSituation" aria-label="Situação" onchange="loadStoreInventory()" style="flex:1 1 140px;min-height:44px;padding:10px;border:1px solid #d2d2d7;border-radius:8px;"><option value="">Situação: Todos</option><option value="transferidos">🔁 Transferidos</option><option value="vendidos">🧾 Vendidos</option><option value="trocas">↩️ Trocas</option></select>
           <button class="btn btn-secondary btn-small" type="button" onclick="clearStoreFilters()" style="min-height:44px;">✕ Limpar filtros</button>
         </div>
@@ -3584,7 +3585,7 @@ function fillStoreFilter(id, options, allLabel) {
   if (picked) sel.dataset.label = picked.label;
 }
 function clearStoreFilters() {
-  for (const id of ['invStoreType', 'invStoreBrand', 'invStoreSize', 'invStoreSituation']) { const s = document.getElementById(id); if (s) { s.value = ''; delete s.dataset.label; } }
+  for (const id of ['invStoreType', 'invStoreBrand', 'invStoreSize', 'invStoreSituation', 'invStoreModality']) { const s = document.getElementById(id); if (s) { s.value = ''; delete s.dataset.label; } }
   document.getElementById('invStoreQ').value = '';
   if (document.getElementById('invStoreSelect').value) loadStoreInventory();
 }
@@ -3632,6 +3633,10 @@ async function loadStoreInventory(page=1) {
     const params = [...scope, `q=${encodeURIComponent(q)}`, `pageSize=40`, `page=${page}`,
       `verification=${encodeURIComponent(document.getElementById("invStoreVerification").value)}`, 'includeFacets=1', 'includeSizeOptions=1'];
     if (typeKey) params.push('typeKey=' + encodeURIComponent(typeKey));
+    // Chuteira: filtro extra de modalidade (Campo / Futsal / Society) — só aparece com o tipo Chuteiras.
+    const modSel = document.getElementById('invStoreModality');
+    if (modSel) { modSel.style.display = typeKey === 'chuteiras' ? '' : 'none'; if (typeKey !== 'chuteiras') modSel.value = ''; }
+    if (typeKey === 'chuteiras' && modSel?.value) params.push('modality=' + encodeURIComponent(modSel.value));
     if (brand) params.push('brand=' + encodeURIComponent(brand));
     if (size) params.push('size=' + encodeURIComponent(size), 'exactSize=1');
     const situation = document.getElementById('invStoreSituation').value;
