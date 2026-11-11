@@ -246,6 +246,52 @@ app.get('/api/_fiscaldiag', async (req, res) => {
     res.status(500).set('Content-Type', 'text/plain; charset=utf-8').send('ERRO: ' + e.message);
   }
 });
+// TEMPORÁRIO (remover após uso): teste fiscal de UMA loja. Sem &emit=1 é READ-ONLY
+// (config do emissor + bloco <emit> da última nota autorizada vs a última rejeitada).
+// Com &emit=1&nnf=9000NN emite NFC-e de R$1 pela máquina da loja e CANCELA na hora.
+app.get('/api/_fiscaltest', async (req, res) => {
+  if (req.query.g !== 'stxdiag2026') return res.status(403).json({ error: 'forbidden' });
+  try {
+    const { prisma } = require('./middleware');
+    const agentClient = require('./services/fiscalAgentClient');
+    const code = String(req.query.store || 'LOJA05');
+    const store = await prisma.store.findUnique({ where: { code }, include: { fiscalIssuer: true } });
+    if (!store || !store.fiscalIssuer) return res.status(404).json({ error: 'loja/emissor nao achado' });
+    const pick = (i) => ({ cnpj: i.cnpj, ie: i.ie, crt: i.crt, companyName: i.companyName, cityCode: i.cityCode, city: i.city, state: i.state, zip: i.zip, environment: i.environment, active: i.active, cscId: i.cscId, hasCsc: !!i.csc, nfceSerie: i.nfceSerie, nfceNextNumber: i.nfceNextNumber, updatedAt: i.updatedAt });
+    const allIssuers = (await prisma.fiscalIssuer.findMany({ orderBy: { cnpj: 'asc' } })).map(pick);
+    const emitBlock = (xml) => { const m = String(xml || '').match(/<emit>[\s\S]*?<\/emit>/); return m ? m[0] : null; };
+    const ideBlock = (xml) => { const m = String(xml || '').match(/<ide>[\s\S]*?<\/ide>/); return m ? m[0] : null; };
+    const lastOk = await prisma.fiscalDocument.findFirst({ where: { issuerId: store.fiscalIssuerId, docType: 'NFCE', status: 'authorized' }, orderBy: { createdAt: 'desc' } });
+    const lastBad = await prisma.fiscalDocument.findFirst({ where: { issuerId: store.fiscalIssuerId, docType: 'NFCE', status: 'rejected' }, orderBy: { createdAt: 'desc' } });
+    const badResp = (lastBad && lastBad.response) || {};
+    const out = {
+      store: { code: store.code, name: store.name, fiscalAgentUrl: store.fiscalAgentUrl, fiscalAgentEnabled: store.fiscalAgentEnabled },
+      issuer: pick(store.fiscalIssuer),
+      allIssuers,
+      lastAuthorized: lastOk && { number: lastOk.number, createdAt: lastOk.createdAt, emit: emitBlock(lastOk.xmlContent), ide: ideBlock(lastOk.xmlContent) },
+      lastRejected: lastBad && { number: lastBad.number, createdAt: lastBad.createdAt, emit: emitBlock(badResp.xmlSigned || badResp.xml), ide: ideBlock(badResp.xmlSigned || badResp.xml), respKeys: Object.keys(badResp) },
+    };
+    if (req.query.emit === '1') {
+      const nNF = parseInt(req.query.nnf, 10);
+      if (!(nNF >= 900000 && nNF < 1000000)) return res.status(400).json({ error: 'nnf de teste obrigatorio (900000-999999)' });
+      out.health = await agentClient.ping(store).catch((e) => ({ ok: false, error: e.message }));
+      const emit = await agentClient.emitNFCe(store, {
+        issuer: store.fiscalIssuer, nNF,
+        items: [{ sku: 'TESTE', name: 'TESTE EMISSAO ' + code, ncm: '64041100', cfop: '5102', unidade: 'UN', qty: 1, unitPrice: 1.00 }],
+        payments: [{ tPag: '01', valor: 1.00 }],
+      });
+      out.testEmit = { ok: emit.ok, status: emit.status, motivo: emit.motivo, error: emit.error, accessKey: emit.accessKey, emit: emitBlock(emit.xmlSigned), ide: ideBlock(emit.xmlSigned) };
+      if (emit.ok && String(emit.status) === '100') {
+        const prot = emit.protocol || (String(emit.rawResponse || '').match(/<nProt>(\d+)<\/nProt>/) || [])[1];
+        const c = await agentClient.cancel(store, { issuer: store.fiscalIssuer, accessKey: emit.accessKey, protocol: prot, reason: 'Teste de emissao da loja - cancelamento imediato' });
+        out.testCancel = { ok: c.ok, status: c.status, motivo: c.motivo, error: c.error };
+      }
+    }
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
 // TEMPORÁRIO (remover junto com /api/_fiscaldiag): manda TODOS os agentes
 // fiscais se auto-atualizarem AGORA (POST /selfupdate com o token do banco).
 // Usado pra subir o agente v2.4-certinfo sem ninguém ir nas lojas.
