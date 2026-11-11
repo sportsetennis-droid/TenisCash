@@ -366,6 +366,33 @@ app.post('/api/_falgen', async (req, res) => {
       const r = await fal.generateReelVideo({ imageUrl, productName: String((product && product.name) || req.query.name || 'produto').slice(0, 60), duration: parseInt(req.query.sec || '6', 10) });
       return res.json({ ok: true, op: 'video', model: r.model, outputUrl: r.outputUrl, costUsd: r.costUsd, ...keys });
     }
+    if (req.query.op === 'gbglist') {
+      // Lista modelos Gemini com geração de imagem disponíveis pra GOOGLE_API_KEY.
+      const rr = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=${process.env.GOOGLE_API_KEY}`);
+      const jj = await rr.json();
+      const names = ((jj && jj.models) || []).map(m => m.name).filter(n => /image|imagen/i.test(n));
+      return res.json({ ok: rr.ok, models: names, error: jj.error && jj.error.message, ...keys });
+    }
+    if (req.query.op === 'gbg') {
+      // FUNDO LIVRE via Gemini (GOOGLE_API_KEY). fp no body. ar = 4:5 | 9:16 | 3:4 ... gm = modelo.
+      const fp = String((req.body && req.body.fp) || req.query.fp || '');
+      if (!fp) return res.status(400).json({ error: 'falta fp', ...keys });
+      const gm = String(req.query.gm || 'gemini-2.5-flash-image');
+      const rr = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(gm)}:generateContent?key=${process.env.GOOGLE_API_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: fp }] }],
+          generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: String(req.query.ar || '4:5') } },
+        }),
+      });
+      const jj = await rr.json();
+      const parts = (jj && jj.candidates && jj.candidates[0] && jj.candidates[0].content && jj.candidates[0].content.parts) || [];
+      const imgPart = parts.find(p => p.inlineData || p.inline_data);
+      const data = imgPart && (imgPart.inlineData || imgPart.inline_data);
+      if (!data) return res.json({ ok: false, model: gm, error: String((jj.error && jj.error.message) || (jj.candidates && jj.candidates[0] && jj.candidates[0].finishReason) || 'sem imagem').slice(0, 300), ...keys });
+      return res.json({ ok: true, op: 'gbg', model: gm, mime: data.mimeType || data.mime_type, b64: data.data, ...keys });
+    }
     if (req.query.op === 'bg') {
       // FUNDO LIVRE text-to-image via fal (campanha sem produto/pessoa). fp = prompt (query ou body).
       // model=nano -> fal-ai/nano-banana (aceita 4:5); padrao flux-pro v1.1 ultra (3:4 / 9:16, alta resolucao).
