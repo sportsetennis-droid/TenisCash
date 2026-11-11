@@ -366,6 +366,22 @@ app.post('/api/_falgen', async (req, res) => {
       const r = await fal.generateReelVideo({ imageUrl, productName: String((product && product.name) || req.query.name || 'produto').slice(0, 60), duration: parseInt(req.query.sec || '6', 10) });
       return res.json({ ok: true, op: 'video', model: r.model, outputUrl: r.outputUrl, costUsd: r.costUsd, ...keys });
     }
+    if (req.query.op === 'bg') {
+      // FUNDO LIVRE text-to-image via fal (campanha sem produto/pessoa). fp = prompt (query ou body).
+      // model=nano -> fal-ai/nano-banana (aceita 4:5); padrao flux-pro v1.1 ultra (3:4 / 9:16, alta resolucao).
+      const fp = String(req.query.fp || (req.body && req.body.fp) || '');
+      if (!fp) return res.status(400).json({ error: 'falta fp', ...keys });
+      const { fal } = await import('@fal-ai/client');
+      fal.config({ credentials: process.env.FAL_KEY });
+      const nano = req.query.model === 'nano';
+      const model = nano ? 'fal-ai/nano-banana' : 'fal-ai/flux-pro/v1.1-ultra';
+      const input = nano
+        ? { prompt: fp, num_images: 1, output_format: 'png', aspect_ratio: String(req.query.ar || '4:5') }
+        : { prompt: fp, num_images: 1, output_format: 'png', aspect_ratio: String(req.query.ar || '3:4'), raw: req.query.raw === '1', safety_tolerance: '2' };
+      const r = await fal.subscribe(model, { input, logs: false });
+      const img = r && r.data && r.data.images && r.data.images[0];
+      return res.json({ ok: !!img, op: 'bg', model, outputUrl: img ? img.url : null, ...keys });
+    }
     if (!product) return res.status(404).json({ error: 'produto nao encontrado', ...keys });
     if (req.query.op === 'worn') {
       // EDITOR FIEL (nano-banana/Gemini): PESSOA usando o produto REAL — fiel + tamanho certo
