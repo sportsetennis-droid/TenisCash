@@ -9,6 +9,7 @@
 const express = require('express');
 const { prisma } = require('../middleware');
 const pagbank = require('../services/pagbank');
+const salePaymentPlan = require('../services/salePaymentPlan');
 const relationshipCommission = require('../services/relationshipCommission');
 const storeRadio = require('../services/storeRadio');
 
@@ -47,6 +48,13 @@ async function confirmAndEmit(sale, store, orderId, tag) {
   const order = await pagbank.getOrder(store, orderId);
   const pay = pagbank.readPixPayment(order);
   if (!pay.paid) { console.log(`[pagbank ${tag}] ainda nao pago`, { sale: sale.id, status: pay.status }); return { paid: false, status: pay.status }; }
+  // Confere o valor pago com o valor devido (total − TenisCash). Não bloqueia: o cliente já pagou;
+  // divergência fica no log para conferência.
+  const expectedCents = salePaymentPlan.amountDueCents({ totalAmount: sale.totalAmount, tcUsed: sale.tcUsed });
+  const amountMismatch = pay.paidCents != null && pay.paidCents !== expectedCents;
+  if (amountMismatch) {
+    console.warn(`[pagbank ${tag}] VALOR PAGO DIFERENTE DO DEVIDO`, JSON.stringify({ sale: sale.id, paidCents: pay.paidCents, expectedCents, e2e: pay.e2e }));
+  }
   // marca a venda paga
   if (sale.status !== 'completed') await prisma.sale.update({ where: { id: sale.id }, data: { status: 'completed' } }).catch(() => {});
   await storeRadio.queueSaleAnnouncement(sale.id).catch((error) => {
@@ -58,14 +66,14 @@ async function confirmAndEmit(sale, store, orderId, tag) {
   });
   // idempotência: cupom já autorizado → nada a fazer
   const existing = await prisma.fiscalDocument.findFirst({ where: { saleId: sale.id, docType: 'NFCE', status: 'authorized' } });
-  if (existing) return { paid: true, alreadyEmitted: true, documentId: existing.id, number: existing.number, e2e: pay.e2e };
+  if (existing) return { paid: true, alreadyEmitted: true, documentId: existing.id, number: existing.number, e2e: pay.e2e, paidCents: pay.paidCents, expectedCents, amountMismatch };
   const r = await emitForSale({ saleId: sale.id, paymentMethod: '17', acquirerKey: 'PAGSEGURO', tpIntegra: 2 });
   const docId = r.body && r.body.documentId;
   if (r.body && r.body.ok && docId && pay.e2e) {
     await prisma.fiscalDocument.update({ where: { id: docId }, data: { paymentAuthCode: pay.e2e } }).catch(() => {});
   }
   console.log(`[pagbank ${tag}] emissao`, JSON.stringify({ sale: sale.id, ok: r.body?.ok, doc: docId, e2e: pay.e2e }));
-  return { paid: true, emitted: !!(r.body && r.body.ok), documentId: docId, e2e: pay.e2e, error: r.body && r.body.ok ? null : (r.body && r.body.error) };
+  return { paid: true, emitted: !!(r.body && r.body.ok), documentId: docId, e2e: pay.e2e, paidCents: pay.paidCents, expectedCents, amountMismatch, error: r.body && r.body.ok ? null : (r.body && r.body.error) };
 }
 
 // POST /api/pagbank/webhook — notificação do PagBank.

@@ -10,6 +10,7 @@ const path = require('node:path');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 const fiscal = require('../services/fiscalApi');
 const { applyStoreStockDelta } = require('../services/storeStockLedger');
+const salePaymentPlan = require('../services/salePaymentPlan');
 const { ExchangeValidationError, normalizeAuthCode, sameSnapshot, exchangeRequest, priceExchange } = require('../services/exchangePricing');
 
 const router = express.Router();
@@ -152,16 +153,27 @@ async function emitNfceFromSaleHandler(req, res) {
       unitPrice: si.unitPrice,
     }));
 
-    // Pagamento
+    // Pagamento. Parte paga com TenisCash: tPag 19 + forma principal pela diferença
+    // quando a Config 'fin_cashback_nfce_mode' = 'tpag19' (payments[] → agente >= 2.1).
     const tPagMap = paymentMethod || '01';
-    const payment = {
-      tPag: tPagMap,
-      valor: sale.totalAmount,
-      acquirerKey,
-      tBand: cardBrand,
-      cAut: _auth || undefined,
-      tpIntegra: tpIntegra || 2,
-    };
+    const payPlan = salePaymentPlan.buildNfcePayments({
+      totalAmount: sale.totalAmount,
+      tcUsed: sale.tcUsed,
+      mode: await salePaymentPlan.loadCashbackNfceMode(prisma),
+      primary: {
+        tPag: tPagMap,
+        acquirerKey,
+        tBand: cardBrand,
+        cAut: _auth || undefined,
+        tpIntegra: tpIntegra || 2,
+      },
+    });
+    const payment = payPlan.payment;
+    const payments = payPlan.payments;
+    // A emissão direta (sem agente) só sabe 1 pagamento: não emite nota com valor errado.
+    if (payments && !(store?.fiscalAgentEnabled && store?.fiscalAgentUrl)) {
+      return res.status(409).json({ needsAgent: true, error: 'Venda com TenisCash precisa do agente fiscal da loja (versão 2.1 ou mais nova) para emitir com pagamento separado.' });
+    }
 
     // Número robusto: nunca abaixo do maior doc já gravado (blinda contra unique-constraint travado por fantasma)
     const maxDoc = await prisma.fiscalDocument.aggregate({ where: { issuerId: issuer.id, docType: 'NFCE', serie: issuer.nfceSerie || 1 }, _max: { number: true } });
@@ -197,7 +209,8 @@ async function emitNfceFromSaleHandler(req, res) {
       const agentClient = require('../services/fiscalAgentClient');
       result = await agentClient.emitNFCe(store, {
         issuer,
-        items, payment,
+        items,
+        ...(payments ? { payments } : { payment }),
         customer: customerDest,
         nNF,
       });
