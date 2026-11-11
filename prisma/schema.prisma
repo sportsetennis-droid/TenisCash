@@ -6019,3 +6019,67 @@ model MfProductionEntry {
 
   @@index([day, employeeId])
 }
+
+// =====================================================================
+// FINANCEIRO DO VAREJO (Fase 1 — base). Valores em CENTAVOS INTEIROS.
+// SQL aditivo/idempotente em prisma/migrations/20261112_fin_core (finSchema.js).
+// Nada é apagado: desativa com motivo. Toda escrita grava FinAuditLog.
+// =====================================================================
+
+// Plano de contas gerencial ("natureza financeira"). Só conta analítica recebe lançamento.
+model FinNature {
+  id             String   @id @default(cuid())
+  code           String   @unique // "06.01"
+  name           String
+  kind           String // RECEITA | DESPESA | TRANSFERENCIA
+  dreGroup       String // RECEITA_BRUTA | DEDUCOES | CMV | TAXAS_MEIOS_PAGTO | PESSOAL | OCUPACAO | COMERCIAL | ADMINISTRATIVA | MARKETING | FINANCEIRA | IMPOSTOS_LUCRO | FORA_DRE | A_CLASSIFICAR
+  parentId       String?
+  analytic       Boolean  @default(true)
+  active         Boolean  @default(true)
+  inactiveReason String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  @@index([parentId])
+}
+
+// Conta financeira: caixa da loja, cofre, banco, Stone, PagBank, transitória.
+model FinAccount {
+  id                  String    @id @default(cuid())
+  name                String
+  type                String // CAIXA_LOJA | COFRE | BANCO | ADQUIRENTE_STONE | PSP_PAGBANK | TRANSITORIA
+  storeId             String?
+  fiscalIssuerId      String?
+  bankCode            String?
+  agency              String?
+  accountNumber       String?
+  pixKey              String?
+  acquirerKey         String?
+  openingBalanceCents Int       @default(0)
+  openingDate         DateTime?
+  active              Boolean   @default(true)
+  inactiveReason      String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @default(now()) @updatedAt
+
+  @@index([storeId])
+  @@index([type])
+}
+
+// Auditoria imutável (trigger no Postgres recusa UPDATE/DELETE/TRUNCATE).
+model FinAuditLog {
+  id        String   @id @default(cuid())
+  entity    String
+  entityId  String
+  action    String
+  actorId   String?
+  actorRole String?
+  before    Json?
+  after     Json?
+  reason    String?
+  requestId String?
+  at        DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([at])
+}

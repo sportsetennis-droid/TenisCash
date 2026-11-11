@@ -42,6 +42,7 @@ const nuvemshopRoutes = require('./routes/nuvemshop');
 const tiktokShopRoutes = require('./routes/tiktokShop');
 const shippingRoutes = require('./routes/shipping');
 const financialRoutes = require('./routes/financial');
+const finRoutes = require('./routes/fin');
 const suppliersRoutes = require('./routes/suppliers');
 const categoriesRoutes = require('./routes/categories');
 const campaignsRoutes = require('./routes/campaigns');
@@ -541,6 +542,7 @@ app.use('/api/seller/interview', weeklyInterviewRoutes);
 app.use('/api/admin/xml', xmlImportRoutes);
 app.use('/api/admin/recommendations', recommendationsRoutes);
 app.use('/api/admin/financial', financialRoutes);
+app.use('/api/fin', finRoutes); // financeiro do varejo (plano de contas, contas, auditoria)
 app.use('/api/admin/security', securityRoutes);
 app.use('/api/admin/store-radio', storeRadioRoutes);
 // Player da rádio: mesmo router, mas FORA de /api/admin (autentica pela chave fixa da loja, sem token).
@@ -1981,6 +1983,13 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     ensureApexSchema(prisma).catch((e) => console.error('[ensureApexSchema] erro:', e.message));
   } catch (e) {
     console.error('[ensureApexSchema] falha ao iniciar:', e.message);
+  }
+
+  // Financeiro do varejo: SQL aditivo/idempotente (as rotas /api/fin também garantem antes de responder).
+  try {
+    finRoutes.ensureFinSchema().then(() => console.log('[finSchema] ok')).catch((e) => console.error('[finSchema] erro:', e.message));
+  } catch (e) {
+    console.error('[finSchema] falha ao iniciar:', e.message);
   }
 
   try {

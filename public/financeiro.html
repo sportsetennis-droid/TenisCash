@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Financeiro — Sports & Tennis</title>
+<link rel="stylesheet" href="/_design-system.css">
+<style>
+  :root { --p: #E5571E; --text: #1d1d1f; --muted: #6e6e73; --border: #e5e5ea; --bg: #f5f5f7; --ok: #0a843d; --bad: #d70015; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+  header { background: #fff; border-bottom: 1px solid var(--border); padding: 14px 24px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 5; }
+  header h1 { font-size: 18px; margin: 0; }
+  header a { color: var(--p); text-decoration: none; font-weight: 700; font-size: 13px; }
+  .who { margin-left: auto; font-size: 12px; color: var(--muted); }
+  nav.tabs { display: flex; gap: 6px; padding: 12px 24px 0; flex-wrap: wrap; }
+  nav.tabs button { border: 1px solid var(--border); background: #fff; padding: 9px 16px; border-radius: 10px 10px 0 0; font-weight: 700; cursor: pointer; color: var(--muted); }
+  nav.tabs button.on { color: var(--p); border-bottom-color: #fff; }
+  main { padding: 0 24px 40px; }
+  .panel { background: #fff; border: 1px solid var(--border); border-radius: 0 12px 12px 12px; padding: 18px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 14px; }
+  label { font-size: 11px; font-weight: 700; color: #555; display: flex; flex-direction: column; gap: 4px; }
+  input, select { height: 36px; border: 1px solid #ddd; border-radius: 8px; padding: 0 10px; font-size: 14px; }
+  button.act { height: 36px; border: 0; border-radius: 8px; padding: 0 14px; font-weight: 800; cursor: pointer; background: var(--p); color: #fff; }
+  button.sec { height: 30px; border: 1px solid var(--border); border-radius: 8px; padding: 0 10px; font-weight: 700; cursor: pointer; background: #fff; font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #f0f0f3; vertical-align: middle; }
+  th { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+  tr.group td { font-weight: 800; background: #fafafa; }
+  tr.off td { color: #aaa; }
+  .tag { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 99px; background: #f0f0f3; color: #555; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .msg { padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; font-size: 13px; display: none; }
+  .msg.err { display: block; background: #fff1f0; color: var(--bad); }
+  .msg.ok { display: block; background: #e8f7ee; color: var(--ok); }
+  .hint { font-size: 12px; color: var(--muted); margin: 0 0 14px; }
+  pre { margin: 0; font-size: 11px; white-space: pre-wrap; max-width: 520px; color: #444; }
+</style>
+</head>
+<body>
+<header>
+  <h1>💰 Financeiro</h1>
+  <a href="/admin.html">← voltar ao admin</a>
+  <span class="who" id="who"></span>
+</header>
+<nav class="tabs">
+  <button data-tab="natures" class="on">Plano de contas</button>
+  <button data-tab="accounts">Contas financeiras</button>
+  <button data-tab="audit">Auditoria</button>
+</nav>
+<main>
+  <div class="msg" id="msg"></div>
+
+  <section class="panel" id="tab-natures">
+    <p class="hint">Toda conta a pagar, conta a receber e movimento vai ser classificado numa conta analítica deste plano. É daqui que sai a DRE. Nada é apagado: conta sem uso é desativada com motivo.</p>
+    <div class="row">
+      <label>Grupo (conta-mãe)<select id="n-parent"></select></label>
+      <label>Código<input id="n-code" placeholder="06.07" style="width:90px"></label>
+      <label style="flex:1;min-width:200px">Nome<input id="n-name" placeholder="ex: Seguro da loja"></label>
+      <label>Tipo<select id="n-kind"></select></label>
+      <label>Grupo da DRE<select id="n-dre"></select></label>
+      <button class="act" id="n-add">+ Adicionar conta</button>
+    </div>
+    <label style="flex-direction:row;align-items:center;gap:6px;margin-bottom:10px"><input type="checkbox" id="n-all" style="height:auto"> mostrar desativadas</label>
+    <table><thead><tr><th>Código</th><th>Nome</th><th>Tipo</th><th>Grupo da DRE</th><th></th></tr></thead><tbody id="n-body"></tbody></table>
+  </section>
+
+  <section class="panel" id="tab-accounts" style="display:none">
+    <p class="hint">Onde o dinheiro está: caixa de cada loja, cofre, bancos, Stone e PagBank. Os dados bancários só entram quando você cadastrar — o sistema não inventa.</p>
+    <div class="row">
+      <button class="act" id="a-seed">Criar contas padrão das lojas (caixa, Stone, PagBank)</button>
+    </div>
+    <div class="row">
+      <label>Tipo<select id="a-type"></select></label>
+      <label style="flex:1;min-width:180px">Nome<input id="a-name" placeholder="ex: Banco do Brasil - Bessa"></label>
+      <label>Loja<select id="a-store"></select></label>
+      <label>Banco<input id="a-bank" placeholder="001" style="width:70px"></label>
+      <label>Agência<input id="a-agency" style="width:90px"></label>
+      <label>Conta<input id="a-number" style="width:120px"></label>
+      <label>Saldo inicial (R$)<input id="a-open" placeholder="0,00" style="width:110px"></label>
+      <label>Data do saldo<input id="a-date" type="date"></label>
+      <button class="act" id="a-add">+ Adicionar conta</button>
+    </div>
+    <label style="flex-direction:row;align-items:center;gap:6px;margin-bottom:10px"><input type="checkbox" id="a-all" style="height:auto"> mostrar desativadas</label>
+    <table><thead><tr><th>Conta</th><th>Tipo</th><th>Loja</th><th>Banco / ag / conta</th><th class="num">Saldo inicial</th><th></th></tr></thead><tbody id="a-body"></tbody></table>
+  </section>
+
+  <section class="panel" id="tab-audit" style="display:none">
+    <p class="hint">Registro imutável de tudo que foi criado, alterado ou desativado no financeiro: quem, quando, antes e depois.</p>
+    <table><thead><tr><th>Quando</th><th>Quem</th><th>O quê</th><th>Motivo</th><th>Depois</th></tr></thead><tbody id="l-body"></tbody></table>
+  </section>
+</main>
+<script>
+(function () {
+  const TOKEN = localStorage.getItem('tc_admin_token');
+  if (!TOKEN) { location.href = '/admin.html'; return; }
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const brl = (c) => (Number(c || 0) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const KIND = { RECEITA: 'Receita', DESPESA: 'Despesa', TRANSFERENCIA: 'Fora do resultado' };
+  const TYPE = { CAIXA_LOJA: 'Caixa da loja', COFRE: 'Cofre', BANCO: 'Banco', ADQUIRENTE_STONE: 'Stone', PSP_PAGBANK: 'PagBank', TRANSITORIA: 'Transitória' };
+  let natures = [], accounts = [], stores = [];
+
+  async function api(path, method, body) {
+    const r = await fetch('/api/fin' + path, { method: method || 'GET', headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+    let data = {};
+    try { data = await r.json(); } catch (_) { data = { error: 'Resposta inválida do servidor' }; }
+    if (r.status === 401) { location.href = '/admin.html'; }
+    if (!r.ok) throw new Error(data.error || ('Erro ' + r.status));
+    return data;
+  }
+  function msg(text, ok) { const m = $('msg'); m.textContent = text; m.className = 'msg ' + (ok ? 'ok' : 'err'); clearTimeout(msg.t); msg.t = setTimeout(() => { m.className = 'msg'; }, 6000); }
+  async function run(fn) { try { await fn(); } catch (e) { msg(e.message, false); } }
+  function askReason(what) { const r = prompt('Motivo para ' + what + ':'); return r && r.trim() ? r.trim() : null; }
+
+  // ----- abas -----
+  document.querySelectorAll('nav.tabs button').forEach((b) => b.addEventListener('click', () => {
+    document.querySelectorAll('nav.tabs button').forEach((x) => x.classList.toggle('on', x === b));
+    ['natures', 'accounts', 'audit'].forEach((t) => { $('tab-' + t).style.display = t === b.dataset.tab ? '' : 'none'; });
+    if (b.dataset.tab === 'audit') run(loadAudit);
+  }));
+
+  // ----- plano de contas -----
+  async function loadNatures() {
+    const d = await api('/natures' + ($('n-all').checked ? '?all=1' : ''));
+    natures = d.natures;
+    $('n-kind').innerHTML = d.kinds.map((k) => '<option value="' + k + '">' + (KIND[k] || k) + '</option>').join('');
+    $('n-dre').innerHTML = d.dreGroups.map((g) => '<option>' + g + '</option>').join('');
+    const groups = natures.filter((n) => !n.analytic && n.active);
+    $('n-parent').innerHTML = '<option value="">(novo grupo de 1º nível)</option>' + groups.map((g) => '<option value="' + g.id + '">' + esc(g.code + ' ' + g.name) + '</option>').join('');
+    $('n-body').innerHTML = natures.map((n) => '<tr class="' + (n.analytic ? '' : 'group') + (n.active ? '' : ' off') + '">' +
+      '<td>' + esc(n.code) + '</td><td>' + esc(n.name) + (n.active ? '' : ' <span class="tag">desativada: ' + esc(n.inactiveReason || '') + '</span>') + '</td>' +
+      '<td>' + esc(KIND[n.kind] || n.kind) + '</td><td><span class="tag">' + esc(n.dreGroup) + '</span></td>' +
+      '<td class="num"><button class="sec" data-rename="' + n.id + '">Renomear</button> ' +
+      (n.active ? '<button class="sec" data-off="' + n.id + '">Desativar</button>' : '<button class="sec" data-on="' + n.id + '">Reativar</button>') + '</td></tr>').join('');
+  }
+  $('n-parent').addEventListener('change', () => {
+    const p = natures.find((n) => n.id === $('n-parent').value);
+    if (!p) return;
+    const used = natures.filter((n) => n.parentId === p.id).map((n) => Number(n.code.split('.').pop()));
+    const next = String((used.length ? Math.max(...used) : 0) + 1).padStart(2, '0');
+    $('n-code').value = p.code + '.' + next; $('n-kind').value = p.kind; $('n-dre').value = p.dreGroup;
+  });
+  $('n-all').addEventListener('change', () => run(loadNatures));
+  $('n-add').addEventListener('click', () => run(async () => {
+    await api('/natures', 'POST', { parentId: $('n-parent').value || null, code: $('n-code').value, name: $('n-name').value, kind: $('n-kind').value, dreGroup: $('n-dre').value });
+    $('n-name').value = ''; $('n-code').value = '';
+    msg('Conta adicionada', true); await loadNatures();
+  }));
+  $('n-body').addEventListener('click', (e) => {
+    const t = e.target;
+    if (t.dataset.rename) run(async () => { const n = natures.find((x) => x.id === t.dataset.rename); const name = prompt('Novo nome:', n.name); if (!name) return; await api('/natures/' + n.id, 'PATCH', { name }); msg('Nome alterado', true); await loadNatures(); });
+    if (t.dataset.off) run(async () => { const reason = askReason('desativar'); if (!reason) return; await api('/natures/' + t.dataset.off + '/deactivate', 'POST', { reason }); msg('Conta desativada', true); await loadNatures(); });
+    if (t.dataset.on) run(async () => { const reason = askReason('reativar'); if (!reason) return; await api('/natures/' + t.dataset.on + '/activate', 'POST', { reason }); msg('Conta reativada', true); await loadNatures(); });
+  });
+
+  // ----- contas financeiras -----
+  async function loadAccounts() {
+    const d = await api('/accounts' + ($('a-all').checked ? '?all=1' : ''));
+    accounts = d.accounts; stores = d.stores;
+    const storeName = (id) => { const s = stores.find((x) => x.id === id); return s ? (s.code + ' ' + s.name) : '—'; };
+    $('a-type').innerHTML = d.types.map((t) => '<option value="' + t + '">' + (TYPE[t] || t) + '</option>').join('');
+    $('a-store').innerHTML = '<option value="">Empresa toda</option>' + stores.filter((s) => s.active).map((s) => '<option value="' + s.id + '">' + esc(s.code + ' ' + s.name) + '</option>').join('');
+    $('a-body').innerHTML = accounts.map((a) => '<tr class="' + (a.active ? '' : 'off') + '"><td>' + esc(a.name) + (a.active ? '' : ' <span class="tag">desativada: ' + esc(a.inactiveReason || '') + '</span>') + '</td>' +
+      '<td><span class="tag">' + esc(TYPE[a.type] || a.type) + '</span></td><td>' + esc(storeName(a.storeId)) + '</td>' +
+      '<td>' + esc([a.bankCode, a.agency, a.accountNumber].filter(Boolean).join(' / ') || '—') + '</td>' +
+      '<td class="num">' + brl(a.openingBalanceCents) + '</td>' +
+      '<td class="num">' + (a.active ? '<button class="sec" data-off="' + a.id + '">Desativar</button>' : '<button class="sec" data-on="' + a.id + '">Reativar</button>') + '</td></tr>').join('') ||
+      '<tr><td colspan="6" class="hint">Nenhuma conta ainda. Use o botão "Criar contas padrão das lojas".</td></tr>';
+  }
+  $('a-all').addEventListener('change', () => run(loadAccounts));
+  $('a-seed').addEventListener('click', () => run(async () => { const d = await api('/accounts/seed-stores', 'POST', {}); msg(d.created ? d.created + ' contas criadas' : 'Todas as lojas já têm as contas padrão', true); await loadAccounts(); }));
+  $('a-add').addEventListener('click', () => run(async () => {
+    await api('/accounts', 'POST', { type: $('a-type').value, name: $('a-name').value, storeId: $('a-store').value || null, bankCode: $('a-bank').value, agency: $('a-agency').value, accountNumber: $('a-number').value, openingBalance: $('a-open').value, openingDate: $('a-date').value || null });
+    ['a-name', 'a-bank', 'a-agency', 'a-number', 'a-open', 'a-date'].forEach((id) => { $(id).value = ''; });
+    msg('Conta adicionada', true); await loadAccounts();
+  }));
+  $('a-body').addEventListener('click', (e) => {
+    const t = e.target;
+    if (t.dataset.off) run(async () => { const reason = askReason('desativar'); if (!reason) return; await api('/accounts/' + t.dataset.off + '/deactivate', 'POST', { reason }); msg('Conta desativada', true); await loadAccounts(); });
+    if (t.dataset.on) run(async () => { const reason = askReason('reativar'); if (!reason) return; await api('/accounts/' + t.dataset.on + '/activate', 'POST', { reason }); msg('Conta reativada', true); await loadAccounts(); });
+  });
+
+  // ----- auditoria -----
+  async function loadAudit() {
+    const d = await api('/audit?limit=200');
+    $('l-body').innerHTML = d.logs.map((l) => '<tr><td>' + esc(new Date(l.at).toLocaleString('pt-BR', { timeZone: 'America/Fortaleza' })) + '</td>' +
+      '<td>' + esc(l.actorName || l.actorId || '—') + '</td><td>' + esc(l.entity + ' · ' + l.action) + '</td><td>' + esc(l.reason || '') + '</td>' +
+      '<td><pre>' + esc(JSON.stringify(l.after || {}, null, 1)).slice(0, 600) + '</pre></td></tr>').join('') || '<tr><td colspan="5" class="hint">Sem registros.</td></tr>';
+  }
+
+  run(async () => {
+    const me = await api('/me');
+    $('who').textContent = me.isOwner ? 'Você é o dono: pode liberar pagamentos' : 'Perfil: ' + me.role;
+    await Promise.all([loadNatures(), loadAccounts()]);
+  });
+})();
+</script>
+</body>
+</html>
