@@ -777,6 +777,10 @@ app.get('/', (req, res, next) => {
   return res.sendFile(path.join(__dirname, '../public/praiadetambau.html'), { cacheControl: false });
 });
 
+// Domínio clubsportsetennis.com.br = mesmo sistema com a marca Sports & Tennis.
+const siteBrand = require('./services/siteBrand');
+siteBrand.mount(app);
+
 app.get(['/transferencia','/transferencia/'], (_req,res)=>{res.set('Cache-Control','no-store');res.sendFile(path.join(__dirname,'../public/transferencia.html'),{cacheControl:false});});
 app.use(express.static(path.join(__dirname, '../public'), {
   // ETag pro browser revalidar; imagens estáticas cacheiam normal,
@@ -1969,6 +1973,9 @@ app.get('/r/:code', async (req, res) => {
 
 // Fallback SPA → app cliente
 app.get('*', (req, res) => {
+  if (siteBrand.isSportsTennisHost(req)) {
+    try { return res.type('html').send(siteBrand.brandedIndexHtml()); } catch (_) { /* cai no padrão */ }
+  }
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
