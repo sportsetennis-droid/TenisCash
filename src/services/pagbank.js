@@ -68,17 +68,22 @@ async function getOrder(store, orderId) {
   return pbFetch(store, '/orders/' + encodeURIComponent(orderId), { method: 'GET' });
 }
 
-// Lê o pagamento PIX de um Order consultado. Retorna { paid, status, e2e, chargeId }.
+// Lê o pagamento PIX de um Order consultado. Retorna { paid, status, e2e, chargeId, paidCents }.
+// paidCents = valor efetivamente pago (amount.summary.paid; senão amount.value da cobrança paga).
 function readPixPayment(order) {
   const charges = (order && order.charges) || [];
   const paid = charges.find((c) => c.status === 'PAID') || null;
   const ref = paid || charges[0] || null;
   const pix = ref && ref.payment_method ? ref.payment_method.pix : null;
+  const amount = paid && paid.amount ? paid.amount : null;
+  const paidRaw = amount ? (amount.summary && amount.summary.paid != null ? amount.summary.paid : amount.value) : null;
+  const paidCents = paidRaw != null && Number.isFinite(Number(paidRaw)) ? Math.round(Number(paidRaw)) : null;
   return {
     paid: !!paid,
     status: ref ? ref.status : 'WAITING',
     e2e: pix && pix.end_to_end_id ? pix.end_to_end_id : null,
     chargeId: ref ? ref.id : null,
+    paidCents,
   };
 }
 

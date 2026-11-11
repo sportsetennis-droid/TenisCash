@@ -4,6 +4,7 @@ const multer = require('multer');
 const QRCode = require('qrcode');
 const { authMiddleware, storeScope, enforceStoreId, prisma } = require('../middleware');
 const pagbank = require('../services/pagbank');
+const salePaymentPlan = require('../services/salePaymentPlan');
 const { countedStoreIds } = require('../services/countedStock');
 const equipeReports = require('../services/equipeReports');
 const { SaleStockError, planSaleProductSize, applyStoreStockDelta } = require('../services/storeStockLedger');
@@ -1226,7 +1227,8 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
         try {
           const webhookUrl = (process.env.PUBLIC_BASE_URL || 'https://teniscash.com.br') + '/api/pagbank/webhook';
           const pix = await pagbank.createPixOrder(store, {
-            amountCents: Math.round(totalAmount * 100),
+            // Cobra só o que o cliente paga fora do TenisCash (total − TenisCash usado).
+            amountCents: salePaymentPlan.amountDueCents({ totalAmount, tcUsed: tcConsumed }),
             saleId: result.sale.id,
             customerName: customer?.name || null,
             customerTaxId: customer?.cpf || null,
@@ -1309,16 +1311,24 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
 
           // Emite pelo Fiscal Agent da loja (o PFX fica NA loja; o central no Railway não tem o certificado)
           const agentClient = require('../services/fiscalAgentClient');
-          const r = await agentClient.emitNFCe(store, {
-            issuer,
-            items: fiscalItems,
-            payment: {
-              tPag, valor: totalAmount,
+          // Parte paga com TenisCash: tPag 19 + forma principal pela diferença quando a
+          // Config 'fin_cashback_nfce_mode' = 'tpag19' (payments[] → agente >= 2.1).
+          const payPlan = salePaymentPlan.buildNfcePayments({
+            totalAmount,
+            tcUsed: tcConsumed,
+            mode: await salePaymentPlan.loadCashbackNfceMode(prisma),
+            primary: {
+              tPag,
               acquirerKey,
               tBand: req.body.cardBrand,
               cAut: req.body.cardAuthCode,
               tpIntegra: req.body.tpIntegra || 2,
             },
+          });
+          const r = await agentClient.emitNFCe(store, {
+            issuer,
+            items: fiscalItems,
+            ...(payPlan.payments ? { payments: payPlan.payments } : { payment: payPlan.payment }),
             customer: _docCliOk ? { cpfCnpj: _docCli, name: req.body.customerCpfName || null } : undefined,
             nNF,
           });
