@@ -42,7 +42,7 @@ async function deliverCupom(doc, phone, opts = {}) {
     try {
       await opts.prisma.fiscalDocument.update({
         where: { id: doc.id },
-        data: { response: { ...(doc.response || {}), waSent: true, waTo: ph, waVia: via, waAt: new Date().toISOString() } },
+        data: { response: { ...(doc.response || {}), waSent: true, waTo: ph, waVia: via, waAt: new Date().toISOString(), waSource: opts.source || 'pdv' } },
       });
     } catch (e) { /* flag é best-effort */ }
   }

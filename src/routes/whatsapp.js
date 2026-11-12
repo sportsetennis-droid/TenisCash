@@ -9,6 +9,7 @@ const { handleBarataoWebhook, INSTANCE: BARATAO_INSTANCE } = require('../service
 const { handleMetaApsWebhook, INSTANCE: METAAPS_INSTANCE } = require('../services/metaApsAttendant');
 const { captureEvolutionMessages } = require('../services/whatsappInbox');
 const { STORE_ARCHIVE } = require('../services/whatsappStoreArchive');
+const waFunctions = require('../services/whatsappFunctions');
 
 const router = express.Router();
 const DEFAULT_VERIFY_TOKEN = 'teniscash-whatsapp-webhook-2026';
@@ -153,6 +154,10 @@ router.post('/evolution', async (req, res) => {
       }
       return;
     }
+
+    // FUNÇÕES PELO WHATSAPP (2ª via do cupom, menu...): o cliente pede, o sistema
+    // roda e entrega aqui mesmo. Vem antes da IA e funciona mesmo com a IA desligada.
+    if (!isGroup && await waFunctions.tryHandle({ phone, text, pushName })) return;
 
     // No grupo, o robô SÓ responde quando for MARCADO (@). Senão fica em silêncio (só escuta).
     // (dono 2026-06-19: a IA respondia conversa interna; agora só fala se chamarem ela com @)
