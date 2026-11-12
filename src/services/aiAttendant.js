@@ -50,7 +50,7 @@ function isEnabled() {
 // "quero que deixe a IA dominar tudo... com apenas um comando quero que desative".
 // O dono manda "IA OFF" / "IA ON" do número dele; fica salvo no banco
 // (Config 'wa_robo_st') e VENCE o env AI_ATTENDANT_ENABLED só pro perfil 'st'.
-// null = nunca mexeu -> segue o env.
+// null = nunca mexeu -> LIGADO (dono: "deixe a IA dominar tudo"); só o "IA OFF" do dono desliga.
 // ---------------------------------------------------------------------
 const ROBO_KEY = 'wa_robo_st';
 let _roboOverride = null; // true | false | null
@@ -73,12 +73,12 @@ async function setRoboSwitch(on) {
 // Robô do número principal ligado? (menu + IA)
 async function isMainRoboOn() {
   const o = await refreshRoboSwitch();
-  return o === null ? isEnabled() : o;
+  return o === null ? true : o;
 }
 
 // Kill switch so do Baratao (sobre o geral). Se o geral estiver off, tudo off.
 function isProfileEnabled(profileKey) {
-  if (profileKey === 'st' && _roboOverride !== null) return _roboOverride;
+  if (profileKey === 'st') return _roboOverride === null ? true : _roboOverride;
   if (!isEnabled()) return false;
   if (profileKey === 'baratao') {
     return String(process.env.AI_ATTENDANT_BARATAO_ENABLED || 'true').toLowerCase() !== 'false';
