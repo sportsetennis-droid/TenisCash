@@ -3,7 +3,8 @@ const crypto = require('crypto');
 const { sendCustomMessage, sendEvolutionRaw, isMetaWhatsAppConfigured, isEvolutionConfigured, formatPhoneBR, getMetaWhatsAppConfigSummary, setMetaWhatsAppCredentials } = require('../whatsapp');
 const { authMiddleware, adminMiddleware } = require('../middleware');
 const { saveMetaWhatsAppCredentials } = require('../services/whatsappCredentials');
-const { getAttendantReply, isEnabled: attendantEnabled } = require('../services/aiAttendant');
+const { getAttendantReply, isEnabled: attendantEnabled, isMainRoboOn, setRoboSwitch } = require('../services/aiAttendant');
+const { CEO } = require('../config/lojasContato');
 const { handleMetaWebhook, INSTANCE: METAFARD_INSTANCE } = require('../services/metaFardamentosAttendant');
 const { handleBarataoWebhook, INSTANCE: BARATAO_INSTANCE } = require('../services/barataoAttendant');
 const { handleMetaApsWebhook, INSTANCE: METAAPS_INSTANCE } = require('../services/metaApsAttendant');
@@ -23,6 +24,19 @@ function alreadyHandled(id) {
   if (t && now - t < SEEN_TTL_MS) return true;
   seenMsgIds.set(id, now);
   return false;
+}
+
+// COMANDO DO DONO no número principal: liga/desliga o robô (menu + IA) com uma
+// mensagem. Só vale vindo do número do dono (config/lojasContato CEO.whatsapp).
+function isOwnerPhone(phone) {
+  return waFunctions.phoneVariants(phone).includes(String(CEO.whatsapp).replace(/\D/g, ''));
+}
+function parseRoboCmd(text) {
+  const t = String(text || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[!.]+$/, '').trim();
+  if (/^(ia|robo) ?(off|desligar|desliga|desligada)$|^(desligar|desliga) (a )?(ia|robo)$/.test(t)) return 'off';
+  if (/^(ia|robo) ?(on|ligar|liga|ligada)$|^(ligar|liga) (a )?(ia|robo)$/.test(t)) return 'on';
+  if (/^(ia|robo) ?(status|\?)$/.test(t)) return 'status';
+  return null;
 }
 
 const router = express.Router();
@@ -176,9 +190,22 @@ router.post('/evolution', async (req, res) => {
     const m = data.message || {};
     const text = (m.conversation || (m.extendedTextMessage && m.extendedTextMessage.text) || '').trim();
 
+    // DONO: "IA OFF" / "IA ON" / "IA STATUS" — funciona com o robô ligado ou desligado.
+    const roboCmd = !isGroup && text && isOwnerPhone(phone) ? parseRoboCmd(text) : null;
+    if (roboCmd) {
+      if (roboCmd !== 'status') await setRoboSwitch(roboCmd === 'on');
+      const on = await isMainRoboOn();
+      console.log(`[whatsapp/evolution] dono: robo ${roboCmd} -> ${on ? 'LIGADO' : 'DESLIGADO'}`);
+      await sendToClient(on
+        ? '🤖 *IA LIGADA* no WhatsApp da Sports & Tennis 🧡\nEla responde todos os clientes (menu + vendas com o estoque) e passa pro vendedor de turno.\n\nPra desligar: *IA OFF*'
+        : '⏸️ *IA DESLIGADA* no WhatsApp da Sports & Tennis.\nNenhuma resposta automática: a equipe atende na mão.\n\nPra ligar de novo: *IA ON*').catch(() => {});
+      return;
+    }
+    const roboOn = await isMainRoboOn();
+
     if (!text) {
       // Em grupo, ignora midia em silencio (nao poluir). No privado, pede texto.
-      if (!isGroup && attendantEnabled()) {
+      if (!isGroup && roboOn) {
         await sendToClient('Oi! No momento consigo te atender por *texto*. Pode escrever o que voce procura? 🙂').catch(() => {});
       }
       return;
@@ -186,7 +213,7 @@ router.post('/evolution', async (req, res) => {
 
     // FUNÇÕES PELO WHATSAPP (2ª via do cupom, menu...): o cliente pede, o sistema
     // roda e entrega aqui mesmo. Vem antes da IA e funciona mesmo com a IA desligada.
-    if (!isGroup && await waFunctions.tryHandle({ phone, text, pushName, replyJid })) return;
+    if (!isGroup && roboOn && await waFunctions.tryHandle({ phone, text, pushName, replyJid })) return;
 
     // No grupo, o robô SÓ responde quando for MARCADO (@). Senão fica em silêncio (só escuta).
     // (dono 2026-06-19: a IA respondia conversa interna; agora só fala se chamarem ela com @)
@@ -201,7 +228,7 @@ router.post('/evolution', async (req, res) => {
       }
     }
 
-    if (!attendantEnabled()) {
+    if (!roboOn) {
       console.log(`[whatsapp/evolution] IA desligada — ignorando msg de ${phone}`);
       return;
     }

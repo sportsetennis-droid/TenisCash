@@ -45,8 +45,40 @@ function isEnabled() {
   return String(process.env.AI_ATTENDANT_ENABLED || 'true').toLowerCase() !== 'false';
 }
 
+// ---------------------------------------------------------------------
+// INTERRUPTOR DO DONO (número principal Sports & Tennis) — dono 2026-11-12:
+// "quero que deixe a IA dominar tudo... com apenas um comando quero que desative".
+// O dono manda "IA OFF" / "IA ON" do número dele; fica salvo no banco
+// (Config 'wa_robo_st') e VENCE o env AI_ATTENDANT_ENABLED só pro perfil 'st'.
+// null = nunca mexeu -> segue o env.
+// ---------------------------------------------------------------------
+const ROBO_KEY = 'wa_robo_st';
+let _roboOverride = null; // true | false | null
+let _roboLoadedAt = 0;
+async function refreshRoboSwitch(force = false) {
+  if (!force && Date.now() - _roboLoadedAt < 60 * 1000) return _roboOverride;
+  try {
+    const row = await prisma.config.findUnique({ where: { key: ROBO_KEY } });
+    _roboOverride = row ? row.value === 'on' : null;
+    _roboLoadedAt = Date.now();
+  } catch (e) { /* banco fora: mantém o último valor */ }
+  return _roboOverride;
+}
+async function setRoboSwitch(on) {
+  const value = on ? 'on' : 'off';
+  await prisma.config.upsert({ where: { key: ROBO_KEY }, update: { value }, create: { id: ROBO_KEY, key: ROBO_KEY, value } });
+  _roboOverride = !!on;
+  _roboLoadedAt = Date.now();
+}
+// Robô do número principal ligado? (menu + IA)
+async function isMainRoboOn() {
+  const o = await refreshRoboSwitch();
+  return o === null ? isEnabled() : o;
+}
+
 // Kill switch so do Baratao (sobre o geral). Se o geral estiver off, tudo off.
 function isProfileEnabled(profileKey) {
+  if (profileKey === 'st' && _roboOverride !== null) return _roboOverride;
   if (!isEnabled()) return false;
   if (profileKey === 'baratao') {
     return String(process.env.AI_ATTENDANT_BARATAO_ENABLED || 'true').toLowerCase() !== 'false';
@@ -643,4 +675,4 @@ function getHotLeads(minScore = 3) {
   return leads.sort((a, b) => b.score - a.score || b.ratedAt - a.ratedAt);
 }
 
-module.exports = { getAttendantReply, isEnabled, isProfileEnabled, clearSession, ehBaratao, PROFILES, getHotLeads };
+module.exports = { getAttendantReply, isEnabled, isProfileEnabled, clearSession, ehBaratao, PROFILES, getHotLeads, isMainRoboOn, setRoboSwitch, refreshRoboSwitch };
