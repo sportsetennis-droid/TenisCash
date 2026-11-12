@@ -1,0 +1,16 @@
+{
+  "name": "Club Sports & Tennis",
+  "short_name": "Club S&T",
+  "description": "Jogos, treinos e produção do atleta no Club Sports & Tennis.",
+  "start_url": "/club.html",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#08080A",
+  "theme_color": "#08080A",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "/brand/sports-tennis-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/brand/sports-tennis-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
