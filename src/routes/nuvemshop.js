@@ -18,6 +18,102 @@ adminRouter.use(adminMiddleware);
 adminRouter.get('/stock-status', (_req, res) => {
   res.json(require('../services/nuvemshopStockCron').getNuvemshopCronState());
 });
+// ── TEMPORÁRIO (2026-11-12) — teste da baixa de pedido Nuvemshop com pedido SIMULADO.
+// Chama a MESMA applyOrderStock do webhook, mas sem criar Sale/NFe/cashback/rádio.
+// action=sell (baixa 1 un do barcode) | cancel (devolve) | push (manda estoque do card
+// pra Nuvemshop) | cleanup (apaga o mapping do pedido simulado). REMOVER depois do teste.
+const STOCKTEST_ID = 'teste-baixa-ns-20261112';
+adminRouter.post('/_stocktest', async (req, res) => {
+  try {
+    const action = String(req.query.action || '');
+    const barcode = String(req.query.barcode || '');
+    const { applyOrderStock } = require('../services/nuvemshopStockSafety');
+    let result = null;
+    if (action === 'sell' || action === 'cancel') {
+      if (!barcode) return res.status(400).json({ error: 'barcode obrigatório' });
+      result = await applyOrderStock(prisma, {
+        id: STOCKTEST_ID,
+        number: 'TESTE-BAIXA',
+        status: action === 'cancel' ? 'cancelled' : 'open',
+        payment_status: 'paid',
+        products: [{ sku: barcode, quantity: 1 }],
+      }, { allowLegacy: true });
+    } else if (action === 'push') {
+      result = await handlers.pushStockUpdate(String(req.query.productId || ''));
+    } else if (action === 'cleanup') {
+      result = await prisma.nuvemshopOrderMapping.deleteMany({ where: { nuvemshopOrderId: STOCKTEST_ID } });
+    } else if (action !== 'status') {
+      return res.status(400).json({ error: 'action inválida' });
+    }
+    const size = barcode ? await prisma.productSize.findFirst({
+      where: { barcode },
+      include: { storeStocks: { include: { store: { select: { code: true } } } } },
+    }) : null;
+    const mapping = await prisma.nuvemshopOrderMapping.findUnique({ where: { nuvemshopOrderId: STOCKTEST_ID } });
+    res.json({
+      result,
+      size: size ? { size: size.size, comprado: size.stock } : null,
+      stock: (size?.storeStocks || []).map((row) => ({ loja: row.store?.code, stock: row.stock })),
+      decremented: mapping?.payload?._stockDecremented === true,
+      restored: mapping?.payload?._stockRestored === true,
+      allocations: mapping?.payload?._stockAllocations || null,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── TEMPORÁRIO (2026-11-12) — limpeza de categorias da Nuvemshop (loja no limite de
+// 1000). GET lista TODAS (id, parent, nome, filhos). POST apaga só os ids enviados
+// que estiverem VAZIOS (0 produtos) e SEM subcategoria, conferindo na Nuvemshop
+// antes de cada DELETE. Sem ?confirm=APAGAR = simulação. REMOVER depois de usar.
+adminRouter.get('/_categories-all', async (_req, res) => {
+  try {
+    const conn = await handlers.getConnection();
+    const cats = await ns.fetchAllPages(conn, '/categories?fields=id,parent,name,subcategories', { perPage: 200, max: 5000 });
+    res.json({ total: cats.length, categories: cats.map((c) => ({
+      id: c.id, parent: c.parent || null, name: c.name?.pt || c.name, children: (c.subcategories || []).length,
+    })) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+const catCleanState = { running: false };
+adminRouter.get('/_categories-clean', (_req, res) => res.json(catCleanState));
+adminRouter.post('/_categories-clean', express.json({ limit: '1mb' }), async (req, res) => {
+  if (catCleanState.running) return res.status(409).json(catCleanState);
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
+  if (!ids.length) return res.status(400).json({ error: 'ids obrigatório' });
+  const dry = req.query.confirm !== 'APAGAR';
+  const conn = await handlers.getConnection();
+  for (const k of Object.keys(catCleanState)) delete catCleanState[k];
+  Object.assign(catCleanState, { running: true, dry, total: ids.length, checked: 0, deleted: 0, skippedNotEmpty: 0, skippedHasChildren: 0, failed: 0, errors: [] });
+  res.status(202).json(catCleanState);
+  (async () => {
+    for (const id of ids) {
+      catCleanState.checked++;
+      try {
+        const cat = await ns.nuvemshopApi(conn, 'GET', `/categories/${id}?fields=id,subcategories`);
+        if ((cat?.subcategories || []).length) { catCleanState.skippedHasChildren++; continue; }
+        let products = [];
+        try {
+          products = await ns.nuvemshopApi(conn, 'GET', `/products?category_id=${id}&per_page=1&fields=id`);
+        } catch (e) {
+          if (!/404/.test(String(e.message))) throw e; // 404 = nenhum produto
+        }
+        if (Array.isArray(products) && products.length) { catCleanState.skippedNotEmpty++; continue; }
+        if (!dry) await ns.nuvemshopApi(conn, 'DELETE', `/categories/${id}`);
+        catCleanState.deleted++;
+      } catch (e) {
+        catCleanState.failed++;
+        if (catCleanState.errors.length < 20) catCleanState.errors.push(`${id}: ${String(e.message).slice(0, 160)}`);
+      }
+    }
+  })()
+    .catch((e) => { catCleanState.error = e.message; })
+    .finally(() => { catCleanState.running = false; });
+});
+
 adminRouter.post('/reconcile-stock', (_req, res) => {
   const service = require('../services/nuvemshopStockCron');
   if (service.getNuvemshopCronState().running) return res.status(409).json({ error: 'Sincronização já em execução' });

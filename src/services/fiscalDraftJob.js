@@ -90,6 +90,16 @@ async function processFiscalDrafts() {
           });
           failed++; continue;
         }
+        // Pedido/venda CANCELADO antes da emissão → NUNCA emitir NFe (2026-11-12).
+        // Sem isto, um pedido Nuvemshop cancelado dentro da janela de 60 min virava
+        // NFe autorizada na SEFAZ mesmo assim.
+        if (sale.status === 'cancelled') {
+          await prisma.fiscalDocument.update({
+            where: { id: doc.id },
+            data: { status: 'cancelled', rejectReason: 'Venda cancelada antes da emissão — NFe não emitida' },
+          });
+          continue;
+        }
 
         // IDEMPOTÊNCIA — se já há OUTRA NFE autorizada pra essa mesma venda/pedido,
         // descarta o draft (cancela duplicidade) e não emite de novo.
