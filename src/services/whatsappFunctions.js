@@ -375,6 +375,16 @@ async function tryHandle({ phone, text, pushName, replyJid = null }) {
     const s = getState(phone);
     if (s && await handleState(s, { phone, t, text, pushName })) return true;
 
+    // Número 1–7 sozinho = opção do menu, MESMO sem estado guardado. O estado vive
+    // na memória do servidor: um reinício (deploy) entre o "oi" e o número apagava
+    // e o cliente ficava sem resposta.
+    const lone = !s && (t.match(/^([1-7])[.)!]?$/) || [])[1];
+    if (lone && OPCOES[Number(lone)]) {
+      console.log('[wa-funcoes] ' + phone + ' opcao ' + lone + ' (sem estado)');
+      await OPCOES[Number(lone)]({ phone, text, pushName });
+      return true;
+    }
+
     for (const f of FUNCTIONS) {
       if (f.match(t)) {
         console.log('[wa-funcoes] ' + phone + ' pediu: ' + f.name);
