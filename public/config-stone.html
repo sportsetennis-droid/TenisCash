@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Maquininha Stone</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f2f2f7; color: #1d1d1f;
+         padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+  .wrap { max-width: 480px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 20px; margin: 6px 0 2px; }
+  .sub { color: #6e6e73; font-size: 13px; margin-bottom: 14px; line-height: 1.45; }
+  .card { background: #fff; border-radius: 14px; padding: 16px; margin-bottom: 14px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+  .store-name { font-weight: 800; font-size: 16px; }
+  .store-code { color: #8e8e93; font-size: 12px; font-weight: 600; }
+  label { display: block; font-size: 11px; font-weight: 700; color: #6e6e73; letter-spacing: .5px; margin: 12px 0 4px; text-transform: uppercase; }
+  input[type=text], input[type=password] { width: 100%; min-height: 44px; padding: 12px; border: 1px solid #d1d1d6; border-radius: 10px; font-size: 15px; }
+  .row { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+  .row label { margin: 0; text-transform: none; font-size: 14px; color: #1d1d1f; font-weight: 600; }
+  .toggle { width: 52px; height: 30px; border-radius: 16px; background: #d1d1d6; position: relative; flex: none; cursor: pointer; transition: .15s; }
+  .toggle.on { background: #34c759; }
+  .toggle::after { content: ''; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; transition: .15s; }
+  .toggle.on::after { left: 25px; }
+  .btn { width: 100%; min-height: 44px; padding: 14px; border: none; border-radius: 12px; background: #0a843d; color: #fff; font-weight: 800; font-size: 15px; margin-top: 14px; cursor: pointer; }
+  .btn.sec { background: #e5e5ea; color: #1d1d1f; margin-top: 8px; }
+  .btn:disabled { opacity: .5; }
+  .status { font-size: 13px; margin-top: 8px; font-weight: 700; word-break: break-word; }
+  .pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; }
+  .pill.on { background: #e3f7e9; color: #0a843d; }
+  .pill.off { background: #f2f2f7; color: #8e8e93; }
+  .hint { font-size: 11px; color: #8e8e93; margin-top: 4px; line-height: 1.4; }
+  .hook { font-family: monospace; font-size: 11px; background: #f2f2f7; padding: 8px; border-radius: 8px; word-break: break-all; margin-top: 4px; }
+  .warn { background: #fff4e5; border: 1px solid #ffd9a8; color: #8a5a00; padding: 10px; border-radius: 10px; font-size: 12px; margin-bottom: 14px; line-height: 1.45; }
+  ol { padding-left: 18px; margin: 6px 0 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Maquininha Stone integrada</h1>
+  <div class="sub">A venda vai sozinha do sistema pra maquininha. Quando o cliente paga, o cupom sai sozinho com bandeira e autorização.</div>
+  <div class="warn">
+    <b>O que a Stone precisa liberar antes:</b>
+    <ol>
+      <li>Ativar o <b>Connect Stone</b> na sua conta (fale com seu gerente Stone ou cadastre em partner.stone.com.br).</li>
+      <li>Pegar a <b>Secret Key</b> (sk_…) de cada loja no Pagar.me → Desenvolvimento → Chaves.</li>
+      <li>Pegar o <b>ServiceRefererName</b> (ID de parceiro) com a Stone.</li>
+      <li>Colar o <b>endereço do webhook</b> de cada loja no Pagar.me → Configurações → Webhooks (eventos charge.paid e charge.refunded).</li>
+    </ol>
+    Nunca mande a chave em conversa — só aqui.
+  </div>
+  <div id="list">Carregando…</div>
+</div>
+<script>
+const TOKEN = localStorage.getItem('tc_admin_token') || '';
+async function api(path, opts = {}) {
+  const r = await fetch(path, { ...opts, headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json', ...(opts.headers || {}) } });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+  return d;
+}
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+let ENV_REF = false;
+function storeCard(s) {
+  return `<div class="card" data-id="${esc(s.id)}">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <div><div class="store-name">${esc(s.name)}</div><div class="store-code">${esc(s.code)}</div></div>
+      <span class="pill ${s.enabled ? 'on' : 'off'}">${s.enabled ? (s.ready ? 'LIGADA' : 'LIGADA · falta ID parceiro') : 'desligada'}</span>
+    </div>
+    <label>Secret Key ${s.hasKey ? '(salva: ' + esc(s.keyMasked) + ')' : ''}</label>
+    <input type="password" class="f-key" placeholder="${s.hasKey ? 'deixe em branco pra manter a atual' : 'sk_...'}" autocomplete="off">
+    <label>ServiceRefererName (ID de parceiro Stone)</label>
+    <input type="text" class="f-ref" value="${esc(s.serviceRefererName)}" placeholder="${ENV_REF ? 'usando o padrão do servidor' : 'fornecido pela Stone'}">
+    <label>Número de série da maquininha</label>
+    <input type="text" class="f-serial" value="${esc(s.deviceSerials)}" placeholder="ex: 6C582505 (várias: separe por vírgula)">
+    <div class="hint">Está na etiqueta atrás da maquininha (S/N). A primeira da lista recebe as vendas.</div>
+    ${s.webhookUrl ? `<label>Endereço do webhook (cole no Pagar.me)</label><div class="hook">${esc(s.webhookUrl)}</div>` : '<div class="hint">O endereço do webhook aparece depois de salvar.</div>'}
+    <div class="row"><div class="toggle ${s.enabled ? 'on' : ''} f-enabled" onclick="this.classList.toggle('on')"></div><label>Mandar vendas de cartão/PIX pra maquininha</label></div>
+    <button class="btn" onclick="save('${esc(s.id)}', this)">Salvar</button>
+    <button class="btn sec" onclick="testKey('${esc(s.id)}', this)">Testar chave</button>
+    <div class="status"></div>
+  </div>`;
+}
+async function load() {
+  const el = document.getElementById('list');
+  if (!TOKEN) { el.innerHTML = '<div class="card">Faça login no <b>/admin.html</b> primeiro (neste navegador) e recarregue.</div>'; return; }
+  try {
+    const d = await api('/api/stone/admin/stores');
+    ENV_REF = !!d.envServiceReferer;
+    el.innerHTML = (d.stores || []).map(storeCard).join('') || '<div class="card">Nenhuma loja.</div>';
+  } catch (e) { el.innerHTML = '<div class="card">Erro: ' + esc(e.message) + '</div>'; }
+}
+async function save(id, btn) {
+  const card = btn.closest('.card');
+  const st = card.querySelector('.status');
+  const body = {
+    serviceRefererName: card.querySelector('.f-ref').value.trim(),
+    deviceSerials: card.querySelector('.f-serial').value.trim(),
+    enabled: card.querySelector('.f-enabled').classList.contains('on'),
+  };
+  const key = card.querySelector('.f-key').value.trim();
+  if (key) body.secretKey = key;
+  btn.disabled = true; btn.textContent = 'Salvando…'; st.textContent = '';
+  try {
+    const r = await api('/api/stone/admin/stores/' + id, { method: 'POST', body: JSON.stringify(body) });
+    card.outerHTML = storeCard(r.store);
+    const fresh = document.querySelector('.card[data-id="' + CSS.escape(id) + '"] .status');
+    if (fresh) { fresh.style.color = '#0a843d'; fresh.textContent = '✅ Salvo.'; }
+  } catch (e) { st.style.color = '#d70015'; st.textContent = 'Erro: ' + e.message; btn.disabled = false; btn.textContent = 'Salvar'; }
+}
+async function testKey(id, btn) {
+  const st = btn.closest('.card').querySelector('.status');
+  btn.disabled = true; st.textContent = 'Testando…'; st.style.color = '#6e6e73';
+  try { const r = await api('/api/stone/admin/stores/' + id + '/test', { method: 'POST', body: '{}' }); st.style.color = '#0a843d'; st.textContent = '✅ ' + r.message; }
+  catch (e) { st.style.color = '#d70015'; st.textContent = 'Erro: ' + e.message; }
+  finally { btn.disabled = false; }
+}
+load();
+</script>
+</body>
+</html>

@@ -82,6 +82,7 @@ const infoproductsRoutes = require('./routes/infoproducts');
 const desapegaRoutes = require('./routes/desapega');
 const mfRoutes = require('./routes/mf'); // Meta Fardamentos — sistema proprio (ERP/CRM/estoque/ponto)
 const pagbankRoutes = require('./routes/pagbank');
+const stoneRoutes = require('./routes/stone');
 const catalogEngineRoutes = require('./routes/catalogEngine');
 const servicesRoutes = require('./routes/services');
 const servicesPackagesRouter = require('./routes/services-packages');
@@ -583,6 +584,7 @@ app.use('/api/infoproducts', infoproductsRoutes);
 app.use('/api/desapega', desapegaRoutes);
 app.use('/api/mf', mfRoutes); // Meta Fardamentos — API isolada (so tabelas Mf*)
 app.use('/api/pagbank', pagbankRoutes); // webhook PIX PagBank + status (fora de /api/admin)
+app.use('/api/stone', stoneRoutes); // maquininha Stone integrada: webhook + status + config (fora de /api/admin)
 app.use('/api/services', servicesRoutes); // agendamento + marketplace + T$ no serviço
 app.use('/api/services', servicesPackagesRouter);
 app.use('/api/services', servicesFinanceRoutes);
