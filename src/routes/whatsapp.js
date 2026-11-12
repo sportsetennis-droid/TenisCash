@@ -11,6 +11,20 @@ const { captureEvolutionMessages } = require('../services/whatsappInbox');
 const { STORE_ARCHIVE } = require('../services/whatsappStoreArchive');
 const waFunctions = require('../services/whatsappFunctions');
 
+// Anti-duplicata do webhook: id da mensagem -> quando foi processada (10 min).
+const SEEN_TTL_MS = 10 * 60 * 1000;
+const seenMsgIds = new Map();
+function alreadyHandled(id) {
+  const now = Date.now();
+  if (seenMsgIds.size > 2000) {
+    for (const [k, t] of seenMsgIds) if (now - t > SEEN_TTL_MS) seenMsgIds.delete(k);
+  }
+  const t = seenMsgIds.get(id);
+  if (t && now - t < SEEN_TTL_MS) return true;
+  seenMsgIds.set(id, now);
+  return false;
+}
+
 const router = express.Router();
 const DEFAULT_VERIFY_TOKEN = 'teniscash-whatsapp-webhook-2026';
 
@@ -133,6 +147,14 @@ router.post('/evolution', async (req, res) => {
     const jid = key.remoteJid || '';
     if (!jid || jid === 'status@broadcast') return;
 
+    // A Evolution às vezes entrega a MESMA mensagem 2x no webhook -> o cliente
+    // recebia a resposta dobrada. Cada mensagem tem um id único (key.id):
+    // já processado nos últimos 10 min = ignora.
+    if (key.id && alreadyHandled(instance + ':' + key.id)) {
+      console.log('[whatsapp/evolution] entrega repetida ignorada', key.id);
+      return;
+    }
+
     const VENDEDORES_GROUP = process.env.EVOLUTION_GRUPO_VENDEDORES || '120363418791122078@g.us';
     const isGroup = jid.endsWith('@g.us');
     // Atende SO o grupo de vendedores; qualquer outro grupo e ignorado
@@ -140,8 +162,15 @@ router.post('/evolution', async (req, res) => {
 
     // Em grupo quem mandou vem em key.participant; no privado e o proprio remoteJid
     const senderJid = isGroup ? (key.participant || '') : jid;
-    const phone = (senderJid || jid).replace(/[^0-9]/g, '');
+    // WhatsApp "@lid": o remoteJid traz um ID INTERNO, não o telefone. O número real
+    // vem em remoteJidAlt / senderPn (Evolution v2). Sem ele, respondemos no próprio
+    // JID (sendEvolutionRaw) — senão a resposta ia pra um "telefone" inexistente.
+    const altJid = String(key.remoteJidAlt || key.senderPn || data.senderPn || (isGroup ? key.participantAlt : '') || '');
+    const isLid = /@lid$/i.test(senderJid);
+    const phone = ((isLid && altJid) ? altJid : (senderJid || jid)).replace(/[^0-9]/g, '');
     if (!phone) return;
+    const replyJid = (!isGroup && isLid && !altJid) ? jid : null;
+    const sendToClient = (msg) => (replyJid ? sendEvolutionRaw(replyJid, msg) : sendCustomMessage(phone, msg));
     const pushName = data.pushName || (isGroup ? 'colega' : 'cliente');
 
     const m = data.message || {};
@@ -150,14 +179,14 @@ router.post('/evolution', async (req, res) => {
     if (!text) {
       // Em grupo, ignora midia em silencio (nao poluir). No privado, pede texto.
       if (!isGroup && attendantEnabled()) {
-        await sendCustomMessage(phone, 'Oi! No momento consigo te atender por *texto*. Pode escrever o que voce procura? 🙂').catch(() => {});
+        await sendToClient('Oi! No momento consigo te atender por *texto*. Pode escrever o que voce procura? 🙂').catch(() => {});
       }
       return;
     }
 
     // FUNÇÕES PELO WHATSAPP (2ª via do cupom, menu...): o cliente pede, o sistema
     // roda e entrega aqui mesmo. Vem antes da IA e funciona mesmo com a IA desligada.
-    if (!isGroup && await waFunctions.tryHandle({ phone, text, pushName })) return;
+    if (!isGroup && await waFunctions.tryHandle({ phone, text, pushName, replyJid })) return;
 
     // No grupo, o robô SÓ responde quando for MARCADO (@). Senão fica em silêncio (só escuta).
     // (dono 2026-06-19: a IA respondia conversa interna; agora só fala se chamarem ela com @)
@@ -199,7 +228,7 @@ router.post('/evolution', async (req, res) => {
       return;
     }
     if (result.ok && result.reply) {
-      const r = isGroup ? await sendEvolutionRaw(jid, result.reply) : await sendCustomMessage(phone, result.reply);
+      const r = isGroup ? await sendEvolutionRaw(jid, result.reply) : await sendToClient(result.reply);
       console.log(`[whatsapp/evolution] resposta IA -> ${isGroup ? jid : phone}: ${r.ok ? 'OK' : 'FAIL ' + r.error}`);
     } else if (!result.skip) {
       console.warn(`[whatsapp/evolution] sem resposta p/ ${phone}:`, result.error || 'desconhecido');
@@ -208,6 +237,7 @@ router.post('/evolution', async (req, res) => {
     console.error('[whatsapp/evolution] erro:', err.message);
   }
 });
+
 
 router.get('/status', authMiddleware, adminMiddleware, async (_req, res) => {
   const metaConnection = await getMetaWhatsAppConfigSummary();
