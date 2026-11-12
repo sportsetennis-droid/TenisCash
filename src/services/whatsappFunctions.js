@@ -158,12 +158,62 @@ const SEGUNDA_VIA = {
     return docWord && intent;
   },
   async run({ phone, pushName }) {
-    setState(phone, 'via_data', {});
-    return reply(phone,
-      'Claro' + oiNome(pushName) + '! Vou achar seu cupom 🧾\n\n' +
-      '📅 *Qual foi a data da compra?*\n(ex: 10/11, hoje, ontem)');
+    // 1) Tem CADASTRO TenisCash com esse WhatsApp? Mostra as compras do cadastro
+    //    e o cliente CONFIRMA qual é (dono 2026-11-12: "se tiver o cadastro da pessoa
+    //    ... já puxar o cupom que ela quer"). Nada sai sem ele escolher.
+    const docs = await cuponsDoCadastro(phone).catch((e) => { console.warn('[wa-funcoes] cadastro:', e.message); return []; });
+    if (docs.length) {
+      setState(phone, 'cupom', { docIds: docs.map(d => d.id), manual: true });
+      const lines = docs.map((d, i) => (i + 1) + ') ' + fmtDate(d.createdAt) + ' · ' +
+        storeName(d).replace(/^Sports & Tennis\s*/i, '') + ' · R$ ' + fmtMoney(d.totalValue) +
+        (produtoDoCupom(d) ? '\n    ' + produtoDoCupom(d) : ''));
+      return reply(phone,
+        'Claro' + oiNome(pushName) + '! Achei estas compras no seu cadastro 🧾\n\n' + lines.join('\n') +
+        '\n\n0) Não está aqui\n\nQual é a sua? Responda só com o *número*.');
+    }
+    // 2) Sem cadastro (ou sem compra no cadastro): o cliente se identifica.
+    return pedirDadosCompra(phone, pushName);
   },
 };
+
+function pedirDadosCompra(phone, pushName) {
+  setState(phone, 'via_data', {});
+  return reply(phone,
+    'Claro' + oiNome(pushName) + '! Vou achar seu cupom 🧾\n\n' +
+    '📅 *Qual foi a data da compra?*\n(ex: 10/11, hoje, ontem)');
+}
+
+// Compras do CADASTRO TenisCash (User.phone — WhatsApp confirmado por código no
+// cadastro). Só esse vínculo forte: cliente-de-vendedor / cupom já enviado ficam
+// de fora (foi assim que um cupom de outra compra apareceu). Últimas 5 do ano.
+async function cuponsDoCadastro(phone) {
+  const variants = phoneVariants(phone);
+  if (!variants.length) return [];
+  const users = await prisma.user.findMany({ where: { phone: { in: variants }, active: true }, select: { id: true, cpf: true } });
+  if (!users.length) return [];
+  const since = new Date(Date.now() - 365 * 24 * 3600 * 1000);
+  const sales = await prisma.sale.findMany({ where: { customerUserId: { in: users.map(u => u.id) }, createdAt: { gte: since } }, select: { id: true } });
+  const or = [];
+  if (sales.length) or.push({ saleId: { in: sales.map(s => s.id) } });
+  for (const u of users) {
+    const cpf = String(u.cpf || '').replace(/\D/g, '');
+    if (cpf.length === 11) or.push({ recipientCnpjCpf: { in: [cpf, cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')] } });
+  }
+  if (!or.length) return [];
+  return prisma.fiscalDocument.findMany({
+    where: {
+      AND: [
+        { OR: or },
+        // devolução (NF-e 55 pra própria empresa) não é cupom de compra; cupom sem CPF continua
+        { OR: [{ recipientCnpjCpf: null }, { NOT: { recipientCnpjCpf: { startsWith: '44052617' } } }] },
+      ],
+      status: 'authorized', accessKey: { not: null }, docType: { in: ['NFCE', 'NFE'] }, createdAt: { gte: since },
+    },
+    include: { issuer: true },
+    orderBy: { createdAt: 'desc' },
+    take: 5,
+  });
+}
 
 async function finishSegundaVia(phone, data) {
   const docs = await buscarCupons(data);
@@ -387,6 +437,12 @@ async function handleState(s, { phone, t, text, pushName }) {
   }
 
   if (s.stage === 'cupom') {
+    // "0) Não está aqui" (lista do cadastro) -> pede data/valor/CPF
+    if (s.data.manual && (digit === '0' || /^(nao|nenhum|nenhuma|nao esta|outro|outra)[.!]?$/.test(t))) {
+      clearState(phone);
+      await pedirDadosCompra(phone, pushName);
+      return true;
+    }
     if (digit) {
       const idx = Number(digit) - 1;
       if (idx >= 0 && idx < s.data.docIds.length) {
