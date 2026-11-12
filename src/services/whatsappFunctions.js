@@ -12,10 +12,9 @@
 //   • nossas lojas: endereço, mapa, WhatsApp e Instagram de cada loja
 // "Quero comprar" segue pra IA (estoque real), que passa o lead pro vendedor.
 //
-// SEGURANÇA/LGPD: só entrega cupom LIGADO AO NÚMERO de quem pediu (cliente
-// cadastrado com esse telefone, cliente do vendedor com esse telefone, ou
-// cupom que já foi enviado pra esse número). Nunca busca por CPF digitado
-// — senão qualquer um pediria o cupom de outra pessoa.
+// SEGURANÇA/LGPD (2ª via): o cliente informa data + valor total da compra; cupom
+// que tem CPF só é entregue se o CPF digitado bater. Nunca "pelo número do WhatsApp"
+// (mandava cupom de outra pessoa — dono 2026-11-12).
 //
 // Pra criar uma função nova: escrever um handler { name, match(text), run(ctx) }
 // e colocar em FUNCTIONS. O menu se monta sozinho.
@@ -26,8 +25,6 @@ const { sendCustomMessage, sendEvolutionRaw, sendEvolutionImage } = require('../
 const SITE_CARD_URL = (process.env.PUBLIC_BASE_URL || 'https://teniscash.com.br').replace(/\/+$/, '') + '/wa-site-card.png';
 const { deliverCupom } = require('./cupomDelivery');
 
-const LOOKBACK_DAYS = 365;     // cupons de até 1 ano atrás
-const MAX_LIST = 5;            // no máximo 5 cupons na lista
 
 // ---------- utilidades ----------
 function norm(text) {
@@ -65,65 +62,90 @@ function storeName(doc) {
   return (doc.issuer && (doc.issuer.fantasyName || doc.issuer.companyName)) || 'Sports & Tennis';
 }
 
-// ---------- busca dos cupons do número ----------
-async function findCuponsForPhone(phone) {
-  const variants = phoneVariants(phone);
-  if (!variants.length) return [];
-  const since = new Date(Date.now() - LOOKBACK_DAYS * 24 * 3600 * 1000);
+// ---------- 2ª via: o cliente SE IDENTIFICA (data + valor + CPF se tiver) ----------
+// Dono 2026-11-12: achar pelo número do WhatsApp mandou cupom de outra pessoa
+// ("ele tem que dizer alguma coisa para identificar o cupom dele"). Agora:
+// data da compra + valor total são obrigatórios; cupom COM CPF só sai se o CPF
+// digitado bater (o dado pessoal fica protegido); cupom sem CPF não tem dado
+// pessoal. Vários parecidos -> lista com loja, hora e produto pra ele escolher.
+function nowFortaleza() { return new Date(Date.now() - 3 * 3600 * 1000); }
+function ymdOf(d) { return d.toISOString().slice(0, 10); }
 
-  const [users, clients] = await Promise.all([
-    prisma.user.findMany({ where: { phone: { in: variants } }, select: { id: true, cpf: true } }),
-    prisma.sellerClient.findMany({ where: { phone: { in: variants } }, select: { id: true } }),
-  ]);
-  const userIds = users.map(u => u.id);
-  const clientIds = clients.map(c => c.id);
-  const cpfs = users.map(u => String(u.cpf || '').replace(/\D/g, '')).filter(c => c.length === 11);
-
-  let saleIds = [];
-  if (userIds.length || clientIds.length) {
-    const or = [];
-    if (userIds.length) or.push({ customerUserId: { in: userIds } });
-    if (clientIds.length) or.push({ clientId: { in: clientIds } });
-    const sales = await prisma.sale.findMany({ where: { OR: or, createdAt: { gte: since } }, select: { id: true } });
-    saleIds = sales.map(s => s.id);
+function parseDataCompra(t) {
+  const hoje = nowFortaleza();
+  if (/\bhoje\b/.test(t)) return ymdOf(hoje);
+  if (/\banteontem\b/.test(t)) return ymdOf(new Date(hoje.getTime() - 2 * 864e5));
+  if (/\bontem\b/.test(t)) return ymdOf(new Date(hoje.getTime() - 864e5));
+  let d, m, y;
+  const full = t.match(/\b(\d{1,2})\s*[\/\-.]\s*(\d{1,2})(?:\s*[\/\-.]\s*(\d{2,4}))?\b/);
+  if (full) { d = +full[1]; m = +full[2]; y = full[3] ? +full[3] : null; }
+  else {
+    const dia = t.match(/\bdia\s+(\d{1,2})\b/);
+    if (!dia) return null;
+    d = +dia[1]; m = hoje.getUTCMonth() + 1; y = null;
   }
+  if (y !== null && y < 100) y += 2000;
+  if (y === null) {
+    y = hoje.getUTCFullYear();
+    // data "no futuro" = ano passado (ex: 28/12 dito em janeiro)
+    if (new Date(Date.UTC(y, m - 1, d)) > hoje) y -= 1;
+  }
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null; // 31/02 etc
+  return ymdOf(dt);
+}
 
-  // cupom que já foi mandado pra esse número antes (botão do PDV)
-  let sentIds = [];
-  try {
-    const rows = await prisma.$queryRaw`
-      SELECT id FROM "FiscalDocument"
-      WHERE "createdAt" >= ${since} AND response->>'waTo' = ANY(${variants})`;
-    sentIds = rows.map(r => r.id);
-  } catch (e) { /* busca extra: não derruba a função */ }
+function parseValorCompra(t) {
+  const s = t.replace(/r\$\s*/g, '');
+  // 1º "131.99" (ponto decimal, 1-2 casas); senão "1.234,56" / "131,99" / "131"
+  const m = s.match(/(?:^|[^\d.,])(\d+)\.(\d{1,2})(?![\d.,])/) ? s.match(/()()(\d+)\.(\d{1,2})(?![\d.,])/)
+    : s.match(/(\d{1,3}(?:\.\d{3})+|\d+)(?:,(\d{1,2}))?(?!\d)/);
+  if (!m) return null;
+  let value; let hasCents;
+  if (m[3] !== undefined) { value = Number(m[3] + '.' + m[4]); hasCents = true; }
+  else { value = Number(m[1].replace(/\./g, '') + (m[2] ? '.' + m[2].padEnd(2, '0') : '')); hasCents = !!m[2]; }
+  if (!(value > 0) || value > 100000) return null;
+  return { value, hasCents };
+}
 
-  const or = [];
-  if (saleIds.length) or.push({ saleId: { in: saleIds } });
-  if (sentIds.length) or.push({ id: { in: sentIds } });
-  // CPF do PRÓPRIO cadastro desse número (não CPF digitado)
-  for (const cpf of cpfs) or.push({ recipientCnpjCpf: cpf });
-  if (!or.length) return [];
+function parseCpf(t) {
+  const d = String(t || '').replace(/\D/g, '');
+  return d.length === 11 ? d : null;
+}
+function maskCpf(c) { return c ? '***.' + c.slice(3, 6) + '.' + c.slice(6, 9) + '-**' : ''; }
+function fmtDataBr(ymd) { const [y, m, d] = ymd.split('-'); return d + '/' + m + '/' + y; }
+function fmtHora(dt) { return new Date(dt).toLocaleTimeString('pt-BR', { timeZone: 'America/Fortaleza', hour: '2-digit', minute: '2-digit' }); }
 
+// Primeiro produto do cupom (lido do XML autorizado), pra ajudar o cliente a escolher.
+function produtoDoCupom(doc) {
+  const xml = String(doc.xmlContent || '');
+  const nomes = [...xml.matchAll(/<xProd>([^<]{1,120})<\/xProd>/g)].map(x => x[1].trim());
+  if (!nomes.length) return '';
+  return nomes[0] + (nomes.length > 1 ? ' (+' + (nomes.length - 1) + ' item' + (nomes.length > 2 ? 's' : '') + ')' : '');
+}
+
+async function buscarCupons({ ymd, valor, cpf }) {
+  const start = new Date(ymd + 'T03:00:00.000Z');          // 00:00 em Fortaleza
+  const end = new Date(start.getTime() + 24 * 3600 * 1000);
+  const tol = valor.hasCents ? 0.01 : 0.999;               // "131" casa 131,00..131,99
+  const cpfFilter = cpf
+    ? { recipientCnpjCpf: { in: [cpf, cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')] } }
+    : { OR: [{ recipientCnpjCpf: null }, { recipientCnpjCpf: '' }] }; // sem CPF: só cupom anônimo
   return prisma.fiscalDocument.findMany({
     where: {
-      AND: [
-        { OR: or },
-        // devolução de troca (NF-e 55 pra própria empresa) não é cupom de compra.
-        // Cupom SEM CPF (null) tem que continuar entrando: NOT sozinho descartaria o null.
-        { OR: [{ recipientCnpjCpf: null }, { NOT: { recipientCnpjCpf: { startsWith: '44052617' } } }] },
-      ],
+      AND: [cpfFilter],
       status: 'authorized',
       accessKey: { not: null },
       docType: { in: ['NFCE', 'NFE'] },
-      createdAt: { gte: since },
+      createdAt: { gte: start, lt: end },
+      totalValue: { gte: valor.value - (valor.hasCents ? tol : 0), lte: valor.value + tol },
     },
     include: { issuer: true },
-    orderBy: { createdAt: 'desc' },
-    take: MAX_LIST,
+    orderBy: { createdAt: 'asc' },
+    take: 8,
   });
 }
 
-// ---------- função: 2ª via do cupom ----------
 const SEGUNDA_VIA = {
   name: '2ª via do cupom fiscal',
   hint: 'escreva *2 via*',
@@ -136,23 +158,33 @@ const SEGUNDA_VIA = {
     return docWord && intent;
   },
   async run({ phone, pushName }) {
-    const docs = await findCuponsForPhone(phone);
-    const nome = pushName ? ', ' + String(pushName).split(' ')[0] : '';
-    if (!docs.length) {
-      return reply(phone,
-        'Oi' + nome + '! Procurei aqui e não encontrei cupom fiscal ligado a este número de WhatsApp. 🧾\n\n' +
-        'Pode ser que a compra tenha sido registrada com outro telefone. Fala com a loja onde você comprou que o vendedor reenvia na hora. 🧡');
-    }
-    if (docs.length === 1) return sendDoc(docs[0], phone);
-
-    setState(phone, 'cupom', { docIds: docs.map(d => d.id) });
-    const lines = docs.map((d, i) =>
-      (i + 1) + ') ' + fmtDate(d.createdAt) + ' · ' + storeName(d) + ' · R$ ' + fmtMoney(d.totalValue));
+    setState(phone, 'via_data', {});
     return reply(phone,
-      'Oi' + nome + '! Achei estes cupons no seu número 🧾\n\n' + lines.join('\n') +
-      '\n\nResponda só com o *número* do cupom que você quer (ex: 1).');
+      'Claro' + oiNome(pushName) + '! Vou achar seu cupom 🧾\n\n' +
+      '📅 *Qual foi a data da compra?*\n(ex: 10/11, hoje, ontem)');
   },
 };
+
+async function finishSegundaVia(phone, data) {
+  const docs = await buscarCupons(data);
+  if (!docs.length) {
+    clearState(phone);
+    return reply(phone,
+      'Não achei cupom com esses dados 😕\n' +
+      '📅 ' + fmtDataBr(data.ymd) + ' · 💰 R$ ' + fmtMoney(data.valor.value) + (data.cpf ? ' · 🪪 ' + maskCpf(data.cpf) : ' · sem CPF') + '\n\n' +
+      'Confere a data e o valor total e manda *2 via* de novo.' +
+      (data.cpf ? '' : ' Se você colocou CPF na nota, informa o CPF quando eu perguntar.') +
+      '\nSe preferir, a loja onde você comprou reenvia na hora. 🧡');
+  }
+  if (docs.length === 1) { clearState(phone); return sendDoc(docs[0], phone); }
+  setState(phone, 'cupom', { docIds: docs.map(d => d.id) });
+  const lines = docs.map((d, i) =>
+    (i + 1) + ') ' + fmtHora(d.createdAt) + ' · ' + storeName(d).replace(/^Sports & Tennis\s*/i, '') + ' · R$ ' + fmtMoney(d.totalValue) +
+    (produtoDoCupom(d) ? '\n    ' + produtoDoCupom(d) : ''));
+  return reply(phone,
+    'Achei ' + docs.length + ' cupons nesse dia com esse valor 🧾\n\n' + lines.join('\n') +
+    '\n\nQual é o seu? Responda só com o *número* (ex: 1).');
+}
 
 async function sendDoc(doc, phone) {
   const d = doc.issuer ? doc : await prisma.fiscalDocument.findUnique({ where: { id: doc.id }, include: { issuer: true } });
@@ -331,6 +363,29 @@ async function handleState(s, { phone, t, text, pushName }) {
     return false;
   }
 
+  // 2ª via: data -> valor -> CPF (ou "não")
+  if (s.stage === 'via_data') {
+    const ymd = parseDataCompra(t);
+    if (!ymd) { await reply(phone, 'Não entendi a data 😅 Manda assim: *10/11* (ou *hoje*, *ontem*).'); return true; }
+    setState(phone, 'via_valor', { ymd });
+    await reply(phone, '💰 *Qual foi o valor total da compra?*\n(ex: 131,99)');
+    return true;
+  }
+  if (s.stage === 'via_valor') {
+    const valor = parseValorCompra(t);
+    if (!valor) { await reply(phone, 'Não entendi o valor 😅 Manda só o número, assim: *131,99*'); return true; }
+    setState(phone, 'via_cpf', { ...s.data, valor });
+    await reply(phone, '🪪 *Você colocou CPF na nota?*\nSe sim, manda o CPF. Se não, responde *não*.');
+    return true;
+  }
+  if (s.stage === 'via_cpf') {
+    const cpf = parseCpf(t);
+    const semCpf = /^(nao|n|nao coloquei|sem cpf|nenhum|não)[.!]?$/.test(t);
+    if (!cpf && !semCpf) { await reply(phone, 'Manda o CPF com 11 números (ex: 123.456.789-00) ou responde *não*.'); return true; }
+    await finishSegundaVia(phone, { ...s.data, cpf: cpf || null });
+    return true;
+  }
+
   if (s.stage === 'cupom') {
     if (digit) {
       const idx = Number(digit) - 1;
@@ -409,4 +464,4 @@ async function tryHandle({ phone, text, pushName, replyJid = null }) {
   }
 }
 
-module.exports = { tryHandle, phoneVariants, findCuponsForPhone, _norm: norm, _functions: FUNCTIONS, _state: state, _isGreeting: isGreeting, _lojasText: lojasText, _menuText: menuText };
+module.exports = { tryHandle, phoneVariants, _parseDataCompra: parseDataCompra, _parseValorCompra: parseValorCompra, _norm: norm, _functions: FUNCTIONS, _state: state, _isGreeting: isGreeting, _lojasText: lojasText, _menuText: menuText };
