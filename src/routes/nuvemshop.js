@@ -18,6 +18,51 @@ adminRouter.use(adminMiddleware);
 adminRouter.get('/stock-status', (_req, res) => {
   res.json(require('../services/nuvemshopStockCron').getNuvemshopCronState());
 });
+// ── TEMPORÁRIO (2026-11-12) — teste da baixa de pedido Nuvemshop com pedido SIMULADO.
+// Chama a MESMA applyOrderStock do webhook, mas sem criar Sale/NFe/cashback/rádio.
+// action=sell (baixa 1 un do barcode) | cancel (devolve) | push (manda estoque do card
+// pra Nuvemshop) | cleanup (apaga o mapping do pedido simulado). REMOVER depois do teste.
+const STOCKTEST_ID = 'teste-baixa-ns-20261112';
+adminRouter.post('/_stocktest', async (req, res) => {
+  try {
+    const action = String(req.query.action || '');
+    const barcode = String(req.query.barcode || '');
+    const { applyOrderStock } = require('../services/nuvemshopStockSafety');
+    let result = null;
+    if (action === 'sell' || action === 'cancel') {
+      if (!barcode) return res.status(400).json({ error: 'barcode obrigatório' });
+      result = await applyOrderStock(prisma, {
+        id: STOCKTEST_ID,
+        number: 'TESTE-BAIXA',
+        status: action === 'cancel' ? 'cancelled' : 'open',
+        payment_status: 'paid',
+        products: [{ sku: barcode, quantity: 1 }],
+      }, { allowLegacy: true });
+    } else if (action === 'push') {
+      result = await handlers.pushStockUpdate(String(req.query.productId || ''));
+    } else if (action === 'cleanup') {
+      result = await prisma.nuvemshopOrderMapping.deleteMany({ where: { nuvemshopOrderId: STOCKTEST_ID } });
+    } else if (action !== 'status') {
+      return res.status(400).json({ error: 'action inválida' });
+    }
+    const size = barcode ? await prisma.productSize.findFirst({
+      where: { barcode },
+      include: { storeStocks: { include: { store: { select: { code: true } } } } },
+    }) : null;
+    const mapping = await prisma.nuvemshopOrderMapping.findUnique({ where: { nuvemshopOrderId: STOCKTEST_ID } });
+    res.json({
+      result,
+      size: size ? { size: size.size, comprado: size.stock } : null,
+      stock: (size?.storeStocks || []).map((row) => ({ loja: row.store?.code, stock: row.stock })),
+      decremented: mapping?.payload?._stockDecremented === true,
+      restored: mapping?.payload?._stockRestored === true,
+      allocations: mapping?.payload?._stockAllocations || null,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 adminRouter.post('/reconcile-stock', (_req, res) => {
   const service = require('../services/nuvemshopStockCron');
   if (service.getNuvemshopCronState().running) return res.status(409).json({ error: 'Sincronização já em execução' });
