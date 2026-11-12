@@ -583,18 +583,30 @@ router.post('/forgot-verify', async (req, res) => {
     const { phone, email, code } = req.body;
 
     let result;
+    let user = null;
     if (phone) {
-      result = verifyCode(phone.replace(/\D/g, ''), code);
+      const cleanPhone = phone.replace(/\D/g, '');
+      user = await prisma.user.findUnique({ where: { phone: cleanPhone } });
+      result = verifyCode(cleanPhone, code);
+      // WhatsApp fora → forgot-send-code mandou o código pro E-MAIL do cliente. Aceita ele aqui.
+      if (!result.valid && user && user.email) {
+        const viaEmail = verifyEmailCode(user.email, code);
+        if (viaEmail.valid) result = viaEmail;
+      }
     } else if (email) {
-      const user = await prisma.user.findFirst({ where: { email } });
+      user = await prisma.user.findFirst({ where: { email } });
       if (!user) return res.status(400).json({ error: 'E-mail não cadastrado' });
       result = verifyEmailCode(email, code);
     } else {
       return res.status(400).json({ error: 'Informe telefone ou e-mail' });
     }
 
-    if (result.valid) {
-      res.json({ success: true, verified: true });
+    if (result.valid && user) {
+      // Comprovante de que o código foi validado — o reset SÓ aceita com ele (15 min).
+      const resetToken = jwt.sign({ uid: user.id, purpose: 'pwreset' }, JWT_SECRET, { expiresIn: '15m' });
+      res.json({ success: true, verified: true, resetToken });
+    } else if (result.valid) {
+      res.status(400).json({ error: 'Usuário não encontrado' });
     } else {
       res.status(400).json({ error: result.message });
     }
@@ -606,16 +618,19 @@ router.post('/forgot-verify', async (req, res) => {
 // ESQUECI SENHA - ALTERAR
 router.post('/forgot-reset', async (req, res) => {
   try {
-    const { phone, email, password } = req.body;
+    const { phone, email, password, resetToken } = req.body;
     if (!password || password.length < 4) return res.status(400).json({ error: 'Senha deve ter no mínimo 4 caracteres' });
 
-    let user;
-    if (phone) {
-      user = await prisma.user.findUnique({ where: { phone: phone.replace(/\D/g, '') } });
-    } else if (email) {
-      user = await prisma.user.findFirst({ where: { email } });
+    // Segurança: só troca a senha de quem validou o código (token do forgot-verify).
+    let claim;
+    try { claim = jwt.verify(String(resetToken || ''), JWT_SECRET); } catch (e) { claim = null; }
+    if (!claim || claim.purpose !== 'pwreset' || !claim.uid) {
+      return res.status(401).json({ error: 'Valide o código antes de trocar a senha (ou peça um novo código)' });
     }
+    const user = await prisma.user.findUnique({ where: { id: String(claim.uid) } });
     if (!user) return res.status(400).json({ error: 'Usuário não encontrado' });
+    if (phone && user.phone !== phone.replace(/\D/g, '')) return res.status(400).json({ error: 'Código não confere com este telefone' });
+    if (email && user.email !== email) return res.status(400).json({ error: 'Código não confere com este e-mail' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
     await prisma.user.update({ where: { id: user.id }, data: { pin: hashedPassword } });
