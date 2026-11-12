@@ -131,8 +131,8 @@ h1,h2,h3{font-weight:800}
 .grain{position:absolute;inset:0;pointer-events:none;opacity:.5;mix-blend-mode:overlay;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .35 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E")}
 .login .lockup{width:172px;height:auto}
 .login-hero{margin-top:auto;padding-top:60px}
-.login-hero h1{font-size:clamp(40px,12.4vw,54px);margin-top:14px}
-.login-hero h1 em{font-style:normal;color:var(--acc2)}
+.login-hero h1{font-size:clamp(34px,11.6vw,52px);margin-top:14px;line-height:.98}
+.login-hero h1 em{font-style:normal;color:var(--acc2);display:inline-block;font-size:.69em;letter-spacing:-.01em;white-space:nowrap}
 .login-hero p{margin-top:16px;color:var(--mut);font-size:15px;max-width:30ch}
 .lform{margin-top:30px}
 .seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;background:rgba(255,255,255,.07);border-radius:14px;padding:3px;gap:3px}
@@ -895,9 +895,9 @@ function vLogin(){
   var ph=S.loginMode==='phone';
   return '<section class="login"><div class="login-art"><div class="cw">'+COURT+'</div><div class="grain"></div></div>'+
    '<img class="lockup" src="'+BRAND+'club-sports-tennis.svg" alt="Club Sports &amp; Tennis" width="172" height="56">'+
-   '<div class="login-hero"><div class="eyebrow acc">Área do atleta</div>'+
-   '<h1 class="disp">Jogue.<br>Treine.<br><em>Evolua.</em></h1>'+
-   '<p>Seus jogos, treinos e números em um só lugar.</p></div>'+
+   '<div class="login-hero">'+
+   '<h1 class="disp">Treino.<br>Jogo.<br><em>Campeonato.</em></h1>'+
+   '<p>Para quem joga, treina, apita e organiza.</p></div>'+
    '<form class="lform" id="lform" novalidate>'+
      '<div class="seg" role="tablist"><button type="button" data-act="lmode" data-m="phone" class="'+(ph?'on':'')+'">Celular</button><button type="button" data-act="lmode" data-m="email" class="'+(ph?'':'on')+'">E-mail</button></div>'+
      '<div class="field"><input id="l-id" name="'+(ph?'tel':'email')+'" type="'+(ph?'tel':'email')+'" inputmode="'+(ph?'tel':'email')+'" autocomplete="'+(ph?'tel':'email')+'" placeholder=" " autocapitalize="off" spellcheck="false"><label for="l-id">'+(ph?'Celular com DDD':'E-mail')+'</label></div>'+
