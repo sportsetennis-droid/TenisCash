@@ -463,6 +463,30 @@ router.get('/:id/clubs', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Painel do atleta: meus times, convites, próximos jogos/treinos oficiais e
+// produção somada em TODOS os torneios/clubes. Requer login. Só leitura.
+router.get('/my-dashboard', authMiddleware, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json(await require('../services/athleteDashboard').dashboard(req.userId));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// TEMPORÁRIO (autoteste do painel em prod — REMOVER depois): só contagens, sem dado pessoal.
+router.get('/_dashtest', async (req, res) => {
+  if (req.query.g !== '0b7c8cd19c98531fa93638ff') return res.status(404).json({ error: 'not found' });
+  try {
+    const m = await prisma.teamMembership.findMany({ where: { status: 'ACTIVE' }, take: 200, select: { userId: true } });
+    const ids = [...new Set(m.map((x) => x.userId))].slice(0, 5);
+    const out = [];
+    for (const id of ids) {
+      const t0 = Date.now(); const d = await require('../services/athleteDashboard').dashboard(id);
+      out.push({ ms: Date.now() - t0, teams: d.teams.length, invites: d.invites.length, games: d.games.length, trainings: d.trainings.length, treinos: d.production.treinos, presencaPct: d.production.presencaPct, gols: d.production.gols, tours: d.tournaments.length, jogo1: d.games[0] ? (d.games[0].home + ' x ' + d.games[0].away + ' @ ' + d.games[0].scheduledAt) : null });
+    }
+    res.json({ atletasComVinculo: new Set(m.map((x) => x.userId)).size, amostra: out });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Torneios onde EU tenho papel (fundador ou nomeado) — pra home rotear. Requer login.
 router.get('/my-tournaments', authMiddleware, async (req, res) => {
   try {

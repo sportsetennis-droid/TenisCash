@@ -53,6 +53,18 @@ const SWAPS = [
   ['ganhe TenisCash grátis!', 'ganhe saldo grátis!'],
   ['para aplicar o TenisCash<', 'para aplicar o seu saldo<'],
   ['Os arquivos ficam privados no TenisCash.', 'Os arquivos ficam privados no sistema.'],
+  // Clube = torneios, times, jogos e treinos oficiais. Depois do login o atleta
+  // vai pro painel do clube (/torneios.html), não pra carteira do TenisCash.
+  // Vendedor/parceiro/design seguem o fluxo normal.
+  ['</body>', `<script>(function(){
+  var KEEP=['seller','partner','design','design_view'];
+  function isKeep(){try{return typeof user!=='undefined'&&user&&KEEP.indexOf(user.role)>=0;}catch(e){return false;}}
+  var g=window.goHomeByRole;
+  window.goHomeByRole=function(){if(!isKeep()){location.replace('/torneios.html');return;}return g.apply(this,arguments);};
+  var s=window.showScreen;
+  window.showScreen=function(id){if(id==='home'&&localStorage.getItem('tc_token')&&!isKeep()){location.replace('/torneios.html');return;}return s.apply(this,arguments);};
+})();</script>
+</body>`],
 ];
 
 let cache = { mtime: 0, html: '' };
@@ -95,6 +107,10 @@ const TORNEIOS_SWAPS = [
   ['Use a mesma conta do TenisCash.', 'Use a mesma conta do Club Sports &amp; Tennis.'],
   ['Atletas precisam ter conta TenisCash (@username).', 'Atletas precisam ter conta no Club Sports &amp; Tennis (@username).'],
   ['Atletas têm que ter conta TenisCash.', 'Atletas têm que ter conta no Club Sports &amp; Tennis.'],
+  // No clube, a entrada/cadastro é a tela da marca (/) — não o login simples daqui.
+  ['function renderLogin(){', "function renderLogin(){location.replace('/');return;"],
+  ["let html=topbar('Torneios');", "let html=topbar('Club Sports & Tennis');"],
+  ['Central de Torneios', 'Meu painel'],
 ];
 let tcache = { mtime: 0, html: '' };
 function brandedTorneiosHtml() {
