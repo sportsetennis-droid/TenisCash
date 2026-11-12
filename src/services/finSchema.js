@@ -6,7 +6,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const MIGRATIONS = ['20261112_fin_core', '20261113_stone_connect'];
+const MIGRATIONS = ['20261112_fin_core', '20261113_stone_connect', '20261114_fin_payables'];
 
 function splitStatements(sqlText) {
   return sqlText

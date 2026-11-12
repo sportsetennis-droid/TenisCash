@@ -1996,7 +1996,17 @@ const server = app.listen(PORT, '0.0.0.0', () => {
 
   // Financeiro do varejo: SQL aditivo/idempotente (as rotas /api/fin também garantem antes de responder).
   try {
-    finRoutes.ensureFinSchema().then(() => console.log('[finSchema] ok')).catch((e) => console.error('[finSchema] erro:', e.message));
+    finRoutes.ensureFinSchema().then(() => {
+      console.log('[finSchema] ok');
+      // Contas a pagar: gera as contas das despesas fixas do mês atual e do próximo (sem duplicar),
+      // no boot e todo dia às 06:10 de Fortaleza.
+      const finPayables = require('./routes/finPayablesRoutes');
+      const genFin = () => finPayables.generateRecurring(finPayables.currentAndNext())
+        .then((n) => { if (n) console.log('[fin] contas fixas geradas:', n); })
+        .catch((e) => console.error('[fin] gerar contas fixas:', e.message));
+      genFin();
+      require('node-cron').schedule('10 6 * * *', genFin, { timezone: 'America/Fortaleza' });
+    }).catch((e) => console.error('[finSchema] erro:', e.message));
   } catch (e) {
     console.error('[finSchema] falha ao iniciar:', e.message);
   }
