@@ -2,16 +2,17 @@
 // Marca por domínio. clubsportsetennis.com.br abre o MESMO sistema
 // (mesmo banco, mesmo login), mas com a cara da Sports & Tennis:
 // logo oficial, nome e ícone próprios. teniscash.com.br fica intocado.
-// Logo oficial: public/brand/sports-tennis-logo-branca.png (cópia exata
-// do acervo brand-sports-tennis — não redesenhar).
+// Logo: public/brand/club-sports-tennis.svg = vetor 100% digital (traçado
+// fiel da logo oficial branca do acervo + palavra CLUB em vetor).
+// Ícone: public/brand/sports-tennis-icon.svg (+ PNGs 512/192/180).
 // =====================================================================
 const fs = require('fs');
 const path = require('path');
 
 const ST_HOSTS = new Set(['clubsportsetennis.com.br', 'www.clubsportsetennis.com.br']);
 const INDEX = path.join(__dirname, '../../public/index.html');
-const LOGO = '/brand/sports-tennis-logo-branca.png?v=1';
-const LOGO_IMG = (w) => `<img src="${LOGO}" alt="Sports &amp; Tennis" style="display:block;width:${w};max-width:86vw;height:auto;margin:0 auto">`;
+const LOGO = '/brand/club-sports-tennis.svg?v=2'; // vetor: CLUB + logo oficial
+const LOGO_IMG = (w) => `<img src="${LOGO}" alt="Club Sports &amp; Tennis" style="display:block;width:${w};max-width:86vw;height:auto;margin:0 auto">`;
 
 function isSportsTennisHost(req) {
   return ST_HOSTS.has(String((req && req.hostname) || '').toLowerCase());
@@ -20,13 +21,13 @@ function isSportsTennisHost(req) {
 // [de, para] — troca literal. Se um trecho sumir do index.html, só avisa no log
 // (a página continua abrindo, só sem aquela troca).
 const SWAPS = [
-  ['<title>TenisCash</title>', '<title>Sports &amp; Tennis</title>'],
+  ['<title>TenisCash</title>', '<title>Club Sports &amp; Tennis</title>'],
   [/<meta name="description" content="[^"]*">/, '<meta name="description" content="Club Sports &amp; Tennis — benefícios, cashback e esporte da Sports &amp; Tennis em João Pessoa/PB.">'],
   ['<link rel="manifest" href="/manifest.json">',
-    '<link rel="manifest" href="/manifest.json">\n<link rel="icon" type="image/png" href="/brand/sports-tennis-icon-192.png">\n<link rel="apple-touch-icon" href="/brand/sports-tennis-icon-180.png">\n<meta name="apple-mobile-web-app-title" content="Sports &amp; Tennis">'],
+    '<link rel="manifest" href="/manifest.json">\n<link rel="icon" type="image/svg+xml" href="/brand/sports-tennis-icon.svg?v=2">\n<link rel="icon" type="image/png" sizes="192x192" href="/brand/sports-tennis-icon-192.png?v=2">\n<link rel="apple-touch-icon" href="/brand/sports-tennis-icon-180.png?v=2">\n<meta name="apple-mobile-web-app-title" content="Club S&amp;T">'],
   // Splash
   [/<div class="splash-logo">[\s\S]*?<p class="splash-sub">SPORTS &amp; TENNIS<\/p>|<div class="splash-logo">[\s\S]*?<p class="splash-sub">SPORTS & TENNIS<\/p>/,
-    `<div class="splash-logo">${LOGO_IMG('300px')}</div>\n  <p class="splash-sub">CLUB</p>`],
+    `<div class="splash-logo">${LOGO_IMG('300px')}</div>`],
   // Login: círculo "T" + "TENIS CASH"
   [/<div class="login-logo"><span[^>]*>T<\/span><\/div>\s*<div style="margin-bottom:10px">\s*<span[^>]*>TENIS<\/span>\s*<span[^>]*>CASH<\/span>\s*<\/div>/,
     `<div style="margin-bottom:22px">${LOGO_IMG('260px')}</div>`],
@@ -52,7 +53,7 @@ function brandedIndexHtml() {
 function manifest() {
   return {
     name: 'Club Sports & Tennis',
-    short_name: 'Sports & Tennis',
+    short_name: 'Club S&T',
     start_url: '/',
     scope: '/',
     display: 'standalone',
@@ -60,8 +61,8 @@ function manifest() {
     background_color: '#E5571E',
     theme_color: '#E5571E',
     icons: [
-      { src: '/brand/sports-tennis-icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-      { src: '/brand/sports-tennis-icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: '/brand/sports-tennis-icon-192.png?v=2', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+      { src: '/brand/sports-tennis-icon-512.png?v=2', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
     ],
   };
 }
