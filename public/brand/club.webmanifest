@@ -6,8 +6,8 @@
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#08080A",
-  "theme_color": "#08080A",
+  "background_color": "#C8471A",
+  "theme_color": "#E5571E",
   "lang": "pt-BR",
   "icons": [
     { "src": "/brand/sports-tennis-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
