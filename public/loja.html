@@ -683,8 +683,8 @@
             <div id="sellAcquirerField" style="display:none;">
               <label style="font-size:10px;font-weight:700;color:#6e6e73;letter-spacing:1px;">ADQUIRENTE</label>
               <select id="sellCardAcquirer" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:white;color:#1d1d1f;font-size:13px;margin-top:4px;">
-                <option value="PAGSEGURO" selected>PagBank / PagSeguro</option>
-                <option value="STONE">Stone</option>
+                <option value="PAGSEGURO">PagBank / PagSeguro</option>
+                <option value="STONE" selected>Stone</option>
                 <option value="CIELO">Cielo</option>
                 <option value="REDE">Rede</option>
                 <option value="GETNET">GetNet</option>
@@ -709,12 +709,18 @@
                 <option value="99">Outros</option>
               </select>
             </div>
+            <div id="sellInstallmentsField" style="grid-column:span 2;display:none;">
+              <label style="font-size:10px;font-weight:700;color:#6e6e73;letter-spacing:1px;">PARCELAS (maquininha Stone)</label>
+              <select id="sellInstallments" style="width:100%;min-height:44px;padding:8px;border:1px solid var(--border);border-radius:8px;background:white;color:#1d1d1f;font-size:15px;margin-top:4px;">
+                <option value="1" selected>1x (à vista)</option><option value="2">2x</option><option value="3">3x</option><option value="4">4x</option><option value="5">5x</option><option value="6">6x</option><option value="7">7x</option><option value="8">8x</option><option value="9">9x</option><option value="10">10x</option><option value="11">11x</option><option value="12">12x</option>
+              </select>
+            </div>
             <div style="grid-column:span 2;">
               <label style="font-size:10px;font-weight:700;color:#6e6e73;letter-spacing:1px;">NSU (recibo de pagamento da maquininha)</label>
               <input type="text" id="sellCardAuthCode" placeholder="Ex: 123456" maxlength="20" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:white;color:#1d1d1f;font-size:14px;font-family:monospace;font-weight:700;margin-top:4px;">
             </div>
           </div>
-          <p style="font-size:10px;color:#6e6e73;margin-top:8px;line-height:1.4;">Aprovou na maquininha → digita aqui o número que veio no recibo (Auth, NSU ou Aprovação).</p>
+          <p style="font-size:10px;color:#6e6e73;margin-top:8px;line-height:1.4;">Loja com Stone integrada: deixe o NSU em branco — a venda vai sozinha pra maquininha e o cupom sai quando aprovar. Só digite o NSU se passou na maquininha avulso.</p>
         </div>
 
         <!-- CPF/CNPJ na nota foi movido pro card "Cliente TenisCash" (#sellCpfBox), junto da busca do cliente -->
@@ -1488,6 +1494,8 @@ function selectPayment(method) {
   document.getElementById('sellCardDetails').style.display = (isCard || isPix) ? 'block' : 'none';
   const brandField = document.getElementById('sellBrandField');
   if (brandField) brandField.style.display = isCard ? 'block' : 'none'; // PIX não tem bandeira
+  const instField = document.getElementById('sellInstallmentsField');
+  if (instField) instField.style.display = method === 'credit_card' ? 'block' : 'none';
   const titleEl = document.getElementById('sellFiscalTitle');
   if (titleEl) titleEl.textContent = isPix ? '📋 Código do comprovante (PIX) pra emitir o cupom' : '📋 Dados do cartão (obrigatório SEFAZ-PB)';
 }
@@ -1529,6 +1537,67 @@ function showPixQr(saleId, fiscal) {
   document.body.appendChild(ov);
   pollPixStatus(saleId, 0);
 }
+// ===== Maquininha Stone integrada: acompanha o pagamento (bottom-sheet) =====
+function showStonePending(saleId, info) {
+  closeStonePending();
+  const ov = document.createElement('div');
+  ov.id = 'stoneOverlay';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:flex-end;justify-content:center;';
+  const tipo = info.paymentType === 'pix' ? 'PIX' : info.paymentType === 'debit' ? 'Débito' : 'Crédito ' + (info.installments || 1) + 'x';
+  const valor = (Number(info.amountCents || 0) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#111;border-radius:18px 18px 0 0;padding:22px 18px calc(18px + env(safe-area-inset-bottom));max-width:480px;width:100%;text-align:center;';
+  box.innerHTML = '<div style="color:#2bb678;font-weight:800;font-size:20px;">💳 Passe na maquininha Stone</div>'
+    + '<div style="color:#fff;font-size:30px;font-weight:900;margin:10px 0 2px;">' + valor + '</div>'
+    + '<div style="color:#bbb;font-size:14px;">' + tipo + ' · maquininha ' + String(info.deviceSerial || '').replace(/[<>&"]/g, '') + '</div>'
+    + '<div style="color:#bbb;font-size:12px;margin-top:6px;">A maquininha abre o pagamento sozinha. O cupom sai assim que aprovar.</div>'
+    + '<div id="stoneStatus" style="color:#ffd33d;font-weight:800;margin-top:16px;font-size:17px;">⏳ Aguardando pagamento…</div>'
+    + '<button id="stoneCancelBtn" style="margin-top:14px;width:100%;min-height:44px;padding:12px;background:#5a1d1d;color:#fff;border:none;border-radius:10px;font-weight:800;font-size:14px;">Cancelar na maquininha</button>'
+    + '<button id="stoneCloseBtn" style="margin-top:8px;width:100%;min-height:44px;padding:11px;background:#333;color:#fff;border:none;border-radius:10px;font-weight:700;font-size:13px;">Fechar (continua aguardando)</button>';
+  ov.appendChild(box);
+  document.body.appendChild(ov);
+  document.getElementById('stoneCancelBtn').onclick = () => cancelStonePending(saleId);
+  document.getElementById('stoneCloseBtn').onclick = closeStonePending;
+  pollStoneStatus(saleId, 0);
+}
+function closeStonePending() {
+  clearTimeout(window._stonePoll);
+  const ov = document.getElementById('stoneOverlay'); if (ov) ov.remove();
+}
+async function cancelStonePending(saleId) {
+  if (!confirm('Cancelar o pagamento na maquininha? A venda continua registrada: se o cliente desistiu, cancele a venda depois na lista.')) return;
+  const btn = document.getElementById('stoneCancelBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Cancelando…'; }
+  try {
+    await api('/api/stone/cancel/' + saleId, { method: 'POST', body: '{}' });
+    const s = document.getElementById('stoneStatus'); if (s) s.innerHTML = '🚫 Pedido retirado da maquininha';
+    clearTimeout(window._stonePoll);
+  } catch (e) {
+    alert(e.message || 'Não consegui cancelar');
+    if (btn) { btn.disabled = false; btn.textContent = 'Cancelar na maquininha'; }
+  }
+}
+async function pollStoneStatus(saleId, tries) {
+  if (!document.getElementById('stoneOverlay')) return;
+  if (tries > 200) { const s = document.getElementById('stoneStatus'); if (s) s.innerHTML = '⌛ Sem resposta — confira na lista de vendas'; return; }
+  try {
+    const d = await api('/api/stone/status/' + saleId);
+    const s = document.getElementById('stoneStatus');
+    if (d && d.paid) {
+      const btn = document.getElementById('stoneCancelBtn'); if (btn) btn.style.display = 'none';
+      if (d.cupom && d.cupom.documentId) {
+        if (s) s.innerHTML = '✅ APROVADO · Cupom #' + d.cupom.number;
+        setTimeout(() => window.open('/api/admin/fiscal/documents/' + d.cupom.documentId + '/print?token=' + encodeURIComponent(token), '_blank', 'width=420,height=700'), 600);
+        return;
+      }
+      if (s) s.textContent = d.error ? '✅ APROVADO · ⚠ cupom não saiu: ' + d.error : '✅ APROVADO · emitindo cupom…';
+      if (d.error && tries > 3) return;
+    } else if (d && (d.status === 'canceled' || d.status === 'refunded')) {
+      if (s) s.innerHTML = d.status === 'refunded' ? '↩️ Pagamento estornado na maquininha' : '🚫 Pedido cancelado';
+      return;
+    }
+  } catch (_) {}
+  window._stonePoll = setTimeout(() => pollStoneStatus(saleId, tries + 1), 3000);
+}
 async function pollPixStatus(saleId, tries) {
   if (!document.getElementById('pixQrOverlay')) return;
   if (tries > 120) { const s = document.getElementById('pixQrStatus'); if (s) s.innerHTML = '⌛ Tempo esgotado — confira o pagamento no painel'; return; }
@@ -1567,7 +1636,7 @@ async function emitNfceFromSale() {
     };
     if (method === 'credit_card' || method === 'debit_card') {
       const auth = document.getElementById('sellCardAuthCode').value.trim();
-      payload.acquirerKey = document.getElementById('sellCardAcquirer').value || 'PAGSEGURO';
+      payload.acquirerKey = document.getElementById('sellCardAcquirer').value || 'STONE';
       payload.cardBrand = document.getElementById('sellCardBrand').value;
       if (auth && auth !== '000000') payload.cardAuthCode = auth; // opcional: sem o código emite sem cAut
     }
@@ -2103,7 +2172,7 @@ async function emitSaleNfce(saleId, paymentMethod) {
   const payload = { saleId, paymentMethod: TPAG[paymentMethod] || '99' };
   if (['credit_card', 'debit_card', 'pix'].includes(paymentMethod)) {
     const auth = (document.getElementById('saleAuthCode')?.value || '').trim();
-    payload.acquirerKey = 'PAGSEGURO'; payload.tpIntegra = 2;
+    payload.acquirerKey = 'STONE'; payload.tpIntegra = 2;
     if (auth && auth !== '000000') payload.cardAuthCode = auth; // Auth/NSU opcional
   }
   // SEFAZ-PB: venda >= R$500 exige CPF/CNPJ do cliente na nota
@@ -2412,7 +2481,7 @@ async function emitTroca() {
   };
   if (t.manual) body.diffAmount = t.diff;
   if (_cpfTroca.length === 11 || _cpfTroca.length === 14) body.customerCpf = _cpfTroca;
-  if (t.diff > 0) body.diffPayment = { tPag: _troca.pay.tPag, cardAuthCode: _troca.pay.cardAuthCode || undefined, acquirerKey: ['03', '04'].includes(_troca.pay.tPag) ? 'PAGSEGURO' : undefined };
+  if (t.diff > 0) body.diffPayment = { tPag: _troca.pay.tPag, cardAuthCode: _troca.pay.cardAuthCode || undefined, acquirerKey: ['03', '04'].includes(_troca.pay.tPag) ? 'STONE' : undefined };
   if (_troca.retryIds) { body.devolucaoDocId = _troca.retryIds.devolucaoDocId; body.saleId = _troca.retryIds.saleId; }
   try {
     const r = await api('/api/admin/fiscal/troca', { method: 'POST', body: JSON.stringify(body) });
@@ -3009,11 +3078,12 @@ async function finalizeSale() {
     // Auth/NSU do comprovante é OPCIONAL: se o vendedor tiver, vai na nota (cAut); se não
     // tiver, o cupom emite sem ele (maquininha não integrada, tpIntegra=2 — padrão SEFAZ).
     // A venda NUNCA trava por falta do código digitado.
-    const acquirer = document.getElementById('sellCardAcquirer').value || 'PAGSEGURO';
+    const acquirer = document.getElementById('sellCardAcquirer').value || 'STONE';
     const auth = document.getElementById('sellCardAuthCode').value.trim();
     cardData = { acquirerKey: acquirer, tpIntegra: 2 };
     if (auth && auth !== '000000') cardData.cardAuthCode = auth;
     if (isCard) cardData.cardBrand = document.getElementById('sellCardBrand').value;
+    if (paymentMethod === 'credit_card') cardData.installments = parseInt(document.getElementById('sellInstallments')?.value || '1', 10) || 1;
   }
   // SEFAZ-PB: venda >= R$500 exige CPF/CNPJ do cliente na nota (senão a SEFAZ rejeita o cupom)
   const _cpfNota = (document.getElementById('sellCustomerCpf')?.value || '').replace(/\D/g, '');
@@ -3062,6 +3132,28 @@ async function finalizeSale() {
     }
     const result = document.getElementById('sellNfceResult');
     const status = document.getElementById('sellNfceStatus');
+    if (fiscal?.stonePending) {
+      // Maquininha Stone integrada: a venda já foi pra POS; o cupom sai quando aprovar.
+      showStonePending(r.saleId || r.id, fiscal);
+      status.innerHTML = '<strong style="color:#0a843d">⏳ Venda enviada pra maquininha — aguardando pagamento</strong>';
+      cart = []; customer = null; _saleIdemKey = null;
+      document.getElementById('sellCustomerPhone').value = '';
+      document.getElementById('sellCustomerInfo').innerHTML = '';
+      document.getElementById('sellCustomerResults').innerHTML = '';
+      document.getElementById('sellCustomerCpf').value = '';
+      document.getElementById('sellCustomerNome').value = '';
+      document.getElementById('sellReferralCode').value = '';
+      document.getElementById('sellTcUsed').value = 0;
+      document.getElementById('sellDiscount').value = 0;
+      document.getElementById('sellSearchInput').value = '';
+      document.getElementById('sellSearchResults').innerHTML = '';
+      const _inst = document.getElementById('sellInstallments'); if (_inst) _inst.value = '1';
+      renderCart(); loadDashboard();
+      return;
+    }
+    if (fiscal?.stoneError) {
+      status.innerHTML = '<strong style="color:#d70015">❌ ' + (fiscal.error || 'Falha na maquininha Stone') + '</strong>';
+    }
     if (fiscal?.pixPending) {
       // PIX-QR: mostra o QR grande pro cliente; o cupom sai sozinho no pagamento (webhook).
       showPixQr(r.saleId || r.id, fiscal);
@@ -3099,7 +3191,7 @@ async function finalizeSale() {
       setTimeout(() => window.open('/api/admin/fiscal/documents/' + fiscal.documentId + '/print?token=' + encodeURIComponent(token), '_blank', 'width=420,height=700'), 500);
     } else if (fiscal?.skipped) {
       status.innerHTML = '<strong style="color:#b06b00">⚠ ' + (fiscal.reason || 'Emissão pulada') + '</strong>';
-    } else if (fiscal && !fiscal.ok) {
+    } else if (fiscal && !fiscal.ok && !fiscal.stoneError) {
       status.innerHTML = '<strong style="color:#d70015">❌ NFCe rejeitada: ' + (fiscal.error || 'erro') + '</strong>';
     }
     // Venda REGISTRADA (qualquer forma de pagamento, com ou sem cupom) → LIMPA o carrinho SEMPRE.

@@ -5,6 +5,8 @@ const QRCode = require('qrcode');
 const { authMiddleware, storeScope, enforceStoreId, prisma } = require('../middleware');
 const pagbank = require('../services/pagbank');
 const salePaymentPlan = require('../services/salePaymentPlan');
+const stoneConnect = require('../services/stoneConnect');
+const stonePos = require('../services/stonePos');
 const { countedStoreIds } = require('../services/countedStock');
 const equipeReports = require('../services/equipeReports');
 const { SaleStockError, planSaleProductSize, applyStoreStockDelta } = require('../services/storeStockLedger');
@@ -1220,8 +1222,33 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
       }) : null;
 
       const useAgentAuto = store?.fiscalAgentEnabled && store?.fiscalAgentUrl && store?.fiscalAgentToken;
-      const pixQr = paymentMethod === 'pix' && store?.pagbankEnabled && pagbank.isConfigured(store);
-      if (pixQr) {
+      // Maquininha Stone integrada: cartão/PIX vão como pedido pra POS da loja e o cupom
+      // sai sozinho quando a Stone confirmar (webhook /api/stone/webhook ou polling do PDV).
+      const stoneCfg = store && stonePos && stoneConnect.paymentTypeFor(paymentMethod) && !req.body.skipFiscal && !req.body.cardAuthCode
+        ? await stonePos.activeConfigFor(store.id)
+        : null;
+      const pixQr = !stoneCfg && paymentMethod === 'pix' && store?.pagbankEnabled && pagbank.isConfigured(store);
+      if (stoneCfg) {
+        try {
+          const _cpfStone = String(req.body.customerCpf || '').replace(/\D/g, '');
+          fiscalResult = await stonePos.startPosPayment({
+            cfg: stoneCfg,
+            saleId: result.sale.id,
+            storeId: store.id,
+            paymentMethod,
+            totalAmount,
+            tcUsed: tcConsumed,
+            installments: req.body.installments,
+            deviceSerial: req.body.deviceSerial,
+            customerName: customer?.name || req.body.customerCpfName || null,
+            customerCpf: (_cpfStone.length === 11 || _cpfStone.length === 14) ? _cpfStone : null,
+            customerCpfName: req.body.customerCpfName || null,
+          });
+        } catch (e) {
+          console.error('[stone] erro ao mandar pedido pra maquininha:', e.message);
+          fiscalResult = { ok: false, stoneError: true, error: 'Falha ao mandar a venda pra maquininha Stone: ' + e.message + '. Passe na maquininha avulso e emita o cupom pela lista de vendas.' };
+        }
+      } else if (pixQr) {
         // PIX-QR PagBank: gera o QR na conta DESTA loja e NÃO emite agora.
         // O webhook /api/pagbank/webhook emite o cupom quando o pagamento cair.
         try {
@@ -1249,9 +1276,9 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
         // CONFORMIDADE FISCAL: PIX manual (sem confirmação de pagamento) NÃO pode auto-emitir.
         // A NFC-e só pode sair APÓS o pagamento confirmado. PIX com confirmação (cardAuthCode/e2e do TEF) emite normal.
         const isPixManual = (tPag === '17') && !req.body.cardAuthCode;
-        // DEFAULT da adquirente = PagBank/PagSeguro (pinpad físico das lojas).
+        // DEFAULT da adquirente = Stone (maquininha das lojas desde 2026-11).
         // Sem isso o detPag sai com CNPJ zerado. Só aplica em cartão.
-        const acquirerKey = isCard ? (req.body.acquirerKey || 'PAGSEGURO') : req.body.acquirerKey;
+        const acquirerKey = isCard ? (req.body.acquirerKey || 'STONE') : req.body.acquirerKey;
         // IDEMPOTÊNCIA — não auto-emite se a venda já tem cupom (autorizado ou em andamento).
         // Evita dupla emissão quando o auto-emit e a rota manual disparam pra mesma venda (bug LOJA03 2026-06-04).
         const existingNfce = await prisma.fiscalDocument.findFirst({ where: { saleId: result.sale.id, docType: 'NFCE', status: { in: ['authorized', 'processing'] } } });
@@ -2536,6 +2563,10 @@ router.post('/sale/:id/cancel', authMiddleware, sellerOnly, async (req, res) => 
       select: { number: true, status: true },
     });
     if (cupom) return res.status(409).json({ hasCupom: true, error: 'Esta venda já tem cupom' + (cupom.number ? ' #' + cupom.number : '') + ' (' + cupom.status + '). Cancele o CUPOM na SEFAZ — não dá pra cancelar a venda por aqui.' });
+
+    // Maquininha Stone: pedido aberto é retirado da maquininha; pagamento aprovado bloqueia (estorno é na POS).
+    const stoneGuard = await stonePos.guardSaleCancel(saleId);
+    if (!stoneGuard.ok) return res.status(409).json({ stonePaid: true, error: stoneGuard.error });
 
     const operatorId = req.userId;
     const result = await prisma.$transaction(async (tx) => {

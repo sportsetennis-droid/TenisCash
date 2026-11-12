@@ -75,8 +75,8 @@ async function emitNfceFromSaleHandler(req, res) {
     // '000000' inválido). Assim a venda NUNCA trava por falta do código digitado.
     const _auth = normalizeAuthCode(cardAuthCode);
     if (isCardPay && !acquirerKey) {
-      // DEFAULT da adquirente = PagBank/PagSeguro (pinpad físico das lojas). CNPJ 08561701000101.
-      acquirerKey = 'PAGSEGURO';
+      // DEFAULT da adquirente = Stone (maquininha das lojas desde 2026-11). CNPJ 16501555000157.
+      acquirerKey = 'STONE';
     }
 
     const sale = await prisma.sale.findUnique({
@@ -478,7 +478,7 @@ router.post('/troca', async (req, res) => {
         const _nsuDup = await prisma.fiscalDocument.findFirst({ where: { issuerId: issuer.id, paymentAuthCode: _dpAuth, docType: 'NFCE', status: { in: ['authorized', 'processing'] }, ...(newSale ? { OR: [{ saleId: null }, { saleId: { not: newSale.id } }] } : {}) } });
         if (_nsuDup) return res.status(409).json({ error: 'NSU/código ' + _dpAuth + ' já foi usado no cupom #' + _nsuDup.number });
       }
-      payments.push({ tPag: dp.tPag, valor: diff, tBand: dp.cardBrand, cAut: _dpAuth || undefined, acquirerKey: isCard ? (dp.acquirerKey || 'PAGSEGURO') : dp.acquirerKey, tpIntegra: 2 });
+      payments.push({ tPag: dp.tPag, valor: diff, tBand: dp.cardBrand, cAut: _dpAuth || undefined, acquirerKey: isCard ? (dp.acquirerKey || 'STONE') : dp.acquirerKey, tpIntegra: 2 });
     }
 
     const agentClient = require('../services/fiscalAgentClient');

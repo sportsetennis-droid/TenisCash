@@ -39,7 +39,7 @@ jobs:
       - run: npx prisma generate
       - run: npx prisma db push --skip-generate
       - run: npm run test:stock-replacement
-      - name: Financeiro — rotas /api/fin com Postgres (schema 2x, dono, auditoria imutável)
+      - name: Financeiro e maquininha Stone — rotas com Postgres (schema 2x, dono, auditoria, webhook Stone)
         run: npm run test:fin-http
   boot-check:
     name: deps + sintaxe + requires resolvem
@@ -73,5 +73,5 @@ jobs:
       - name: Requires resolvem no git? (pega MODULE_NOT_FOUND / 502)
         run: node scripts/check-requires.js
 
-      - name: Financeiro — centavos, plano de contas, contas e auditoria (sem banco)
+      - name: Financeiro e Stone — centavos, plano de contas, auditoria, pedido da maquininha (sem banco)
         run: npm run test:fin

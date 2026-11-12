@@ -6083,3 +6083,46 @@ model FinAuditLog {
   @@index([entity, entityId])
   @@index([at])
 }
+
+// Stone Connect 2.0 — maquininha integrada (pedido vai do sistema pra POS; webhook confirma).
+// Tabelas próprias (sem coluna nova em Store/Sale). SQL em prisma/migrations/20261113_stone_connect.
+model StoneConfig {
+  id                 String   @id @default(cuid())
+  storeId            String   @unique
+  secretKey          String? // Secret Key (sk_...) da Account Pagar.me DESTA loja — segredo
+  serviceRefererName String? // ID do parceiro no Stone Partner Program (header obrigatório)
+  deviceSerials      String? // números de série das maquininhas da loja, separados por vírgula
+  webhookToken       String   @unique // vai na URL do webhook (/api/stone/webhook/<token>)
+  enabled            Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @default(now()) @updatedAt
+}
+
+model StonePosOrder {
+  id               String    @id @default(cuid())
+  saleId           String    @unique
+  storeId          String
+  orderId          String    @unique // or_... (Pagar.me)
+  deviceSerial     String
+  paymentType      String // credit | debit | pix
+  installments     Int       @default(1)
+  amountCents      Int
+  status           String    @default("open") // open | paid | canceled | refunded | failed
+  paidCents        Int?
+  chargeId         String?
+  nsu              String? // charge.code
+  authCode         String? // metadata.authorization_code
+  brand            String? // metadata.scheme_name
+  fundingSource    String? // Credit | Debit | Prepaid
+  paidInstallments Int?
+  terminalSerial   String?
+  paidAt           DateTime?
+  customerCpf      String?
+  customerName     String?
+  fiscalDocumentId String?
+  lastError        String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @default(now()) @updatedAt
+
+  @@index([storeId, status])
+}
