@@ -331,66 +331,6 @@ app.post('/api/_loopbrain', async (req, res) => {
     res.status(500).json({ ok: false, error: e.message });
   }
 });
-// TEMPORÁRIO (remover após uso): publica carrossel/stories no IG @sportsetennis (tokens Meta só no Railway). Guard ?g=.
-// op=check (descobre conta/permissões, sem publicar) · op=carousel|story (dispara em background) · op=status.
-app.post('/api/_igpub', async (req, res) => {
-  if (req.query.g !== 'reinado2026') return res.status(403).json({ error: 'forbidden' });
-  const V = process.env.META_GRAPH_API_VERSION || process.env.META_GRAPH_VERSION || 'v22.0';
-  const G = `https://graph.facebook.com/${V}`;
-  const TOK = { ig: process.env.META_IG_ACCESS_TOKEN, page: process.env.META_PAGE_TOKEN, user: process.env.META_USER_TOKEN };
-  const IDS = { META_IG_USER_ID: process.env.META_IG_USER_ID, META_INSTAGRAM_ID: process.env.META_INSTAGRAM_ID, META_IG_BUSINESS_ID: process.env.META_IG_BUSINESS_ID };
-  const gj = async (p, t) => { const r = await fetch(G + p + (p.includes('?') ? '&' : '?') + 'access_token=' + encodeURIComponent(t)); const j = await r.json().catch(() => ({})); return j.error ? { err: j.error.message, code: j.error.code } : j; };
-  const jobs = (global.__igpubJobs = global.__igpubJobs || {});
-  const op = String(req.query.op || 'check');
-  try {
-    if (op === 'check') {
-      const out = { version: V, tokens: {}, ids: {} };
-      for (const [k, t] of Object.entries(TOK)) {
-        if (!t) { out.tokens[k] = null; continue; }
-        out.tokens[k] = {
-          me: await gj('/me?fields=id,name', t),
-          accounts: await gj('/me/accounts?fields=id,name,instagram_business_account{id,username}&limit=50', t),
-          pageIg: await gj('/me?fields=instagram_business_account{id,username}', t),
-        };
-      }
-      for (const [k, id] of Object.entries(IDS)) {
-        if (!id) { out.ids[k] = null; continue; }
-        out.ids[k] = { id };
-        for (const [tk, t] of Object.entries(TOK)) if (t) out.ids[k][tk] = await gj(`/${id}?fields=id,username`, t);
-      }
-      return res.json(out);
-    }
-    if (op === 'status') return res.json({ jobs });
-    if (op === 'carousel' || op === 'story') {
-      const igid = String(req.query.igid || '');
-      const t = TOK[String(req.query.tok || 'ig')];
-      if (!igid || !t) return res.status(400).json({ error: 'falta igid/tok' });
-      const key = String(req.query.key || op);
-      if (jobs[key] && jobs[key].status !== 'failed' && req.query.force !== '1') return res.status(409).json({ error: 'job já existe', job: jobs[key] });
-      const body = req.body || {};
-      jobs[key] = { status: 'running', startedAt: new Date().toISOString() };
-      const saved = { u: process.env.META_IG_USER_ID, t: process.env.META_IG_ACCESS_TOKEN };
-      (async () => {
-        process.env.META_IG_USER_ID = igid; process.env.META_IG_ACCESS_TOKEN = t;
-        try {
-          const ig = require('./services/instagramPublisher');
-          const r = op === 'carousel'
-            ? await ig.publishCarousel({ imageUrls: body.imageUrls || [], caption: body.caption || '' })
-            : await ig.publishStory({ imageUrl: body.imageUrl });
-          jobs[key] = { ...jobs[key], status: 'success', result: r, endedAt: new Date().toISOString() };
-        } catch (e) {
-          jobs[key] = { ...jobs[key], status: 'failed', error: e.message, fbCode: e.fbCode, endedAt: new Date().toISOString() };
-        } finally {
-          process.env.META_IG_USER_ID = saved.u; process.env.META_IG_ACCESS_TOKEN = saved.t;
-        }
-      })();
-      return res.json({ ok: true, started: key });
-    }
-    return res.status(400).json({ error: 'op inválida' });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
-  }
-});
 // TEMPORÁRIO (remover após uso): gera 1 foto editorial premium server-side (Railway tem FAL_KEY). Guard ?g=.
 app.post('/api/_falgen', async (req, res) => {
   if (req.query.g !== 'reinado2026') return res.status(403).json({ error: 'forbidden' });
