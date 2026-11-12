@@ -104,6 +104,9 @@ async function dashboard(userId) {
     byTournament,
   };
 
+  // 4) Produção em JOGOS OFICIAIS (súmula) — só nomes do elenco ligados à conta
+  production.games = await gameProduction(uid, tById);
+
   // Torneios em que atuo (papel/fundador/time)
   const rolesByT = {};
   roleRows.forEach((r) => { (rolesByT[r.tournamentId] = rolesByT[r.tournamentId] || []).push({ role: r.role, entryId: r.entryId }); });
@@ -116,4 +119,48 @@ async function dashboard(userId) {
   return { tournaments, teams, invites, games: games.slice(0, 10), trainings: trainings.slice(0, 10), production };
 }
 
-module.exports = { dashboard };
+// Gols/assistências/cartões da súmula + jogos (V/E/D) dos times em que o atleta
+// está no elenco COM a conta ligada (RosterPlayer.userId). Só jogos encerrados.
+async function gameProduction(uid, tById) {
+  const zero = { jogos: 0, vitorias: 0, empates: 0, derrotas: 0, gols: 0, assistencias: 0, amarelos: 0, vermelhos: 0, linked: 0, byTournament: [] };
+  const players = await prisma.rosterPlayer.findMany({ where: { userId: uid }, select: { id: true, entryId: true } });
+  if (!players.length) return zero;
+  const entryIds = [...new Set(players.map((p) => p.entryId))];
+  const entries = await prisma.tournamentEntry.findMany({ where: { id: { in: entryIds } }, select: { id: true, tournamentId: true } });
+  const tOfEntry = Object.fromEntries(entries.map((e) => [e.id, e.tournamentId]));
+  const out = { ...zero, linked: players.length, byTournament: [] };
+  const per = {};
+  const bucket = (tid) => (per[tid] = per[tid] || { tournamentId: tid, tournament: (tById[tid] && tById[tid].name) || '', jogos: 0, gols: 0, assistencias: 0, amarelos: 0, vermelhos: 0 });
+
+  const matches = await prisma.tournamentMatch.findMany({
+    where: { status: { in: ['FINISHED', 'WALKOVER'] }, OR: [{ homeEntryId: { in: entryIds } }, { awayEntryId: { in: entryIds } }] },
+    select: { id: true, tournamentId: true, homeEntryId: true, awayEntryId: true, homeScore: true, awayScore: true, winnerEntryId: true },
+  });
+  for (const m of matches) {
+    const mine = entryIds.includes(m.homeEntryId) ? m.homeEntryId : m.awayEntryId;
+    out.jogos++; bucket(m.tournamentId).jogos++;
+    if (m.winnerEntryId) { if (m.winnerEntryId === mine) out.vitorias++; else out.derrotas++; }
+    else if (m.homeScore != null && m.awayScore != null && m.homeScore === m.awayScore) out.empates++;
+    else if (m.homeScore != null && m.awayScore != null) {
+      const my = mine === m.homeEntryId ? m.homeScore : m.awayScore;
+      const op = mine === m.homeEntryId ? m.awayScore : m.homeScore;
+      if (my > op) out.vitorias++; else if (my < op) out.derrotas++; else out.empates++;
+    }
+  }
+  const doneIds = matches.map((m) => m.id);
+  if (doneIds.length) {
+    const evs = await prisma.matchEvent.findMany({
+      where: { playerId: { in: players.map((p) => p.id) }, matchId: { in: doneIds }, type: { in: ['GOAL', 'ASSIST', 'YELLOW', 'RED'] } },
+      select: { type: true, entryId: true },
+    });
+    const key = { GOAL: 'gols', ASSIST: 'assistencias', YELLOW: 'amarelos', RED: 'vermelhos' };
+    for (const e of evs) {
+      const k = key[e.type]; out[k]++;
+      const tid = tOfEntry[e.entryId]; if (tid) bucket(tid)[k]++;
+    }
+  }
+  out.byTournament = Object.values(per);
+  return out;
+}
+
+module.exports = { dashboard, gameProduction };
