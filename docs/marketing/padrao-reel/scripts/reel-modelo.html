@@ -1,0 +1,92 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@1,900&family=Barlow:ital,wght@0,600;0,700;1,500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}body{margin:0;background:#000}
+#R{position:relative;width:1080px;height:1920px;overflow:hidden;background:#050505;font-family:'Barlow',sans-serif;color:#fff}
+.sc{position:absolute;inset:0;overflow:hidden}
+.bg{position:absolute;inset:-2%;width:104%;height:104%;object-fit:cover}
+.sh{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.55) 0%,rgba(0,0,0,.15) 22%,rgba(0,0,0,.25) 40%,rgba(0,0,0,.8) 62%,rgba(0,0,0,.95) 100%)}
+.gl{position:absolute;inset:0;background:radial-gradient(110% 45% at 50% 100%,rgba(242,86,29,.28),rgba(242,86,29,0) 60%);mix-blend-mode:screen}
+.t{position:absolute;left:84px;margin:0;font-family:'Barlow Condensed',sans-serif;font-style:italic;font-weight:900;text-transform:uppercase;letter-spacing:-1px;line-height:.88;white-space:nowrap}
+.o{color:#F2561D}
+.lb{position:absolute;left:88px;font-weight:700;font-size:30px;letter-spacing:9px;text-transform:uppercase;color:#F2561D;margin:0}
+.ap{position:absolute;left:88px;font-style:italic;font-weight:500;font-size:44px;color:rgba(255,255,255,.92);margin:0}
+.bar{position:absolute;left:92px;width:160px;height:9px;background:#F2561D;transform-origin:left}
+.num{position:absolute;right:70px;font-family:'Barlow Condensed',sans-serif;font-style:italic;font-weight:900;font-size:520px;line-height:.8;color:transparent;-webkit-text-stroke:4px rgba(242,86,29,.9);letter-spacing:-10px}
+.wipe{position:absolute;left:-10%;width:120%;height:220px;background:#F2561D;transform:skewY(-8deg)}
+.logo{position:absolute}
+.st{position:absolute;left:118px;font-family:'Barlow Condensed',sans-serif;font-style:italic;font-weight:900;font-size:76px;text-transform:uppercase;line-height:1;white-space:nowrap}
+.st small{display:block;font-family:'Barlow',sans-serif;font-style:italic;font-weight:500;font-size:38px;text-transform:none;color:rgba(255,255,255,.8);margin-top:6px}
+.st:before{content:'';position:absolute;left:-30px;top:10px;width:10px;height:58px;background:#F2561D;transform:skewX(-20deg)}
+</style></head><body><div id="R"></div>
+<script>
+const PH='file:///C:/Users/dougl/AppData/Local/Temp/claude/b66b0c4a1250a217/eccb41c8-7e1d-4111-b3de-f825c68cd937/scratchpad/unsplash-full/r3-';
+const LOGO='file:///C:/Users/dougl/Documents/Codex/2026-09-09/mar/outputs/brooks-black-2026-11-07/fontes/logo-antecipa.png';
+const R=document.getElementById('R');
+const OV='cubic-bezier(.34,1.56,.64,1)', OUT='cubic-bezier(.22,1,.36,1)', ACC='cubic-bezier(.55,0,1,.45)';
+const s=x=>x*1000;
+function el(parent,html){const d=document.createElement('div');d.innerHTML=html.trim();const e=d.firstChild;parent.appendChild(e);return e}
+function A(e,kf,start,dur,easing,fill){e.animate(kf,{delay:s(start),duration:s(dur),easing:easing||'linear',fill:fill||'both'})}
+function inn(e,t0,{dx=-120,dy=0}={}){A(e,[{opacity:0,transform:`translate(${dx}px,${dy}px)`},{opacity:1,transform:'translate(0,0)'}],t0,.5,OV);}
+function scene(img,t0,t1,{zoom=[1.14,1.0],pos='50% 50%',f=''}={}){
+  const sc=el(R,`<div class="sc"></div>`);
+  if(img){const b=el(sc,`<img class="bg" src="${PH}${img}.jpg" style="object-position:${pos};filter:${f}">`);
+    A(b,[{transform:`scale(${zoom[0]})`},{transform:`scale(${zoom[1]})`}],t0,(t1||15)-t0+.4,'cubic-bezier(.3,0,.7,1)');}
+  el(sc,`<div class="sh"></div>`);el(sc,`<div class="gl"></div>`);
+  if(t0>0){A(sc,[{clipPath:'inset(100% 0 0 0)'},{clipPath:'inset(0 0 0 0)'}],t0,.42,'cubic-bezier(.65,0,.35,1)');
+    const w=el(R,`<div class="wipe"></div>`);A(w,[{top:'2300px'},{top:'-700px'}],t0-.02,.46,'cubic-bezier(.65,0,.35,1)');}
+  return sc;
+}
+function logo(sc,t0){const l=el(sc,`<img class="logo" src="${LOGO}" style="left:84px;top:210px;width:300px">`);A(l,[{opacity:0,transform:'translateY(-30px)'},{opacity:1,transform:'none'}],t0,.5,OUT);}
+
+// CENA 1 (0–2.6)
+let c=scene('hg2',0,1.935,{zoom:[1.18,1.04],f:'brightness(.95) contrast(1.1)'});
+logo(c,.1);
+inn(el(c,`<p class="t" style="top:1010px;font-size:178px">Não espera</p>`),.35,{dx:-140});
+inn(el(c,`<p class="t" style="top:1170px;font-size:178px">a <span class="o">Black.</span></p>`),.55,{dx:-140});
+A(el(c,`<div class="bar" style="top:1350px"></div>`),[{transform:'scaleX(0)'},{transform:'scaleX(1)'}],.85,.45,OV);
+inn(el(c,`<p class="ap" style="top:1385px">5 motivos pra antecipar.</p>`),1.0,{dx:0,dy:30});
+
+// CENA 2 (2.6–5.3)
+c=scene('st3',1.935,6.29,{zoom:[1.0,1.14],f:'brightness(.6) contrast(1.1) saturate(.85)'});
+logo(c,2.05);
+inn(el(c,`<p class="lb" style="top:880px">Motivo 01</p>`),2.1,{dx:-60});
+inn(el(c,`<p class="t" style="top:1080px;font-size:130px">Até</p>`),2.15,{dx:-100});
+inn(el(c,`<p class="t o" style="top:930px;left:300px;font-size:400px;letter-spacing:-8px"><span id="cn">0</span>%</p>`),2.2,{dx:0,dy:60});
+inn(el(c,`<p class="t" style="top:1280px;font-size:130px">já vale.</p>`),3.6,{dx:-100});
+inn(el(c,`<p class="ap" style="top:1430px">Em produtos selecionados.</p>`),4.6,{dx:0,dy:30});
+
+// CENA 3 (5.3–9.9) motivos 02–05
+const M=[['sl1','02','Quem chega<br>antes <span class="o">escolhe.</span>','brightness(.95) contrast(1.1)','50% 30%'],
+ ['st4','03','Prova antes<br>de <span class="o">levar.</span>','brightness(1) contrast(1.1)','60% 60%'],
+ ['gf2','04','Presente<br><span class="o">reso<span style="margin-right:-16px">l</span>vido.</span>','brightness(.8) contrast(1.1)','50% 50%']];
+const MT=[6.29,8.226,9.52,11.61];M.forEach((m,i)=>{const t0=MT[i];
+  c=scene(m[0],t0,MT[i+1],{zoom:[1.12,1.0],f:m[3],pos:m[4]});
+  logo(c,t0+.1);
+  inn(el(c,`<div class="num" style="top:430px">${m[1]}</div>`),t0+.1,{dx:220});
+  inn(el(c,`<p class="lb" style="top:990px">Motivo ${m[1]}</p>`),t0+.15,{dx:-60});
+  inn(el(c,`<p class="t" style="top:1050px;font-size:150px;line-height:.92">${m[2]}</p>`),t0+.22,{dx:-160});
+});
+
+// CENA 4 lojas (9.9–12.4)
+c=scene('sl3',11.61,17.42,{zoom:[1.1,1.0],f:'brightness(.7) contrast(1.12)'});
+logo(c,11.7);
+inn(el(c,`<p class="t" style="top:540px;font-size:112px">5 lojas te<br><span class="o">esperando.</span></p>`),11.7,{dx:-140});
+const L=[['Tambiá','Shopping Tambiá'],['Bessa','Parahyba Mall'],['Tambaú','Pirâmide Shopping Tambaú'],['Praia de Manaíra','Liv Mall'],['Campina Grande','Complexo K']];
+L.forEach((l,i)=>inn(el(c,`<div class="st" style="top:${800+i*130}px">${l[0]}<small>${l[1]}</small></div>`),13.45+i*.68,{dx:-120}));
+
+// CENA 5 fechamento (12.4–15)
+c=scene(null,17.42,25.2,{});
+c.style.background='#050505';
+const g=el(c,`<div style="position:absolute;inset:0;background:radial-gradient(70% 40% at 50% 45%,rgba(242,86,29,.35),rgba(242,86,29,0) 70%)"></div>`);
+A(g,[{opacity:.4},{opacity:1}],17.42,7.8,'ease-in-out');
+const bl=el(c,`<img src="${LOGO}" style="position:absolute;left:190px;top:560px;width:700px">`);
+A(bl,[{opacity:0,transform:'scale(1.35)'},{opacity:1,transform:'scale(1.0)'}],17.5,.9,OUT);
+A(bl,[{transform:'scale(1.0)'},{transform:'scale(.95)'}],18.4,6.8,'linear','forwards');
+inn(el(c,`<p class="t" style="top:930px;left:0;width:1080px;text-align:center;font-size:132px">Motivo não <span class="o">falta.</span></p>`),17.7,{dx:0,dy:50});
+inn(el(c,`<p class="ap" style="top:1110px;left:0;width:1080px;text-align:center">A Antecipa Black já está nas lojas.</p>`),19.0,{dx:0,dy:30});
+
+window.setT=t=>{document.getAnimations().forEach(a=>{a.pause();a.currentTime=t*1000});
+  const p=Math.min(1,Math.max(0,(t-2.25)/1.0));const e=1-Math.pow(1-p,3);document.getElementById('cn').textContent=Math.round(50*e);};
+window.DUR=25.2;
+</script></body></html>
