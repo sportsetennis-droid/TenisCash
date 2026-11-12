@@ -332,8 +332,11 @@ async function finishTrocaGarantia(phone, pushName, data, descricao) {
 
 const OPCOES = {
   1: ({ phone, pushName }) => {
-    clearState(phone);
-    return reply(phone, 'Show' + oiNome(pushName) + '! 😄 Me conta o que você procura (modelo, marca ou esporte) e o seu tamanho, que eu já confiro no estoque das lojas.');
+    // dono 2026-11-12: "precisa ter a opção de ser atendido por um vendedor quando ele quiser comprar"
+    setState(phone, 'compra_modo', {});
+    return reply(phone, 'Show' + oiNome(pushName) + '! 😄 Como você prefere?\n\n' +
+      '1) Eu procuro pra você agora no estoque das lojas\n' +
+      '2) Falar direto com um vendedor\n\nResponda com o número.');
   },
   2: ({ phone }) => startTrocaGarantia(phone, 'troca'),
   3: ({ phone }) => startTrocaGarantia(phone, 'garantia'),
@@ -454,6 +457,48 @@ async function handleState(s, { phone, t, text, pushName }) {
     }
     clearState(phone);
     return false;
+  }
+
+  if (s.stage === 'compra_modo') {
+    if (digit === '1' || /^(voce|vc|ia|procura|pode procurar)/.test(t)) {
+      clearState(phone);
+      await reply(phone, 'Beleza! Me conta o que você procura (modelo, marca ou esporte) e o seu tamanho, que eu já confiro no estoque das lojas. 👟');
+      return true;
+    }
+    if (digit === '2' || /(vendedor|vendedora|pessoa|atendente|humano)/.test(t)) {
+      setState(phone, 'compra_loja', {});
+      const opts = LOJAS_FISICAS.map((l, i) => (i + 1) + ') ' + l.nome).concat((LOJAS_FISICAS.length + 1) + ') Tanto faz / a mais perto');
+      await reply(phone, 'Claro! 🧡 De qual loja você quer ser atendido?\n\n' + opts.join('\n') + '\n\nResponda com o número.');
+      return true;
+    }
+    clearState(phone);
+    return false;
+  }
+
+  if (s.stage === 'compra_loja') {
+    let loja = null;
+    if (digit) {
+      const i = Number(digit) - 1;
+      if (i >= 0 && i < LOJAS_FISICAS.length) loja = LOJAS_FISICAS[i];
+      else if (i === LOJAS_FISICAS.length) loja = { code: 'online', nome: 'Loja online' };
+    } else loja = findLoja(t);
+    if (!loja) { await reply(phone, 'Não entendi a loja 😅 Responde só com o número da lista, por favor.'); return true; }
+    setState(phone, 'compra_desc', { lojaCode: loja.code, lojaNome: loja.nome });
+    await reply(phone, 'Perfeito! Me diz rapidinho o que você procura (produto e tamanho) que eu já passo pro vendedor. 📝');
+    return true;
+  }
+
+  if (s.stage === 'compra_desc') {
+    clearState(phone);
+    const r = await routeLead({ loja: s.data.lojaCode, motivo: 'venda', cliente: { phone, name: pushName }, resumo: 'Quer atendimento de VENDEDOR\n' + text });
+    if (typeof module.exports.onHumanHandoff === 'function') module.exports.onHumanHandoff(phone); // IA para nessa conversa
+    const loja = findLoja(s.data.lojaCode);
+    let txt = r.ok
+      ? 'Pronto' + oiNome(pushName) + '! ✅ ' + (r.vendedor ? '*' + r.vendedor + '*, da *' : 'Um vendedor da *') + (r.loja ? r.loja.nome : s.data.lojaNome) + (r.vendedor ? '*, já vai' : '* já vai') + ' te chamar aqui no WhatsApp. 🧡'
+      : 'Anotei! 📝 Um vendedor vai te chamar no WhatsApp em breve. 🧡';
+    if (loja && loja.whatsapp) txt += '\n\nSe preferir, fala direto com a loja: wa.me/' + loja.whatsapp;
+    await reply(phone, txt);
+    return true;
   }
 
   if (s.stage === 'tg_loja') {

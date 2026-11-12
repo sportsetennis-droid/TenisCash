@@ -1,7 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const { sendCustomMessage, sendEvolutionRaw, isMetaWhatsAppConfigured, isEvolutionConfigured, formatPhoneBR, getMetaWhatsAppConfigSummary, setMetaWhatsAppCredentials } = require('../whatsapp');
-const { authMiddleware, adminMiddleware } = require('../middleware');
+const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 const { saveMetaWhatsAppCredentials } = require('../services/whatsappCredentials');
 const { getAttendantReply, isEnabled: attendantEnabled, isMainRoboOn, setRoboSwitch } = require('../services/aiAttendant');
 const { CEO } = require('../config/lojasContato');
@@ -37,6 +37,55 @@ function parseRoboCmd(text) {
   if (/^(ia|robo) ?(on|ligar|liga|ligada)$|^(ligar|liga) (a )?(ia|robo)$/.test(t)) return 'on';
   if (/^(ia|robo) ?(status|\?)$/.test(t)) return 'status';
   return null;
+}
+
+// ---------------------------------------------------------------------
+// ROBÔ RESPEITA O HUMANO (dono 2026-11-12: "a IA ficou mandando coisas sem
+// ler... a pessoa não queria atendimento de IA" / "quando alguém responder a
+// IA precisa parar automaticamente").
+// 1) Se ALGUÉM DA LOJA respondeu esse contato pelo celular/app nos últimos 30
+//    dias, a conversa é humana: o robô fica quieto (só atende pedido explícito
+//    "2 via" / "menu"). Respostas do robô saem pela API e NÃO entram como
+//    fromMe no monitor — fromMe = gente da equipe.
+// 2) Cliente pede gente ("quero falar com atendente", "não quero robô") -> o
+//    robô para nessa conversa por 24h.
+// 3) A IA espera a pessoa terminar de escrever (8s sem msg nova) e responde
+//    TUDO junto — não responde cada pedaço.
+// ---------------------------------------------------------------------
+const HUMAN_WINDOW_MS = 30 * 24 * 3600 * 1000;
+async function humanTalkingRecently(instance, chatJids) {
+  try {
+    const row = await prisma.whatsappMessage.findFirst({
+      where: { instance, chatJid: { in: chatJids.filter(Boolean) }, fromMe: true, ts: { gte: new Date(Date.now() - HUMAN_WINDOW_MS) } },
+      select: { id: true },
+    });
+    return !!row;
+  } catch (e) { return false; } // banco fora: não bloqueia
+}
+const OPT_OUT_MS = 24 * 3600 * 1000;
+const optedOut = new Map(); // phone -> até quando o robô fica quieto
+// Cliente pediu VENDEDOR pelo menu (Quero comprar -> 2): a IA para nessa conversa.
+waFunctions.onHumanHandoff = (phone) => optedOut.set(phone, Date.now() + OPT_OUT_MS);
+const OPT_OUT_RE = /(nao quero (falar com |atendimento (de|com) )?(robo|ia|bot|maquina|automatico)|quero falar com (uma |um )?(pessoa|humano|atendente|vendedor|vendedora|gente)|falar com (um |uma )?(atendente|humano|pessoa)|atendente humano|para de (me )?responder)/;
+function normTxt(x) { return String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ª/g, 'a').replace(/\s+/g, ' ').trim(); }
+function isExplicitRequest(t) { return /^(menu)[!?.]*$/.test(t) || /\b(2|segunda) ?a? ?via\b/.test(t); }
+
+const AI_DEBOUNCE_MS = 8000;
+const aiBuffers = new Map(); // phone -> { texts, timer }
+
+// IA no privado (depois do debounce). Confere de novo se a equipe entrou na
+// conversa enquanto a pessoa digitava.
+async function runAi({ instance, phone, text, pushName, jid, sendToClient }) {
+  if (optedOut.has(phone)) return;
+  if (await humanTalkingRecently(instance, [jid])) return;
+  console.log(`[whatsapp/evolution] priv ${phone} (${pushName}): "${text.slice(0, 160)}"`);
+  const result = await getAttendantReply({ phone, text, pushName, isGroup: false, senderName: pushName, sessionKey: phone });
+  if (result.ok && result.reply) {
+    const r = await sendToClient(result.reply);
+    console.log(`[whatsapp/evolution] resposta IA -> ${phone}: ${r.ok ? 'OK' : 'FAIL ' + r.error}`);
+  } else if (!result.skip && !result.silent) {
+    console.warn(`[whatsapp/evolution] sem resposta p/ ${phone}:`, result.error || 'desconhecido');
+  }
 }
 
 const router = express.Router();
@@ -203,6 +252,25 @@ router.post('/evolution', async (req, res) => {
     }
     const roboOn = await isMainRoboOn();
 
+    if (!isGroup && roboOn) {
+      const t = normTxt(text);
+      const explicit = !!text && isExplicitRequest(t);
+      const until = optedOut.get(phone);
+      if (until && Date.now() > until) optedOut.delete(phone);
+      if (text && OPT_OUT_RE.test(t)) {
+        optedOut.set(phone, Date.now() + OPT_OUT_MS);
+        const b = aiBuffers.get(phone); if (b) { clearTimeout(b.timer); aiBuffers.delete(phone); }
+        console.log('[whatsapp/evolution] cliente pediu atendimento humano -> robo quieto 24h', phone);
+        await sendToClient('Combinado! 🧡 Vou deixar com a nossa equipe — alguém da loja te responde por aqui.').catch(() => {});
+        return;
+      }
+      if (!explicit && optedOut.has(phone)) { console.log('[whatsapp/evolution] robo quieto (cliente pediu humano)', phone); return; }
+      if (!explicit && await humanTalkingRecently(instance, [jid, altJid])) {
+        console.log('[whatsapp/evolution] conversa humana (equipe respondeu nos ultimos 30d) -> robo quieto', phone);
+        return;
+      }
+    }
+
     if (!text) {
       // Em grupo, ignora midia em silencio (nao poluir). No privado, pede texto.
       if (!isGroup && roboOn) {
@@ -238,6 +306,20 @@ router.post('/evolution', async (req, res) => {
       const limpo = text.toLowerCase().replace(/[^a-z0-9]/gi, '');
       const trivial = limpo.length < 4 || /^(ok|sim|nao|blz|vlw|valeu|obg|kk+|rs+|haha+|aff|opa|eai|salve|bomdia|boatarde|boanoite)$/.test(limpo);
       if (trivial && !text.includes('?')) return;
+    }
+
+    if (!isGroup) {
+      // espera a pessoa terminar de escrever e responde tudo junto
+      const prev = aiBuffers.get(phone);
+      const buf = prev || { texts: [] };
+      if (prev) clearTimeout(prev.timer);
+      buf.texts.push(text);
+      buf.timer = setTimeout(() => {
+        aiBuffers.delete(phone);
+        runAi({ instance, phone, text: buf.texts.join('\n'), pushName, jid, sendToClient }).catch((e) => console.error('[whatsapp/evolution] IA erro:', e.message));
+      }, AI_DEBOUNCE_MS);
+      aiBuffers.set(phone, buf);
+      return;
     }
 
     console.log(`[whatsapp/evolution] ${isGroup ? 'GRUPO' : 'priv'} ${phone} (${pushName}): "${text.slice(0, 120)}"`);
