@@ -306,10 +306,12 @@ app.all('/api/_nselig', async (req, res) => {
     const ready = [];
     const confirmedReady = [];
     let confirmedCount = 0;
+    const mappedFailing = [];
     for (const p of products) {
       const ctx = elig.contextOf(p);
       if (ctx.confirmedForNuvemshop === true) confirmedCount++;
       const a = elig.assessProductForNuvemshop(p, { requireConfirmation: false });
+      if (mapped.has(p.id) && !a.eligible) mappedFailing.push({ id: p.id, name: p.name, brand: p.brand, reasons: a.reasons });
       const stock = a.locatedSizes.reduce((s, z) => s + z.stock, 0);
       if (stock <= 0) continue;
       withStock.push(p.id);
@@ -333,6 +335,8 @@ app.all('/api/_nselig', async (req, res) => {
       readyAlreadyConfirmed: confirmedReady.length,
       blockedReasons: Object.entries(reasonsHist).sort((x, y) => y[1] - x[1]),
       cron: { scheduleEnabled: cron.scheduleEnabled, lastFinishedAt: cron.lastFinishedAt, lastResult: cron.lastResult },
+      mappedFailingCount: mappedFailing.length,
+      mappedFailing,
       byBrand: ready.reduce((m, r) => { m[r.brand] = (m[r.brand] || 0) + 1; return m; }, {}),
       ready,
     };

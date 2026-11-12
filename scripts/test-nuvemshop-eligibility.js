@@ -96,6 +96,20 @@ assert.match(reasonOf(validProduct({ name: 'Tenis 7891234567890 Corrida' })), /n
 assert.equal(assessProductForNuvemshop(validProduct({ name: 'Tênis Adidas Duramo RC2 Preto' })).eligible, true);
 assert.equal(assessProductForNuvemshop(validProduct({ name: 'Tênis Asics Gel-Nimbus 26' })).eligible, true);
 assert.match(reasonOf(validProduct({ costPrice: 0 })), /sem custo/);
+// Endurecimento 2026-11-12: nome/cor crus que passavam na trava antiga
+assert.match(reasonOf(validProduct({ name: 'TENIS CK00040003 CHUCK TAYLOR ALL STAR MARINHO/CRU/PRETO 27' })), /tamanho no nome/);
+assert.match(reasonOf(validProduct({ name: 'TENIS STATION 3 SEFA217 ADT. SINTETICO EVERLAST BRANCO/DOURADO 37 REF SEFA217.217D.37' })), /REF no nome/);
+assert.match(reasonOf(validProduct({ name: 'CALCADO GRESCA 2.0 02 BRANCO TAM 42' })), /tamanho no nome/);
+assert.match(reasonOf(validProduct({ name: 'SAPATILHA TRAINING - FIBER 0896-V2 38/39' })), /tamanho no nome/);
+assert.match(reasonOf(validProduct({ name: 'CHUTEIRA TP05090001 TOPPER DOMINATOR PRO V SCTY' })), /codigo de artigo/);
+assert.match(reasonOf(validProduct({ name: 'TENIS FLYER LITE 3 WNS BDP  PUMA Black-PUMA Pink 39' })), /nome cru/);
+assert.match(reasonOf(withCtx({ color: 'BKW' })), /cor abreviada/);
+assert.match(reasonOf(withCtx({ color: 'Vm' })), /cor abreviada/);
+assert.match(reasonOf(withCtx({ color: 'Branco Tam' })), /cor crua/);
+assert.equal(assessProductForNuvemshop(validProduct({ name: 'Tênis Nike Pegasus 41' })).eligible, true);
+assert.equal(assessProductForNuvemshop(validProduct({ name: 'Gel Kayano 31 Preto' })).eligible, true);
+assert.equal(assessProductForNuvemshop(withCtx({ color: 'Sea Glass/Neon Flame' })).eligible, true);
+assert.equal(assessProductForNuvemshop(withCtx({ color: 'Azul' })).eligible, true);
 assert.match(reasonOf(validProduct({ sizes: [
   { size: '40', barcode: '111', stock: 5, storeStocks: [{ stock: 1 }] },
   { size: '41', barcode: '111', stock: 5, storeStocks: [{ stock: 1 }] },
