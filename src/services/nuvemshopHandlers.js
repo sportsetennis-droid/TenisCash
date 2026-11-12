@@ -12,7 +12,7 @@
 const crypto = require('crypto');
 const { prisma } = require('../middleware');
 const ns = require('./nuvemshop');
-const { assessProductForNuvemshop } = require('./nuvemshopEligibility');
+const { assessProductForNuvemshop, nuvemshopStoreStocksQuery, physicalStock } = require('./nuvemshopEligibility');
 const storeRadio = require('./storeRadio');
 const { applyOrderStock } = require('./nuvemshopStockSafety');
 
@@ -1433,7 +1433,7 @@ function pushProductToNuvemshop(localProductId, connection) {
 async function _pushProductToNuvemshopInner(localProductId, connection) {
   const product = await prisma.product.findUnique({
     where: { id: localProductId },
-    include: { sizes: { include: { storeStocks: { select: { stock: true } } } } },
+    include: { sizes: { include: { storeStocks: nuvemshopStoreStocksQuery() } } },
   });
   if (!product) throw new Error(`Produto ${localProductId} não encontrado`);
 
@@ -1703,7 +1703,7 @@ async function pushAllProducts({ onlyMissing = true, limit = 1000, withImageOnly
 async function pushStockUpdate(localProductId) {
   const product = await prisma.product.findUnique({
     where: { id: localProductId },
-    include: { sizes: { include: { storeStocks: { select: { stock: true } } } } },
+    include: { sizes: { include: { storeStocks: nuvemshopStoreStocksQuery() } } },
   });
   if (!product) throw new Error('Produto não encontrado');
   const mapping = await prisma.nuvemshopProductMapping.findUnique({ where: { localProductId } });
@@ -1713,7 +1713,7 @@ async function pushStockUpdate(localProductId) {
 
   const locatedSizes = (product.sizes || []).map((size) => ({
     ...size,
-    stock: (size.storeStocks || []).reduce((sum, row) => sum + Number(row.stock || 0), 0),
+    stock: physicalStock(size),
   }));
   const result = await updateNuvemshopVariants(
     connection,

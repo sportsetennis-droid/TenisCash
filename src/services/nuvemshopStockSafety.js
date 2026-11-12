@@ -1,3 +1,5 @@
+const { nuvemshopStockStoreIds, physicalStock } = require('./nuvemshopEligibility');
+
 // The local signature cannot detect a missed remote update or a manual edit.
 function remoteStockDiffers(product, remote) {
   const sizes = product.sizes || [];
@@ -7,9 +9,9 @@ function remoteStockDiffers(product, remote) {
       (size.barcode && [variant.sku, variant.barcode].includes(size.barcode)) ||
       variant.sku === `${product.sku}-${size.size}` || String(size.size).trim() === String(label).trim());
     if (candidates.length !== 1) return true;
-    const quantity = (candidates[0].storeStocks || []).reduce((sum, row) => sum + Number(row.stock || 0), 0);
+    const quantity = physicalStock(candidates[0]);
     return variant.stock_management !== true || Number(variant.stock || 0) !== quantity;
-  }) || sizes.some(size => (size.storeStocks || []).some(row => Number(row.stock) > 0)
+  }) || sizes.some(size => physicalStock(size) > 0
     && !(remote.variants || []).some(v => (size.barcode && (v.sku === size.barcode || v.barcode === size.barcode))
       || String(v.values?.[0]?.pt || '').trim() === String(size.size).trim()));
 }
@@ -72,7 +74,7 @@ async function applyOrderStock(prisma, order, { saleId, allowLegacy = false } = 
             code && (code === `${product.sku}-${size.size}` || code === size.barcode)));
         }
         if (matches.length !== 1) throw new Error(`Pedido ${order.number || id}: SKU ${code || item.variant_id} sem tamanho único confirmado`);
-        const rows = await tx.storeStock.findMany({ where: { productSizeId: matches[0].id, stock: { gt: 0 } } });
+        const rows = await tx.storeStock.findMany({ where: { productSizeId: matches[0].id, stock: { gt: 0 }, storeId: { in: nuvemshopStockStoreIds() } } });
         rows.sort((a, b) => Number(b.storeId === preferred?.id) - Number(a.storeId === preferred?.id) || b.stock - a.stock);
         let remaining = quantity;
         for (const row of rows) {

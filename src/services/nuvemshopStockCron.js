@@ -12,6 +12,7 @@ const { backfillLocalImagesFromNuvemshop } = require('./nuvemshopImageBackfill')
 const {
   assessRemoteProductForNuvemshop,
   hasRemoteUsableImage,
+  nuvemshopStoreStocksQuery,
 } = require('./nuvemshopEligibility');
 const TZ = 'America/Fortaleza';
 const { remoteStockDiffers } = require('./nuvemshopStockSafety');
@@ -228,7 +229,7 @@ async function runNuvemshopStockSync({
             category: true,
             subcategory: true,
             aiContext: true,
-            sizes: { include: { storeStocks: { select: { stock: true } } } },
+            sizes: { include: { storeStocks: nuvemshopStoreStocksQuery() } },
           },
         });
 

@@ -35,11 +35,12 @@ function validProduct(overrides = {}) {
     costPrice: 200,
     aiContext: {
       confirmedForNuvemshop: true,
+      color: 'Preto/Branco',
       classification: { modality: 'Corrida', tier: 'Treino' },
     },
     sizes: [
-      { size: '40', sizeConfirmedAt: new Date('2026-06-10T12:00:00Z'), storeStocks: [{ stock: 2 }] },
-      { size: '41', sizeConfirmedAt: new Date('2026-06-10T12:00:00Z'), storeStocks: [{ stock: 0 }] },
+      { size: '40', barcode: '7890000000040', stock: 5, sizeConfirmedAt: new Date('2026-06-10T12:00:00Z'), storeStocks: [{ stock: 2 }] },
+      { size: '41', barcode: '7890000000041', stock: 5, sizeConfirmedAt: new Date('2026-06-10T12:00:00Z'), storeStocks: [{ stock: 0 }] },
     ],
     ...overrides,
   };
@@ -56,24 +57,17 @@ const badBrand = assessProductForNuvemshop(validProduct({ brand: 'A DEFINIR' }))
 assert.equal(badBrand.eligible, false);
 assert(badBrand.reasons.some((reason) => reason.includes('marca')));
 
+// Trava rigorosa (2026-11-12): tamanho técnico com estoque NÃO sobe.
 const placeholder = assessProductForNuvemshop(validProduct({
   brand: 'MIZUNO',
-  sizes: [{ size: 'T-6100', storeStocks: [{ stock: 3 }] }],
+  sizes: [{ size: 'T-6100', barcode: '7890000006100', storeStocks: [{ stock: 3 }] }],
 }));
-assert.equal(placeholder.eligible, true);
-assert(placeholder.warnings.some((warning) => warning.includes('técnico liberado')));
-
-const adidasUnlocked = assessProductForNuvemshop(validProduct({
-  sizes: [{ size: 'T-6100', sizeConfirmedAt: null, storeStocks: [{ stock: 2 }] }],
-}));
-assert.equal(adidasUnlocked.eligible, true);
-assert.equal(adidasUnlocked.unconfirmedStock, 2);
-assert.equal(adidasUnlocked.publicSizes.length, 1);
-assert(adidasUnlocked.warnings.some((warning) => warning.includes('liberado pelo dono')));
+assert.equal(placeholder.eligible, false);
+assert(placeholder.reasons.some((reason) => reason.includes('tamanho tecnico')));
 
 const nikeUnconfirmed = assessProductForNuvemshop(validProduct({
   brand: 'NIKE',
-  sizes: [{ size: '40', sizeConfirmedAt: null, storeStocks: [{ stock: 2 }] }],
+  sizes: [{ size: '40', barcode: '7890000000040', sizeConfirmedAt: null, storeStocks: [{ stock: 2 }] }],
 }));
 assert.equal(nikeUnconfirmed.eligible, true);
 assert(nikeUnconfirmed.warnings.some((warning) => warning.includes('sem confirmação')));
@@ -91,6 +85,28 @@ assert.equal(assessProductForNuvemshop(noConfirmation).eligible, false);
 assert.equal(assessProductForNuvemshop(validProduct({ price: 200 })).eligible, false);
 assert.equal(assessProductForNuvemshop(validProduct({ imageUrl: null })).eligible, false);
 assert.equal(assessProductForNuvemshop(validProduct({ longDescription: null })).eligible, false);
+
+// Trava rigorosa: cada erro da auditoria de 2026-11-12 recusa sozinho.
+const withCtx = (extra) => { const p = validProduct(); p.aiContext = { ...p.aiContext, ...extra }; return p; };
+const reasonOf = (p) => assessProductForNuvemshop(p).reasons.join(' | ');
+assert.match(reasonOf(withCtx({ color: '' })), /sem cor/);
+assert.match(reasonOf(validProduct({ name: '350001 TENIS COURO 123 IMIGRANTE PRETO' })), /nome cru/);
+assert.match(reasonOf(validProduct({ name: 'U23TW014-MEIAO UNISEX UMBRO CLASSIC-BCO-222-Tam:39-43' })), /nome cru/);
+assert.match(reasonOf(validProduct({ name: 'Tenis 7891234567890 Corrida' })), /nome cru/);
+assert.equal(assessProductForNuvemshop(validProduct({ name: 'Tênis Adidas Duramo RC2 Preto' })).eligible, true);
+assert.equal(assessProductForNuvemshop(validProduct({ name: 'Tênis Asics Gel-Nimbus 26' })).eligible, true);
+assert.match(reasonOf(validProduct({ costPrice: 0 })), /sem custo/);
+assert.match(reasonOf(validProduct({ sizes: [
+  { size: '40', barcode: '111', stock: 5, storeStocks: [{ stock: 1 }] },
+  { size: '41', barcode: '111', stock: 5, storeStocks: [{ stock: 1 }] },
+] })), /mesmo codigo/);
+assert.match(reasonOf(validProduct({ sizes: [{ size: '40', barcode: null, stock: 5, storeStocks: [{ stock: 1 }] }] })), /sem codigo de barras/);
+assert.match(reasonOf(validProduct({ sizes: [{ size: '40', barcode: '111', stock: 1, storeStocks: [{ stock: 3 }] }] })), /maior que comprado/);
+// Estoque só das lojas 04/06/07: outra loja não conta.
+assert.match(reasonOf(validProduct({ sizes: [{ size: '40', barcode: '111', stock: 5,
+  storeStocks: [{ storeId: '5fb0bab8-57c3-4252-ae44-eb434ee14474', stock: 4 }] }] })), /sem tamanho valido/);
+assert.equal(assessProductForNuvemshop(validProduct({ sizes: [{ size: '40', barcode: '111', stock: 5,
+  storeStocks: [{ storeId: '9bcd3735-f5ed-41d7-a851-5896a83a6084', stock: 2 }, { storeId: '5fb0bab8-57c3-4252-ae44-eb434ee14474', stock: 9 }] }] })).eligible, true);
 
 for (const label of ['34', '39/40', '09-11', 'P', 'GG', 'ÚNICO', 'XL']) {
   assert.equal(isPublicSizeLabel(label), true, label);

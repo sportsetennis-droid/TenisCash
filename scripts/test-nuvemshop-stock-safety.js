@@ -1,5 +1,10 @@
 const assert = require('node:assert/strict');
 const { applyOrderStock, preservedPayload, remoteStockDiffers } = require('../src/services/nuvemshopStockSafety');
+const ALLOWED = [
+  '01b5a498-4dce-49b9-b359-5b031936aae9', // LOJA04
+  '54ddff2f-deb9-42fa-a1ae-105eb6d59560', // LOJA06
+  '9bcd3735-f5ed-41d7-a851-5896a83a6084', // LOJA07
+];
 
 function database(initialStock = 5, mapping = null) {
   let data = { stock: initialStock, mapping, movements: [] };
@@ -21,7 +26,11 @@ function database(initialStock = 5, mapping = null) {
           product: { findMany: async () => [{ sku: 'REF', sizes: [{ id: 'size', size: '41' }] }] },
           productSize: { findMany: async ({ where }) => where.barcode === 'EAN' ? [{ id: 'size' }] : [] },
           storeStock: {
-            findMany: async () => [{ id: 'stock', storeId: 'store', productSizeId: 'size', stock: draft.stock }],
+            findMany: async ({ where }) => {
+              // A baixa de pedido Nuvemshop só pode procurar estoque nas lojas 04/06/07.
+              assert.deepEqual([...(where.storeId?.in || [])].sort(), [...ALLOWED].sort(), 'baixa restrita às lojas 04/06/07');
+              return [{ id: 'stock', storeId: 'store', productSizeId: 'size', stock: draft.stock }];
+            },
             updateMany: async ({ where, data: change }) => {
               if (draft.stock < where.stock.gte) return { count: 0 };
               draft.stock -= change.stock.decrement;
