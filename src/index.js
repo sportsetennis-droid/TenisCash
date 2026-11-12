@@ -287,6 +287,79 @@ app.post('/api/_loopbrain', async (req, res) => {
   }
 });
 // TEMPORÁRIO (remover após uso): gera 1 foto editorial premium server-side (Railway tem FAL_KEY). Guard ?g=.
+// TEMPORÁRIO (remover após uso): raio-x da trava Nuvemshop + subida dos elegíveis.
+// GET = só leitura. POST ?apply=1 = confirma + sobe SÓ quem passa a trava inteira
+// (recalculada aqui no servidor; não aceita lista de ids de fora). Guard por ?g=.
+app.all('/api/_nselig', async (req, res) => {
+  if (req.query.g !== 'stns2026elig') return res.status(403).json({ error: 'forbidden' });
+  try {
+    const { prisma } = require('./middleware');
+    const elig = require('./services/nuvemshopEligibility');
+    const nsH = require('./services/nuvemshopHandlers');
+    const products = await prisma.product.findMany({
+      where: { active: true },
+      include: { sizes: { include: { storeStocks: elig.nuvemshopStoreStocksQuery() } } },
+    });
+    const mapped = new Set((await prisma.nuvemshopProductMapping.findMany({ select: { localProductId: true } })).map((m) => m.localProductId));
+    const withStock = [];
+    const reasonsHist = {};
+    const ready = [];
+    const confirmedReady = [];
+    let confirmedCount = 0;
+    for (const p of products) {
+      const ctx = elig.contextOf(p);
+      if (ctx.confirmedForNuvemshop === true) confirmedCount++;
+      const a = elig.assessProductForNuvemshop(p, { requireConfirmation: false });
+      const stock = a.locatedSizes.reduce((s, z) => s + z.stock, 0);
+      if (stock <= 0) continue;
+      withStock.push(p.id);
+      const keys = new Set(a.reasons.map((r) => r.replace(/^tamanho .*?(sem codigo|: fisico).*/, 'tamanho $1...')));
+      keys.forEach((k) => { reasonsHist[k] = (reasonsHist[k] || 0) + 1; });
+      if (a.eligible && !mapped.has(p.id)) {
+        const row = { id: p.id, name: p.name, brand: p.brand, color: ctx.color || null, price: p.price, cost: p.costPrice, sizes: a.publicSizes.map((z) => `${z.size}:${z.stock}`).join(' '), confirmed: ctx.confirmedForNuvemshop === true };
+        ready.push(row);
+        if (row.confirmed) confirmedReady.push(row.id);
+      }
+    }
+    const cron = require('./services/nuvemshopStockCron').getNuvemshopCronState();
+    const out = {
+      ok: true,
+      storeIds: elig.nuvemshopStockStoreIds(),
+      active: products.length,
+      mapped: mapped.size,
+      confirmedFlag: confirmedCount,
+      withStockInStores: withStock.length,
+      readyUnmapped: ready.length,
+      readyAlreadyConfirmed: confirmedReady.length,
+      blockedReasons: Object.entries(reasonsHist).sort((x, y) => y[1] - x[1]),
+      cron: { scheduleEnabled: cron.scheduleEnabled, lastFinishedAt: cron.lastFinishedAt, lastResult: cron.lastResult },
+      byBrand: ready.reduce((m, r) => { m[r.brand] = (m[r.brand] || 0) + 1; return m; }, {}),
+      ready,
+    };
+    if (req.method !== 'POST' || req.query.apply !== '1') return res.json(out);
+
+    const conn = await prisma.nuvemshopConnection.findFirst({ where: { status: 'active' } });
+    if (!conn) return res.status(400).json({ error: 'sem conexão Nuvemshop ativa' });
+    const limit = Math.max(1, Math.min(Number(req.query.limit) || 50, 200));
+    const results = { uploaded: 0, skipped: 0, failed: 0, items: [] };
+    for (const row of ready.slice(0, limit)) {
+      const fresh = await prisma.product.findUnique({ where: { id: row.id }, select: { aiContext: true } });
+      const ctx = elig.contextOf(fresh);
+      ctx.releaseToNuvemshop = true; ctx.confirmedForNuvemshop = true;
+      ctx.confirmedForNuvemshopBy = 'dono-chat-2026-11-12';
+      await prisma.product.update({ where: { id: row.id }, data: { aiContext: ctx } });
+      try {
+        const r = await nsH.pushProductToNuvemshop(row.id, conn);
+        if (r?.skipped) { results.skipped++; results.items.push({ name: row.name, skipped: r.reason }); }
+        else { results.uploaded++; results.items.push({ name: row.name, action: r.action, ns: r.nuvemshopProductId }); }
+      } catch (e) { results.failed++; results.items.push({ name: row.name, error: String(e.message).slice(0, 160) }); }
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    res.json({ ok: true, applied: true, remaining: Math.max(0, ready.length - limit), ...results });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
 app.post('/api/_falgen', async (req, res) => {
   if (req.query.g !== 'reinado2026') return res.status(403).json({ error: 'forbidden' });
   const keys = { falKey: !!process.env.FAL_KEY, openaiKey: !!process.env.OPENAI_API_KEY };
