@@ -18,7 +18,7 @@ function buildCaption(doc) {
   const link = baseUrl() + '/nota/' + doc.accessKey;
   return '🧾 *' + loja + '* — seu cupom fiscal\n' +
     'Nº ' + doc.number + ' · ' + data + ' · R$ ' + total + '\n\n' +
-    'Ver/baixar a nota:\n' + link + '\n\nObrigado pela compra! 💚';
+    'Ver/baixar a nota:\n' + link + '\n\nObrigado pela compra! 🧡';
 }
 
 // doc precisa de issuer + accessKey + status authorized. phone = WhatsApp do cliente.
