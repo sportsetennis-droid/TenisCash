@@ -139,7 +139,7 @@ const SEGUNDA_VIA = {
     if (!docs.length) {
       return reply(phone,
         'Oi' + nome + '! Procurei aqui e não encontrei cupom fiscal ligado a este número de WhatsApp. 🧾\n\n' +
-        'Pode ser que a compra tenha sido registrada com outro telefone. Fala com a loja onde você comprou que o vendedor reenvia na hora. 💚');
+        'Pode ser que a compra tenha sido registrada com outro telefone. Fala com a loja onde você comprou que o vendedor reenvia na hora. 🧡');
     }
     if (docs.length === 1) return sendDoc(docs[0], phone);
 
@@ -193,7 +193,7 @@ function isGreeting(t) {
 }
 
 function menuText(pushName) {
-  return 'Oi' + oiNome(pushName) + '! Aqui é a *Sports & Tennis* 💚 Que bom ter você por aqui.\n' +
+  return 'Oi' + oiNome(pushName) + '! Aqui é a *Sports & Tennis* 🧡 Que bom ter você por aqui.\n' +
     'Me conta, como posso te ajudar?\n\n' +
     '1️⃣ Quero comprar\n' +
     '2️⃣ Troca\n' +
@@ -239,8 +239,8 @@ async function finishTrocaGarantia(phone, pushName, data, descricao) {
   const loja = data.online ? null : findLoja(data.lojaCode);
   let txt = r.ok
     ? 'Pronto' + oiNome(pushName) + '! ✅ Já passei seu caso pra ' + (r.vendedor ? '*' + r.vendedor + '*, da ' : 'equipe da ') +
-      '*' + lojaNome + '*. Em breve te chamam aqui no WhatsApp. 💚'
-    : 'Anotei tudo' + oiNome(pushName) + '! 📝 Nossa equipe vai te chamar no WhatsApp em breve. 💚';
+      '*' + lojaNome + '*. Em breve te chamam aqui no WhatsApp. 🧡'
+    : 'Anotei tudo' + oiNome(pushName) + '! 📝 Nossa equipe vai te chamar no WhatsApp em breve. 🧡';
   if (loja && loja.whatsapp) txt += '\n\nSe preferir, fala direto com a loja: wa.me/' + loja.whatsapp;
   if (!data.online) txt += '\n\nDica: leva o produto e, se tiver, o cupom (pede a 2ª via aqui escrevendo *2 via*).';
   return reply(phone, txt);
@@ -262,7 +262,7 @@ const OPCOES = {
   7: ({ phone }) => {
     clearState(phone);
     return reply(phone,
-      'Você pode falar direto com o ' + CEO.titulo + ' da Sports & Tennis, *' + CEO.nome + '* 💚\n' +
+      'Você pode falar direto com o ' + CEO.titulo + ' da Sports & Tennis, *' + CEO.nome + '* 🧡\n' +
       '👉 wa.me/' + CEO.whatsapp + '\n\nEle acompanha pessoalmente as mensagens que chegam por lá.');
   },
 };
