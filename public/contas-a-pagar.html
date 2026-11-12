@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#111111">
+<title>Contas a pagar</title>
+<style>
+  :root { --bg:#f2f2f7; --card:#fff; --ink:#1d1d1f; --mute:#6e6e73; --line:#e5e5ea; --brand:#E5571E; --ok:#0a843d; --bad:#d70015; --warn:#b06b00; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+  body { padding: env(safe-area-inset-top) 0 calc(72px + env(safe-area-inset-bottom)); }
+  .app { max-width: 480px; margin: 0 auto; min-height: 100vh; }
+  @media (min-width: 900px) { body { padding-top: 24px; } .app { box-shadow: 0 10px 40px rgba(0,0,0,.12); border-radius: 24px; overflow: hidden; background: var(--bg); min-height: calc(100vh - 48px); } }
+  header { position: sticky; top: 0; z-index: 5; background: #111; color: #fff; padding: 12px 16px 10px; }
+  header h1 { font-size: 18px; margin: 0 0 8px; }
+  header select { width: 100%; min-height: 40px; border-radius: 10px; border: none; padding: 8px 10px; font-size: 15px; font-weight: 700; }
+  main { padding: 12px 16px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .kpi { background: var(--card); border-radius: 14px; padding: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.05); cursor: pointer; }
+  .kpi .l { font-size: 11px; font-weight: 800; color: var(--mute); text-transform: uppercase; letter-spacing: .4px; }
+  .kpi .v { font-size: 19px; font-weight: 900; margin-top: 4px; }
+  .kpi .c { font-size: 12px; color: var(--mute); margin-top: 2px; }
+  .kpi.bad .v { color: var(--bad); } .kpi.warn .v { color: var(--warn); } .kpi.ok .v { color: var(--ok); }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .5px; color: var(--mute); margin: 18px 0 8px; }
+  .item { background: var(--card); border-radius: 12px; padding: 12px; margin-bottom: 8px; display: flex; gap: 10px; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,.04); cursor: pointer; min-height: 56px; }
+  .item .main { flex: 1; min-width: 0; }
+  .item .t { font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item .s { font-size: 12px; color: var(--mute); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item .r { text-align: right; flex: none; }
+  .item .amt { font-weight: 900; font-size: 15px; }
+  .tag { display: inline-block; font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 999px; margin-top: 3px; }
+  .tag.OVERDUE { background: #ffe5e7; color: var(--bad); } .tag.DUE_TODAY { background: #fff1d6; color: var(--warn); }
+  .tag.OPEN { background: #eef1f6; color: #3a4a63; } .tag.PARTIAL { background: #e8f0ff; color: #1b4fd6; }
+  .tag.PAID { background: #e3f7e9; color: var(--ok); } .tag.CANCELED { background: #f2f2f7; color: #8e8e93; }
+  .tag.PEND { background: #fff1d6; color: var(--warn); } .tag.VAR { background: #f3e8ff; color: #7a2bd6; }
+  .chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 8px; scrollbar-width: none; }
+  .chip { flex: none; border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 8px 12px; font-size: 13px; font-weight: 700; min-height: 36px; cursor: pointer; }
+  .chip.on { background: #111; color: #fff; border-color: #111; }
+  .row { display: flex; gap: 8px; margin-bottom: 8px; }
+  input, select, textarea { width: 100%; min-height: 44px; border: 1px solid #d1d1d6; border-radius: 10px; padding: 10px 12px; font-size: 16px; background: #fff; color: var(--ink); font-family: inherit; }
+  textarea { min-height: 70px; }
+  label { display: block; font-size: 11px; font-weight: 800; color: var(--mute); text-transform: uppercase; letter-spacing: .4px; margin: 12px 0 4px; }
+  .btn { width: 100%; min-height: 48px; border: none; border-radius: 12px; background: var(--brand); color: #fff; font-weight: 800; font-size: 16px; cursor: pointer; margin-top: 12px; }
+  .btn.ok { background: var(--ok); } .btn.dark { background: #111; } .btn.ghost { background: #e5e5ea; color: var(--ink); } .btn.bad { background: #fff; color: var(--bad); border: 1px solid #f3c2c6; }
+  .btn:disabled { opacity: .5; }
+  .seg { display: grid; grid-template-columns: 1fr 1fr; background: #e5e5ea; border-radius: 10px; padding: 3px; gap: 3px; }
+  .seg button { min-height: 40px; border: none; border-radius: 8px; background: transparent; font-weight: 800; font-size: 14px; cursor: pointer; }
+  .seg button.on { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+  .empty { text-align: center; color: var(--mute); padding: 30px 10px; font-size: 14px; }
+  .note { background: #fff4e5; border: 1px solid #ffd9a8; color: #8a5a00; padding: 10px 12px; border-radius: 10px; font-size: 13px; margin: 10px 0; line-height: 1.4; }
+  nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; background: rgba(255,255,255,.96); backdrop-filter: blur(10px); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
+  nav .in { max-width: 480px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); }
+  nav button { min-height: 60px; border: none; background: none; font-size: 11px; font-weight: 800; color: var(--mute); cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+  nav button .i { font-size: 20px; } nav button.on { color: var(--brand); }
+  .sheet-bg { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
+  .sheet { background: var(--bg); width: 100%; max-width: 480px; max-height: 92vh; overflow-y: auto; border-radius: 18px 18px 0 0; padding: 8px 16px calc(20px + env(safe-area-inset-bottom)); }
+  .grab { width: 40px; height: 5px; border-radius: 3px; background: #c7c7cc; margin: 4px auto 10px; }
+  .kv { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .kv span:first-child { color: var(--mute); } .kv span:last-child { font-weight: 700; text-align: right; word-break: break-word; }
+  .total { display: flex; justify-content: space-between; font-weight: 900; padding: 6px 2px; font-size: 14px; }
+  .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(80px + env(safe-area-inset-bottom)); background: #111; color: #fff; padding: 10px 16px; border-radius: 10px; font-weight: 700; z-index: 30; font-size: 14px; max-width: 90vw; }
+  .check { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: 14px; font-weight: 600; }
+  .check input { width: 22px; min-height: 22px; height: 22px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>💸 Contas a pagar</h1>
+    <select id="storeSel" onchange="onStore()"></select>
+  </header>
+  <main id="view"><div class="empty">Carregando…</div></main>
+</div>
+<nav><div class="in">
+  <button data-tab="painel" onclick="go('painel')"><span class="i">📊</span>Painel</button>
+  <button data-tab="contas" onclick="go('contas')"><span class="i">📄</span>Contas</button>
+  <button data-tab="fixas" onclick="go('fixas')"><span class="i">🔁</span>Fixas</button>
+  <button data-tab="nova" onclick="go('nova')"><span class="i">➕</span>Nova</button>
+</div></nav>
+<script>
+const TOKEN = localStorage.getItem('tc_admin_token') || '';
+const S = { tab: 'painel', store: '', stores: [], natures: [], accounts: [], isOwner: false, status: 'open', month: '', q: '' };
+try { S.store = localStorage.getItem('cap_store') || ''; } catch (_) {}
+const SIT = { OVERDUE: 'Vencida', DUE_TODAY: 'Vence hoje', OPEN: 'Em aberto', PARTIAL: 'Paga em parte', PAID: 'Paga', CANCELED: 'Cancelada' };
+const METHODS = { BOLETO: 'Boleto', PIX: 'PIX', DEBITO_AUTOMATICO: 'Débito automático', TRANSFERENCIA: 'Transferência', DINHEIRO: 'Dinheiro', CARTAO: 'Cartão', OUTRO: 'Outro' };
+const FREQ = { MONTHLY: 'Todo mês', QUARTERLY: 'A cada 3 meses', SEMIANNUAL: 'A cada 6 meses', YEARLY: 'Uma vez por ano' };
+
+async function api(path, opts = {}) {
+  const r = await fetch('/api/fin' + path, { ...opts, headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json' }, cache: 'no-store' });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || ('Erro ' + r.status));
+  return d;
+}
+const post = (p, b) => api(p, { method: 'POST', body: JSON.stringify(b || {}) });
+const patch = (p, b) => api(p, { method: 'PATCH', body: JSON.stringify(b || {}) });
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function brl(c) { return (Number(c || 0) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
+function money(c) { return (Number(c || 0) / 100).toFixed(2).replace('.', ','); }
+function dmy(d) { if (!d) return '-'; const x = new Date(new Date(d).getTime() - 3 * 3600000).toISOString().slice(0, 10).split('-'); return x[2] + '/' + x[1] + '/' + x[0]; }
+function ymd(d) { return new Date(new Date(d || Date.now()).getTime() - 3 * 3600000).toISOString().slice(0, 10); }
+function thisMonth() { return ymd().slice(0, 7); }
+function toast(msg) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 2600); }
+function storeLabel(t) { return t.store ? (t.store.code + ' ' + t.store.name) : 'Administrativo (empresa)'; }
+function storeQ() { return S.store ? 'storeId=' + encodeURIComponent(S.store) : ''; }
+
+function sheet(html) {
+  closeSheet();
+  const bg = document.createElement('div'); bg.className = 'sheet-bg'; bg.id = 'sheet';
+  bg.innerHTML = '<div class="sheet"><div class="grab"></div>' + html + '</div>';
+  bg.addEventListener('click', (e) => { if (e.target === bg) closeSheet(); });
+  document.body.appendChild(bg);
+  return bg.querySelector('.sheet');
+}
+function closeSheet() { const s = document.getElementById('sheet'); if (s) s.remove(); }
+
+async function boot() {
+  if (!TOKEN) { document.getElementById('view').innerHTML = '<div class="empty">Faça login no <b>/admin.html</b> neste navegador e volte aqui.</div>'; return; }
+  try {
+    const [rec, acc, me] = await Promise.all([api('/recurring'), api('/accounts'), api('/me')]);
+    S.stores = (rec.stores || []).filter((s) => s.active !== false);
+    S.natures = (rec.natures || []).filter((n) => n.analytic && n.active && n.kind !== 'RECEITA');
+    S.accounts = acc.accounts || [];
+    S.isOwner = !!me.isOwner;
+    const sel = document.getElementById('storeSel');
+    sel.innerHTML = '<option value="">Todas as lojas</option><option value="none">Administrativo (empresa toda)</option>' + S.stores.map((s) => '<option value="' + esc(s.id) + '">' + esc(s.code + ' · ' + s.name) + '</option>').join('');
+    sel.value = S.store;
+    S.month = thisMonth();
+    go(S.tab);
+  } catch (e) { document.getElementById('view').innerHTML = '<div class="empty">Erro: ' + esc(e.message) + '</div>'; }
+}
+function onStore() { S.store = document.getElementById('storeSel').value; try { localStorage.setItem('cap_store', S.store); } catch (_) {} go(S.tab); }
+function go(tab) {
+  S.tab = tab;
+  document.querySelectorAll('nav button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+  ({ painel: renderPainel, contas: renderContas, fixas: renderFixas, nova: renderNova })[tab]();
+  window.scrollTo(0, 0);
+}
+
+function itemHtml(t) {
+  const pend = t.approvalStatus !== 'APPROVED' && !['PAID', 'CANCELED'].includes(t.status);
+  return '<div class="item" onclick="openTitle(\'' + esc(t.id) + '\')"><div class="main"><div class="t">' + esc(t.description) + '</div>'
+    + '<div class="s">' + esc(storeLabel(t)) + ' · vence ' + dmy(t.dueDate) + (t.payee ? ' · ' + esc(t.payee) : '') + '</div>'
+    + '<span class="tag ' + t.situation + '">' + SIT[t.situation] + '</span>'
+    + (pend ? ' <span class="tag PEND">Aguarda liberação</span>' : '') + (t.amountConfirmed === false ? ' <span class="tag VAR">Confirmar valor</span>' : '')
+    + '</div><div class="r"><div class="amt">' + brl(['PAID', 'CANCELED'].includes(t.status) ? t.amountCents : t.balanceCents) + '</div>'
+    + (t.status === 'PARTIAL' ? '<div class="s">de ' + brl(t.amountCents) + '</div>' : '') + '</div></div>';
+}
+
+// ------------------------------ Painel ------------------------------
+async function renderPainel() {
+  const v = document.getElementById('view'); v.innerHTML = '<div class="empty">Carregando…</div>';
+  try {
+    const d = await api('/payables/summary?' + storeQ());
+    S.isOwner = d.isOwner;
+    const s = d.summary;
+    const pend = d.urgent.filter((t) => t.approvalStatus !== 'APPROVED');
+    v.innerHTML = '<div class="grid">'
+      + kpi('Vencidas', s.overdue, 'bad', "listBy('overdue')") + kpi('Vence hoje', s.today, 'warn', "listBy('open')")
+      + kpi('Próx. 7 dias', s.next7, '', "listBy('open')") + kpi('A pagar no mês', s.monthOpen, '', "listBy('open')")
+      + kpi('Pago no mês', s.paidMonth, 'ok', "listBy('paid')") + kpi('Aguardando liberação', s.pendingApproval, 'warn', "listBy('pending')")
+      + '</div>'
+      + (s.unconfirmed.count ? '<div class="note">⚡ ' + s.unconfirmed.count + ' conta(s) de valor variável (energia, água…) precisam do valor confirmado.</div>' : '')
+      + (S.isOwner && pend.length ? '<button class="btn ok" onclick="approveAll(' + "'" + pend.map((t) => t.id).join(',') + "'" + ')">✅ Liberar as ' + pend.length + ' contas abaixo (' + brl(pend.reduce((a, t) => a + t.balanceCents, 0)) + ')</button>' : '')
+      + (!S.isOwner && pend.length ? '<div class="note">Contas só são pagas depois que o dono libera.</div>' : '')
+      + (!S.store && d.byStore.length ? '<h2>Em aberto por loja</h2>' + d.byStore.sort((a, b) => b.openCents - a.openCents).map((b) => '<div class="item" onclick="pickStore(\'' + esc(b.storeId || 'none') + '\')"><div class="main"><div class="t">' + esc(b.store ? b.store.code + ' ' + b.store.name : 'Administrativo (empresa)') + '</div><div class="s">' + b.count + ' conta(s)' + (b.overdueCents ? ' · <b style="color:#d70015">' + brl(b.overdueCents) + ' vencido</b>' : '') + '</div></div><div class="r"><div class="amt">' + brl(b.openCents) + '</div></div></div>').join('') : '')
+      + '<h2>Vencidas, desta semana e a liberar</h2>' + (d.urgent.length ? d.urgent.map(itemHtml).join('') : '<div class="empty">Nada vencendo. 👍</div>');
+  } catch (e) { v.innerHTML = '<div class="empty">Erro: ' + esc(e.message) + '</div>'; }
+}
+function kpi(l, b, cls, onclick) { return '<div class="kpi ' + cls + '" onclick="' + onclick + '"><div class="l">' + l + '</div><div class="v">' + brl(b.cents) + '</div><div class="c">' + (b.count || 0) + ' conta(s)</div></div>'; }
+function listBy(st) { S.status = st; S.month = (st === 'overdue' || st === 'pending') ? '' : thisMonth(); go('contas'); }
+function pickStore(id) { document.getElementById('storeSel').value = id; onStore(); }
+async function approveAll(ids) {
+  if (!confirm('Liberar o pagamento dessas contas?')) return;
+  try { const r = await post('/payables/approve', { ids: ids.split(',') }); toast('✅ ' + r.approved + ' liberada(s)'); refresh(); } catch (e) { alert(e.message); }
+}
+
+// ------------------------------ Contas ------------------------------
+async function renderContas() {
+  const v = document.getElementById('view');
+  const chips = [['open', 'Em aberto'], ['overdue', 'Vencidas'], ['pending', 'A liberar'], ['paid', 'Pagas'], ['canceled', 'Canceladas'], ['all', 'Todas']];
+  v.innerHTML = '<div class="chips">' + chips.map(([k, l]) => '<button class="chip ' + (S.status === k ? 'on' : '') + '" onclick="S.status=\'' + k + '\';renderContas()">' + l + '</button>').join('') + '</div>'
+    + '<div class="row"><input type="month" id="fMonth" value="' + esc(S.month) + '" onchange="S.month=this.value;loadContas()"><button class="chip" style="flex:none" onclick="S.month=\'\';document.getElementById(\'fMonth\').value=\'\';loadContas()">Todos os meses</button></div>'
+    + '<input id="fQ" placeholder="Buscar descrição, favorecido ou nº" value="' + esc(S.q) + '" oninput="clearTimeout(window._q);window._q=setTimeout(()=>{S.q=this.value;loadContas()},350)">'
+    + '<div id="contasList" style="margin-top:10px"><div class="empty">Carregando…</div></div>';
+  loadContas();
+}
+async function loadContas() {
+  const el = document.getElementById('contasList'); if (!el) return;
+  const qs = [storeQ(), 'status=' + S.status, S.month ? 'month=' + S.month : '', S.q ? 'q=' + encodeURIComponent(S.q) : ''].filter(Boolean).join('&');
+  try {
+    const d = await api('/payables?' + qs);
+    const open = ['open', 'overdue', 'pending'].includes(S.status);
+    const pend = d.titles.filter((t) => t.approvalStatus !== 'APPROVED' && !['PAID', 'CANCELED'].includes(t.status));
+    el.innerHTML = '<div class="total"><span>' + d.titles.length + ' conta(s)</span><span>' + brl(open ? d.totalBalanceCents : d.totalAmountCents) + '</span></div>'
+      + (S.isOwner && pend.length ? '<button class="btn ok" style="margin:4px 0 10px" onclick="approveAll(\'' + pend.map((t) => t.id).join(',') + '\')">✅ Liberar ' + pend.length + ' (' + brl(pend.reduce((a, t) => a + t.balanceCents, 0)) + ')</button>' : '')
+      + (d.titles.length ? d.titles.map(itemHtml).join('') : '<div class="empty">Nenhuma conta aqui.</div>');
+  } catch (e) { el.innerHTML = '<div class="empty">Erro: ' + esc(e.message) + '</div>'; }
+}
+function refresh() { if (S.tab === 'contas') loadContas(); else if (S.tab === 'painel') renderPainel(); else if (S.tab === 'fixas') renderFixas(); }
+
+async function openTitle(id) {
+  const sh = sheet('<div class="empty">Carregando…</div>');
+  try {
+    const d = await api('/payables/' + id);
+    const t = d.title;
+    const open = !['PAID', 'CANCELED'].includes(t.status);
+    const noPay = t.paidPrincipalCents === 0 && t.discountCents === 0;
+    const pend = t.approvalStatus !== 'APPROVED';
+    sh.innerHTML = '<div class="grab"></div><div style="font-size:19px;font-weight:900">' + esc(t.description) + '</div>'
+      + '<div style="margin:4px 0 10px"><span class="tag ' + t.situation + '">' + SIT[t.situation] + '</span>' + (open && pend ? ' <span class="tag PEND">Aguarda liberação do dono</span>' : '') + (t.amountConfirmed === false ? ' <span class="tag VAR">Confirmar valor</span>' : '') + '</div>'
+      + '<div style="background:#fff;border-radius:12px;padding:4px 12px">'
+      + kv('Loja', storeLabel(t)) + kv('Conta do plano', t.nature ? t.nature.code + ' ' + t.nature.name : '-') + kv('Favorecido', t.payee || '-')
+      + kv('Valor', brl(t.amountCents)) + (t.paidPrincipalCents ? kv('Já pago', brl(t.paidPrincipalCents)) : '') + (t.discountCents ? kv('Desconto', brl(t.discountCents)) : '')
+      + (t.interestCents || t.fineCents ? kv('Juros + multa', brl(t.interestCents + t.fineCents)) : '') + kv('Saldo', brl(t.balanceCents))
+      + kv('Vencimento', dmy(t.dueDate)) + kv('Mês da despesa', t.competence) + kv('Forma', METHODS[t.paymentMethod] || '-')
+      + (t.documentNumber ? kv('Nº documento', t.documentNumber) : '') + (t.barcode ? kv('Código de barras', t.barcode) : '') + (t.pixKey ? kv('Chave PIX', t.pixKey) : '')
+      + (t.approvedByName ? kv('Liberada por', t.approvedByName + ' em ' + dmy(t.approvedAt)) : '') + (t.canceledReason ? kv('Motivo do cancelamento', t.canceledReason) : '') + (t.notes ? kv('Observação', t.notes) : '')
+      + '</div>'
+      + (t.barcode ? '<button class="btn ghost" onclick="navigator.clipboard.writeText(\'' + esc(t.barcode) + '\').then(()=>toast(\'Código copiado\'))">📋 Copiar código de barras</button>' : '')
+      + (t.pixKey ? '<button class="btn ghost" onclick="navigator.clipboard.writeText(\'' + esc(t.pixKey) + '\').then(()=>toast(\'Chave PIX copiada\'))">📋 Copiar chave PIX</button>' : '')
+      + (open && pend && S.isOwner ? '<button class="btn ok" onclick="approveOne(\'' + t.id + '\')">✅ Liberar pagamento</button>' : '')
+      + (open && (!pend || S.isOwner) && t.amountConfirmed !== false ? '<button class="btn" onclick="payForm(\'' + t.id + '\',' + t.balanceCents + ',\'' + (t.paymentMethod || '') + '\',\'' + (t.storeId || '') + '\')">💸 Registrar pagamento</button>' : '')
+      + (open && noPay ? '<button class="btn dark" onclick="editForm(\'' + t.id + '\')">' + (t.amountConfirmed === false ? '⚡ Confirmar valor' : '✏️ Editar') + '</button>' : '')
+      + (open && noPay ? '<button class="btn bad" onclick="cancelTitle(\'' + t.id + '\')">Cancelar conta</button>' : '')
+      + (d.settlements.length ? '<h2>Pagamentos</h2>' + d.settlements.map((s) => '<div class="item" style="cursor:default"><div class="main"><div class="t">' + (s.reversalOfId ? '↩️ Estorno' : '💸 ' + dmy(s.paidAt)) + '</div><div class="s">' + esc([s.accountName, METHODS[s.method], s.createdByName, s.reason || s.note].filter(Boolean).join(' · ')) + '</div></div><div class="r"><div class="amt" style="color:' + (s.totalCents < 0 ? '#d70015' : '#1d1d1f') + '">' + brl(s.totalCents) + '</div>' + (!s.reversalOfId && !s.reversedAt ? '<button class="chip" style="margin-top:4px" onclick="reverse(\'' + s.id + '\')">Estornar</button>' : (s.reversedAt ? '<div class="s">estornado</div>' : '')) + '</div></div>').join('') : '')
+      + '<h2>Histórico</h2>' + d.history.map((h) => '<div class="s" style="font-size:12px;color:#6e6e73;padding:3px 0">' + dmy(h.at) + ' · ' + esc(h.action) + (h.actorName ? ' · ' + esc(h.actorName) : '') + (h.reason ? ' · ' + esc(h.reason) : '') + '</div>').join('')
+      + '<button class="btn ghost" onclick="closeSheet()">Fechar</button>';
+    window._title = t;
+  } catch (e) { sh.innerHTML = '<div class="grab"></div><div class="empty">Erro: ' + esc(e.message) + '</div>'; }
+}
+function kv(k, v) { return '<div class="kv"><span>' + esc(k) + '</span><span>' + esc(v) + '</span></div>'; }
+async function approveOne(id) { try { await post('/payables/' + id + '/approve'); toast('✅ Liberada'); openTitle(id); refresh(); } catch (e) { alert(e.message); } }
+function accountOptions(storeId) {
+  const acc = S.accounts.filter((a) => a.active);
+  acc.sort((a, b) => (b.storeId === storeId) - (a.storeId === storeId));
+  return '<option value="">— não informar —</option>' + acc.map((a) => '<option value="' + esc(a.id) + '">' + esc(a.name) + '</option>').join('');
+}
+function payForm(id, balance, method, storeId) {
+  sheet('<div style="font-size:18px;font-weight:900">Registrar pagamento</div><div class="s" style="color:#6e6e73;font-size:13px">Saldo: ' + brl(balance) + '</div>'
+    + '<label>Valor pago (sem juros)</label><input id="pAmt" inputmode="decimal" value="' + money(balance) + '">'
+    + '<div class="row"><div style="flex:1"><label>Juros</label><input id="pInt" inputmode="decimal" placeholder="0,00"></div><div style="flex:1"><label>Multa</label><input id="pFine" inputmode="decimal" placeholder="0,00"></div></div>'
+    + '<label>Desconto obtido</label><input id="pDisc" inputmode="decimal" placeholder="0,00">'
+    + '<label>Data do pagamento</label><input id="pDate" type="date" value="' + ymd() + '">'
+    + '<label>Saiu de qual conta</label><select id="pAcc">' + accountOptions(storeId) + '</select>'
+    + '<label>Forma</label><select id="pMeth"><option value="">—</option>' + Object.entries(METHODS).map(([k, l]) => '<option value="' + k + '"' + (k === method ? ' selected' : '') + '>' + l + '</option>').join('') + '</select>'
+    + '<label>Observação</label><input id="pNote" placeholder="ex: comprovante no WhatsApp">'
+    + '<button class="btn ok" id="pGo">Confirmar pagamento</button><button class="btn ghost" onclick="openTitle(\'' + id + '\')">Voltar</button>');
+  document.getElementById('pGo').onclick = async (ev) => {
+    ev.target.disabled = true;
+    try {
+      await post('/payables/' + id + '/pay', { amount: val('pAmt'), interest: val('pInt'), fine: val('pFine'), discount: val('pDisc'), paidAt: val('pDate'), accountId: val('pAcc'), method: val('pMeth'), note: val('pNote') });
+      toast('💸 Pagamento registrado'); openTitle(id); refresh();
+    } catch (e) { alert(e.message); ev.target.disabled = false; }
+  };
+}
+function val(id) { const el = document.getElementById(id); return el ? el.value.trim() : ''; }
+function natureOptions(sel) { return '<option value="">Escolha…</option>' + S.natures.map((n) => '<option value="' + esc(n.id) + '"' + (n.id === sel ? ' selected' : '') + '>' + esc(n.code + ' ' + n.name) + '</option>').join(''); }
+function storeOptions(sel, withAdmin = true) { return (withAdmin ? '<option value="">Administrativo (empresa toda)</option>' : '') + S.stores.map((s) => '<option value="' + esc(s.id) + '"' + (s.id === sel ? ' selected' : '') + '>' + esc(s.code + ' · ' + s.name) + '</option>').join(''); }
+function editForm(id) {
+  const t = window._title;
+  sheet('<div style="font-size:18px;font-weight:900">' + (t.amountConfirmed === false ? 'Confirmar valor' : 'Editar conta') + '</div>'
+    + '<label>Valor</label><input id="eAmt" inputmode="decimal" value="' + money(t.amountCents) + '">'
+    + '<label>Vencimento</label><input id="eDue" type="date" value="' + ymd(t.dueDate) + '">'
+    + '<label>Descrição</label><input id="eDesc" value="' + esc(t.description) + '">'
+    + '<label>Favorecido</label><input id="ePayee" value="' + esc(t.payee || '') + '">'
+    + '<label>Loja</label><select id="eStore">' + storeOptions(t.storeId) + '</select>'
+    + '<label>Conta do plano</label><select id="eNat">' + natureOptions(t.natureId) + '</select>'
+    + '<label>Código de barras</label><input id="eBar" inputmode="numeric" value="' + esc(t.barcode || '') + '">'
+    + '<label>Chave PIX</label><input id="ePix" value="' + esc(t.pixKey || '') + '">'
+    + '<button class="btn" id="eGo">Salvar</button><button class="btn ghost" onclick="openTitle(\'' + id + '\')">Voltar</button>');
+  document.getElementById('eGo').onclick = async (ev) => {
+    ev.target.disabled = true;
+    try {
+      await patch('/payables/' + id, { amount: val('eAmt'), confirmAmount: true, dueDate: val('eDue'), description: val('eDesc'), payee: val('ePayee'), storeId: val('eStore') || null, natureId: val('eNat'), barcode: val('eBar'), pixKey: val('ePix') });
+      toast('Salvo'); openTitle(id); refresh();
+    } catch (e) { alert(e.message); ev.target.disabled = false; }
+  };
+}
+async function cancelTitle(id) {
+  const reason = prompt('Motivo do cancelamento (fica registrado):'); if (!reason) return;
+  try { await post('/payables/' + id + '/cancel', { reason }); toast('Conta cancelada'); openTitle(id); refresh(); } catch (e) { alert(e.message); }
+}
+async function reverse(sid) {
+  const reason = prompt('Motivo do estorno (fica registrado):'); if (!reason) return;
+  try { await post('/payables/settlements/' + sid + '/reverse', { reason }); toast('Estornado'); openTitle(window._title.id); refresh(); } catch (e) { alert(e.message); }
+}
+
+// ------------------------------ Fixas ------------------------------
+async function renderFixas() {
+  const v = document.getElementById('view'); v.innerHTML = '<div class="empty">Carregando…</div>';
+  try {
+    const d = await api('/recurring?' + storeQ());
+    S.natures = (d.natures || []).filter((n) => n.analytic && n.active && n.kind !== 'RECEITA');
+    const groups = {};
+    for (const r of d.recurring) { const k = r.store ? r.store.code + ' · ' + r.store.name : 'Administrativo (empresa toda)'; (groups[k] = groups[k] || []).push(r); }
+    v.innerHTML = '<div class="total"><span>' + d.recurring.length + ' despesa(s) fixa(s)</span><span>' + brl(d.monthlyCents) + '/mês</span></div>'
+      + (d.missingDueDay ? '<div class="note">⚠️ ' + d.missingDueDay + ' despesa(s) sem dia de vencimento — não geram conta até você informar o dia.</div>' : '')
+      + '<button class="btn" onclick="NOVA_TIPO=\'fixa\';go(\'nova\')">➕ Nova despesa fixa</button>'
+      + Object.keys(groups).sort().map((k) => '<h2>' + esc(k) + ' · ' + brl(groups[k].reduce((a, r) => a + r.amountCents, 0)) + '</h2>' + groups[k].map((r) => '<div class="item" onclick="editRecurring(\'' + esc(r.id) + '\')"><div class="main"><div class="t">' + esc(r.description) + '</div><div class="s">' + (r.dueDay ? 'dia ' + r.dueDay : '<b style="color:#d70015">sem dia</b>') + ' · ' + FREQ[r.frequency] + (r.nature ? ' · ' + esc(r.nature.code + ' ' + r.nature.name) : '') + '</div>' + (r.variableAmount ? '<span class="tag VAR">Valor variável</span>' : '') + '</div><div class="r"><div class="amt">' + brl(r.amountCents) + '</div></div></div>').join('')).join('')
+      + (!d.recurring.length ? '<div class="empty">Nenhuma despesa fixa ainda. Cadastre aluguel, energia, salários, internet…</div>' : '')
+      + '<h2>Ferramentas</h2><button class="btn ghost" onclick="genMonth()">🔁 Gerar contas deste mês e do próximo</button>'
+      + '<button class="btn ghost" onclick="importLegacy()">📥 Trazer despesas do cadastro antigo</button>'
+      + '<button class="btn ghost" onclick="importLegacyPayables()">📥 Trazer contas a pagar do sistema antigo</button>';
+    window._recs = d.recurring;
+  } catch (e) { v.innerHTML = '<div class="empty">Erro: ' + esc(e.message) + '</div>'; }
+}
+async function genMonth() { try { const r = await post('/recurring/generate'); toast(r.generated ? r.generated + ' conta(s) gerada(s)' : 'Tudo já estava gerado'); } catch (e) { alert(e.message); } }
+async function importLegacy() {
+  try {
+    const d = await post('/recurring/import-legacy?dry=1', { dry: true });
+    if (!d.toImport) { alert('Nada novo pra trazer do cadastro antigo.'); return; }
+    if (!confirm('Trazer ' + d.toImport + ' despesa(s) do cadastro antigo (' + brl(d.totalMonthlyCents) + '/mês)?\n\nElas entram SEM dia de vencimento: abra cada uma e informe o dia pra começar a gerar as contas.')) return;
+    const r = await post('/recurring/import-legacy'); toast(r.imported + ' despesa(s) trazida(s)'); renderFixas();
+  } catch (e) { alert(e.message); }
+}
+async function importLegacyPayables() {
+  try {
+    const d = await post('/payables/import-legacy?dry=1', { dry: true });
+    if (!d.toImport) { alert('Nada novo pra trazer.'); return; }
+    if (!confirm('Trazer ' + d.toImport + ' conta(s) do sistema antigo (' + brl(d.totalCents) + ')?\nPagas entram como pagas; abertas entram aguardando sua liberação, como "Administrativo".')) return;
+    const r = await post('/payables/import-legacy'); toast(r.imported + ' conta(s) trazida(s)'); go('contas');
+  } catch (e) { alert(e.message); }
+}
+function recurringFields(r) {
+  r = r || {};
+  return '<label>Loja</label><select id="rStore">' + storeOptions(r.storeId !== undefined ? r.storeId : (S.store && S.store !== 'none' ? S.store : '')) + '</select>'
+    + '<label>Descrição</label><input id="rDesc" placeholder="ex: Aluguel da loja" value="' + esc(r.description || '') + '">'
+    + '<label>Conta do plano</label><select id="rNat">' + natureOptions(r.natureId) + '</select>'
+    + '<label>Favorecido</label><input id="rPayee" placeholder="ex: proprietário, Energisa, contador" value="' + esc(r.payee || '') + '">'
+    + '<div class="row"><div style="flex:1"><label>Valor</label><input id="rAmt" inputmode="decimal" placeholder="0,00" value="' + (r.amountCents ? money(r.amountCents) : '') + '"></div><div style="width:110px"><label>Dia venc.</label><input id="rDay" inputmode="numeric" placeholder="5" value="' + (r.dueDay || '') + '"></div></div>'
+    + '<label class="check"><input type="checkbox" id="rVar"' + (r.variableAmount ? ' checked' : '') + '> Valor muda todo mês (energia, água): confirmar a cada mês</label>'
+    + '<label>Repete</label><select id="rFreq">' + Object.entries(FREQ).map(([k, l]) => '<option value="' + k + '"' + (k === (r.frequency || 'MONTHLY') ? ' selected' : '') + '>' + l + '</option>').join('') + '</select>'
+    + '<div class="row"><div style="flex:1"><label>Começa em</label><input id="rStart" type="month" value="' + esc(r.startCompetence || thisMonth()) + '"></div><div style="flex:1"><label>Termina em (opcional)</label><input id="rEnd" type="month" value="' + esc(r.endCompetence || '') + '"></div></div>'
+    + '<label>Forma de pagamento</label><select id="rMeth"><option value="">—</option>' + Object.entries(METHODS).map(([k, l]) => '<option value="' + k + '"' + (k === r.paymentMethod ? ' selected' : '') + '>' + l + '</option>').join('') + '</select>'
+    + '<label>Observação</label><input id="rNotes" value="' + esc(r.notes || '') + '">';
+}
+function recurringBody() {
+  return { storeId: val('rStore') || null, description: val('rDesc'), natureId: val('rNat'), payee: val('rPayee'), amount: val('rAmt'), dueDay: val('rDay') || null,
+    variableAmount: document.getElementById('rVar').checked, frequency: val('rFreq'), startCompetence: val('rStart'), endCompetence: val('rEnd') || null, paymentMethod: val('rMeth') || null, notes: val('rNotes') };
+}
+function editRecurring(id) {
+  const r = (window._recs || []).find((x) => x.id === id); if (!r) return;
+  sheet('<div style="font-size:18px;font-weight:900">Despesa fixa</div>' + recurringFields(r)
+    + '<label class="check"><input type="checkbox" id="rApply" checked> Atualizar também as contas deste mês em diante que ainda não foram pagas</label>'
+    + '<button class="btn" id="rGo">Salvar</button><button class="btn bad" id="rOff">Parar esta despesa</button><button class="btn ghost" onclick="closeSheet()">Fechar</button>');
+  document.getElementById('rGo').onclick = async (ev) => {
+    ev.target.disabled = true;
+    try { const b = recurringBody(); b.applyToOpen = document.getElementById('rApply').checked; const res = await patch('/recurring/' + id, b); toast('Salvo' + (res.updatedTitles ? ' · ' + res.updatedTitles + ' conta(s) atualizada(s)' : '') + (res.generated ? ' · ' + res.generated + ' gerada(s)' : '')); closeSheet(); renderFixas(); }
+    catch (e) { alert(e.message); ev.target.disabled = false; }
+  };
+  document.getElementById('rOff').onclick = async () => {
+    const reason = prompt('Por que parar esta despesa? (as contas já geradas continuam)'); if (!reason) return;
+    try { await post('/recurring/' + id + '/deactivate', { reason }); toast('Despesa parada'); closeSheet(); renderFixas(); } catch (e) { alert(e.message); }
+  };
+}
+
+// ------------------------------ Nova ------------------------------
+let NOVA_TIPO = 'fixa';
+function renderNova() {
+  const v = document.getElementById('view');
+  v.innerHTML = '<div class="seg"><button class="' + (NOVA_TIPO === 'fixa' ? 'on' : '') + '" onclick="NOVA_TIPO=\'fixa\';renderNova()">🔁 Fixa (repete)</button><button class="' + (NOVA_TIPO === 'avulsa' ? 'on' : '') + '" onclick="NOVA_TIPO=\'avulsa\';renderNova()">📄 Avulsa / parcelada</button></div>'
+    + (NOVA_TIPO === 'fixa'
+      ? recurringFields(null) + '<button class="btn" id="nGo">Cadastrar despesa fixa</button><div class="s" style="font-size:12px;color:#6e6e73;margin-top:8px">A conta do mês atual e do próximo já nascem na hora. As próximas aparecem sozinhas todo mês.</div>'
+      : '<label>Loja</label><select id="aStore">' + storeOptions(S.store && S.store !== 'none' ? S.store : '') + '</select>'
+        + '<label>Descrição</label><input id="aDesc" placeholder="ex: Conserto do ar-condicionado">'
+        + '<label>Conta do plano</label><select id="aNat">' + natureOptions() + '</select>'
+        + '<label>Favorecido</label><input id="aPayee" placeholder="quem recebe">'
+        + '<div class="row"><div style="flex:1"><label>Valor total</label><input id="aAmt" inputmode="decimal" placeholder="0,00"></div><div style="width:110px"><label>Parcelas</label><input id="aN" inputmode="numeric" value="1"></div></div>'
+        + '<label>Vencimento (1ª parcela)</label><input id="aDue" type="date" value="' + ymd() + '">'
+        + '<label>Forma de pagamento</label><select id="aMeth"><option value="">—</option>' + Object.entries(METHODS).map(([k, l]) => '<option value="' + k + '">' + l + '</option>').join('') + '</select>'
+        + '<label>Nº do documento / nota</label><input id="aDoc">'
+        + '<label>Código de barras</label><input id="aBar" inputmode="numeric">'
+        + '<label>Chave PIX</label><input id="aPix">'
+        + '<label>Observação</label><input id="aNotes">'
+        + '<button class="btn" id="nGo">Cadastrar conta</button>');
+  document.getElementById('nGo').onclick = async (ev) => {
+    ev.target.disabled = true;
+    try {
+      if (NOVA_TIPO === 'fixa') {
+        const r = await post('/recurring', recurringBody());
+        toast('✅ Despesa fixa cadastrada · ' + r.generated + ' conta(s) gerada(s)'); go('fixas');
+      } else {
+        const r = await post('/payables', { storeId: val('aStore') || null, description: val('aDesc'), natureId: val('aNat'), payee: val('aPayee'), amount: val('aAmt'), installments: val('aN') || 1, dueDate: val('aDue'), paymentMethod: val('aMeth') || null, documentNumber: val('aDoc'), barcode: val('aBar'), pixKey: val('aPix'), notes: val('aNotes') });
+        toast('✅ ' + r.titles.length + ' conta(s) cadastrada(s)'); S.status = 'open'; S.month = ''; go('contas');
+      }
+    } catch (e) { alert(e.message); ev.target.disabled = false; }
+  };
+}
+
+boot();
+</script>
+</body>
+</html>

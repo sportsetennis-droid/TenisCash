@@ -6126,3 +6126,91 @@ model StonePosOrder {
 
   @@index([storeId, status])
 }
+
+// Contas a pagar por loja (Financeiro Fase 2). SQL em prisma/migrations/20261114_fin_payables.
+model FinRecurring {
+  id              String   @id @default(cuid())
+  storeId         String? // null = empresa toda (administrativo)
+  natureId        String
+  description     String
+  payee           String? // favorecido (proprietário, Energisa, contador...)
+  amountCents     Int // valor fixo; nas variáveis é a estimativa
+  variableAmount  Boolean  @default(false) // energia/água: valor muda todo mês, conta nasce "confirmar valor"
+  dueDay          Int? // dia do vencimento (1-31); null = falta informar, não gera conta
+  frequency       String   @default("MONTHLY") // MONTHLY | QUARTERLY | SEMIANNUAL | YEARLY
+  startCompetence String // AAAA-MM
+  endCompetence   String?
+  paymentMethod   String?
+  notes           String?
+  legacyId        String?  @unique // OperatingExpense.id importado
+  active          Boolean  @default(true)
+  inactiveReason  String?
+  createdById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now()) @updatedAt
+
+  @@index([storeId, active])
+}
+
+model FinTitle {
+  id                 String    @id @default(cuid())
+  kind               String    @default("PAYABLE")
+  storeId            String?
+  natureId           String
+  recurringId        String?
+  competence         String // AAAA-MM (mês a que a despesa pertence)
+  description        String
+  payee              String?
+  documentNumber     String?
+  installment        Int?
+  installments       Int?
+  groupId            String? // parcelas da mesma compra
+  amountCents        Int
+  amountConfirmed    Boolean   @default(true)
+  paidPrincipalCents Int       @default(0)
+  discountCents      Int       @default(0)
+  interestCents      Int       @default(0)
+  fineCents          Int       @default(0)
+  dueDate            DateTime
+  status             String    @default("OPEN") // OPEN | PARTIAL | PAID | CANCELED
+  paymentMethod      String?
+  barcode            String?
+  pixKey             String?
+  notes              String?
+  approvalStatus     String    @default("PENDING") // PENDING | APPROVED (só o dono libera)
+  approvedById       String?
+  approvedAt         DateTime?
+  canceledReason     String?
+  canceledAt         DateTime?
+  legacyId           String?   @unique
+  createdById        String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @default(now()) @updatedAt
+
+  @@unique([recurringId, competence])
+  @@index([status, dueDate])
+  @@index([storeId, dueDate])
+  @@index([competence])
+}
+
+model FinSettlement {
+  id             String    @id @default(cuid())
+  titleId        String
+  accountId      String? // FinAccount de onde saiu o dinheiro
+  paidAt         DateTime
+  principalCents Int // abate do saldo (negativo no estorno)
+  discountCents  Int       @default(0)
+  interestCents  Int       @default(0)
+  fineCents      Int       @default(0)
+  totalCents     Int // saiu do caixa = principal + juros + multa
+  method         String?
+  note           String?
+  reversalOfId   String?   @unique // estorno aponta pra baixa estornada
+  reversedAt     DateTime?
+  reason         String?
+  createdById    String?
+  createdAt      DateTime  @default(now())
+
+  @@index([titleId])
+  @@index([paidAt])
+}

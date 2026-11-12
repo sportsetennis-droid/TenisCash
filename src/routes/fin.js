@@ -182,6 +182,10 @@ router.post('/accounts/seed-stores', async (req, res) => {
   } catch (err) { fail(res, err, 'accounts:seed'); }
 });
 
+// ----------------------------- Contas a pagar por loja -----------------------------
+
+router.use(require('./finPayablesRoutes'));
+
 // ----------------------------- Auditoria -----------------------------
 
 router.get('/audit', async (req, res) => {
