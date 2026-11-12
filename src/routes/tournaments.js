@@ -1456,6 +1456,33 @@ router.post('/entries/:entryId/logo', authMiddleware, async (req, res) => {
   }
 });
 
+// Liga (ou desliga) um nome do elenco à CONTA do atleta, pra produção dos jogos
+// (gols/assistências/cartões da súmula) somar no painel dele. body { userId | null }.
+// Permissão: coordenador/admin/treinador do time. Só aceita atleta com vínculo
+// ATIVO nesse clube (não liga conta aleatória) e 1 conta = 1 nome por time.
+router.post('/players/:playerId/link', authMiddleware, async (req, res) => {
+  try {
+    const ctx = await roles.playerContext(req.params.playerId);
+    if (!ctx || !ctx.entry) return res.status(404).json({ error: 'jogador não encontrado' });
+    if (!(await roles.can(req.userId, req.userRole, ctx.entry.tournamentId, 'SET_LINEUP', { entryId: ctx.entry.id }))) {
+      return res.status(403).json({ error: 'sem permissão (coordenador, admin ou treinador do time)' });
+    }
+    const uid = (req.body || {}).userId ? String(req.body.userId) : null;
+    if (uid) {
+      const entry = await prisma.tournamentEntry.findUnique({ where: { id: ctx.entry.id }, select: { name: true, tournamentId: true } });
+      if (!(await isActiveMember(entry.tournamentId, entry.name, uid))) {
+        return res.status(400).json({ error: 'esse atleta não tem vínculo ativo com o time — convide e espere ele aceitar' });
+      }
+      const dup = await prisma.rosterPlayer.findFirst({ where: { entryId: ctx.entry.id, userId: uid, NOT: { id: req.params.playerId } }, select: { name: true } });
+      if (dup) return res.status(409).json({ error: 'essa conta já está ligada a "' + dup.name + '" neste time' });
+    }
+    const player = await prisma.rosterPlayer.update({ where: { id: req.params.playerId }, data: { userId: uid } });
+    res.json({ ok: true, player });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Remove jogador do elenco — coordenador/admin/treinador do time.
 router.delete('/players/:playerId', authMiddleware, async (req, res) => {
   try {

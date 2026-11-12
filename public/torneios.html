@@ -579,6 +579,7 @@ async function renderRoster(eid,cat){
   if(!players.length)h+='<div class="empty" style="padding:10px">Sem elenco. Adicione os jogadores'+(cat?' de '+esc(cat):'')+'.</div>';
   else players.forEach(p=>{h+='<div class="listitem" style="padding:7px 4px"><div class="av" style="font-size:13px">'+(p.number!=null?p.number:'–')+'</div>'+
     '<div class="grow"><div class="nm" style="font-size:14px">'+esc(p.name)+(p.isCaptain?' <span class="pill g">C</span>':'')+(p.isGoalkeeper?' <span class="pill g">GOL</span>':'')+(p.role==='COACH'?' <span class="pill w">TÉC</span>':'')+(p.role==='ASSISTANT'?' <span class="pill w">AUX</span>':'')+(p.started?' <span class="pill ok">titular</span>':'')+'</div></div>'+
+    (p.role==='PLAYER'?'<button class="btn sm '+(p.userId?'ok':'gho')+'" data-act="team-linkplayer" data-eid="'+eid+'" data-cat="'+esc(cat||'')+'" data-pid="'+p.id+'" data-pname="'+esc(p.name)+'" data-linked="'+(p.userId?esc(p.userId):'')+'" title="ligar à conta do atleta" style="margin-right:6px">'+(p.userId?'🔗 conta':'🔗 ligar')+'</button>':'')+
     '<button class="btn sm dang" data-act="team-delplayer" data-eid="'+eid+'" data-cat="'+esc(cat||'')+'" data-pid="'+p.id+'">✕</button></div>';});
   h+='<div style="height:6px"></div><button class="btn sm sec" data-act="team-addplayer" data-eid="'+eid+'" data-cat="'+esc(cat||'')+'" style="width:100%">+ jogador / comissão</button></div>';
   box.innerHTML=h;
@@ -598,6 +599,22 @@ async function teamSavePlayer(eid,cat){
   const num=document.getElementById('tp-num').value;
   const body={name:name,number:num!==''?Number(num):null,isGoalkeeper:document.getElementById('tp-gk').checked,isCaptain:document.getElementById('tp-cap').checked,role:document.getElementById('tp-role').value,started:document.getElementById('tp-start').checked};
   try{await api('/entries/'+eid+'/players',{method:'POST',body:body});closeSheet();toast('Adicionado');renderRoster(eid,cat);}catch(e){toast(e.message);}
+}
+// Liga o nome do elenco à CONTA do atleta (vínculo ativo no time) → gols/assist./cartões
+// da súmula entram na produção dele. Só aparecem atletas que aceitaram o vínculo.
+async function teamLinkPlayerSheet(eid,pid,pname,linked,cat){
+  const tid=TEAM_CTX.tid;if(!tid)return toast('Abra pelo torneio');
+  let d={active:[]};try{d=await api('/'+tid+'/teams/'+eid+'/members');}catch(e){return toast(e.message);}
+  let h='<h3 style="margin:0 0 4px">Ligar à conta</h3><p class="muted" style="margin:0 0 10px;font-size:12px">'+esc(pname)+' — os gols, assistências e cartões da súmula passam a contar no painel do atleta.</p>';
+  if(!(d.active||[]).length)h+='<div class="empty" style="padding:10px">Nenhum atleta com vínculo ativo neste time ainda. Convide o atleta e espere ele aceitar.</div>';
+  (d.active||[]).forEach(m=>{const u=m.user||{};const on=linked&&linked===u.id;
+    h+='<div class="listitem"><div class="grow"><div class="nm" style="font-size:14px">'+esc(u.name||'Atleta')+'</div><div class="sub">'+(u.username?'@'+esc(u.username):'')+'</div></div>'+
+      (on?'<span class="pill ok">ligado</span>':'<button class="btn sm" data-act="team-linkdo" data-eid="'+eid+'" data-cat="'+esc(cat||'')+'" data-pid="'+pid+'" data-uid="'+esc(u.id)+'">Ligar</button>')+'</div>';});
+  if(linked)h+='<div style="height:10px"></div><button class="btn sm sec" data-act="team-linkdo" data-eid="'+eid+'" data-cat="'+esc(cat||'')+'" data-pid="'+pid+'" data-uid="" style="width:100%">Desligar da conta</button>';
+  openSheet(h);
+}
+async function teamLinkDo(eid,pid,uid,cat){
+  try{await api('/players/'+pid+'/link',{method:'POST',body:{userId:uid||null}});closeSheet();toast(uid?'Ligado à conta do atleta':'Desligado');renderRoster(eid,cat);}catch(e){toast(e.message);}
 }
 async function teamDelPlayer(eid,pid,cat){
   if(!confirm('Remover do elenco?'))return;
@@ -1640,6 +1657,8 @@ document.addEventListener('click',async(ev)=>{
   if(a==='train-finalize'){trainFinalize(el.dataset.sid);return;}
   if(a==='train-rsvp'){trainRsvp(el.dataset.tid,el.dataset.sid,el.dataset.v);return;}
   if(a==='logout'){if(confirm('Sair da sua conta?')){localStorage.removeItem('tc_token');localStorage.removeItem('tc_user');location.href='/';}return;}
+  if(a==='team-linkplayer'){teamLinkPlayerSheet(el.dataset.eid,el.dataset.pid,el.dataset.pname,el.dataset.linked,el.dataset.cat);return;}
+  if(a==='team-linkdo'){teamLinkDo(el.dataset.eid,el.dataset.pid,el.dataset.uid,el.dataset.cat);return;}
   if(a==='dash-rsvp'){try{await api('/trainings/'+el.dataset.sid+'/confirm',{method:'POST',body:{rsvp:el.dataset.v}});toast('Marcado: '+(RSVP_LBL[el.dataset.v]||el.dataset.v));renderHome();}catch(e){toast(e.message);}return;}
   if(a==='dash-mem'){try{await api('/'+el.dataset.tid+'/memberships/'+el.dataset.mid+'/respond',{method:'POST',body:{action:el.dataset.ac}});toast(el.dataset.ac==='accept'?'Você entrou no time':'Convite recusado');renderHome();}catch(e){toast(e.message);}return;}
   if(a==='train-remind'){trainRemind(el.dataset.sid);return;}
