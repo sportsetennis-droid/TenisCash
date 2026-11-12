@@ -5,8 +5,12 @@
 // pedido de função, responde aqui e a IA nem é chamada.
 //
 // Funções disponíveis:
+//   • RECEPÇÃO: "oi"/"menu" -> menu humano com 7 opções (comprar, troca,
+//     garantia, 2ª via, lojas, site, Founder & CEO)
 //   • 2ª via do cupom fiscal ("2 via", "segunda via", "perdi meu cupom"...)
-//   • menu ("menu", "funções", "ajuda") — lista o que dá pra pedir
+//   • troca / garantia: pergunta a loja + o caso e passa pro vendedor de turno
+//   • nossas lojas: endereço, mapa, WhatsApp e Instagram de cada loja
+// "Quero comprar" segue pra IA (estoque real), que passa o lead pro vendedor.
 //
 // SEGURANÇA/LGPD: só entrega cupom LIGADO AO NÚMERO de quem pediu (cliente
 // cadastrado com esse telefone, cliente do vendedor com esse telefone, ou
@@ -22,10 +26,6 @@ const { deliverCupom } = require('./cupomDelivery');
 
 const LOOKBACK_DAYS = 365;     // cupons de até 1 ano atrás
 const MAX_LIST = 5;            // no máximo 5 cupons na lista
-const PENDING_TTL_MS = 10 * 60 * 1000; // escolha da lista vale 10 min
-
-// telefone -> { docIds: [...], expires } (cliente escolhendo na lista)
-const pending = new Map();
 
 // ---------- utilidades ----------
 function norm(text) {
@@ -135,7 +135,7 @@ const SEGUNDA_VIA = {
   },
   async run({ phone, pushName }) {
     const docs = await findCuponsForPhone(phone);
-    const nome = pushName ? ' ' + String(pushName).split(' ')[0] : '';
+    const nome = pushName ? ', ' + String(pushName).split(' ')[0] : '';
     if (!docs.length) {
       return reply(phone,
         'Oi' + nome + '! Procurei aqui e não encontrei cupom fiscal ligado a este número de WhatsApp. 🧾\n\n' +
@@ -143,7 +143,7 @@ const SEGUNDA_VIA = {
     }
     if (docs.length === 1) return sendDoc(docs[0], phone);
 
-    pending.set(phone, { docIds: docs.map(d => d.id), expires: Date.now() + PENDING_TTL_MS });
+    setState(phone, 'cupom', { docIds: docs.map(d => d.id) });
     const lines = docs.map((d, i) =>
       (i + 1) + ') ' + fmtDate(d.createdAt) + ' · ' + storeName(d) + ' · R$ ' + fmtMoney(d.totalValue));
     return reply(phone,
@@ -162,23 +162,199 @@ async function sendDoc(doc, phone) {
   return out;
 }
 
-// ---------- função: menu ----------
-const MENU = {
-  name: 'menu',
-  match: (t) => /^(menu|funcoes|funcao|ajuda|opcoes|opcao|servicos)[!?.]*$/.test(t),
-  async run({ phone }) {
-    const items = FUNCTIONS.filter(f => f !== MENU).map((f, i) => (i + 1) + ') ' + f.name + ' — ' + f.hint);
+// =====================================================================
+// RECEPÇÃO (triagem): o cliente diz "oi" e recebe o menu humano.
+// Estado por telefone: menu | cupom | tg_loja | tg_desc (vale 30 min).
+// =====================================================================
+const { SITE, CEO, LOJAS, findLoja, mapsLink, fmtPhone } = require('../config/lojasContato');
+const { routeLead } = require('./leadRouter');
+
+const STATE_TTL_MS = 30 * 60 * 1000;
+const state = new Map(); // phone -> { stage, data, expires }
+function setState(phone, stage, data = {}) { state.set(phone, { stage, data, expires: Date.now() + STATE_TTL_MS }); }
+function getState(phone) {
+  const s = state.get(phone);
+  if (!s) return null;
+  if (Date.now() > s.expires) { state.delete(phone); return null; }
+  return s;
+}
+function clearState(phone) { state.delete(phone); }
+function firstName(n) { const f = String(n || '').trim().split(/\s+/)[0]; return f && !/^\d+$/.test(f) ? f : ''; }
+const oiNome = (pushName) => (firstName(pushName) ? ', ' + firstName(pushName) : '');
+
+// Lojas físicas que aparecem pro cliente (a loja online vem separada)
+const LOJAS_FISICAS = LOJAS.filter(l => !l.hidden);
+const ONLINE_NOME = 'Loja online (site)';
+
+function isGreeting(t) {
+  if (!/^(oi+e?|ola+|opa|eai|e ai|ei|hey|hello|alo|bom dia|boa tarde|boa noite|boa)\b/.test(t)) return false;
+  if (/(tenis|chuteira|tamanho|numero|preco|valor|tem |camisa|bola|meia|short|mochila|\d)/.test(t)) return false;
+  return t.split(' ').length <= 6;
+}
+
+function menuText(pushName) {
+  return 'Oi' + oiNome(pushName) + '! Aqui é a *Sports & Tennis* 💚 Que bom ter você por aqui.\n' +
+    'Me conta, como posso te ajudar?\n\n' +
+    '1️⃣ Quero comprar\n' +
+    '2️⃣ Troca\n' +
+    '3️⃣ Garantia\n' +
+    '4️⃣ 2ª via do cupom fiscal\n' +
+    '5️⃣ Nossas lojas (endereço, mapa, WhatsApp e Instagram)\n' +
+    '6️⃣ Nosso site\n' +
+    '7️⃣ Fale com o Founder & CEO\n\n' +
+    'É só responder com o número 😉';
+}
+
+function lojasText() {
+  const blocos = LOJAS_FISICAS.map(l => {
+    const linhas = ['📍 *' + l.nome + '* — ' + l.local + (l.cidade !== 'João Pessoa' ? ' • ' + l.cidade : '')];
+    linhas.push('🗺️ ' + mapsLink(l));
+    if (l.whatsapp) linhas.push('💬 ' + fmtPhone(l.whatsapp) + ' · wa.me/' + l.whatsapp);
+    if (l.instagram) linhas.push('📸 instagram.com/' + l.instagram);
+    return linhas.join('\n');
+  });
+  return '*Nossas lojas* 🏬\n\n' + blocos.join('\n\n') + '\n\n🛍️ Loja online: ' + SITE;
+}
+
+function lojaPickText(motivo) {
+  const head = motivo === 'garantia' ? 'Vamos cuidar disso pra você 🛠️' : 'Claro, a gente resolve sua troca! 🔁';
+  const opts = LOJAS_FISICAS.map((l, i) => (i + 1) + ') ' + l.nome).concat((LOJAS_FISICAS.length + 1) + ') ' + ONLINE_NOME);
+  return head + '\nEm qual loja você comprou?\n\n' + opts.join('\n') + '\n\nResponda com o número.';
+}
+
+function startTrocaGarantia(phone, motivo) {
+  setState(phone, 'tg_loja', { motivo });
+  return reply(phone, lojaPickText(motivo));
+}
+
+async function finishTrocaGarantia(phone, pushName, data, descricao) {
+  clearState(phone);
+  const lojaNome = data.online ? ONLINE_NOME : data.lojaNome;
+  const r = await routeLead({
+    loja: data.online ? 'online' : data.lojaCode,
+    motivo: data.motivo,
+    cliente: { phone, name: pushName },
+    resumo: 'Comprou em: ' + lojaNome + '\n' + descricao,
+  });
+  const loja = data.online ? null : findLoja(data.lojaCode);
+  let txt = r.ok
+    ? 'Pronto' + oiNome(pushName) + '! ✅ Já passei seu caso pra ' + (r.vendedor ? '*' + r.vendedor + '*, da ' : 'equipe da ') +
+      '*' + lojaNome + '*. Em breve te chamam aqui no WhatsApp. 💚'
+    : 'Anotei tudo' + oiNome(pushName) + '! 📝 Nossa equipe vai te chamar no WhatsApp em breve. 💚';
+  if (loja && loja.whatsapp) txt += '\n\nSe preferir, fala direto com a loja: wa.me/' + loja.whatsapp;
+  if (!data.online) txt += '\n\nDica: leva o produto e, se tiver, o cupom (pede a 2ª via aqui escrevendo *2 via*).';
+  return reply(phone, txt);
+}
+
+const OPCOES = {
+  1: ({ phone, pushName }) => {
+    clearState(phone);
+    return reply(phone, 'Show' + oiNome(pushName) + '! 😄 Me conta o que você procura (modelo, marca ou esporte) e o seu tamanho, que eu já confiro no estoque das lojas.');
+  },
+  2: ({ phone }) => startTrocaGarantia(phone, 'troca'),
+  3: ({ phone }) => startTrocaGarantia(phone, 'garantia'),
+  4: (ctx) => { clearState(ctx.phone); return SEGUNDA_VIA.run(ctx); },
+  5: ({ phone }) => { clearState(phone); return reply(phone, lojasText()); },
+  6: ({ phone }) => {
+    clearState(phone);
+    return reply(phone, '🛍️ Nossa loja online: ' + SITE + '\n\nQualquer dúvida sobre um produto, é só me chamar aqui. 😉');
+  },
+  7: ({ phone }) => {
+    clearState(phone);
     return reply(phone,
-      '📲 *O que eu resolvo pra você por aqui:*\n\n' + items.join('\n') +
-      '\n\nOu é só escrever o que você procura que eu te ajudo. 🙂');
+      'Você pode falar direto com o ' + CEO.titulo + ' da Sports & Tennis, *' + CEO.nome + '* 💚\n' +
+      '👉 wa.me/' + CEO.whatsapp + '\n\nEle acompanha pessoalmente as mensagens que chegam por lá.');
   },
 };
 
-const FUNCTIONS = [MENU, SEGUNDA_VIA];
+// ---------- funções acionadas por palavra (fora do menu) ----------
+const MENU = {
+  name: 'menu',
+  match: (t) => /^(menu|funcoes|funcao|ajuda|opcoes|opcao|servicos|inicio|voltar)[!?.]*$/.test(t) || isGreeting(t),
+  run({ phone, pushName }) {
+    setState(phone, 'menu');
+    return reply(phone, menuText(pushName));
+  },
+};
+const LOJAS_FN = {
+  name: 'nossas lojas',
+  match: (t) => /(endereco|onde fica|onde ficam|localizacao|quais lojas|suas lojas|nossas lojas|instagram|whatsapp da loja|numero da loja|telefone da loja)/.test(t),
+  run: ({ phone }) => reply(phone, lojasText()),
+};
+const TROCA_FN = {
+  name: 'troca',
+  match: (t) => /\b(trocar|troca)\b/.test(t),
+  run: ({ phone }) => startTrocaGarantia(phone, 'troca'),
+};
+const GARANTIA_FN = {
+  name: 'garantia',
+  match: (t) => /\b(garantia|defeito|descolou|descolando|rasgou|quebrou)\b/.test(t),
+  run: ({ phone }) => startTrocaGarantia(phone, 'garantia'),
+};
+
+const FUNCTIONS = [MENU, SEGUNDA_VIA, LOJAS_FN, TROCA_FN, GARANTIA_FN];
 
 function reply(phone, text) {
   return sendCustomMessage(phone, text).catch(e => ({ ok: false, error: e.message }));
 }
+
+// ---------- respostas a um estado aberto ----------
+async function handleState(s, { phone, t, text, pushName }) {
+  if (/^(cancelar|cancela|sair|parar)$/.test(t)) {
+    clearState(phone);
+    await reply(phone, 'Tudo bem! Se precisar de algo, é só escrever *menu*. 😉');
+    return true;
+  }
+  const digit = (t.match(/^(\d)[.)!]?$/) || [])[1];
+
+  if (s.stage === 'menu') {
+    const byWord = /^(comprar|quero comprar|compra)$/.test(t) ? 1 : /^(troca|trocar)$/.test(t) ? 2 : /^garantia$/.test(t) ? 3 : null;
+    const n = digit ? Number(digit) : byWord;
+    if (n && OPCOES[n]) { await OPCOES[n]({ phone, text, pushName }); return true; }
+    clearState(phone); // escreveu outra coisa: segue o fluxo normal (funções/IA)
+    return false;
+  }
+
+  if (s.stage === 'cupom') {
+    if (digit) {
+      const idx = Number(digit) - 1;
+      if (idx >= 0 && idx < s.data.docIds.length) {
+        clearState(phone);
+        const doc = await prisma.fiscalDocument.findUnique({ where: { id: s.data.docIds[idx] }, include: { issuer: true } });
+        if (doc) await sendDoc(doc, phone);
+        return true;
+      }
+    }
+    clearState(phone);
+    return false;
+  }
+
+  if (s.stage === 'tg_loja') {
+    let loja = null; let online = false;
+    if (digit) {
+      const i = Number(digit) - 1;
+      if (i >= 0 && i < LOJAS_FISICAS.length) loja = LOJAS_FISICAS[i];
+      else if (i === LOJAS_FISICAS.length) online = true;
+    } else if (/(site|online|internet)/.test(t)) online = true;
+    else loja = findLoja(t);
+    if (!loja && !online) {
+      await reply(phone, 'Não entendi a loja 😅 Responde só com o número da lista, por favor.');
+      return true;
+    }
+    setState(phone, 'tg_desc', { ...s.data, lojaCode: loja && loja.code, lojaNome: loja && loja.nome, online });
+    await reply(phone, s.data.motivo === 'garantia'
+      ? 'Entendi! Agora me conta: qual é o produto e o que aconteceu com ele? 📝'
+      : 'Beleza! Agora me conta: qual produto você quer trocar e por qual motivo? Se for tamanho, diz qual número você precisa. 📝');
+    return true;
+  }
+
+  if (s.stage === 'tg_desc') {
+    await finishTrocaGarantia(phone, pushName, s.data, text);
+    return true;
+  }
+  return false;
+}
+
 
 // ---------- entrada: chamada pelo webhook ----------
 // Retorna true se a mensagem foi tratada aqui (aí a IA NÃO responde).
@@ -188,23 +364,8 @@ async function tryHandle({ phone, text, pushName }) {
     // remetente sem número de telefone utilizável (ex: id @lid) -> segue o fluxo normal
     if (!phone || !t || !phoneVariants(phone).length) return false;
 
-    // resposta da lista ("1", "2"...)
-    const p = pending.get(phone);
-    if (p) {
-      if (Date.now() > p.expires) pending.delete(phone);
-      else {
-        const m = t.match(/^(\d)$/);
-        if (m) {
-          const idx = Number(m[1]) - 1;
-          if (idx >= 0 && idx < p.docIds.length) {
-            pending.delete(phone);
-            const doc = await prisma.fiscalDocument.findUnique({ where: { id: p.docIds[idx] }, include: { issuer: true } });
-            if (doc) await sendDoc(doc, phone);
-            return true;
-          }
-        }
-      }
-    }
+    const s = getState(phone);
+    if (s && await handleState(s, { phone, t, text, pushName })) return true;
 
     for (const f of FUNCTIONS) {
       if (f.match(t)) {
@@ -220,4 +381,4 @@ async function tryHandle({ phone, text, pushName }) {
   }
 }
 
-module.exports = { tryHandle, phoneVariants, findCuponsForPhone, _norm: norm, _functions: FUNCTIONS };
+module.exports = { tryHandle, phoneVariants, findCuponsForPhone, _norm: norm, _functions: FUNCTIONS, _state: state, _isGreeting: isGreeting, _lojasText: lojasText, _menuText: menuText };

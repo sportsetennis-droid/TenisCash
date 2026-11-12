@@ -21,6 +21,8 @@ const { prisma } = require('../middleware');
 const { formatPhoneBR } = require('../whatsapp');
 const { searchProductsForAI, resolveProductLink } = require('./catalogSearch');
 const { rateIntent } = require('./intentRater');
+const { routeLead } = require('./leadRouter');
+const LOJAS_CONTATO = require('../config/lojasContato');
 
 // ---------------------------------------------------------------------
 // MODELO — provider-AGNOSTICO. O atendente NAO depende mais de API paga.
@@ -112,11 +114,17 @@ const PROFILES = {
     hasCashback: true,
     // Cliente da S&T NAO ve o Baratao; no grupo de vendedores ve tudo.
     storeAllowed: (store, { isGroup } = {}) => isGroup || !ehBaratao(store),
+    // Contatos públicos das lojas (fonte: bio do Instagram de cada loja).
     infoLoja: () => ({
-      lojas_fisicas: ['Bessa', 'Tambau', 'Rainha da Borborema', 'Tambia'],
-      cidade: 'Joao Pessoa - PB',
-      site: 'https://www.sportsetennis.com.br',
-      observacao: 'Para horario exato de cada loja, confirme com a equipe.',
+      lojas_fisicas: LOJAS_CONTATO.LOJAS.filter((l) => !l.hidden).map((l) => ({
+        loja: l.nome,
+        local: l.local + ' - ' + l.cidade,
+        mapa: LOJAS_CONTATO.mapsLink(l),
+        whatsapp: l.whatsapp ? 'wa.me/' + l.whatsapp : null,
+        instagram: l.instagram ? 'instagram.com/' + l.instagram : null,
+      })),
+      site: LOJAS_CONTATO.SITE,
+      observacao: 'Para horario exato de cada loja, confirme com a equipe. O cliente pode escrever "menu" para ver todas as opcoes de atendimento.',
     }),
   },
   baratao: {
@@ -187,6 +195,27 @@ function buildTools(profile) {
     input_schema: { type: 'object', properties: {}, required: [] },
   });
 
+  if (profile.key === 'st') {
+    tools.push({
+      name: 'chamar_vendedor',
+      description:
+        'Passa o cliente pra um VENDEDOR HUMANO da loja (o vendedor escalado hoje recebe no WhatsApp dele o nome, o numero e o que o cliente quer, e chama o cliente). ' +
+        'Use quando o cliente quiser comprar, reservar, separar, experimentar ou negociar um produto que TEM na loja (confirmado com buscar_produtos), ' +
+        'ou quando o caso precisar de uma pessoa. Use a loja onde o produto/tamanho esta (ou a que o cliente preferir). ' +
+        'Chame UMA vez por produto/loja. Retorna o primeiro nome do vendedor (pode vir vazio).',
+      input_schema: {
+        type: 'object',
+        properties: {
+          loja: { type: 'string', description: 'Bessa, Tambau, Tambia, Campina Grande (Rainha da Borborema) ou Manaira' },
+          produto: { type: 'string', description: 'Nome do produto como veio do buscar_produtos' },
+          tamanho: { type: 'string', description: 'Tamanho que o cliente quer (se tiver)' },
+          observacao: { type: 'string', description: 'Resumo curto do que o cliente quer (cor, quando vai na loja, forma de pagamento...)' },
+        },
+        required: ['loja', 'produto'],
+      },
+    });
+  }
+
   return tools;
 }
 
@@ -250,6 +279,25 @@ async function runTool(name, input, ctx) {
     if (name === 'info_loja') {
       return profile.infoLoja();
     }
+    if (name === 'chamar_vendedor') {
+      if (ctx.isGroup || profile.key !== 'st') return { erro: 'indisponivel aqui' };
+      const resumo = [input?.produto, input?.tamanho ? 'tam ' + input.tamanho : '', input?.observacao]
+        .filter(Boolean).join(' · ');
+      const r = await routeLead({
+        loja: input?.loja,
+        motivo: 'venda',
+        cliente: { phone: ctx.phone, name: ctx.pushName },
+        resumo,
+      });
+      if (!r.ok) return { ok: false, mensagem: 'Nao consegui avisar a loja agora. Diga ao cliente que a equipe vai chamar e ofereca o WhatsApp da loja (info_loja).' };
+      return {
+        ok: true,
+        loja: r.loja && r.loja.nome,
+        vendedor: r.vendedor || null,
+        whatsapp_loja: r.loja && r.loja.whatsapp ? 'wa.me/' + r.loja.whatsapp : null,
+        ja_avisado_antes: !!r.already,
+      };
+    }
     return { erro: 'ferramenta desconhecida' };
   } catch (err) {
     console.error('[aiAttendant] erro na tool', name, err.message);
@@ -296,7 +344,9 @@ REGRAS INQUEBRAVEIS:
 5. Mencione o cashback TenisCash quando fizer sentido (o cliente ganha cashback comprando).
 6. LOJA — cada tamanho em "tamanhos_disponiveis" traz "lojas" (em qual loja tem e quanto). Quando o cliente perguntar onde encontra / em qual loja, ou ao confirmar que tem, DIGA a loja (ex: "tem no Bessa e no Tambau"). NUNCA invente a loja.
 7. LINK — cada produto traz o campo "link" (a pagina do produto: foto, preco e em quais lojas tem). Quando recomendar ou confirmar um produto, MANDE esse link pro cliente ver os detalhes. Mande o link EXATAMENTE como veio (nao encurte, nao troque, nao invente).
-8. Voce atende SO as lojas Sports & Tennis (Bessa, Tambau, Rainha da Borborema, Tambia e a loja online). NUNCA cite "Baratao dos Esportes" pro cliente — e OUTRA empresa, com OUTRO WhatsApp de atendimento. Os dados ja chegam sem o Baratao; se um produto so tiver estoque la, pra voce ele esta INDISPONIVEL (trate como sem estoque e ofereca alternativa real).
+8. Voce atende SO as lojas Sports & Tennis (Bessa, Tambau, Rainha da Borborema, Tambia, Manaira e a loja online). NUNCA cite "Baratao dos Esportes" pro cliente — e OUTRA empresa, com OUTRO WhatsApp de atendimento. Os dados ja chegam sem o Baratao; se um produto so tiver estoque la, pra voce ele esta INDISPONIVEL (trate como sem estoque e ofereca alternativa real).
+9. PASSAR PRO VENDEDOR (atendimento HUMANO): quando o cliente quiser comprar, reservar, separar, experimentar ou negociar um produto que TEM em loja, pergunte qual loja ele prefere (sugira a que tem o tamanho) e use a ferramenta chamar_vendedor com a loja, o produto e o tamanho. Depois diga com carinho quem vai chamar: "A *[vendedor]*, da loja *[loja]*, ja vai te chamar no WhatsApp 💚" (se "vendedor" vier vazio: "a equipe da loja *[loja]* ja vai te chamar"). Se veio "whatsapp_loja", pode passar tambem. Chame o vendedor UMA vez por produto/loja.
+10. Se o cliente quiser troca, garantia, 2a via do cupom, endereco das lojas ou falar com a direcao, diga que e so escrever *menu* que aparecem as opcoes.
 
 ESTILO:
 - Respostas CURTAS, de WhatsApp (2 a 5 linhas no maximo). Nada de textao.
