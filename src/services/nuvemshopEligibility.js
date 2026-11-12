@@ -57,8 +57,33 @@ function hasUsableImage(product) {
   }
 }
 
+// Lojas cujo estoque FÍSICO vale pra loja online (dono 2026-11-12: "tenho produtos
+// corretamente no estoque das lojas 04, 06 e 07. eles podem subir pra Nuvemshop").
+// Só essas entram no estoque publicado e só delas sai a baixa de pedido da Nuvemshop.
+// Override sem deploy: env NS_STOCK_STORE_IDS (ids separados por vírgula).
+const DEFAULT_NS_STOCK_STORE_IDS = [
+  '01b5a498-4dce-49b9-b359-5b031936aae9', // LOJA04 Fábrica
+  '54ddff2f-deb9-42fa-a1ae-105eb6d59560', // LOJA06 Tambiá
+  '9bcd3735-f5ed-41d7-a851-5896a83a6084', // LOJA07 Manaíra
+];
+
+function nuvemshopStockStoreIds() {
+  const fromEnv = String(process.env.NS_STOCK_STORE_IDS || '')
+    .split(',').map((id) => id.trim()).filter(Boolean);
+  return fromEnv.length ? fromEnv : DEFAULT_NS_STOCK_STORE_IDS;
+}
+
+// Prisma: carrega só o StoreStock das lojas que valem pra Nuvemshop.
+function nuvemshopStoreStocksQuery() {
+  return { where: { storeId: { in: nuvemshopStockStoreIds() } }, select: { stock: true, storeId: true } };
+}
+
 function physicalStock(size) {
-  return (size?.storeStocks || []).reduce((sum, row) => sum + Number(row?.stock || 0), 0);
+  const allowed = new Set(nuvemshopStockStoreIds());
+  return (size?.storeStocks || []).reduce((sum, row) => {
+    if (row?.storeId && !allowed.has(row.storeId)) return sum;
+    return sum + Math.max(0, Number(row?.stock || 0));
+  }, 0);
 }
 
 function requiresPhysicalSizeConfirmation() {
@@ -75,6 +100,10 @@ function isPublicSizeLabel(value) {
   if (/^(?:UNICO|ÚNICO|UN|U|TU|PP|P|M|G|GG|XG|XGG|EG|EGG|XS|S|L|XL|XXL|XXXL|[1-4]XL)$/.test(label)) return true;
   return false;
 }
+
+// Nome que ainda é a descrição crua da NFe: EAN/código longo, "Tam:", "-BCO-222-",
+// ou começando por código de artigo ("350001 TENIS ...", "U23TW014-...").
+const RAW_NFE_NAME = /\b\d{6,14}\b|\bTAM\s*[:.]|-[A-Z]{3}-\d{3}\b|^[A-Z0-9]*\d{4,}[A-Z0-9]*[- ]/i;
 
 function assessProductForNuvemshop(product, options = {}) {
   const requireConfirmation = options.requireConfirmation !== false;
@@ -117,6 +146,26 @@ function assessProductForNuvemshop(product, options = {}) {
   );
 
   if (publicSizes.length === 0) reasons.push('sem tamanho valido com estoque fisico');
+
+  // TRAVA RIGOROSA (dono 2026-11-12: "isso tem que ser bem rigoroso essa subida pro site.
+  // nao pode haver erros"). Não corrige nada — só RECUSA o que subiria errado pro cliente.
+  if (!clean(ctx.color)) reasons.push('sem cor (risco de foto da cor errada)');
+  if (RAW_NFE_NAME.test(clean(product?.name))) reasons.push('nome cru da NFe (codigo/tamanho no nome)');
+  if (!(cost > 0)) reasons.push('sem custo gravado (preco com markup nao verificavel)');
+  if (placeholderStock > 0) reasons.push('tamanho tecnico (T-/codigo) com estoque');
+  const barcodeCount = {};
+  for (const size of sizes) {
+    const code = clean(size?.barcode);
+    if (code) barcodeCount[code] = (barcodeCount[code] || 0) + 1;
+  }
+  if (Object.values(barcodeCount).some((count) => count > 1)) reasons.push('mesmo codigo de barras em 2 tamanhos');
+  sizes.forEach((size, index) => {
+    const located = locatedSizes[index].stock;
+    if (located <= 0) return;
+    if (!clean(size?.barcode)) reasons.push(`tamanho ${size.size} sem codigo de barras`);
+    const bought = Number(size?.stock || 0);
+    if (bought > 0 && located > bought) reasons.push(`tamanho ${size.size}: fisico ${located} maior que comprado ${bought}`);
+  });
 
   const warnings = [];
   if (placeholderStock > 0) warnings.push('tamanho técnico liberado pelo dono');
@@ -174,6 +223,8 @@ module.exports = {
   hasUsableImage,
   hasRemoteUsableImage,
   isPublicSizeLabel,
+  nuvemshopStockStoreIds,
+  nuvemshopStoreStocksQuery,
   physicalStock,
   requiresPhysicalSizeConfirmation,
 };
