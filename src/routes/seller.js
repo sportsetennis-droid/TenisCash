@@ -1271,7 +1271,7 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
         const issuer = store.fiscalIssuer;
         const tPagMap = { cash: '01', credit_card: '03', debit_card: '04', pix: '17', other: '99' };
         const tPag = tPagMap[paymentMethod] || '99';
-        // Pra cartão sem cAut, pula a emissão automática (operador digita depois)
+        // Cartão sem cAut EMITE (maquininha não integrada, tpIntegra=2: cAut é opcional e o agente omite o campo).
         const isCard = tPag === '03' || tPag === '04';
         // CONFORMIDADE FISCAL: PIX manual (sem confirmação de pagamento) NÃO pode auto-emitir.
         // A NFC-e só pode sair APÓS o pagamento confirmado. PIX com confirmação (cardAuthCode/e2e do TEF) emite normal.
@@ -1295,7 +1295,7 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
           fiscalResult = { ok: false, error: 'NSU/código ' + _nsu + ' já foi usado no cupom #' + _nsuDup.number + '. Cada transação de cartão/PIX gera UM cupom — passe de novo na maquininha pra um código novo.' };
         } else if (Number(totalAmount) >= 500 && !_docCliOk) {
           fiscalResult = { ok: false, needsCpf: true, error: 'Venda de R$ ' + Number(totalAmount).toFixed(2) + ': a SEFAZ exige CPF/CNPJ do cliente na nota a partir de R$ 500. Abra a venda na lista e emita com o CPF.' };
-        } else if ((!isCard && !isPixManual) || req.body.cardAuthCode) {
+        } else if (!isPixManual || req.body.cardAuthCode) {
           // Número robusto: nunca abaixo do maior doc já existente (evita unique-constraint travado)
           const maxDoc = await prisma.fiscalDocument.aggregate({ where: { issuerId: issuer.id, docType: 'NFCE', serie: issuer.nfceSerie || 1 }, _max: { number: true } });
           const nNF = Math.max(issuer.nfceNextNumber || 1, (maxDoc._max.number || 0) + 1);
@@ -1387,9 +1387,7 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
             error: r.ok ? null : (r.error || r.motivo),
           };
         } else {
-          const reason = isPixManual
-            ? 'PIX sem confirmação de pagamento — emitir o cupom só DEPOIS que o PIX cair'
-            : 'Cartão sem código autorização — emitir manualmente após digitar cAut';
+          const reason = 'PIX sem confirmação de pagamento — emitir o cupom só DEPOIS que o PIX cair';
           fiscalResult = { skipped: true, reason };
           // Marca a venda como pendente de pagamento (não fica "completed" sem cupom).
           if (isPixManual) {
