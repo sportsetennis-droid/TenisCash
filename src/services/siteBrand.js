@@ -11,7 +11,7 @@ const path = require('path');
 
 const ST_HOSTS = new Set(['clubsportsetennis.com.br', 'www.clubsportsetennis.com.br']);
 const INDEX = path.join(__dirname, '../../public/index.html');
-const LOGO = '/brand/club-sports-tennis.svg?v=2'; // vetor: CLUB + logo oficial
+const LOGO = '/brand/club-sports-tennis.svg?v=3'; // vetor: CLUB + logo oficial
 const LOGO_IMG = (w) => `<img src="${LOGO}" alt="Club Sports &amp; Tennis" style="display:block;width:${w};max-width:86vw;height:auto;margin:0 auto">`;
 
 function isSportsTennisHost(req) {
