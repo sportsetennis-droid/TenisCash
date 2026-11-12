@@ -318,7 +318,7 @@ app.all('/api/_nselig', async (req, res) => {
       const keys = new Set(a.reasons.map((r) => r.replace(/^tamanho .*?(sem codigo|: fisico).*/, 'tamanho $1...')));
       keys.forEach((k) => { reasonsHist[k] = (reasonsHist[k] || 0) + 1; });
       if (a.eligible && !mapped.has(p.id)) {
-        const row = { id: p.id, name: p.name, brand: p.brand, color: ctx.color || null, price: p.price, cost: p.costPrice, sizes: a.publicSizes.map((z) => `${z.size}:${z.stock}`).join(' '), confirmed: ctx.confirmedForNuvemshop === true };
+        const row = { id: p.id, name: p.name, brand: p.brand, color: ctx.color || null, price: p.price, cost: p.costPrice, sizes: a.publicSizes.map((z) => `${z.size}:${z.stock}`).join(' '), img: String(p.imageUrl || '').slice(0, 100), confirmed: ctx.confirmedForNuvemshop === true };
         ready.push(row);
         if (row.confirmed) confirmedReady.push(row.id);
       }

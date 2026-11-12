@@ -1364,6 +1364,30 @@ function ctxOf(localProduct) {
   catch { return {}; }
 }
 
+// Baixa no servidor as fotos que a Nuvemshop não conseguiu buscar pela URL e devolve
+// como { attachment, filename }. Ignora o que não for imagem ou passar de 9 MB.
+async function imagesAsAttachments(images) {
+  const out = [];
+  for (const img of images) {
+    if (img && img.attachment) { out.push(img); continue; }
+    const url = img && img.src;
+    if (!url || !/^https?:\/\//i.test(url)) continue;
+    try {
+      const resp = await fetch(url, {
+        signal: AbortSignal.timeout(20000),
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TenisCashBot/1.0)' },
+      });
+      const type = String(resp.headers.get('content-type') || '').toLowerCase();
+      if (!resp.ok || !type.startsWith('image/')) continue;
+      const buf = Buffer.from(await resp.arrayBuffer());
+      if (!buf.length || buf.length > 9 * 1024 * 1024) continue;
+      const ext = (type.split('/')[1] || 'jpg').split(';')[0].replace('jpeg', 'jpg');
+      out.push({ attachment: buf.toString('base64'), filename: `img-${out.length + 1}.${ext}` });
+    } catch (_) { /* foto inacessível também pro servidor — pula */ }
+  }
+  return out;
+}
+
 // Converte uma src local no corpo aceito pelo POST /products/:id/images.
 // URL http(s) → { src } (Nuvemshop baixa). data:URL → { attachment, filename }.
 function imageBodyFromSrc(src, position) {
@@ -1405,7 +1429,16 @@ async function syncNuvemshopImages(connection, nsProductId, localProduct) {
     try {
       await ns.nuvemshopApi(connection, 'POST', `/products/${nsProductId}/images`, imageBodyFromSrc(desired[i], i + 1));
       added++;
-    } catch (e) { errors.push({ position: i + 1, error: e.message }); console.warn('[ns img] POST falhou pos', i + 1, e.message); }
+    } catch (e) {
+      // Nuvemshop não baixou a URL → servidor baixa e manda o arquivo.
+      const [att] = /^https?:\/\//i.test(desired[i]) ? await imagesAsAttachments([{ src: desired[i] }]) : [];
+      let ok = false;
+      if (att) {
+        try { await ns.nuvemshopApi(connection, 'POST', `/products/${nsProductId}/images`, { ...att, position: i + 1 }); added++; ok = true; }
+        catch (_) { /* segue pro registro do erro */ }
+      }
+      if (!ok) { errors.push({ position: i + 1, error: e.message }); console.warn('[ns img] POST falhou pos', i + 1, e.message); }
+    }
   }
 
   // Persiste assinatura (só se algo subiu, ou se zeramos de propósito)
@@ -1572,17 +1605,30 @@ async function _pushProductToNuvemshopInner(localProductId, connection) {
     try {
       nsProduct = await ns.nuvemshopApi(connection, 'POST', '/products', payload);
     } catch (e) {
-      // Se o 422 é exclusivamente sobre imagens (URL inválida / CDN inacessível do NS),
-      // OU se o NS retornou 500 com imagens no payload (URL truncada/inacessível causa 500),
-      // retentar SEM imagens — o produto entra na loja e recebe foto depois.
-      const isImageErr = /images\[\d+\]|Remote image not found|Remote image exceeds max/i.test(e.message);
+      // Erro de imagem (Nuvemshop não conseguiu BAIXAR a URL, ou 500 com imagens):
+      // o servidor baixa a foto e manda o ARQUIVO (attachment). NUNCA cria sem foto —
+      // produto sem foto na loja é apagado pelo cron (regra do dono), então criar sem
+      // foto só gera cria-apaga (2026-11-12: 4 de 22 sumiram assim).
+      const isImageErr = /images\[\d+\]|Remote image not found|Remote image exceeds max|\bsrc\b/i.test(e.message);
       const is500WithImages = /Nuvemshop 500/i.test(e.message) && payload.images && payload.images.length > 0;
-      if (isImageErr || is500WithImages) {
-        console.log('[ns push] retry sem imagens (erro de imagem):', localProductId, e.message.slice(0, 80));
-        const payloadNoImg = { ...payload, images: [] };
-        nsProduct = await ns.nuvemshopApi(connection, 'POST', '/products', payloadNoImg);
-      } else {
-        throw e;
+      if (!(isImageErr || is500WithImages)) throw e;
+      console.log('[ns push] foto por URL falhou, tentando baixar e mandar arquivo:', localProductId, e.message.slice(0, 120));
+      const attached = await imagesAsAttachments(payload.images || []);
+      if (!attached.length) {
+        return { skipped: true, action: 'skipped', reason: `foto nao sobe (Nuvemshop e servidor nao conseguiram baixar): ${e.message.slice(0, 120)}` };
+      }
+      try {
+        nsProduct = await ns.nuvemshopApi(connection, 'POST', '/products', { ...payload, images: attached });
+      } catch (e2) {
+        return { skipped: true, action: 'skipped', reason: `foto nao sobe mesmo como arquivo: ${e2.message.slice(0, 120)}` };
+      }
+    }
+    // Aceitou mas voltou sem foto: manda as fotos como arquivo no endpoint de imagens.
+    if (Array.isArray(nsProduct.images) && nsProduct.images.length === 0 && (payload.images || []).length) {
+      const attached = await imagesAsAttachments(payload.images);
+      for (let i = 0; i < attached.length; i++) {
+        try { await ns.nuvemshopApi(connection, 'POST', `/products/${nsProduct.id}/images`, { ...attached[i], position: i + 1 }); }
+        catch (e3) { console.warn('[ns push] foto pos-create falhou:', localProductId, e3.message.slice(0, 100)); }
       }
     }
     // Grava o mapping com COMPENSAÇÃO: se outro processo ganhou a corrida entre o
