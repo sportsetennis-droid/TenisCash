@@ -21,7 +21,9 @@
 // e colocar em FUNCTIONS. O menu se monta sozinho.
 // =====================================================================
 const { prisma } = require('../middleware');
-const { sendCustomMessage, sendEvolutionRaw } = require('../whatsapp');
+const { sendCustomMessage, sendEvolutionRaw, sendEvolutionImage } = require('../whatsapp');
+// Cartão laranja com a logo oficial (public/wa-site-card.png, gerado do PNG oficial da marca).
+const SITE_CARD_URL = (process.env.PUBLIC_BASE_URL || 'https://teniscash.com.br').replace(/\/+$/, '') + '/wa-site-card.png';
 const { deliverCupom } = require('./cupomDelivery');
 
 const LOOKBACK_DAYS = 365;     // cupons de até 1 ano atrás
@@ -254,10 +256,18 @@ const OPCOES = {
   2: ({ phone }) => startTrocaGarantia(phone, 'troca'),
   3: ({ phone }) => startTrocaGarantia(phone, 'garantia'),
   4: (ctx) => { clearState(ctx.phone); return SEGUNDA_VIA.run(ctx); },
-  5: ({ phone }) => { clearState(phone); return reply(phone, lojasText()); },
-  6: ({ phone }) => {
+  5: ({ phone }) => { clearState(phone); return reply(phone, lojasText(), { linkPreview: false }); },
+  6: async ({ phone }) => {
     clearState(phone);
-    return reply(phone, '🛍️ Nossa loja online: ' + SITE + '\n\nQualquer dúvida sobre um produto, é só me chamar aqui. 😉');
+    // Cartão com a LOGO OFICIAL (laranja) no lugar da prévia automática do site,
+    // que vinha com a logo apagada/errada (dono 2026-11-12).
+    const caption = '🛍️ Nossa loja online: ' + SITE + '\n\nQualquer dúvida sobre um produto, é só me chamar aqui. 😉';
+    if (!replyJids.get(phone)) {
+      const img = await sendEvolutionImage(phone, SITE_CARD_URL, caption).catch(e => ({ ok: false, error: e.message }));
+      if (img && img.ok) return img;
+      console.warn('[wa-funcoes] cartao do site falhou, mando texto: ' + (img && img.error));
+    }
+    return reply(phone, caption, { linkPreview: false });
   },
   7: ({ phone }) => {
     clearState(phone);
@@ -279,7 +289,7 @@ const MENU = {
 const LOJAS_FN = {
   name: 'nossas lojas',
   match: (t) => /(endereco|onde fica|onde ficam|localizacao|quais lojas|suas lojas|nossas lojas|instagram|whatsapp da loja|numero da loja|telefone da loja)/.test(t),
-  run: ({ phone }) => reply(phone, lojasText()),
+  run: ({ phone }) => reply(phone, lojasText(), { linkPreview: false }),
 };
 const TROCA_FN = {
   name: 'troca',
@@ -296,9 +306,9 @@ const FUNCTIONS = [MENU, SEGUNDA_VIA, LOJAS_FN, TROCA_FN, GARANTIA_FN];
 
 // Contato "@lid" sem telefone conhecido: responde no próprio JID (definido no tryHandle).
 const replyJids = new Map(); // phone -> jid
-async function reply(phone, text) {
+async function reply(phone, text, opts = {}) {
   const jid = replyJids.get(phone);
-  const out = await (jid ? sendEvolutionRaw(jid, text) : sendCustomMessage(phone, text))
+  const out = await (jid ? sendEvolutionRaw(jid, text) : sendCustomMessage(phone, text, opts))
     .catch(e => ({ ok: false, error: e.message }));
   if (!out || !out.ok) console.warn('[wa-funcoes] falha ao responder ' + phone + ': ' + (out && out.error));
   return out;
