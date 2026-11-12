@@ -21,7 +21,7 @@
 // e colocar em FUNCTIONS. O menu se monta sozinho.
 // =====================================================================
 const { prisma } = require('../middleware');
-const { sendCustomMessage } = require('../whatsapp');
+const { sendCustomMessage, sendEvolutionRaw } = require('../whatsapp');
 const { deliverCupom } = require('./cupomDelivery');
 
 const LOOKBACK_DAYS = 365;     // cupons de até 1 ano atrás
@@ -294,8 +294,14 @@ const GARANTIA_FN = {
 
 const FUNCTIONS = [MENU, SEGUNDA_VIA, LOJAS_FN, TROCA_FN, GARANTIA_FN];
 
-function reply(phone, text) {
-  return sendCustomMessage(phone, text).catch(e => ({ ok: false, error: e.message }));
+// Contato "@lid" sem telefone conhecido: responde no próprio JID (definido no tryHandle).
+const replyJids = new Map(); // phone -> jid
+async function reply(phone, text) {
+  const jid = replyJids.get(phone);
+  const out = await (jid ? sendEvolutionRaw(jid, text) : sendCustomMessage(phone, text))
+    .catch(e => ({ ok: false, error: e.message }));
+  if (!out || !out.ok) console.warn('[wa-funcoes] falha ao responder ' + phone + ': ' + (out && out.error));
+  return out;
 }
 
 // ---------- respostas a um estado aberto ----------
@@ -358,11 +364,13 @@ async function handleState(s, { phone, t, text, pushName }) {
 
 // ---------- entrada: chamada pelo webhook ----------
 // Retorna true se a mensagem foi tratada aqui (aí a IA NÃO responde).
-async function tryHandle({ phone, text, pushName }) {
+async function tryHandle({ phone, text, pushName, replyJid = null }) {
   try {
     const t = norm(text);
-    // remetente sem número de telefone utilizável (ex: id @lid) -> segue o fluxo normal
-    if (!phone || !t || !phoneVariants(phone).length) return false;
+    if (!phone || !t) return false;
+    // sem telefone utilizável e sem JID pra responder -> segue o fluxo normal
+    if (!replyJid && !phoneVariants(phone).length) return false;
+    if (replyJid) replyJids.set(phone, replyJid); else replyJids.delete(phone);
 
     const s = getState(phone);
     if (s && await handleState(s, { phone, t, text, pushName })) return true;
