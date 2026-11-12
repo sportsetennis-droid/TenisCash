@@ -87,6 +87,29 @@ function manifest() {
   };
 }
 
+// ---- Torneios (/torneios.html) no domínio do clube ----
+const TORNEIOS = path.join(__dirname, '../../public/torneios.html');
+const TORNEIOS_SWAPS = [
+  ['<title>TenisCash — Torneios</title>', '<title>Torneios — Club Sports &amp; Tennis</title>'],
+  ['</head>', '<link rel="icon" type="image/svg+xml" href="/brand/sports-tennis-icon.svg?v=2">\n<link rel="apple-touch-icon" href="/brand/sports-tennis-icon-180.png?v=2">\n</head>'],
+  ['Use a mesma conta do TenisCash.', 'Use a mesma conta do Club Sports &amp; Tennis.'],
+  ['Atletas precisam ter conta TenisCash (@username).', 'Atletas precisam ter conta no Club Sports &amp; Tennis (@username).'],
+  ['Atletas têm que ter conta TenisCash.', 'Atletas têm que ter conta no Club Sports &amp; Tennis.'],
+];
+let tcache = { mtime: 0, html: '' };
+function brandedTorneiosHtml() {
+  const st = fs.statSync(TORNEIOS);
+  if (tcache.html && tcache.mtime === st.mtimeMs) return tcache.html;
+  let html = fs.readFileSync(TORNEIOS, 'utf8');
+  for (const [from, to] of TORNEIOS_SWAPS) {
+    const before = html;
+    html = html.replace(from, to);
+    if (html === before) console.warn('[siteBrand] torneios: trecho não encontrado:', String(from).slice(0, 80));
+  }
+  tcache = { mtime: st.mtimeMs, html };
+  return html;
+}
+
 // Monta as rotas. Chamar ANTES do express.static.
 function mount(app) {
   app.get(['/', '/index.html'], (req, res, next) => {
@@ -99,6 +122,16 @@ function mount(app) {
       return next();
     }
   });
+  app.get(['/torneios', '/torneios.html'], (req, res, next) => {
+    if (!isSportsTennisHost(req)) return next();
+    try {
+      res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+      return res.type('html').send(brandedTorneiosHtml());
+    } catch (e) {
+      console.error('[siteBrand] torneios erro:', e.message);
+      return next();
+    }
+  });
   app.get('/manifest.json', (req, res, next) => {
     if (!isSportsTennisHost(req)) return next();
     res.set('Cache-Control', 'no-store');
@@ -106,4 +139,4 @@ function mount(app) {
   });
 }
 
-module.exports = { mount, isSportsTennisHost, brandedIndexHtml };
+module.exports = { mount, isSportsTennisHost, brandedIndexHtml, brandedTorneiosHtml };
