@@ -116,7 +116,7 @@ Esse loop é o diferencial vs Strava/NRC. Eles dependem de patrocínio. Nós tem
 - **Banco**: PostgreSQL Railway. Tabelas relevantes:
   - Varejo: `Product`, `ProductSize`, `Supplier`, `NuvemshopProductMapping`, `User`, `Sale`, `Partner`, `Transaction`, `Campaign`, etc.
   - APEX (app esportivo): `AthleteProfile`, `Activity`, `ActivityLap`, `ActivityPhoto`, `Route`, `Segment`, `SegmentEffort`, `Club`, `ClubMembership`, `Challenge`, `ChallengeParticipation`, `TrainingPlan`, `Workout`, `UserPlan`, `BadgeEarned`, `LiveTrackingSession`, `SafetyContact`, `DeviceConnection`, `Consent`.
-- **Nuvemshop**: OAuth ativa, push/pull funcionando. Loja: `sportstennis2.lojavirtualnuvem.com.br`
+- **Nuvemshop**: OAuth ativa, push/pull funcionando. Loja atual: **`www.sportsetennis.com.br`** (store `7890890`; `sportstennis2.lojavirtualnuvem.com.br` está "fora de serviço"). ⚠️ Foto local apontando pro CDN da loja antiga (`dcdn-us.mitiendanube.com/stores/006/578/901/...`) está MORTA (404) — produto com essa foto não sobe até ganhar foto nova. Foto que a Nuvemshop não baixa pela URL vai como arquivo (servidor baixa); se nem assim, o produto NÃO é criado (criar sem foto = o cron apaga)
 - **Meta**: Page Sports & Tennis, Instagram @sportsetennis, WhatsApp +55 83 9671-3153, Business Manager 31915792481369241, Ad Account act_750101118074129
 - **IA**: Anthropic Claude (vision + texto), Serper (Google search), Brave (alt search)
 - **Curadoria**: Agente curador opera via `/admin/ai-curation/product/:id` — 6.170 produtos curados de 7.093
