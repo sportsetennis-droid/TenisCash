@@ -51,6 +51,7 @@ Gancho → oferta → motivos → onde comprar → fechamento com o nome da loja
 - **Emoção** (dono: "vendas é emoção"): gerar com **Chatterbox Multilingual** (Resemble AI, licença MIT, uso comercial OK) usando a referência acima, com `exaggeration=0.8`, `cfg_weight=0.35`, `temperature=0.8`, `language_id="pt"`, seed 0 (= "versão 2" aprovada).
 - **Escrita que dá emoção:** frases curtas, exclamação no fim, pergunta + resposta ("E o presente? Resolvido!"), dois-pontos antes de lista.
 - **Nome da loja:** se fala "isportis i tênis". **Escrever sempre `Isportis, i Tênis` (com vírgula).** Sem vírgula vira "das Portes"; escrito em inglês vira "Esportes Dênis". Evitar "da/nas" colado antes do nome → usar "Vem pra Isportis, i Tênis!".
+- ⛔ **OBRIGATÓRIO (dono 2026-11-12): a frase do nome da loja NUNCA é gerada de novo.** É sempre o áudio aprovado `voz/assinatura-isportis-i-tenis-APROVADA.wav` (1,96 s; sha256 `6e4ec04c…`). O `scripts/voz.py` já copia esse arquivo sozinho quando a frase tem "Isportis". **Por quê:** o Chatterbox sorteia a pronúncia, e a semente é `seed×10 + posição da frase`. No Reel aprovado a frase era a 6ª (semente 5). No Reel Body for Sure (12/11) ela virou a 8ª (semente 7), ficou mais lenta (2,44 s) e o dono ouviu o nome da loja errado. A transcrição automática NÃO pega esse erro (as duas viraram "Vem para esportes e tênis") — então não confiar no Whisper pra validar o nome da loja; usar sempre o áudio aprovado.
 - **Números por extenso** na fala ("cinquenta por cento"), na tela em algarismo ("50%").
 - ❌ **Não usar VoiceStudio** (modelo padrão OmniVoice é NÃO-comercial; nenhum modelo do catálogo liberado pra uso comercial). ❌ Não clonar voz de pessoa real sem autorização por escrito.
 
@@ -101,6 +102,7 @@ Publicação pelo navegador (Chrome logado em @sportsetennis): Criar → Postar 
 |---|---|
 | `voz/voz-C-referencia.wav` | Timbre da voz C (referência do Chatterbox) — identidade da marca |
 | `voz/voz_C.npy` | Vetor da voz C no Kokoro (versão sem emoção) |
+| `voz/assinatura-isportis-i-tenis-APROVADA.wav` | ⛔ "Vem pra Isportis, i Tênis!" aprovado — usar SEMPRE este arquivo, nunca regerar |
 | `scripts/voz.py` | Gera as falas com a voz C e emoção |
 | `scripts/house.py` | Trilha house + efeitos + mix com a voz |
 | `scripts/reel-modelo.html` | Modelo do vídeo (cenas, animações) — Antecipa Black como exemplo |
