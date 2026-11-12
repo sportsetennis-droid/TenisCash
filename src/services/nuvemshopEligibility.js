@@ -126,15 +126,28 @@ function rawNameReasons(name) {
   }
   if (/[\/,;-]\s*$/.test(n)) out.push('nome termina truncado');
   if (/\S {2,}\S/.test(n)) out.push('espaco duplo (texto colado da NFe)');
+  // "TENIS UA UA DIME", "MIZ.WAVE", "CALCADOS ESPORTIVO", "SPO01 CHINELO", "... HO25"
+  if (/\b([A-Z]{2,})\s+\1\b/i.test(n) || /\bMIZ\b\.?/i.test(n) || /\((?:[A-Z]{2,4}\s*)+\)/.test(n)) {
+    out.push('abreviacao/palavra repetida no nome');
+  }
+  if (/\bCAL[CÇ]ADOS?\s+ESPORTIVOS?\b/i.test(n)) out.push('texto fiscal da NFe no nome');
+  if (/^[A-Z]{2,4}\d{2,}\b/.test(n)) out.push('codigo de artigo no nome');
+  if (/\b(?:SU|FA|HO|SP)\d{2}\b/.test(n)) out.push('codigo de temporada no nome');
   return out;
 }
 
-// Palavras de cor curtas que são legítimas (não abreviação de fornecedor).
-const SHORT_COLOR_WORDS = new Set([
-  'AZUL', 'ROSA', 'CRU', 'OURO', 'GELO', 'BEGE', 'ROXO', 'MEL', 'LIMA', 'RED', 'BLUE',
-  'GRAY', 'GREY', 'PINK', 'DARK', 'LIME', 'GOLD', 'NAVY', 'MINT', 'SAND', 'ROSE', 'ALL',
-  'OFF', 'TAN', 'NEON', 'CAFE', 'CAQUI', 'ONIX', 'FUME',
-]);
+// Cor em MAIÚSCULO é texto de NFe/fornecedor: cada palavra tem que ser cor de verdade
+// (dicionário abaixo). Cor curada (Mista/minúscula, ex "Sea Glass/Neon Flame") é aceita.
+// Pega código de cor do fornecedor: JBBKHG, VRDCLR, ARENIT, PRADOU, BKW, HOOBLU/FTWW.
+const COLOR_WORDS = new Set((
+  'PRETO PRETA BRANCO BRANCA AZUL VERMELHO VERMELHA VERDE AMARELO AMARELA ROSA CINZA MARINHO BEGE ROXO ROXA '
+  + 'LILAS LILÁS LARANJA MARROM CRU DOURADO DOURADA PRATA PRATEADO GRAFITE CARAMELO AMENDOA AMÊNDOA VINHO NUDE '
+  + 'CAFE CAFÉ PALHA CORAL CREME GELO OURO CHUMBO MOSTARDA TURQUESA FUCSIA FÚCSIA VIOLETA ROYAL CLARO CLARA '
+  + 'ESCURO ESCURA OLIVA MILITAR NEON COLORIDO COLORIDA MULTICOLOR OFF WHITE MEL LIMA ONIX FUME CAQUI SALMAO SALMÃO '
+  + 'BLACK BLUE RED GREEN GRAY GREY SILVER GOLD NAVY YELLOW ORANGE PURPLE BROWN BEIGE PINK LIME MINT SAND ROSE TAN '
+  + 'ALL DARK LIGHT DEEP BRIGHT SKY OLIVE CREAM IVORY KHAKI CHARCOAL TEAL LAVENDER LILAC VIOLET AMBER PACIFIC '
+  + 'MIDNIGHT ILLUSION CORE CLOUD'
+).split(' '));
 
 function rawColorReason(color) {
   const c = clean(color);
@@ -142,7 +155,9 @@ function rawColorReason(color) {
   if (/\d/.test(c) || /\bTAM\b/i.test(c)) return 'cor crua (numero/tamanho na cor)';
   const tokens = c.split(/[\s\/\-]+/).filter(Boolean);
   if (tokens.some((t) => t.length <= 2 && !/^(e|de|do|da)$/i.test(t))) return 'cor abreviada';
-  if (tokens.some((t) => /^[A-Z]{3,4}$/.test(t) && !SHORT_COLOR_WORDS.has(t))) return 'cor abreviada';
+  if (tokens.some((t) => /^[A-ZÀ-Ú]{3,}$/.test(t) && !COLOR_WORDS.has(t))) return 'cor abreviada';
+  // "Clr", "Blk", "Wht": 3 letras sem vogal = abreviação mesmo em minúscula
+  if (tokens.some((t) => /^[A-Za-z]{3}$/.test(t) && !/[aeiou]/i.test(t))) return 'cor abreviada';
   return null;
 }
 
