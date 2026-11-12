@@ -11,6 +11,7 @@ const path = require('path');
 
 const ST_HOSTS = new Set(['clubsportsetennis.com.br', 'www.clubsportsetennis.com.br']);
 const INDEX = path.join(__dirname, '../../public/index.html');
+const CLUB_APP = path.join(__dirname, '../../public/club.html');
 const LOGO = '/brand/club-sports-tennis.svg?v=3'; // vetor: CLUB + logo oficial
 const LOGO_IMG = (w) => `<img src="${LOGO}" alt="Club Sports &amp; Tennis" style="display:block;width:${w};max-width:86vw;height:auto;margin:0 auto">`;
 
@@ -60,9 +61,13 @@ const SWAPS = [
   var KEEP=['seller','partner','design','design_view'];
   function isKeep(){try{return typeof user!=='undefined'&&user&&KEEP.indexOf(user.role)>=0;}catch(e){return false;}}
   var g=window.goHomeByRole;
-  window.goHomeByRole=function(){if(!isKeep()){location.replace('/torneios.html');return;}return g.apply(this,arguments);};
+  window.goHomeByRole=function(){if(!isKeep()){location.replace('/club.html');return;}return g.apply(this,arguments);};
   var s=window.showScreen;
-  window.showScreen=function(id){if(id==='home'&&localStorage.getItem('tc_token')&&!isKeep()){location.replace('/torneios.html');return;}return s.apply(this,arguments);};
+  window.showScreen=function(id){if(id==='home'&&localStorage.getItem('tc_token')&&!isKeep()){location.replace('/club.html');return;}return s.apply(this,arguments);};
+  // Links vindos do app do clube: /?cadastro=1 abre "Criar conta", /?esqueci=1 abre "Esqueci a senha".
+  var q=location.search;
+  function openFlow(){try{if(/[?&]cadastro=1/.test(q)){s.call(window,'auth');if(window.setAuthTab)setAuthTab('register');}else if(/[?&]esqueci=1/.test(q)){s.call(window,'forgot');}}catch(e){}}
+  if(/[?&](cadastro|esqueci)=1/.test(q)){window.addEventListener('load',function(){setTimeout(openFlow,400);});}
 })();</script>
 </body>`],
 ];
@@ -132,6 +137,11 @@ function mount(app) {
     if (!isSportsTennisHost(req)) return next();
     try {
       res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+      // Raiz do clube = app premium do atleta (tem login próprio). Cadastro e
+      // "esqueci a senha" continuam no fluxo completo da página de entrada.
+      if (req.path === '/' && !req.query.cadastro && !req.query.esqueci) {
+        return res.sendFile(CLUB_APP, { cacheControl: false });
+      }
       return res.type('html').send(brandedIndexHtml());
     } catch (e) {
       console.error('[siteBrand] erro:', e.message);
