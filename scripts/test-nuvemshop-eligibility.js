@@ -110,6 +110,15 @@ assert.equal(assessProductForNuvemshop(validProduct({ name: 'Tênis Nike Pegasus
 assert.equal(assessProductForNuvemshop(validProduct({ name: 'Gel Kayano 31 Preto' })).eligible, true);
 assert.equal(assessProductForNuvemshop(withCtx({ color: 'Sea Glass/Neon Flame' })).eligible, true);
 assert.equal(assessProductForNuvemshop(withCtx({ color: 'Azul' })).eligible, true);
+assert.match(reasonOf(withCtx({ color: 'JBBKHG' })), /cor abreviada/);
+assert.match(reasonOf(withCtx({ color: 'Black/Asphal/Clr' })), /cor abreviada/);
+assert.match(reasonOf(validProduct({ name: 'TENIS UA UA DIME' })), /abreviacao/);
+assert.match(reasonOf(validProduct({ name: 'TENIS CALCADOS ESPORTIVO MIZ WAVE STRATOS 3' })), /texto fiscal/);
+assert.match(reasonOf(validProduct({ name: 'CHUTEIRA FUTSAL JOMA DRIBLING (PTO VDE)' })), /abreviacao/);
+assert.match(reasonOf(validProduct({ name: 'SPO01 CHINELO SLIDE' })), /codigo de artigo/);
+assert.match(reasonOf(validProduct({ name: 'TENIS NK BIG LOW MASCULINO HO25' })), /temporada/);
+assert.equal(assessProductForNuvemshop(withCtx({ color: 'ILLUSION BLUE/AMBER' })).eligible, true);
+assert.equal(assessProductForNuvemshop(withCtx({ color: 'CAFÉ/PALHA' })).eligible, true);
 assert.match(reasonOf(validProduct({ sizes: [
   { size: '40', barcode: '111', stock: 5, storeStocks: [{ stock: 1 }] },
   { size: '41', barcode: '111', stock: 5, storeStocks: [{ stock: 1 }] },
