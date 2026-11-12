@@ -1,6 +1,8 @@
 // =====================================================================
 // lojasContato.js — contatos PÚBLICOS das lojas Sports & Tennis (WhatsApp).
 // FONTE: bio do Instagram de cada loja (lido em 2026-11-12) + ordem do dono.
+// NOMES OFICIAIS (dono 2026-11-12): Praia do Bessa · Praia de Tambaú · Tambiá ·
+// Rainha da Borborema (NUNCA chamar de "Campina Grande") · Praia de Manaíra.
 // NÃO inventar: campo que a fonte não traz fica null e não aparece pro cliente.
 // O Baratão fica FORA (outra empresa, outro atendimento — ordem do dono).
 // =====================================================================
@@ -19,14 +21,14 @@ const CEO = {
 // code = Store.code no banco. aliases = como a loja aparece no estoque/conversa.
 const LOJAS = [
   {
-    code: 'LOJA02', nome: 'Bessa', titulo: 'Sports & Tennis Praia do Bessa',
+    code: 'LOJA02', nome: 'Praia do Bessa', titulo: 'Sports & Tennis Praia do Bessa',
     local: 'Parahyba Mall • Bessa', cidade: 'João Pessoa',
     whatsapp: '5583998742310', instagram: 'sportsetennisbessa',
     aliases: ['bessa', 'parahyba', 'parahyba mall'],
   },
   {
-    code: 'LOJA05', nome: 'Tambaú', titulo: 'Sports & Tennis Praia de Tambaú',
-    local: 'Pirâmide Shopping • Tambaú', cidade: 'João Pessoa',
+    code: 'LOJA05', nome: 'Praia de Tambaú', titulo: 'Sports & Tennis Praia de Tambaú',
+    local: 'Pirâmide Shopping Tambaú', cidade: 'João Pessoa',
     whatsapp: '5583989042285', instagram: 'sportsetennistambau',
     aliases: ['tambau', 'piramide'],
   },
@@ -37,13 +39,13 @@ const LOJAS = [
     aliases: ['tambia'],
   },
   {
-    code: 'LOJA03', nome: 'Campina Grande', titulo: 'Sports & Tennis Rainha da Borborema',
+    code: 'LOJA03', nome: 'Rainha da Borborema', titulo: 'Sports & Tennis Rainha da Borborema',
     local: 'Complexo K', cidade: 'Campina Grande',
     whatsapp: '5583996765276', instagram: 'sportsetenniscg',
     aliases: ['campina', 'rainha', 'borborema', 'complexo k', 'cg'],
   },
   {
-    code: 'LOJA07', nome: 'Manaíra', titulo: 'Sports & Tennis Praia de Manaíra',
+    code: 'LOJA07', nome: 'Praia de Manaíra', titulo: 'Sports & Tennis Praia de Manaíra',
     local: 'Liv Mall', cidade: 'João Pessoa',
     whatsapp: null, // a bio do Instagram não traz WhatsApp
     instagram: 'sportsetennismanaira',

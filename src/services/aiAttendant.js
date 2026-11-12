@@ -238,7 +238,7 @@ function buildTools(profile) {
       input_schema: {
         type: 'object',
         properties: {
-          loja: { type: 'string', description: 'Bessa, Tambau, Tambia, Campina Grande (Rainha da Borborema) ou Manaira' },
+          loja: { type: 'string', description: 'Praia do Bessa, Praia de Tambau, Tambia, Rainha da Borborema (fica em Campina Grande) ou Praia de Manaira' },
           produto: { type: 'string', description: 'Nome do produto como veio do buscar_produtos' },
           tamanho: { type: 'string', description: 'Tamanho que o cliente quer (se tiver)' },
           observacao: { type: 'string', description: 'Resumo curto do que o cliente quer (cor, quando vai na loja, forma de pagamento...)' },

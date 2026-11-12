@@ -90,7 +90,8 @@ function whatsappProviderOrder() {
   return order;
 }
 
-async function sendEvolutionText(phone, message, instance = EVOLUTION_INSTANCE) {
+// opts.linkPreview=false: o WhatsApp não monta a prévia do link (a do site vinha com a logo errada).
+async function sendEvolutionText(phone, message, instance = EVOLUTION_INSTANCE, opts = {}) {
   if (!isEvolutionConfigured()) return { ok: false, error: 'Evolution nao configurado' };
   const formattedPhone = formatPhoneBR(phone);
   if (!formattedPhone) return { ok: false, error: 'Telefone invalido' };
@@ -102,7 +103,7 @@ async function sendEvolutionText(phone, message, instance = EVOLUTION_INSTANCE) 
     const response = await fetch(`${EVOLUTION_API_URL}/message/sendText/${encodeURIComponent(instance)}`, {
       method: 'POST',
       headers: { apikey: EVOLUTION_API_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ number: formattedPhone, text: String(message || '') }),
+      body: JSON.stringify({ number: formattedPhone, text: String(message || ''), ...(opts.linkPreview === false ? { linkPreview: false } : {}) }),
       signal: controller.signal,
     });
     const data = await response.json().catch(() => ({}));
@@ -137,6 +138,33 @@ async function sendEvolutionRaw(numberOrJid, message, instance = EVOLUTION_INSTA
     return { ok: true, messageId: data && data.key && data.key.id };
   } catch (err) {
     return { ok: false, error: err.message || 'Erro Evolution' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Envia uma IMAGEM (URL pública) com legenda. Ex: cartão da marca com a logo oficial.
+async function sendEvolutionImage(phone, imageUrl, caption, instance = EVOLUTION_INSTANCE) {
+  if (!isEvolutionConfigured()) return { ok: false, error: 'Evolution nao configurado' };
+  const formattedPhone = formatPhoneBR(phone);
+  if (!formattedPhone) return { ok: false, error: 'Telefone invalido' };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20000);
+  try {
+    const response = await fetch(`${EVOLUTION_API_URL}/message/sendMedia/${encodeURIComponent(instance)}`, {
+      method: 'POST',
+      headers: { apikey: EVOLUTION_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ number: formattedPhone, mediatype: 'image', mimetype: 'image/png', media: String(imageUrl), fileName: 'sports-e-tennis.png', caption: caption || '' }),
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const msg = Array.isArray(data?.response?.message) ? data.response.message.join('; ') : (data?.message || `Evolution ${response.status}`);
+      return { ok: false, error: msg, data };
+    }
+    return { ok: true, messageId: data?.key?.id };
+  } catch (err) {
+    return { ok: false, error: err.name === 'AbortError' ? 'Evolution timeout (imagem)' : (err.message || 'Erro Evolution') };
   } finally {
     clearTimeout(timer);
   }
@@ -344,7 +372,7 @@ function formatPhoneBR(raw) {
   return p;
 }
 
-async function sendCustomMessage(phone, message) {
+async function sendCustomMessage(phone, message, opts = {}) {
   await loadConnectedMetaCredentials();
   const providers = whatsappProviderOrder();
   if (!providers.length) {
@@ -359,7 +387,7 @@ async function sendCustomMessage(phone, message) {
   for (const provider of providers) {
     const out = provider === 'meta'
       ? await sendMetaText(formattedPhone, message)
-      : await sendEvolutionText(formattedPhone, message);
+      : await sendEvolutionText(formattedPhone, message, EVOLUTION_INSTANCE, opts);
     if (out.ok) return { ok: true, provider, messageId: out.messageId };
     lastResult = out;
   }
@@ -414,4 +442,5 @@ module.exports = {
   sendEvolutionText,
   sendEvolutionRaw,
   sendEvolutionMedia,
+  sendEvolutionImage,
 };
