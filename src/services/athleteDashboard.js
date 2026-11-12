@@ -105,7 +105,7 @@ async function dashboard(userId) {
   };
 
   // 4) Produção em JOGOS OFICIAIS (súmula) — só nomes do elenco ligados à conta
-  production.games = await gameProduction(uid, tById);
+  production.games = await gameProduction(uid, tById).catch((e) => { console.error('[dashboard] gameProduction', e.message); return null; });
 
   // Torneios em que atuo (papel/fundador/time)
   const rolesByT = {};

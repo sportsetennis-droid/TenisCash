@@ -2964,7 +2964,7 @@ async function forgotVerifyCode() {
   const body = forgotMethod === 'whatsapp' ? {phone:forgotPhone,code} : {email:forgotPhone,code};
   const data = await api('/auth/forgot-verify','POST',body);
   if (data.error) { showError('forgot-code-error',data.error); return; }
-  if (data.verified) { showForgotStep('newpass'); }
+  if (data.verified) { window.__forgotResetToken = data.resetToken || ''; showForgotStep('newpass'); }
 }
 
 function forgotResendCode() {
@@ -2978,6 +2978,7 @@ async function forgotResetPassword() {
   if (!pass1 || pass1.length < 4) { showError('forgot-pass-error','Senha deve ter no mínimo 4 caracteres'); return; }
   if (pass1 !== pass2) { showError('forgot-pass-error','As senhas não conferem'); return; }
   const body = forgotMethod === 'whatsapp' ? {phone:forgotPhone,password:pass1} : {email:forgotPhone,password:pass1};
+  body.resetToken = window.__forgotResetToken || '';
   const data = await api('/auth/forgot-reset','POST',body);
   if (data.error) { showError('forgot-pass-error',data.error); return; }
   showForgotStep('success');

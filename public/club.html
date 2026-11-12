@@ -478,6 +478,149 @@ h1,h2,h3{font-weight:800}
 .nrow p{font-size:13.5px;color:var(--mut);margin-top:3px;line-height:1.45}
 .nrow time{display:block;font-size:11.5px;color:var(--dim);margin-top:6px}
 
+/* ---------- cadastro / recuperar senha ---------- */
+.login.auth{padding-top:calc(var(--sat) + 12px)}
+.auth .login-art{background:radial-gradient(95% 46% at 100% 80%,rgba(229,87,30,.44),rgba(229,87,30,0) 64%),radial-gradient(70% 34% at 0% 0%,rgba(255,122,61,.13),transparent 70%),linear-gradient(180deg,#0b0b0d 0%,#09090b 55%,#060607 100%)}
+.auth .login-art .cw{top:auto;bottom:0;height:42%;-webkit-mask-image:linear-gradient(0deg,#000 20%,transparent 94%);mask-image:linear-gradient(0deg,#000 20%,transparent 94%)}
+.auth .login-art .court{opacity:.3}
+.auth .login-art::after{background:linear-gradient(180deg,rgba(8,8,10,.3) 0%,rgba(8,8,10,0) 45%,rgba(8,8,10,.35) 100%)}
+.auth-top{display:flex;align-items:center;justify-content:space-between;height:44px}
+.auth-top .back{margin:0 0 0 -10px;color:var(--tx)}
+.auth-top img{height:26px;width:auto;opacity:.92}
+.steps{display:flex;gap:6px;margin-top:20px}
+.steps i{flex:1;height:3px;border-radius:2px;background:rgba(255,255,255,.16);transition:background .4s}
+.steps i.on{background:var(--acc2)}
+.auth-hero{margin-top:26px}
+.auth-hero h1{font-size:clamp(30px,9.4vw,38px);margin-top:12px}
+.auth-hero h1 em{font-style:normal;color:var(--acc2)}
+.auth-hero p{margin-top:12px;color:var(--mut);font-size:15px;max-width:34ch}
+.auth-hero p b{color:var(--tx);font-weight:600;overflow-wrap:anywhere}
+.auth .lform{margin-top:24px}
+.auth .seg{margin-bottom:2px}
+.field.up label{transform:translateY(-10px) scale(.72);letter-spacing:.04em}
+.field input[type=date]{min-width:0;-webkit-appearance:none;appearance:none}
+.hint{margin:8px 4px 0;font-size:12.5px;color:var(--dim)}
+.otp{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+.otp input{width:100%;min-width:0;height:66px;border-radius:16px;border:0;background:rgba(255,255,255,.07);box-shadow:inset 0 0 0 1px var(--line);text-align:center;font-size:32px;font-stretch:68%;font-weight:700;font-variant-numeric:tabular-nums;outline:0;padding:0;caret-color:var(--acc2);transition:box-shadow .2s,background .2s}
+.otp input:focus{box-shadow:inset 0 0 0 1.5px var(--acc2);background:rgba(255,255,255,.1)}
+.otp input.f{box-shadow:inset 0 0 0 1px rgba(255,255,255,.26)}
+.textbtn{display:block;width:100%;min-height:44px;margin-top:6px;font-size:14px;font-weight:600;color:var(--tx);text-align:center}
+.textbtn[disabled]{color:var(--dim);pointer-events:none}
+.textbtn.acc{color:var(--acc2)}
+.okchip{display:flex;align-items:center;gap:10px;padding:12px 14px;margin-bottom:4px;border-radius:14px;background:rgba(67,217,160,.1);box-shadow:inset 0 0 0 1px rgba(67,217,160,.22);color:var(--ok);font-size:13.5px;font-weight:600;overflow-wrap:anywhere}
+.okchip svg{width:18px;height:18px;flex:none}
+.consent{position:relative;display:flex;gap:12px;align-items:flex-start;min-height:44px;margin-top:16px;font-size:13px;color:var(--mut);line-height:1.5;cursor:pointer}
+.consent input{position:absolute;opacity:0;width:26px;height:26px;margin:0}
+.consent .bx{flex:none;width:26px;height:26px;margin-top:1px;border-radius:8px;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.3);display:grid;place-items:center;color:transparent;transition:all .2s var(--ease)}
+.consent .bx svg{width:16px;height:16px;stroke-width:2.6}
+.consent input:checked+.bx{background:var(--acc);box-shadow:none;color:#fff}
+.consent input:focus-visible+.bx{outline:2px solid var(--acc2);outline-offset:2px}
+.consent button{color:var(--tx);font-weight:700;text-decoration:underline;text-underline-offset:3px}
+.auth-foot{margin-top:18px;font-size:11.5px;color:var(--dim);line-height:1.5;text-align:center}
+.done-ic{width:84px;height:84px;border-radius:50%;display:grid;place-items:center;background:rgba(67,217,160,.14);color:var(--ok);box-shadow:0 0 0 12px rgba(67,217,160,.05)}
+.done-ic svg{width:38px;height:38px;stroke-width:2.2}
+.legal p{margin-top:12px;font-size:13.5px;line-height:1.65;color:var(--mut)}
+.legal p b{color:var(--tx);font-weight:700}
+
+/* ---------- competir: ranking + desafios ---------- */
+.seg a{min-height:40px;border-radius:11px;font-size:13.5px;font-weight:600;color:var(--mut);display:flex;align-items:center;justify-content:center;gap:8px;transition:background .25s,color .25s}
+.seg a.on{background:var(--tx);color:#0b0b0d}
+.seg a u{text-decoration:none;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--acc);color:#fff;font-size:11px;font-weight:800;display:inline-grid;place-items:center}
+.podium{display:grid;grid-template-columns:1fr 1.16fr 1fr;align-items:end;gap:8px;margin-top:26px}
+.pod{display:flex;flex-direction:column;align-items:center;text-align:center;min-width:0}
+.pod .ava{box-shadow:0 0 0 2px var(--bg),0 0 0 3.5px var(--line2)}
+.pod.p1 .ava{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--acc),0 14px 34px -6px rgba(229,87,30,.7)}
+.pod .nm{width:100%;margin-top:12px;font-size:13.5px;font-weight:700;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pod .rt{margin-top:5px;font-size:24px;color:var(--mut)}
+.pod.p1 .rt{font-size:32px;color:var(--acc2)}
+.pod .base{width:100%;margin-top:12px;border-radius:18px 18px 0 0;display:flex;justify-content:center;padding-top:10px;background:linear-gradient(180deg,var(--card3),rgba(19,19,23,0));box-shadow:inset 0 1px 0 rgba(255,255,255,.1)}
+.pod .base b{font-size:38px;color:rgba(255,255,255,.5)}
+.pod.p1 .base{height:112px;background:linear-gradient(180deg,#E5571E,rgba(229,87,30,.38) 55%,rgba(229,87,30,0))}
+.pod.p1 .base b{font-size:58px;color:#fff}
+.pod.p2 .base{height:80px}.pod.p3 .base{height:60px}
+.pod .you{margin-top:6px}
+.mypos{display:flex;align-items:center;gap:16px;padding:16px 18px;margin-top:4px;background:linear-gradient(120deg,rgba(229,87,30,.22),rgba(229,87,30,.04) 62%),var(--card);box-shadow:inset 0 0 0 1px rgba(229,87,30,.38)}
+.mypos .p{font-size:46px;color:var(--acc2)}
+.mypos .p small{font-size:.5em;opacity:.7;margin-right:1px}
+.mypos .tx{flex:1;min-width:0}
+.mypos .tx b{display:block;font-size:15.5px;font-weight:700}
+.mypos .tx span{display:block;font-size:12.5px;color:var(--mut);margin-top:2px}
+.mypos .v{text-align:right}
+.mypos .v b{display:block;font-size:30px}
+.mypos .v span{display:block;margin-top:3px;font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--mut)}
+.rk{display:grid;grid-template-columns:30px auto 1fr auto;align-items:center;gap:12px;min-height:66px;padding:10px 0;border-bottom:1px solid var(--line)}
+.rk:last-child{border-bottom:0}
+.rk .pos{font-size:22px;text-align:center;color:var(--mut)}
+.rk .tx{min-width:0}
+.rk .tx b{display:block;font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rk .tx span{display:block;font-size:12.5px;color:var(--mut);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rk .v{font-size:24px}
+.rk.me{margin:0 -18px;padding:10px 18px;background:var(--accbg);border-bottom-color:transparent}
+.rk.me .pos,.rk.me .v{color:var(--acc2)}
+.fine{margin-top:16px;font-size:12.5px;color:var(--dim);text-align:center}
+.chal{padding:16px;margin-bottom:10px}
+.chal.inb{background:linear-gradient(120deg,rgba(229,87,30,.2),rgba(229,87,30,.04) 60%),var(--card);box-shadow:inset 0 0 0 1px rgba(229,87,30,.35)}
+.chal-h{display:flex;align-items:center;gap:14px}
+.chal-h .tx{flex:1;min-width:0}
+.chal-h .tx i{display:block;font-style:normal;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--mut)}
+.chal.inb .chal-h .tx i{color:var(--acc2)}
+.chal-h .tx b{display:block;margin-top:3px;font-size:16px;font-weight:700;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chal-h .tx span{display:block;font-size:12.5px;color:var(--mut);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chal-h .sc{font-size:30px;white-space:nowrap}
+.chal-h .sc i{font-style:normal;opacity:.4;margin:0 5px;font-size:.7em}
+.chal .msg{margin-top:12px;padding:10px 14px;border-radius:14px;background:rgba(255,255,255,.05);font-size:13.5px;color:var(--mut);line-height:1.45;overflow-wrap:anywhere}
+.chal-f{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px}
+.chal-a{display:flex;gap:8px;margin-top:14px}
+.chal-a .btn{flex:1}
+.grp{display:flex;align-items:center;justify-content:space-between;margin:26px 0 12px}
+.grp:first-of-type{margin-top:22px}
+.sfield{display:block;margin-top:16px}
+.sfield span{display:block;margin-bottom:8px;font-size:10.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--mut)}
+.sfield .search{margin-top:0}
+.sheet-chips{display:flex;flex-wrap:wrap;gap:8px}
+.sheet-chips .chip{min-height:40px;padding:0 14px;font-size:13.5px}
+.rscore{display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:end;margin-top:20px}
+.rscore label{display:block;min-width:0}
+.rscore label span{display:block;margin-bottom:8px;font-size:10.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--mut);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rscore input{width:100%;height:72px;border-radius:18px;border:0;background:rgba(255,255,255,.07);box-shadow:inset 0 0 0 1px var(--line);text-align:center;font-size:40px;font-stretch:68%;font-weight:700;outline:0;-moz-appearance:textfield}
+.rscore input::-webkit-outer-spin-button,.rscore input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.rscore input:focus{box-shadow:inset 0 0 0 1.5px var(--acc2)}
+.rscore>i{font-style:normal;font-size:22px;color:var(--dim);padding-bottom:22px}
+.serr{min-height:18px;margin-top:10px;font-size:13px;color:var(--bad);font-weight:500}
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ctile{position:relative;display:flex;flex-direction:column;justify-content:space-between;min-height:128px;padding:16px;overflow:hidden}
+.ctile .lic{width:40px;height:40px;border-radius:12px;background:var(--card2);display:grid;place-items:center;color:var(--acc2)}
+.ctile .lic svg{width:19px;height:19px}
+.ctile b{display:block;font-size:16px;font-weight:800;font-stretch:110%}
+.ctile span.s{display:block;margin-top:3px;font-size:12.5px;color:var(--mut)}
+.ctile .bdg{position:absolute;top:16px;right:16px}
+.ctile.hot{background:linear-gradient(140deg,rgba(229,87,30,.24),rgba(229,87,30,.03) 65%),var(--card);box-shadow:inset 0 0 0 1px rgba(229,87,30,.35)}
+
+/* ---------- produção em jogos oficiais ---------- */
+.gp{position:relative;padding:22px 20px 20px;border-radius:28px;overflow:hidden;isolation:isolate;background:#17100c;box-shadow:0 30px 60px -34px rgba(229,87,30,.5),inset 0 0 0 1px rgba(255,255,255,.08)}
+.gp::before{content:"";position:absolute;inset:0;z-index:-2;background:radial-gradient(130% 90% at 100% 0%,#f0692c 0%,#c8480f 26%,rgba(120,38,8,.85) 50%,#160c07 84%)}
+.gp .court{position:absolute;z-index:-1;left:10%;right:-50%;top:-40%;height:150%;opacity:.16;transform:perspective(600px) rotateX(56deg) rotateZ(-18deg)}
+.gp-n{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.gp-n b{display:block;font-size:64px}
+.gp-n span{display:block;margin-top:8px;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.78)}
+.wdl{display:flex;gap:3px;height:8px;margin-top:22px}
+.wdl u{display:block;height:100%;border-radius:4px;min-width:8px;flex:var(--f) 1 0;text-decoration:none}
+.wdl .w{background:#fff}.wdl .d{background:rgba(255,255,255,.45)}.wdl .l{background:rgba(8,8,10,.55)}
+.wdl-l{display:flex;gap:16px;margin-top:10px;font-size:12.5px;font-weight:600;color:rgba(255,255,255,.85)}
+.wdl-l span{display:inline-flex;align-items:center;gap:6px}
+.wdl-l span::before{content:"";width:8px;height:8px;border-radius:50%;background:#fff}
+.wdl-l .d::before{background:rgba(255,255,255,.45)}.wdl-l .l::before{background:rgba(8,8,10,.6);box-shadow:inset 0 0 0 1px rgba(255,255,255,.3)}
+.gp-f{display:flex;align-items:center;gap:8px;margin-top:18px;padding-top:16px;border-top:1px solid rgba(255,255,255,.14)}
+.cardk{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px 0 10px;border-radius:12px;background:rgba(8,8,10,.42);font-size:13px;font-weight:600;color:rgba(255,255,255,.9);white-space:nowrap}
+.cardk::before{content:"";width:11px;height:15px;border-radius:2.5px;background:var(--warn);transform:rotate(-8deg)}
+.cardk.r::before{background:var(--bad)}
+.cardk b{font-size:20px}
+.gp-f .avg{margin-left:auto;text-align:right;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.75);line-height:1.3}
+.gp-f .avg b{display:block;font-size:22px;color:#fff;letter-spacing:0}
+.brk .cardk{background:var(--card2);height:28px;padding:0 9px 0 8px;font-size:12px}
+.brk .cardk::before{width:8px;height:11px}
+.teaser.g4{grid-template-columns:auto 1fr 1fr}
+
 /* ---------- desktop: phone frame ---------- */
 @media (min-width:900px){
   body{background:radial-gradient(60% 70% at 78% 30%,rgba(229,87,30,.2),transparent 70%),radial-gradient(50% 60% at 10% 90%,rgba(229,87,30,.08),transparent 70%),#050506}
@@ -589,10 +732,10 @@ function crest(name,logo,size){var u=safeUrl(logo);if(u)return '<span class="cre
 
 /* ===================== state ===================== */
 var S={me:null,dash:null,card:null,notif:null,hist:null,histState:'',pront:{},train:{},err:null,
-       agendaTab:'up',agendaF:'all',prodTid:null,loginMode:'phone',loading:false};
+       agendaTab:'up',agendaF:'all',prodTid:null,loginMode:'phone',loading:false,rank:{},rkSport:null,chal:null};
 function token(){try{return localStorage.getItem('tc_token')||'';}catch(e){return '';}}
 function setSession(tk,user){try{if(tk)localStorage.setItem('tc_token',tk);if(user)localStorage.setItem('tc_user',JSON.stringify(user));}catch(e){}}
-function clearSession(){try{localStorage.removeItem('tc_token');localStorage.removeItem('tc_user');}catch(e){}S.me=S.dash=S.card=S.notif=S.hist=null;S.pront={};S.train={};S.histState='';}
+function clearSession(){try{localStorage.removeItem('tc_token');localStorage.removeItem('tc_user');}catch(e){}S.me=S.dash=S.card=S.notif=S.hist=S.chal=null;S.pront={};S.train={};S.rank={};S.histState='';}
 
 /* ===================== API ===================== */
 function api(path,o){
@@ -607,13 +750,13 @@ function api(path,o){
     if(r.status===401&&!o.login){sessionExpired();var e=new Error('Sessão expirada. Entre novamente.');e.status=401;throw e;}
     var ct=r.headers.get('content-type')||'';
     return (ct.indexOf('json')>=0?r.json().catch(function(){return null;}):Promise.resolve(null)).then(function(j){
-      if(!r.ok||j===null){var e=new Error((j&&j.error)||'Não foi possível concluir. Tente de novo.');e.status=r.status;throw e;}
+      if(!r.ok||j===null){var e=new Error((j&&j.error)||'Não foi possível concluir. Tente de novo.');e.status=r.status;e.data=j;throw e;}
       return j;
     });
   });
 }
 var T='/tournaments';
-function sessionExpired(){clearSession();closeSheet();if(curRoute().name!=='entrar'){go('entrar');toast('Sua sessão expirou. Entre novamente.',true);}}
+function sessionExpired(){clearSession();closeSheet();if(!PUB[curRoute().name]){go('entrar');toast('Sua sessão expirou. Entre novamente.',true);}}
 
 function loadCore(force){
   if(S.loading)return S.loading;
@@ -625,7 +768,8 @@ function loadCore(force){
     return Promise.all([
       api(T+'/my-dashboard').then(function(d){S.dash=normDash(d);}),
       api(T+'/athletes/'+encodeURIComponent(id)+'/card').then(function(c){S.card=c;}).catch(function(){S.card=null;}),
-      api(T+'/notifications/mine?limit=30').then(function(n){S.notif=n;}).catch(function(){S.notif={notifications:[],unread:0};})
+      api(T+'/notifications/mine?limit=30').then(function(n){S.notif=n;}).catch(function(){S.notif={notifications:[],unread:0};}),
+      api(T+'/challenges/mine').then(function(c){S.chal=c.challenges||[];}).catch(function(){})
     ]);
   }).catch(function(e){if(e.status!==401)S.err=e.message||'Erro ao carregar';})
   .then(function(){S.loading=false;redraw();});
@@ -680,17 +824,20 @@ var TABS=[['inicio','Início',I.home],['agenda','Agenda',I.cal],['producao','Pro
 function curRoute(){var h=(location.hash||'').replace(/^#\/?/,'');var p=h.split('/').filter(Boolean);return {name:p[0]||'',arg:p[1]?safeDec(p[1]):''};}
 function safeDec(v){try{return decodeURIComponent(v);}catch(e){return v;}}
 function go(r){if(location.hash==='#/'+r)route();else location.hash='#/'+r;}
-var VIEWS={entrar:vLogin,inicio:vHome,agenda:vAgenda,producao:vProd,times:vTeams,perfil:vProfile,treino:vTraining,jogo:vGame,avisos:vNotifs};
+var VIEWS={entrar:vLogin,cadastro:vSignup,esqueci:vForgot,inicio:vHome,agenda:vAgenda,producao:vProd,times:vTeams,perfil:vProfile,treino:vTraining,jogo:vGame,avisos:vNotifs,competir:vCompete};
+var PUB={entrar:1,cadastro:1,esqueci:1};
 var lastRoute='',navCount=0;
 function route(){
   var r=curRoute();
+  if(r.name==='desafios'||r.name==='ranking'){location.replace('#/competir/'+r.name);return;}
   if(!VIEWS[r.name]){location.replace('#/'+((MOCK||token())?'inicio':'entrar'));return;}
-  if(r.name!=='entrar'&&!MOCK&&!token()){location.replace('#/entrar');return;}
-  if(r.name==='entrar'&&!MOCK&&token()){location.replace('#/inicio');return;}
+  if(!PUB[r.name]&&!MOCK&&!token()){location.replace('#/entrar');return;}
+  if(PUB[r.name]&&!MOCK&&token()){location.replace('#/inicio');return;}
+  if((r.name==='cadastro'||r.name==='esqueci')&&A.flow!==r.name)authReset(r.name);
   closeSheet();
-  var key=r.name+'/'+r.arg,fresh=key!==lastRoute;lastRoute=key;if(fresh)navCount++;
-  draw(fresh);
-  if(r.name!=='entrar')loadCore();
+  var key=r.name+'/'+r.arg,fresh=key!==lastRoute,sg=segNav;segNav=false;lastRoute=key;if(fresh&&!sg)navCount++;
+  draw(fresh&&!sg,sg);if(sg)view.scrollTop=0;
+  if(!PUB[r.name])loadCore();
 }
 function draw(fresh,quiet){
   var r=curRoute(),fn=VIEWS[r.name];if(!fn)return;
@@ -733,6 +880,8 @@ function tick(){
     var out=c.map(function(p){return '<div><b class="num">'+pad(p[0])+'</b><i>'+p[1]+'</i></div>';}).join('');
     if(el.innerHTML!==out)el.innerHTML=out;
   }
+  var rs=view.querySelector('[data-rs]');
+  if(rs){var left=Math.ceil((A.resendAt-Date.now())/1000),tx=left>0?'Reenviar código em '+left+'s':'Reenviar código';rs.disabled=left>0;if(rs.textContent!==tx)rs.textContent=tx;}
 }
 setInterval(tick,1000);
 
@@ -755,7 +904,7 @@ function vLogin(){
      '<div class="field"><input id="l-pw" name="password" type="password" autocomplete="current-password" placeholder=" "><label for="l-pw">Senha</label><button type="button" class="eye" data-act="eye" aria-label="Mostrar senha">'+I.eye+'</button></div>'+
      '<div class="lerr" id="lerr" role="alert"></div>'+
      '<button class="btn pri full" id="lbtn" type="submit">Entrar</button>'+
-     '<div class="llinks"><a href="/?cadastro=1">Criar conta</a><a class="mut" href="/?esqueci=1">Esqueci a senha</a></div>'+
+     '<div class="llinks"><a href="#/cadastro">Criar conta</a><a class="mut" href="#/esqueci">Esqueci a senha</a></div>'+
    '</form></section>';
 }
 function doLogin(){
@@ -772,6 +921,337 @@ function doLogin(){
     btn.disabled=false;btn.textContent='Entrar';
     err.textContent=e.status===401?'Celular, e-mail ou senha incorretos.':(e.message||'Não foi possível entrar.');
   });
+}
+
+/* ===================== CADASTRO / ESQUECI A SENHA ===================== */
+/* Mesmo contrato do app antigo (index.html): send-code -> verify-code -> register | forgot-send-code -> forgot-verify -> forgot-reset */
+var A={flow:'',step:0,method:'phone',phone:'',email:'',v:{},err:'',note:'',offer:false,resendAt:0,lgpd:false};
+function authReset(flow){
+  A={flow:flow,step:0,method:S.loginMode==='email'?'email':'phone',phone:'',email:'',v:{},err:'',note:'',offer:false,resendAt:0,lgpd:false};
+  if(MOCK&&flow&&QS.get('astep')){
+    A.step=Number(QS.get('astep'))||0;if(QS.get('am')==='email')A.method='email';
+    A.phone='83999990000';A.email='rafael@email.com';A.resendAt=Date.now()+45000;A.lgpd=A.step>1;
+    A.v={phone:A.phone,email:A.email,code:QS.get('acode')||'',name:A.step>1?'Rafael Nóbrega':'',birth:A.step>1?'1988-04-17':'',pw:A.step>1?'segredo1':'',pw2:A.step>1?'segredo1':''};
+  }
+}
+function phoneL(p){p=String(p||'');return p.length>=10?'('+p.slice(0,2)+') '+p.slice(2,p.length-4)+'-'+p.slice(-4):p;}
+function aTarget(){return A.method==='phone'?phoneL(A.phone):A.email;}
+function capMsg(m){m=String(m||'').trim();if(!m)return 'Não foi possível concluir. Tente de novo.';m=m.charAt(0).toUpperCase()+m.slice(1);return /[.!?]$/.test(m)?m:m+'.';}
+function authShell(o){
+  var st='';for(var i=0;i<o.total;i++)st+='<i class="'+(i<=A.step?'on':'')+'"></i>';
+  return '<section class="login auth"><div class="login-art"><div class="cw">'+COURT+'</div><div class="grain"></div></div>'+
+    '<div class="auth-top"><button type="button" class="back" data-act="aback">'+I.back+(A.step&&!o.fin?'Voltar':'Entrar')+'</button><img src="'+BRAND+'club-sports-tennis.svg" alt="Club Sports &amp; Tennis" width="80" height="26"></div>'+
+    (o.fin?'':'<div class="steps" role="progressbar" aria-label="Etapas" aria-valuemin="1" aria-valuemax="'+o.total+'" aria-valuenow="'+(A.step+1)+'">'+st+'</div>')+
+    '<div class="auth-hero"'+(o.fin?' style="margin-top:56px"':'')+'>'+(o.icon||'')+'<div class="eyebrow acc"'+(o.icon?' style="margin-top:30px"':'')+'>'+o.eyebrow+'</div><h1 class="disp">'+o.title+'</h1><p>'+o.lead+'</p></div>'+
+    '<form class="lform" id="aform" novalidate>'+o.body+'<div class="lerr" id="aerr" role="alert">'+esc(A.err)+'</div>'+
+    '<button class="btn pri full" id="abtn" type="submit" data-l="'+esc(o.btn)+'">'+esc(o.btn)+'</button>'+(o.after||'')+'</form></section>';
+}
+function aSeg(l1,l2){return '<div class="seg" role="tablist"><button type="button" data-act="amethod" data-m="phone" class="'+(A.method==='phone'?'on':'')+'">'+l1+'</button><button type="button" data-act="amethod" data-m="email" class="'+(A.method==='email'?'on':'')+'">'+l2+'</button></div>';}
+function aFld(k,label,type,attrs){
+  return '<div class="field'+(type==='date'?' up':'')+'"><input id="a-'+k+'" data-av="'+k+'" type="'+type+'" placeholder=" " value="'+esc(A.v[k]||'')+'" '+(attrs||'')+'><label for="a-'+k+'">'+label+'</label>'+
+    (type==='password'?'<button type="button" class="eye" data-act="eye" aria-label="Mostrar senha">'+I.eye+'</button>':'')+'</div>';
+}
+function aIdFld(){return A.method==='phone'?aFld('phone','Celular com DDD','tel','name="tel" inputmode="tel" autocomplete="tel"'):aFld('email','E-mail','email','name="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false"');}
+function aOtp(){
+  var c=String(A.v.code||''),h='<div class="otp" role="group" aria-label="Código de 6 dígitos">';
+  for(var i=0;i<6;i++)h+='<input data-otp="'+i+'" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="'+(i===0?'one-time-code':'off')+'" aria-label="Dígito '+(i+1)+'" value="'+esc(c.charAt(i))+'" class="'+(c.charAt(i)?'f':'')+'">';
+  return h+'</div>';
+}
+function aCodeStep(eyebrow){
+  return authShell({total:3,eyebrow:eyebrow,title:'Digite o <em>código.</em>',
+    lead:A.note?esc(A.note):'Enviamos 6 dígitos para '+(A.method==='phone'?'o WhatsApp ':'')+'<b>'+esc(aTarget())+'</b>.',
+    body:aOtp(),btn:'Verificar código',after:'<button type="button" class="textbtn" data-act="aresend" data-rs disabled>Reenviar código</button>'});
+}
+function vSignup(){
+  var ph=A.method==='phone';
+  if(A.step===0)return authShell({total:3,eyebrow:'Criar conta · passo 1 de 3',title:'Entre para<br>o <em>Club.</em>',
+    lead:ph?'Informe seu celular. Enviamos um código de verificação pelo WhatsApp.':'Informe seu e-mail. Enviamos um código de verificação para ele.',
+    body:aSeg('Celular','E-mail')+aIdFld(),btn:ph?'Enviar código por WhatsApp':'Enviar código por e-mail',
+    after:'<p class="auth-foot" style="font-size:14px;color:var(--mut)">Já tem conta? <a href="#/entrar" style="color:var(--tx);font-weight:700;display:inline-block;padding:12px 2px">Entrar</a></p>'});
+  if(A.step===1)return aCodeStep('Criar conta · passo 2 de 3');
+  return authShell({total:3,eyebrow:'Criar conta · passo 3 de 3',title:'Seus <em>dados.</em>',lead:'Falta pouco. É por esse nome que o treinador encontra você.',
+    body:'<div class="okchip">'+I.check+'<span>'+esc((ph?'Celular verificado: ':'E-mail verificado: ')+aTarget())+'</span></div>'+
+      aFld('name','Nome completo','text','name="name" autocomplete="name" autocapitalize="words"')+
+      aFld('birth','Data de nascimento','date','name="bday" autocomplete="bday" max="'+dKey(Date.now())+'"')+
+      aFld('pw','Crie uma senha','password','name="new-password" autocomplete="new-password" maxlength="20"')+
+      '<p class="hint">De 4 a 20 caracteres.</p>'+
+      '<label class="consent"><input type="checkbox" id="a-lgpd"'+(A.lgpd?' checked':'')+'><span class="bx">'+I.check+'</span><span>Li e aceito os <button type="button" data-act="legal" data-k="terms">Termos de Uso</button> e a <button type="button" data-act="legal" data-k="privacy">Política de Privacidade</button> do TenisCash conforme a LGPD.</span></label>',
+    btn:'Criar conta',after:'<p class="auth-foot">Seus dados são protegidos pela Lei Geral de Proteção de Dados (LGPD). Você pode excluir sua conta e dados a qualquer momento.</p>'});
+}
+function vForgot(){
+  var ph=A.method==='phone';
+  if(A.step===0)return authShell({total:3,eyebrow:'Recuperar senha · passo 1 de 3',title:'Esqueceu<br>a <em>senha?</em>',
+    lead:ph?'Informe o celular da sua conta. Enviamos um código pelo WhatsApp.':'Informe o e-mail da sua conta. Enviamos um código para ele.',
+    body:aSeg('WhatsApp','E-mail')+aIdFld(),btn:ph?'Enviar código por WhatsApp':'Enviar código por e-mail',
+    after:A.offer&&ph?'<button type="button" class="textbtn acc" data-act="amethod" data-m="email">Recuperar por e-mail</button>':''});
+  if(A.step===1)return aCodeStep('Recuperar senha · passo 2 de 3');
+  if(A.step===2)return authShell({total:3,eyebrow:'Recuperar senha · passo 3 de 3',title:'Nova <em>senha.</em>',lead:'Escolha uma senha com no mínimo 4 caracteres.',
+    body:aFld('pw','Nova senha','password','name="new-password" autocomplete="new-password"')+aFld('pw2','Repita a senha','password','name="confirm-password" autocomplete="new-password"'),btn:'Alterar senha'});
+  return authShell({total:3,fin:true,icon:'<div class="done-ic">'+I.check+'</div>',eyebrow:'Tudo certo',title:'Senha <em>alterada.</em>',lead:'Sua senha foi atualizada com sucesso.',body:'',btn:'Fazer login'});
+}
+function aErr(m){A.err=m||'';var e=$('#aerr');if(e)e.textContent=A.err;}
+function aBusy(on){var b=$('#abtn');if(!b)return;b.disabled=on;if(on)b.innerHTML='<span class="spin"></span>';else b.textContent=b.getAttribute('data-l');}
+function aFocus(){if(MOCK&&QS.get('still'))return;var el=view.querySelector('.otp input,.field input');if(el)try{el.focus({preventScroll:true});}catch(e){}}
+function aGo(step){A.step=step;A.err='';draw(true);aFocus();}
+function aCall(path,body){return api(path,{method:'POST',body:body,login:true});}
+function aSendCode(resend){
+  var su=A.flow==='cadastro',p;
+  if(A.method==='phone'){
+    var ph=resend?A.phone:String(A.v.phone||'').replace(/\D/g,'');
+    if(!ph||ph.length<10){aErr(su?'Informe um celular válido com DDD.':'Informe um celular válido.');return;}
+    A.phone=ph;p=su?aCall('/auth/send-code',{phone:ph}):aCall('/auth/forgot-send-code',{phone:ph,method:'whatsapp'});
+  }else{
+    var em=resend?A.email:String(A.v.email||'').trim();
+    if(su?(!em||em.indexOf('@')<0):!em){aErr(su?'Informe um e-mail válido.':'Informe seu e-mail.');return;}
+    A.email=em;p=su?aCall('/auth/send-email-register-code',{email:em}):aCall('/auth/forgot-send-code',{email:em,method:'email'});
+  }
+  aErr('');
+  if(resend){var rb=view.querySelector('[data-rs]');if(rb)rb.disabled=true;A.resendAt=Date.now()+45000;}else aBusy(true);
+  p.then(function(r){
+    A.resendAt=Date.now()+45000;A.offer=false;A.v.code='';
+    A.note=(r&&r.via==='email'&&r.message)?String(r.message):'';
+    if(resend){draw(false,true);aFocus();toast('Enviamos um novo código.');}else aGo(1);
+  }).catch(function(e){
+    aBusy(false);if(resend)A.resendAt=0;
+    var d=e.data||{};
+    if(A.method==='phone'&&su&&d.whatsappDown){A.method='email';A.step=0;A.err='WhatsApp temporariamente indisponível. Cadastre-se pelo e-mail.';draw(false,true);aFocus();return;}
+    if(A.method==='phone'&&!su&&e.status){
+      if(/cadastrad/i.test(e.message||''))aErr('Esse celular não está cadastrado.');
+      else{A.offer=true;A.step=0;A.err='Não foi possível enviar pelo WhatsApp agora. Recupere por e-mail ou fale com a loja.';draw(false,true);}
+      return;
+    }
+    aErr(capMsg(e.message));
+  });
+}
+function aVerify(){
+  var code=String(A.v.code||'').replace(/\D/g,''),su=A.flow==='cadastro',ph=A.method==='phone';
+  if(code.length!==6){aErr('Digite o código de 6 dígitos.');return;}
+  var p=su?(ph?aCall('/auth/verify-code',{phone:A.phone,code:code}):aCall('/auth/verify-email-register-code',{email:A.email,code:code}))
+          :aCall('/auth/forgot-verify',ph?{phone:A.phone,code:code}:{email:A.email,code:code});
+  aErr('');aBusy(true);
+  p.then(function(r){if(!r||!r.verified)throw new Error('Código inválido');A.resetToken=(r&&r.resetToken)||'';A.v.code='';aGo(2);})
+   .catch(function(e){aBusy(false);A.v.code='';var b=view.querySelectorAll('.otp input');for(var i=0;i<b.length;i++){b[i].value='';b[i].classList.remove('f');}aErr(capMsg(e.message));if(b[0])b[0].focus();});
+}
+function aRegister(){
+  var name=String(A.v.name||'').trim(),birth=A.v.birth||'',pw=A.v.pw||'';
+  if(!name)return aErr('Informe seu nome completo.');
+  if(!birth)return aErr('Informe sua data de nascimento.');
+  if(!pw||pw.length<4)return aErr('A senha deve ter no mínimo 4 caracteres.');
+  if(pw.length>20)return aErr('A senha deve ter no máximo 20 caracteres.');
+  if(!A.lgpd)return aErr('Você precisa aceitar os termos e a política de privacidade.');
+  var body={name:name,birthDate:birth,password:pw,lgpdAccepted:true,registerMethod:A.method};
+  if(A.method==='email')body.email=A.email;else body.phone=A.phone;
+  aErr('');aBusy(true);
+  aCall('/auth/register',body).then(function(r){
+    if(!r||!r.token)throw new Error('Não foi possível criar a conta');
+    setSession(r.token,r.user);S.me=r.user||null;A.flow='';A.v={};go('inicio');toast('Conta criada. Bem-vindo ao Club!');
+  }).catch(function(e){aBusy(false);aErr(capMsg(e.message));});
+}
+function aResetPw(){
+  var a=A.v.pw||'',b=A.v.pw2||'';
+  if(!a||a.length<4)return aErr('A senha deve ter no mínimo 4 caracteres.');
+  if(a!==b)return aErr('As senhas não conferem.');
+  aErr('');aBusy(true);
+  aCall('/auth/forgot-reset',A.method==='phone'?{phone:A.phone,password:a,resetToken:A.resetToken||''}:{email:A.email,password:a,resetToken:A.resetToken||''})
+   .then(function(){A.v={};aGo(3);}).catch(function(e){aBusy(false);aErr(capMsg(e.message));});
+}
+function authSubmit(){
+  if(A.step===0)aSendCode();
+  else if(A.step===1)aVerify();
+  else if(A.flow==='cadastro')aRegister();
+  else if(A.step===2)aResetPw();
+  else{S.loginMode=A.method;A.flow='';go('entrar');}
+}
+function otpInput(el){
+  var bx=view.querySelectorAll('.otp input'),i=Number(el.getAttribute('data-otp')),dg=el.value.replace(/\D/g,''),k;
+  if(dg.length<=1)el.value=dg;
+  else{if(dg.length>=6){i=0;dg=dg.slice(0,6);}for(k=0;k<dg.length&&i+k<6;k++)bx[i+k].value=dg.charAt(k);}
+  var code='',full=true;for(k=0;k<6;k++){var c=bx[k].value.replace(/\D/g,'').charAt(0);bx[k].value=c;bx[k].classList.toggle('f',!!c);code+=c;if(!c)full=false;}
+  A.v.code=code;
+  if(dg.length){var nx=bx[Math.min(5,i+dg.length)];if(nx&&nx!==el)nx.focus();}
+  if(full){aErr('');authSubmit();}
+}
+function otpKey(e,el){
+  if(e.key!=='Backspace'||el.value)return;
+  var i=Number(el.getAttribute('data-otp'));if(i<1)return;
+  var p=view.querySelectorAll('.otp input')[i-1];p.value='';p.classList.remove('f');p.focus();A.v.code=String(A.v.code||'').slice(0,i-1);e.preventDefault();
+}
+/* textos legais: os mesmos do app TenisCash (index.html), sem reescrita */
+var LEGAL={
+  terms:{t:'Termos de Uso',p:[['TERMOS DE USO - TENISCASH',''],
+    ['','1. O TenisCash é um programa de benefícios da Sports & Tennis, operado por Meta Esportes LTDA, CNPJ 44.052.617/0001-26, com sede na Rua Treze de Maio, 249, Centro, João Pessoa/PB, CEP 58013-070.'],
+    ['','2. O TenisCash (T$) é uma moeda de benefício digital, sem valor monetário real, válida exclusivamente para abatimento em compras nas lojas Sports & Tennis.'],
+    ['','3. Cada R$ 1,00 pago em dinheiro gera 1 TenisCash (T$ 1,00).'],
+    ['','4. O saldo de TenisCash não expira e pode ser transferido livremente entre usuários cadastrados.'],
+    ['','5. O percentual máximo de abatimento com TenisCash varia por marca e produto, conforme regras vigentes na loja.'],
+    ['','6. O TenisCash não pode ser convertido em dinheiro, reembolsado ou trocado por valores monetários.'],
+    ['','7. A Sports & Tennis reserva-se o direito de alterar as regras do programa mediante aviso prévio aos usuários.'],
+    ['','8. O uso indevido, fraude ou manipulação do sistema pode resultar no cancelamento da conta e perda do saldo.'],
+    ['','9. O usuário pode solicitar a exclusão de sua conta e dados a qualquer momento, conforme a LGPD.'],
+    ['','10. Site oficial: https://teniscash.com.br/'],
+    ['','Última atualização: Maio/2026']]},
+  privacy:{t:'Política de Privacidade',p:[['POLÍTICA DE PRIVACIDADE - TENISCASH',''],
+    ['','Em conformidade com a Lei Geral de Proteção de Dados (Lei nº 13.709/2018):'],
+    ['Dados coletados:','Nome, telefone, e-mail, CPF, endereço, data de nascimento, dados físicos (altura, peso, tamanho de roupa e calçado), preferências esportivas e de marcas.'],
+    ['Finalidade:','Os dados são utilizados exclusivamente para operação do programa TenisCash, personalização da experiência de compra e comunicação de promoções relevantes pela Sports & Tennis.'],
+    ['Compartilhamento:','Seus dados NÃO são compartilhados, vendidos ou transferidos a terceiros em nenhuma circunstância.'],
+    ['Armazenamento:','Os dados são armazenados em servidores seguros com criptografia.'],
+    ['Seus direitos (LGPD):','Você pode a qualquer momento: acessar seus dados, corrigir informações, solicitar a exclusão completa de sua conta e dados, revogar o consentimento.'],
+    ['Controlador dos dados:','Meta Esportes LTDA (Sports & Tennis), CNPJ 44.052.617/0001-26, Rua Treze de Maio, 249, Centro, João Pessoa/PB, CEP 58013-070.'],
+    ['Contato:','sportsetennis@gmail.com'],
+    ['Site oficial:','https://teniscash.com.br/'],
+    ['','Última atualização: Maio/2026']]}
+};
+function legalSheet(k){
+  var d=LEGAL[k]||LEGAL.terms;
+  openSheet('<div class="legal"><div class="eyebrow acc">Documento</div><h2 class="disp" style="margin-top:10px">'+esc(d.t)+'</h2>'+
+    d.p.map(function(x){return '<p>'+(x[0]?'<b>'+esc(x[0])+'</b>'+(x[1]?' ':''):'')+esc(x[1])+'</p>';}).join('')+
+    '<div class="acts"><button class="btn lt full" data-act="sheet-close">Entendi</button></div></div>');
+}
+
+/* ===================== COMPETIR: RANKING + DESAFIOS 1x1 ===================== */
+var SPORTS=['BEACH_TENNIS','TENNIS','PADEL','FUTSAL','SOCCER','VOLLEY','BASKETBALL','HANDBALL','TABLE_TENNIS','OTHER'];
+var segNav=false,NC={sport:null};
+function pl(n,one,many){n=Number(n)||0;return n+' '+(n===1?one:many);}
+function mySports(){
+  var m=[];
+  ((S.card&&S.card.ratings)||[]).forEach(function(r){if(SPORTS.indexOf(r.sport)>=0&&m.indexOf(r.sport)<0)m.push(r.sport);});
+  ((S.dash&&S.dash.tournaments)||[]).forEach(function(t){if(SPORTS.indexOf(t.sport)>=0&&m.indexOf(t.sport)<0)m.push(t.sport);});
+  return m;
+}
+function sportOrder(){var m=mySports();return m.concat(SPORTS.filter(function(s){return m.indexOf(s)<0;}));}
+function sportN(s){return s==='OTHER'?'Outros':sportL(s);}
+function loadRank(sp){
+  if(S.rank[sp])return;S.rank[sp]='loading';
+  api(T+'/rankings/'+encodeURIComponent(sp)).then(function(r){S.rank[sp]={ranking:(r&&r.ranking)||[]};}).catch(function(){S.rank[sp]='error';}).then(redraw);
+}
+function loadChal(){api(T+'/challenges/mine').then(function(r){S.chal=r.challenges||[];}).catch(function(){if(!Array.isArray(S.chal))S.chal='error';}).then(redraw);}
+function chalInbox(){return Array.isArray(S.chal)&&S.me?S.chal.filter(function(c){return c.status==='PENDING'&&c.challengedId===S.me.id;}).length:0;}
+function chalFind(id){var l=Array.isArray(S.chal)?S.chal:[];for(var i=0;i<l.length;i++)if(l[i].id===id)return l[i];return null;}
+function athHref(r){return '/atleta/'+encodeURIComponent(r.username||r.userId||r.id||'');}
+function vCompete(arg){
+  var tab=arg==='desafios'?'desafios':'ranking',nb=chalInbox();
+  var h='<div class="page detail">'+backBtn()+'<div class="ptitle" style="margin-bottom:16px"><h1 class="disp">Competir</h1></div>'+
+    '<div class="seg" role="tablist"><a href="#/competir/ranking" data-act="cseg" class="'+(tab==='ranking'?'on':'')+'">Ranking</a><a href="#/competir/desafios" data-act="cseg" class="'+(tab==='desafios'?'on':'')+'">Desafios 1x1'+(nb?'<u>'+nb+'</u>':'')+'</a></div>';
+  if(S.err&&!S.dash)return h+errBox()+'</div>';
+  if(!S.me||!S.dash)return h+'<div class="sk" style="height:44px;margin-top:16px;border-radius:22px"></div><div class="sk" style="height:250px;margin-top:22px;border-radius:22px"></div><div class="sk" style="height:76px;margin-top:10px;border-radius:22px"></div></div>';
+  return h+(tab==='ranking'?rankHtml():chalHtml())+'</div>';
+}
+function rankHtml(){
+  var order=sportOrder();
+  if(!S.rkSport||SPORTS.indexOf(S.rkSport)<0)S.rkSport=order[0];
+  var sp=S.rkSport,d=S.rank[sp];if(!d)setTimeout(function(){loadRank(sp);},0);
+  var h='<div class="chips" style="margin-top:16px">'+order.map(function(s){return '<button class="chip'+(s===sp?' on':'')+'" data-act="rksport" data-s="'+s+'">'+esc(sportN(s))+'</button>';}).join('')+'</div>';
+  if(!d||d==='loading')return h+'<div class="sk" style="height:250px;margin-top:26px;border-radius:22px"></div><div class="sk" style="height:78px;margin-top:10px;border-radius:22px"></div><div class="sk" style="height:200px;margin-top:10px;border-radius:22px"></div>';
+  if(d==='error')return h+'<div style="margin-top:22px">'+empty(I.bolt,'Não deu para carregar','Não foi possível abrir o ranking agora.','<button class="btn lt sm" data-act="rkretry">Tentar de novo</button>')+'</div>';
+  var l=d.ranking||[];
+  if(!l.length)return h+'<div style="margin-top:22px">'+empty(I.trophy,'Ranking em aberto','Ninguém ranqueado em '+sportN(sp)+' ainda. Jogue um desafio 1x1 e seja o primeiro da lista.','<a class="btn pri sm" href="#/competir/desafios" data-act="cseg">Desafiar um atleta</a>')+'</div>';
+  var myId=S.me.id,me=null;l.forEach(function(r){if(r.userId===myId)me=r;});
+  function pod(r,cls,sz){
+    if(!r)return '<div class="pod '+cls+'" aria-hidden="true"></div>';
+    return '<a class="pod '+cls+'" href="'+esc(athHref(r))+'" aria-label="'+esc(r.rank+'º lugar: '+(r.name||'Atleta'))+'">'+avatar(r.name||'Atleta',null,sz)+'<span class="nm">'+esc(r.name||'Atleta')+'</span>'+
+      (r.userId===myId?'<span class="pill soft you">Você</span>':'')+'<b class="rt num">'+num(r.rating,2)+'</b><span class="base"><b class="num">'+esc(r.rank)+'</b></span></a>';
+  }
+  h+='<div class="podium">'+pod(l[1],'p2',64)+pod(l[0],'p1',86)+pod(l[2],'p3',64)+'</div>';
+  if(me)h+='<a class="card mypos press" href="'+esc(athHref(me))+'"><b class="p num"><small>#</small>'+esc(me.rank)+'</b><div class="tx"><b>Sua posição</b><span>'+esc(me.wins+'V '+me.losses+'D · '+pl(me.matches,'jogo','jogos'))+'</span></div><div class="v"><b class="num">'+num(me.rating,2)+'</b><span>Rating</span></div></a>';
+  else h+='<div class="card mypos"><div class="tx"><b>Você ainda não está neste ranking</b><span>Jogue uma partida ou um desafio de '+esc(sportN(sp))+' para entrar.</span></div><a class="btn lt sm" href="#/competir/desafios" data-act="cseg">Desafiar</a></div>';
+  var rest=l.slice(3);
+  if(rest.length)h+='<div class="card list" style="margin-top:10px;overflow:hidden">'+rest.map(function(r){
+    return '<a class="rk'+(r.userId===myId?' me':'')+'" href="'+esc(athHref(r))+'"><span class="pos num">'+esc(r.rank)+'</span>'+avatar(r.name||'Atleta',null,40)+'<div class="tx"><b>'+esc(r.name||'Atleta')+(r.userId===myId?' (você)':'')+'</b><span>'+esc([r.city,r.wins+'V '+r.losses+'D',pl(r.matches,'jogo','jogos')].filter(Boolean).join(' · '))+'</span></div><b class="v num">'+num(r.rating,2)+'</b></a>';
+  }).join('')+'</div>';
+  return h+'<p class="fine">Rating de 0 a 7. Vitórias sobem, derrotas descem.</p>';
+}
+function chalCard(c){
+  var my=S.me.id,sent=c.challengerId===my,opp=(sent?c.challenged:c.challenger)||{},nm=opp.name||(opp.username?'@'+opp.username:'Atleta');
+  var inb=c.status==='PENDING'&&!sent,played=c.status==='PLAYED',won=played&&c.winnerId===my;
+  var lab=played?(won?'Vitória':'Derrota'):(sent?'Você desafiou':'Desafiou você');
+  var right='',acts='';
+  if(played){var a=sent?c.homeScore:c.awayScore,b=sent?c.awayScore:c.homeScore;
+    right=(Number(a)||Number(b))?'<span class="sc num">'+esc(a)+'<i>×</i>'+esc(b)+'</span>':'<span class="pill '+(won?'ok':'bad')+'">'+(won?'Você venceu':'Você perdeu')+'</span>';}
+  else right={PENDING:sent?'<span class="pill warn">Aguardando</span>':'<span class="pill acc">Novo</span>',ACCEPTED:'<span class="pill ok">Aceito</span>',DECLINED:'<span class="pill line">Recusado</span>',CANCELED:'<span class="pill line">Cancelado</span>'}[c.status]||'';
+  if(inb)acts='<button class="btn ghost sm" data-act="chresp" data-a="decline" data-id="'+esc(c.id)+'">Recusar</button><button class="btn pri sm" data-act="chresp" data-a="accept" data-id="'+esc(c.id)+'">Aceitar</button>';
+  else if(c.status==='PENDING')acts='<button class="btn ghost sm" data-act="chresp" data-a="cancel" data-id="'+esc(c.id)+'">Cancelar desafio</button>';
+  else if(c.status==='ACCEPTED')acts='<button class="btn lt sm" data-act="chresult" data-id="'+esc(c.id)+'">Lançar resultado</button>';
+  var meta=[];if(c.proposedAt)meta.push('<span>'+I.cal+esc(dFull(c.proposedAt))+'</span>');if(c.location)meta.push('<span>'+I.pin+esc(c.location)+'</span>');
+  return '<article class="card chal'+(inb?' inb':'')+'"><div class="chal-h"><a href="'+esc(athHref(opp))+'" aria-label="Card de '+esc(nm)+'">'+avatar(nm.replace(/^@/,''),null,48)+'</a><div class="tx"><i'+(played?' style="color:var(--'+(won?'ok':'bad')+')"':'')+'>'+lab+'</i><b>'+esc(nm)+'</b><span>'+esc([sportL(c.sport),opp.name&&opp.username?'@'+opp.username:''].filter(Boolean).join(' · '))+'</span></div>'+right+'</div>'+
+    (c.message?'<p class="msg">“'+esc(c.message)+'”</p>':'')+(meta.length?'<div class="meta" style="margin-top:12px">'+meta.join('')+'</div>':'')+(acts?'<div class="chal-a">'+acts+'</div>':'')+'</article>';
+}
+function chalHtml(){
+  var h='<button class="btn pri full" data-act="chnew" style="margin-top:16px">'+I.plus+'Novo desafio</button>',l=S.chal;
+  if(l==null){setTimeout(loadChal,0);return h+[1,2,3].map(function(){return '<div class="sk" style="height:120px;margin-top:12px;border-radius:22px"></div>';}).join('');}
+  if(l==='error')return h+'<div style="margin-top:16px">'+empty(I.bolt,'Não deu para carregar','Não foi possível abrir seus desafios agora.','<button class="btn lt sm" data-act="chretry">Tentar de novo</button>')+'</div>';
+  if(!l.length)return h+'<div style="margin-top:16px">'+empty(I.bolt,'Nenhum desafio ainda','Chame outro atleta para um 1x1. O resultado mexe no rating dos dois.')+'</div>';
+  var my=S.me.id,g={inb:[],go:[],out:[],end:[]};
+  l.forEach(function(c){if(c.status==='PENDING')(c.challengedId===my?g.inb:g.out).push(c);else if(c.status==='ACCEPTED')g.go.push(c);else g.end.push(c);});
+  function grp(t,a){return a.length?'<div class="grp"><h2 style="font-size:17px;font-stretch:112%">'+t+'</h2><span class="eyebrow">'+a.length+'</span></div>'+a.map(chalCard).join(''):'';}
+  return h+grp('Para você responder',g.inb)+grp('Aceitos, hora de jogar',g.go)+grp('Aguardando resposta',g.out)+grp('Encerrados',g.end);
+}
+function chalRespond(id,action,btn){
+  var c=chalFind(id);if(!c)return;if(btn)btn.disabled=true;
+  api(T+'/challenges/'+encodeURIComponent(id)+'/respond',{method:'POST',body:{action:action}}).then(function(u){
+    c.status=(u&&u.status)||{accept:'ACCEPTED',decline:'DECLINED',cancel:'CANCELED'}[action];redraw(true);
+    toast({accept:'Desafio aceito. Agora é marcar o jogo!',decline:'Desafio recusado.',cancel:'Desafio cancelado.'}[action]);
+  }).catch(function(e){if(btn)btn.disabled=false;if(e.status!==401)toast(capMsg(e.message),true);});
+}
+function chalNewSheet(){
+  NC.sport=(S.rkSport&&SPORTS.indexOf(S.rkSport)>=0)?S.rkSport:sportOrder()[0];
+  openSheet('<div class="eyebrow acc">Desafio 1x1</div><h2 class="disp" style="margin-top:10px">Desafiar atleta</h2><p class="lead">Mande um desafio. O resultado mexe no rating dos dois.</p>'+
+    '<label class="sfield"><span>Oponente</span><input class="search" id="nc-to" type="text" placeholder="@usuario" autocomplete="off" autocapitalize="off" spellcheck="false"></label>'+
+    '<div class="sfield"><span>Esporte</span><div class="sheet-chips" id="nc-sports">'+sportOrder().map(function(s){return '<button type="button" class="chip'+(s===NC.sport?' on':'')+'" data-act="ncsport" data-s="'+s+'">'+esc(sportN(s))+'</button>';}).join('')+'</div></div>'+
+    '<label class="sfield"><span>Recado (opcional)</span><input class="search" id="nc-msg" type="text" maxlength="140" placeholder="Bora jogar sábado?" autocomplete="off"></label>'+
+    '<div class="serr" id="nc-err" role="alert"></div><div class="acts" style="margin-top:8px"><button class="btn pri full" data-act="chsave">Enviar desafio</button></div>');
+}
+function chalSave(btn){
+  var to=($('#nc-to').value||'').trim().replace(/^@+/,''),msg=($('#nc-msg').value||'').trim(),err=$('#nc-err');
+  if(!to){err.textContent='Informe o @ do oponente.';$('#nc-to').focus();return;}
+  err.textContent='';btn.disabled=true;
+  api(T+'/challenges',{method:'POST',body:{challengedUsername:to,sport:NC.sport,message:msg||null}}).then(function(){closeSheet();toast('Desafio enviado!');loadChal();})
+   .catch(function(e){btn.disabled=false;if(e.status!==401)err.textContent=capMsg(e.message);});
+}
+function chalResultSheet(id){
+  var c=chalFind(id);if(!c)return;
+  var sent=c.challengerId===S.me.id,opp=(sent?c.challenged:c.challenger)||{},on=firstName(opp.name||opp.username||'Oponente');
+  openSheet('<div class="eyebrow acc">Resultado do desafio</div><h2 class="disp" style="margin-top:10px">Quem venceu?</h2><p class="lead">O placar é opcional. O resultado atualiza o rating dos dois.</p>'+
+    '<div class="rscore"><label><span>Você</span><input id="cr-me" type="number" inputmode="numeric" min="0" placeholder="0"></label><i>×</i><label><span>'+esc(on)+'</span><input id="cr-op" type="number" inputmode="numeric" min="0" placeholder="0"></label></div>'+
+    '<div class="serr" id="cr-err" role="alert"></div><div class="acts" style="margin-top:6px"><button class="btn pri full" data-act="chres" data-id="'+esc(id)+'" data-w="me">Eu venci</button><button class="btn ghost full" data-act="chres" data-id="'+esc(id)+'" data-w="opp">'+esc(on)+' venceu</button></div>');
+}
+function chalResult(id,who){
+  var c=chalFind(id);if(!c)return;
+  var sent=c.challengerId===S.me.id,a=Math.max(0,Number($('#cr-me').value)||0),b=Math.max(0,Number($('#cr-op').value)||0),err=$('#cr-err');
+  if(a!==b&&((a>b)!==(who==='me'))){err.textContent='O placar não bate com o vencedor.';return;}
+  /* no backend: homeScore = quem desafiou, awayScore = desafiado */
+  var body={homeScore:sent?a:b,awayScore:sent?b:a,winnerId:who==='me'?S.me.id:(sent?c.challengedId:c.challengerId)};
+  var bs=sheetEl.querySelectorAll('[data-act=chres]'),i;for(i=0;i<bs.length;i++)bs[i].disabled=true;err.textContent='';
+  api(T+'/challenges/'+encodeURIComponent(id)+'/result',{method:'POST',body:body}).then(function(){
+    c.status='PLAYED';c.homeScore=body.homeScore;c.awayScore=body.awayScore;c.winnerId=body.winnerId;S.rank={};
+    closeSheet();redraw(true);toast('Resultado salvo!');
+    api(T+'/athletes/'+encodeURIComponent(S.me.username||S.me.id)+'/card').then(function(k){S.card=k;redraw(true);}).catch(function(){});
+  }).catch(function(e){for(i=0;i<bs.length;i++)bs[i].disabled=false;if(e.status!==401)err.textContent=capMsg(e.message);});
+}
+function competeSec(){
+  var nb=chalInbox(),best=null;((S.card&&S.card.ratings)||[]).forEach(function(r){if(!best||Number(r.rating)>Number(best.rating))best=r;});
+  return '<section class="sec"><div class="sec-h"><h2>Competir</h2></div><div class="duo">'+
+    '<a class="card ctile press" href="#/competir/ranking"><span class="lic">'+I.trophy+'</span><div><b>Ranking</b><span class="s">'+(best?'Rating '+num(best.rating,2)+' · '+esc(sportL(best.sport)):'Veja quem lidera')+'</span></div></a>'+
+    '<a class="card ctile press'+(nb?' hot':'')+'" href="#/competir/desafios"><span class="lic">'+I.bolt+'</span>'+(nb?'<span class="pill acc bdg">'+nb+' novo'+(nb>1?'s':'')+'</span>':'')+'<div><b>Desafios 1x1</b><span class="s">'+(nb?'Esperando sua resposta':'Chame um atleta')+'</span></div></a></div></section>';
+}
+
+/* ===================== produção em jogos oficiais (súmula) ===================== */
+function gamesOf(p){var g=p&&p.games;if(!g)return null;return ['jogos','gols','assistencias','amarelos','vermelhos'].some(function(k){return Number(g[k])>0;})?g:null;}
+function gamesSec(p){
+  var g=gamesOf(p),j=g?Number(g.jogos)||0:0;
+  var h='<section><div class="sec-h"><h2>Em jogos oficiais</h2>'+(g&&j?'<span class="eyebrow">'+num((Number(g.gols)||0)/j,1)+' gols por jogo</span>':'')+'</div>';
+  if(!g)return h+empty(I.id,'Seus jogos ainda não contam aqui','Gols, assistências e cartões vêm da súmula oficial. Peça ao seu treinador para vincular seu nome no elenco.')+'</section>';
+  var v=Number(g.vitorias)||0,e=Number(g.empates)||0,d=Number(g.derrotas)||0;
+  h+='<div class="gp">'+COURT+'<div class="gp-n"><div><b class="num">'+num(g.jogos||0)+'</b><span>Jogos</span></div><div><b class="num">'+num(g.gols||0)+'</b><span>Gols</span></div><div><b class="num">'+num(g.assistencias||0)+'</b><span>Assistências</span></div></div>';
+  if(v+e+d>0)h+='<div class="wdl" role="img" aria-label="'+esc(pl(v,'vitória','vitórias')+', '+pl(e,'empate','empates')+', '+pl(d,'derrota','derrotas'))+'">'+(v?'<u class="w" style="--f:'+v+'"></u>':'')+(e?'<u class="d" style="--f:'+e+'"></u>':'')+(d?'<u class="l" style="--f:'+d+'"></u>':'')+'</div>'+
+    '<div class="wdl-l"><span>'+pl(v,'vitória','vitórias')+'</span><span class="d">'+pl(e,'empate','empates')+'</span><span class="l">'+pl(d,'derrota','derrotas')+'</span></div>';
+  h+='<div class="gp-f"><span class="cardk"><b class="num">'+num(g.amarelos||0)+'</b>'+(Number(g.amarelos)===1?'amarelo':'amarelos')+'</span><span class="cardk r"><b class="num">'+num(g.vermelhos||0)+'</b>'+(Number(g.vermelhos)===1?'vermelho':'vermelhos')+'</span></div></div>';
+  var bt=(g.byTournament||[]).filter(function(b){return b&&(b.jogos||b.gols||b.assistencias||b.amarelos||b.vermelhos);});
+  if(bt.length>1)h+=bt.map(function(b){
+    return '<div class="card brk" style="margin:10px 0 0"><div class="brk-h"><b>'+esc(b.tournament||'Torneio')+'</b><span style="display:flex;gap:6px">'+(b.amarelos?'<span class="cardk"><b class="num">'+num(b.amarelos)+'</b></span>':'')+(b.vermelhos?'<span class="cardk r"><b class="num">'+num(b.vermelhos)+'</b></span>':'')+'</span></div>'+
+      '<div class="brk-g" style="grid-template-columns:repeat(3,1fr)"><div><b class="num">'+num(b.jogos||0)+'</b><span>Jogos</span></div><div><b class="num">'+num(b.gols||0)+'</b><span>Gols</span></div><div><b class="num">'+num(b.assistencias||0)+'</b><span>Assist.</span></div></div></div>';
+  }).join('');
+  return h+'</section>';
 }
 
 /* ===================== INÍCIO ===================== */
@@ -852,12 +1332,14 @@ function vHome(){
   h+=trs.length?trs.slice(0,4).map(trainCard).join(''):empty(I.bolt,'Sem treinos na agenda','Quando o treinador marcar o próximo treino você confirma presença com um toque.');
   h+='</section>';
 
-  var p=d.production||{};
-  if(p.treinos||p.gols||p.presencaPct!=null){
+  var p=d.production||{},gm=gamesOf(p);
+  if(p.treinos||p.gols||p.presencaPct!=null||gm){
     h+='<section class="sec"><div class="sec-h"><h2>Sua produção</h2><a href="#/producao">Detalhes'+I.chev+'</a></div><a class="card teaser press" href="#/producao">'+
       ringSvg(p.presencaPct||0,'sm','<b class="num">'+(p.presencaPct==null?'–':esc(p.presencaPct))+'</b>')+
-      '<div class="k"><b class="num">'+num(p.gols)+'</b><span>Gols</span></div><div class="k"><b class="num">'+num(p.notaMedia,1)+'</b><span>Nota média</span></div></a></section>';
+      (gm?'<div class="k"><b class="num">'+num(gm.jogos||0)+'</b><span>Jogos oficiais</span></div><div class="k"><b class="num">'+num(gm.gols||0)+'</b><span>Gols em jogos</span></div>'
+         :'<div class="k"><b class="num">'+num(p.gols)+'</b><span>Gols</span></div><div class="k"><b class="num">'+num(p.notaMedia,1)+'</b><span>Nota média</span></div>')+'</a></section>';
   }
+  h+=competeSec();
   return h+'</div>';
 }
 
@@ -939,10 +1421,11 @@ function vProd(){
   if(S.err&&!S.dash)return h+errBox()+'</div>';
   if(!S.dash)return h+'<div class="sk" style="height:196px;border-radius:28px"></div><div class="tiles">'+[1,2,3,4].map(function(){return '<div class="sk" style="height:132px;border-radius:22px"></div>';}).join('')+'</div></div>';
   var p=S.dash.production||{},bt=p.byTournament||[],tids=myTids();
-  if(!tids.length&&!p.treinos){
+  if(!tids.length&&!p.treinos&&!gamesOf(p)){
     return h+empty(I.chart,'Seus números nascem no treino','Entre em um time: a cada treino o treinador lança presença, gols, passes e nota. Tudo aparece aqui.','<a class="btn pri sm" href="#/times">Encontrar meu time</a>')+'</div>';
   }
   var marc=(p.presencas||0)+(p.faltas||0);
+  h+=gamesSec(p)+'<div class="sec-h" style="margin-top:34px"><h2>Nos treinos</h2></div>';
   h+='<section class="prod-hero">'+ringSvg(p.presencaPct||0,'','<b class="num">'+(p.presencaPct==null?'–':esc(p.presencaPct)+'<sup>%</sup>')+'</b><span>Presença</span>')+
      '<div class="stack"><div><b class="num">'+num(p.treinos)+'</b><span>Treinos na temporada</span></div><hr><div><b class="num">'+num(p.presencas)+'<span style="display:inline;font-size:.55em;color:var(--dim);letter-spacing:0"> / '+num(marc)+'</span></b><span>Presenças na chamada</span></div></div></section>';
   var gpt=p.presencas?(p.gols/p.presencas):null;
@@ -1069,12 +1552,13 @@ function vProfile(){
   h+='<section class="prof">'+avatar(S.me.name,avatarUrl(),104,true)+'<h1 class="disp">'+esc(S.me.name||'Atleta')+'</h1><div class="hd">'+(hd?'<b>@'+esc(hd)+'</b>':'')+(hd&&loc?' · ':'')+esc(loc)+'</div>'+
     '<div class="prof-s"><div><b class="num">'+num(st.matchesPlayed||0)+'</b><span>Jogos</span></div><div><b class="num">'+num(st.wins||0)+'</b><span>Vitórias</span></div><div><b class="num">'+num(st.winRate||0)+'<span style="display:inline;font-size:.5em;color:var(--mut)">%</span></b><span>Aproveit.</span></div></div></section>';
   if((c.ratings||[]).length){
-    h+='<section class="sec"><div class="sec-h"><h2>Ranking</h2></div>'+c.ratings.map(function(r){return '<div class="card rate"><span class="lic" style="width:44px;height:44px;border-radius:14px;background:var(--card2);display:grid;place-items:center;color:var(--acc2)"><span style="width:20px;height:20px;display:block">'+I.trophy+'</span></span><div class="tx"><b>'+esc(sportL(r.sport))+'</b><span>'+esc(r.matches)+' jogos · '+esc(r.wins)+'V '+esc(r.losses)+'D</span></div><b class="v num">'+num(r.rating,2)+'</b></div>';}).join('')+'</section>';
+    h+='<section class="sec"><div class="sec-h"><h2>Ranking</h2><a href="#/competir/ranking">Ver ranking'+I.chev+'</a></div>'+c.ratings.map(function(r){return '<div class="card rate"><span class="lic" style="width:44px;height:44px;border-radius:14px;background:var(--card2);display:grid;place-items:center;color:var(--acc2)"><span style="width:20px;height:20px;display:block">'+I.trophy+'</span></span><div class="tx"><b>'+esc(sportL(r.sport))+'</b><span>'+esc(r.matches)+' jogos · '+esc(r.wins)+'V '+esc(r.losses)+'D</span></div><b class="v num">'+num(r.rating,2)+'</b></div>';}).join('')+'</section>';
   }
   var manages=(S.dash.tournaments||[]).some(function(t){return (t.myRoles||[]).some(function(r){return r.role&&r.role!=='PLAYER';});})||/admin/i.test(String(S.me.role||''));
   function row(href,icon,t,s,ext){return '<a class="lrow" href="'+href+'"><span class="lic">'+icon+'</span><div class="tx"><b>'+t+'</b><span>'+s+'</span></div>'+(ext?I.ext:I.chev)+'</a>';}
   h+='<section class="sec"><div class="sec-h"><h2>Conta</h2></div><div class="card list">'+
     row('/atleta/'+encodeURIComponent(hd||S.me.id),I.id,'Card de atleta','Sua página pública para compartilhar',true)+
+    row('#/competir/ranking',I.trophy,'Ranking e desafios',chalInbox()?esc(chalInbox())+' desafio'+(chalInbox()>1?'s':'')+' para responder':'Leaderboard por esporte e desafios 1x1')+
     row('#/avisos',I.bell,'Avisos',(S.notif&&S.notif.unread)?esc(S.notif.unread)+' não lido'+(S.notif.unread>1?'s':''):'Tudo em dia')+
     row('#/producao',I.chart,'Produção','Presença, gols, passes e avaliação')+
     (manages?row('/torneios.html',I.cog,'Área de gestão','Organização, elenco e súmula',true):'')+
@@ -1161,7 +1645,7 @@ function vNotifs(){
   var l=S.notif.notifications||[];
   if(!l.length)return h+empty(I.bell,'Tudo em dia','Convites, mudanças de horário e resultados chegam por aqui.')+'</div>';
   var ICN={challenge:I.bolt,entry:I.shield,result:I.trophy,schedule:I.cal,team:I.shield,training:I.bolt};
-  h+='<div>'+l.map(function(n){return '<div class="nrow'+(n.read?'':' un')+'"><span class="lic">'+(ICN[n.type]||I.bell)+'</span><div><b>'+esc(n.title||'Aviso')+'</b><p>'+esc(n.body)+'</p><time>'+esc(ago(n.createdAt))+'</time></div></div>';}).join('')+'</div>';
+  h+='<div>'+l.map(function(n){var ch=n.type==='challenge';return '<'+(ch?'a href="#/competir/desafios"':'div')+' class="nrow'+(n.read?'':' un')+'"><span class="lic">'+(ICN[n.type]||I.bell)+'</span><div><b>'+esc(n.title||'Aviso')+'</b><p>'+esc(n.body)+'</p><time>'+esc(ago(n.createdAt))+'</time></div></'+(ch?'a':'div')+'>';}).join('')+'</div>';
   return h+'</div>';
 }
 
@@ -1223,19 +1707,37 @@ document.addEventListener('click',function(e){
   else if(a==='sheet-close')closeSheet();
   else if(a==='logout-ok'){clearSession();closeSheet();if(MOCK)go('entrar');else location.href='/';}
   else if(a==='readall'){if(S.notif){S.notif.unread=0;(S.notif.notifications||[]).forEach(function(n){n.read=true;});redraw();}api(T+'/notifications/read-all',{method:'POST'}).catch(function(){});}
+  else if(a==='amethod'){A.method=d.m==='email'?'email':'phone';A.err='';A.offer=false;draw(false,true);aFocus();}
+  else if(a==='aback'){if(A.step===0||A.step===3){A.flow='';go('entrar');}else aGo(0);}
+  else if(a==='aresend')aSendCode(true);
+  else if(a==='legal'){e.preventDefault();legalSheet(d.k);}
+  else if(a==='cseg'){e.preventDefault();var hr=el.getAttribute('href');if(location.hash!==hr){segNav=true;location.replace(hr);}}
+  else if(a==='rksport'){S.rkSport=d.s;redraw(true);}
+  else if(a==='rkretry'){delete S.rank[S.rkSport];redraw();}
+  else if(a==='chretry'){S.chal=null;redraw();}
+  else if(a==='chnew')chalNewSheet();
+  else if(a==='ncsport'){NC.sport=d.s;var cs=sheetEl.querySelectorAll('#nc-sports .chip');for(var ci=0;ci<cs.length;ci++)cs[ci].classList.toggle('on',cs[ci]===el);}
+  else if(a==='chsave')chalSave(el);
+  else if(a==='chresp')chalRespond(d.id,d.a,el);
+  else if(a==='chresult')chalResultSheet(d.id);
+  else if(a==='chres')chalResult(d.id,d.w);
   else if(a==='lmode'){var keep=$('#l-pw')?$('#l-pw').value:'';S.loginMode=d.m;redraw();if($('#l-pw'))$('#l-pw').value=keep;$('#l-id').focus();}
-  else if(a==='eye'){var p=$('#l-pw');p.type=p.type==='password'?'text':'password';el.setAttribute('aria-label',p.type==='password'?'Mostrar senha':'Ocultar senha');}
+  else if(a==='eye'){var p=el.parentNode.querySelector('input');p.type=p.type==='password'?'text':'password';el.setAttribute('aria-label',p.type==='password'?'Mostrar senha':'Ocultar senha');}
 });
-document.addEventListener('submit',function(e){if(e.target.id==='lform'){e.preventDefault();doLogin();}});
+document.addEventListener('submit',function(e){if(e.target.id==='lform'){e.preventDefault();doLogin();}else if(e.target.id==='aform'){e.preventDefault();authSubmit();}});
+document.addEventListener('change',function(e){if(e.target.id==='a-lgpd')A.lgpd=e.target.checked;});
+document.addEventListener('focusin',function(e){if(e.target.hasAttribute&&e.target.hasAttribute('data-otp'))try{e.target.select();}catch(x){}});
 document.addEventListener('input',function(e){
+  var av=e.target.getAttribute&&e.target.getAttribute('data-av');if(av){A.v[av]=e.target.value;return;}
+  if(e.target.hasAttribute&&e.target.hasAttribute('data-otp')){otpInput(e.target);return;}
   if(e.target.id==='jq'){J.q=e.target.value;var q=J.q.toLowerCase(),rows=document.querySelectorAll('#jlist .lrow');for(var i=0;i<rows.length;i++){var n=(rows[i].querySelector('b').textContent||'').toLowerCase();rows[i].style.display=!q||n.indexOf(q)>=0?'':'none';}}
 });
-document.addEventListener('keydown',function(e){if(e.key==='Escape')closeSheet();});
-document.addEventListener('visibilitychange',function(){if(!document.hidden&&S.dash&&curRoute().name!=='entrar'&&Date.now()-lastLoad>120000){lastLoad=Date.now();loadCore(true);}});
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeSheet();else if(e.target.hasAttribute&&e.target.hasAttribute('data-otp'))otpKey(e,e.target);});
+document.addEventListener('visibilitychange',function(){if(!document.hidden&&S.dash&&!PUB[curRoute().name]&&Date.now()-lastLoad>120000){lastLoad=Date.now();loadCore(true);}});
 var lastLoad=Date.now();
 
 /* ===================== desktop side ===================== */
-$('#side').innerHTML='<img src="'+BRAND+'club-sports-tennis.svg" alt="" width="250" height="81"><h2 class="disp">O clube<br>no seu <em>bolso.</em></h2><p>Jogos oficiais, treinos com confirmação de presença e os seus números de atleta, direto do treinador.</p><ul><li>'+I.cal+'Agenda de jogos e treinos</li><li>'+I.chart+'Produção e avaliação técnica</li><li>'+I.shield+'Seus times e torneios</li></ul>';
+$('#side').innerHTML='<img src="'+BRAND+'club-sports-tennis.svg" alt="" width="250" height="81"><h2 class="disp">O clube<br>no seu <em>bolso.</em></h2><p>Jogos oficiais, treinos com confirmação de presença e os seus números de atleta, direto do treinador.</p><ul><li>'+I.cal+'Agenda de jogos e treinos</li><li>'+I.chart+'Produção e avaliação técnica</li><li>'+I.shield+'Seus times e torneios</li><li>'+I.trophy+'Ranking e desafios 1x1</li></ul>';
 
 /* ===================== MOCK (club.html?mock=1) ===================== */
 var mockApi=(function(){
@@ -1271,7 +1773,7 @@ var mockApi=(function(){
   function dash(){return {tournaments:[Object.assign({},t1,{myRoles:[{role:'PLAYER'}],myClubs:['Cabo Branco']}),Object.assign({},t2,{myRoles:[{role:'PLAYER'}],myClubs:['Arena Tambaú']})],
     teams:[{tournamentId:'t1',tournament:t1.name,clubName:'Cabo Branco',entryId:'e1',logoUrl:null},{tournamentId:'t2',tournament:t2.name,clubName:'Arena Tambaú',entryId:'e9',logoUrl:null}],
     invites:invites.slice(),games:games,trainings:trainings,
-    production:{treinos:20,presencas:16,faltas:2,presencaPct:89,gols:19,passes:412,eficienciaMedia:75,notaMedia:8.3,byTournament:[{tournamentId:'t1',tournament:t1.name,summary:prodT1,evaluation:{overall:8.3,count:5}},{tournamentId:'t2',tournament:t2.name,summary:prodT2,evaluation:null}]}};}
+    production:{treinos:20,presencas:16,faltas:2,presencaPct:89,gols:19,passes:412,eficienciaMedia:75,notaMedia:8.3,games:QS.get('nogames')?undefined:gamesProd,byTournament:[{tournamentId:'t1',tournament:t1.name,summary:prodT1,evaluation:{overall:8.3,count:5}},{tournamentId:'t2',tournament:t2.name,summary:prodT2,evaluation:null}]}};}
   function hist(i,title,d,pres,g,p,e,r){return {sessionId:i,title:title,scheduledAt:at(d,'20:00'),status:'DONE',clubName:'Cabo Branco',present:pres,confirmed:true,goals:g,passes:p,efficiency:e,rating:r,note:null};}
   var pront1={user:{id:uid,name:me.name,username:'rafanobrega'},clubs:['Cabo Branco'],summary:prodT1,
     history:[hist('tp1','Coletivo pré-jogo',-2,true,3,31,84,9.1),hist('tp2','Treino técnico',-5,true,1,42,79,8.4),hist('tp3','Treino físico',-9,false,null,null,null,null),hist('tp4','Treino tático',-12,true,2,28,76,8.7),hist('tp5','Finalização',-16,true,4,19,81,9.0),hist('tp6','Coletivo',-19,true,1,35,72,8.0)],
@@ -1285,8 +1787,34 @@ var mockApi=(function(){
     {id:'n2',type:'schedule',title:'Treino marcado',body:'Treino tático do Cabo Branco no Ginásio do Colégio Pio X.',read:false,createdAt:new Date(Date.now()-5*36e5).toISOString()},
     {id:'n3',type:'result',title:'Resultado lançado',body:'Cabo Branco 4 × 2 Causos FC. Você marcou 2 gols.',read:true,createdAt:new Date(Date.now()-3*864e5).toISOString()},
     {id:'n4',type:'info',title:'Avaliação atualizada',body:'Seu treinador registrou uma nova avaliação. Nota geral 8,4.',read:true,createdAt:new Date(Date.now()-6*864e5).toISOString()}];
+  var gamesProd={jogos:13,vitorias:8,empates:2,derrotas:3,gols:14,assistencias:9,amarelos:3,vermelhos:0,byTournament:[{tournamentId:'t1',tournament:t1.name,jogos:9,gols:11,assistencias:7,amarelos:2,vermelhos:0},{tournamentId:'t4',tournament:'Copa Verão de Society 2026',jogos:4,gols:3,assistencias:2,amarelos:1,vermelhos:0}]};
+  function bad(msg,data){return Object.assign(new Error(msg),{status:400,data:data||{error:msg}});}
+  function rk(l){return l.map(function(x,i){return {rank:i+1,userId:x[0],name:x[1],username:x[2],city:x[3],rating:x[4],matches:x[5],wins:x[6],losses:x[5]-x[6]};});}
+  var ranks={FUTSAL:rk([['u21','Thiago Cavalcanti','thiagocav','João Pessoa',4.86,22,17],['u22','Bruno Lacerda','brunolacerda','Cabedelo',4.51,19,13],['u23','Diego Farias','diegofarias','João Pessoa',4.3,17,11],[uid,me.name,'rafanobrega','João Pessoa',4.12,14,9],['u25','Marcelo Queiroz','marceloq','Bayeux',3.97,16,9],['u26','Anderson Pessoa',null,'João Pessoa',3.74,12,6],['u27','Felipe Maroja','felipemaroja','Santa Rita',3.52,11,5],['u28','Gustavo Trigueiro','gutrigueiro','João Pessoa',3.31,9,4],['u29','Leandro Vital','leovital','Campina Grande',3.05,8,3]]),
+    BEACH_TENNIS:rk([['u31','Camila Azevedo','camilaazv','João Pessoa',4.4,18,13],[uid,me.name,'rafanobrega','João Pessoa',3.48,8,5],['u33','Paulo Honorato','paulohonorato','Cabedelo',3.2,10,5],['u34','Larissa Ramalho','lariramalho','João Pessoa',2.95,7,3]])};
+  function U(id,n,u){return {id:id,name:n,username:u};}
+  var meU=U(uid,me.name,'rafanobrega');
+  function ch(id,from,to,sport,st,msg,hrs,x){var mine=from===meU;return Object.assign({id:id,challengerId:from.id,challengedId:to.id,challenger:from,challenged:to,sport:sport,status:st,message:msg,proposedAt:null,location:null,homeScore:null,awayScore:null,winnerId:null,createdAt:new Date(Date.now()-hrs*36e5).toISOString()},x||{});}
+  var chals=QS.get('nochal')?[]:[ch('c1',U('u22','Bruno Lacerda','brunolacerda'),meU,'FUTSAL','PENDING','Bora um contra um sábado no Ronaldão?',2),
+    ch('c2',meU,U('u31','Camila Azevedo','camilaazv'),'BEACH_TENNIS','ACCEPTED','Revanche na Arena Sunset.',26,{proposedAt:at(3,'06:30'),location:'Arena Sunset · Tambaú'}),
+    ch('c3',meU,U('u25','Marcelo Queiroz','marceloq'),'FUTSAL','PENDING',null,50),
+    ch('c4',U('u23','Diego Farias','diegofarias'),meU,'FUTSAL','PLAYED','Valendo a posição no ranking.',190,{homeScore:2,awayScore:3,winnerId:uid}),
+    ch('c5',meU,U('u33','Paulo Honorato','paulohonorato'),'BEACH_TENNIS','PLAYED',null,300,{homeScore:1,awayScore:2,winnerId:'u33'}),
+    ch('c6',meU,U('u28','Gustavo Trigueiro','gutrigueiro'),'FUTSAL','DECLINED',null,420)];
+  function chById(id){var c=chals.filter(function(x){return x.id===id;})[0];if(!c)throw Object.assign(new Error('desafio não encontrado'),{status:404});return c;}
   var teamList=['ABC Master','Amigos CG','Brasil Sertão','Cabo Branco','Causos FC','EBN Futsal','Santa Cruz PB','Treze Master','Veteranos do Bessa'].map(function(n,i){return {entryId:'e'+i,name:n,logoUrl:null};});
   var R=[
+    ['POST',/^\/auth\/send-code$/,function(m,b){if(String(b.phone)==='83900000000')throw bad('WhatsApp indisponível no momento',{whatsappDown:true});if(String(b.phone)==='83911111111')throw bad('Telefone já cadastrado');return {success:true,message:'Código enviado para seu WhatsApp'};}],
+    ['POST',/^\/auth\/send-email-register-code$/,function(m,b){if(/^ja@/.test(String(b.email)))throw bad('E-mail já cadastrado');return {success:true,message:'Código enviado para seu e-mail'};}],
+    ['POST',/^\/auth\/(verify-code|verify-email-register-code|forgot-verify)$/,function(m,b){if(String(b.code)!=='123456')throw bad('Código inválido ou expirado');return {success:true,verified:true,resetToken:'mock'};}],
+    ['POST',/^\/auth\/register$/,function(m,b){if(!b.name||!b.password||!b.birthDate||!b.lgpdAccepted)throw bad('Dados incompletos');me.name=b.name;return {token:'mock',user:me};}],
+    ['POST',/^\/auth\/forgot-send-code$/,function(m,b){if(b.method==='whatsapp'){if(String(b.phone)==='83900000000')throw bad('WhatsApp indisponível no momento',{whatsappDown:true,hasEmail:true});if(String(b.phone)==='83911111111')throw bad('Telefone não cadastrado');return {success:true,message:'Código enviado para seu WhatsApp'};}if(/^nao@/.test(String(b.email)))throw bad('E-mail não cadastrado');return {success:true,message:'Código enviado para seu e-mail'};}],
+    ['POST',/^\/auth\/forgot-reset$/,function(m,b){if(!b.password||b.password.length<4)throw bad('Senha deve ter no mínimo 4 caracteres');return {success:true,message:'Senha alterada com sucesso'};}],
+    ['GET',/^\/tournaments\/rankings\/([A-Z_]+)$/,function(m){return {sport:m[1],ranking:ranks[m[1]]||[]};}],
+    ['GET',/^\/tournaments\/challenges\/mine$/,function(){return {challenges:chals};}],
+    ['POST',/^\/tournaments\/challenges$/,function(m,b){var to=String(b.challengedUsername||'');if(!to||/^ninguem$/i.test(to))throw bad('oponente não encontrado');if(to==='rafanobrega')throw bad('não dá pra desafiar você mesmo');var c=ch('c'+Date.now(),meU,U('u_'+to,to.charAt(0).toUpperCase()+to.slice(1),to),b.sport||'TENNIS','PENDING',b.message||null,0);chals.unshift(c);return c;}],
+    ['POST',/^\/tournaments\/challenges\/([^/]+)\/respond$/,function(m,b){var c=chById(m[1]);c.status={accept:'ACCEPTED',decline:'DECLINED',cancel:'CANCELED'}[b.action]||c.status;return c;}],
+    ['POST',/^\/tournaments\/challenges\/([^/]+)\/result$/,function(m,b){var c=chById(m[1]);if(!b.winnerId)throw bad('informe o vencedor (winnerId) ou placar');c.status='PLAYED';c.homeScore=b.homeScore;c.awayScore=b.awayScore;c.winnerId=b.winnerId;return c;}],
     ['POST',/^\/auth\/login$/,function(){return {token:'mock',user:me};}],
     ['GET',/^\/auth\/me$/,function(){return {token:'mock',user:me};}],
     ['GET',/^\/tournaments\/my-dashboard$/,dash],
@@ -1314,9 +1842,14 @@ var mockApi=(function(){
 
 /* ===================== boot ===================== */
 if(MOCK&&QS.get('tab')==='past')S.agendaTab='past';
+if(MOCK&&QS.get('rk'))S.rkSport=QS.get('rk');
 if(MOCK&&QS.get('still'))document.documentElement.classList.add('still');
 route();
 if(MOCK&&QS.get('sheet')==='join')setTimeout(joinOpen,900);
+if(MOCK&&QS.get('sheet')==='newchal')setTimeout(chalNewSheet,900);
+if(MOCK&&QS.get('sheet')==='result')setTimeout(function(){chalResultSheet('c2');},900);
+if(MOCK&&QS.get('sheet')==='termos')setTimeout(function(){legalSheet('terms');},900);
+if(MOCK&&QS.get('sheet')==='privacidade')setTimeout(function(){legalSheet('privacy');},900);
 })();
 </script>
 </body>

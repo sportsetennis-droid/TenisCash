@@ -328,14 +328,14 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     var body=afMethod==='whatsapp'?{phone:afId,code:code}:{email:afId,code:code};
     var res=await afPost('/api/auth/forgot-verify',body);
     if(!res.ok||res.j.error){ afErr('af-code-err',res.j.error||'Código inválido'); return; }
-    afErr('af-code-err',''); afStep('newpass');
+    window.__afResetToken=(res.j&&res.j.resetToken)||''; afErr('af-code-err',''); afStep('newpass');
   };
   window.afResend=function(){ if(afMethod==='whatsapp') afSendWhatsapp(); else afSendEmail(); };
   window.afReset=async function(){
     var p1=((el('af-pass1')||{}).value||''), p2=((el('af-pass2')||{}).value||'');
     if(p1.length<4){ afErr('af-pass-err','Senha de no mínimo 4 caracteres'); return; }
     if(p1!==p2){ afErr('af-pass-err','As senhas não conferem'); return; }
-    var body=afMethod==='whatsapp'?{phone:afId,password:p1}:{email:afId,password:p1};
+    var body=afMethod==='whatsapp'?{phone:afId,password:p1}:{email:afId,password:p1}; body.resetToken=window.__afResetToken||'';
     var res=await afPost('/api/auth/forgot-reset',body);
     if(!res.ok||res.j.error){ afErr('af-pass-err',res.j.error||'Erro ao salvar'); return; }
     afStep('success');
