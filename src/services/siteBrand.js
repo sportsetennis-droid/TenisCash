@@ -33,6 +33,26 @@ const SWAPS = [
     `<div style="margin-bottom:22px">${LOGO_IMG('260px')}</div>`],
   // Demais telas com o círculo "T" (esqueci a senha etc.)
   [/<div class="login-logo"><span[^>]*>T<\/span><\/div>/g, `<div style="margin-bottom:20px">${LOGO_IMG('220px')}</div>`],
+  // Menu lateral (computador): "TENISCASH / Sports & Tennis" → logo Club.
+  // Fica depois do CSS original → vence pela ordem.
+  ['</head>', `<style>
+@media (min-width:1024px){
+  .bottom-nav::before{content:'';top:28px;left:22px;width:206px;height:66px;background:url('${LOGO}') left center/contain no-repeat;letter-spacing:0;font-size:0}
+  .bottom-nav::after{content:none;display:none}
+}
+</style>
+</head>`],
+  // Textos de tela do cliente (marca no rodapé + nome do saldo).
+  // Termos/Política NÃO mudam: o programa juridicamente segue sendo o TenisCash.
+  ['TENISCASH v2.0', 'CLUB SPORTS &amp; TENNIS'],
+  [/Usar meu TenisCash na loja/g, 'Usar meu saldo na loja'],
+  ['Usar TenisCash na loja</p>', 'Usar meu saldo na loja</p>'],
+  ['usar seu TenisCash como desconto', 'usar seu saldo como desconto'],
+  ['ou o do TenisCash. Não acumulam.', 'ou o do seu saldo. Não acumulam.'],
+  ['>ENVIAR TENISCASH<', '>ENVIAR SALDO<'],
+  ['ganhe TenisCash grátis!', 'ganhe saldo grátis!'],
+  ['para aplicar o TenisCash<', 'para aplicar o seu saldo<'],
+  ['Os arquivos ficam privados no TenisCash.', 'Os arquivos ficam privados no sistema.'],
 ];
 
 let cache = { mtime: 0, html: '' };
