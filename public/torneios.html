@@ -217,7 +217,10 @@ async function renderHome(){
   let mine=[];
   try{mine=(await api('/mine')).tournaments||[];}catch(e){}
   let part=[];
-  try{part=(await api('/my-tournaments')).tournaments||[];}catch(e){}
+  let DASH=null;
+  try{DASH=await api('/my-dashboard');part=(DASH.tournaments||[]).slice();}catch(e){
+    try{part=(await api('/my-tournaments')).tournaments||[];}catch(e2){}
+  }
   const mineIds=new Set(mine.map(t=>t.id));
   part=part.filter(t=>t.ownerId!==ME.id&&!mineIds.has(t.id));
   let unread=0;
@@ -231,6 +234,8 @@ async function renderHome(){
     '<div class="hd-stat"><div class="b"><b>'+mine.length+'</b><span>organizo</span></div>'+
     '<a class="b plain" href="/atleta/'+esc(handle)+'"><b>★</b><span>meu card</span></a>'+
     '<a class="b plain" data-act="nav" data-h="vitrine"><b>🔎</b><span>vitrine</span></a></div></div>';
+
+  if(DASH)html+=dashHtml(DASH);
 
   html+='<div class="card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px"><h2 style="margin:0">Meus torneios</h2>'+
     '<button class="btn sm gho" data-act="nav" data-h="novo">+ Criar</button></div>';
@@ -263,9 +268,53 @@ async function renderHome(){
     '<div class="linkrow" data-act="nav" data-h="desafios"><div class="l"><span class="ic">⚔️</span> Desafios 1v1</div><span style="color:var(--mut)">›</span></div>'+
     '<div class="linkrow" data-act="nav" data-h="ranking"><div class="l"><span class="ic">🏆</span> Ranking de atletas</div><span style="color:var(--mut)">›</span></div>'+
     '<div class="linkrow" data-act="nav" data-h="vitrine"><div class="l"><span class="ic">📢</span> Vitrine pública</div><span style="color:var(--mut)">›</span></div>'+
-    '<a class="linkrow plain" href="/atleta/'+esc(handle)+'"><div class="l"><span class="ic">🪪</span> Ver meu card de atleta</div><span style="color:var(--mut)">›</span></a></div>';
+    '<a class="linkrow plain" href="/atleta/'+esc(handle)+'"><div class="l"><span class="ic">🪪</span> Ver meu card de atleta</div><span style="color:var(--mut)">›</span></a>'+
+    '<div class="linkrow" data-act="logout"><div class="l"><span class="ic">🚪</span> Sair</div><span style="color:var(--mut)">›</span></div></div>';
   html+='</div>';
   app.innerHTML=html;
+}
+
+// ---------- painel do atleta (tudo que é meu, em todos os torneios/clubes) ----------
+function dashHtml(d){
+  let h='';
+  const inv=d.invites||[], games=d.games||[], trs=d.trainings||[], teams=d.teams||[], p=d.production||{};
+  if(inv.length){
+    h+='<div class="card"><h2 style="margin:0 0 6px">📩 Convites de time</h2>';
+    inv.forEach(m=>{h+='<div style="padding:8px 0;border-bottom:1px solid var(--line)"><div class="nm" style="font-size:14px">'+esc(m.clubName)+'</div><div class="sub">'+esc(m.tournament)+'</div>'+
+      '<div style="margin-top:6px"><button class="btn sm" data-act="dash-mem" data-tid="'+m.tournamentId+'" data-mid="'+m.id+'" data-ac="accept" style="margin-right:6px">Aceitar</button>'+
+      '<button class="btn sm sec" data-act="dash-mem" data-tid="'+m.tournamentId+'" data-mid="'+m.id+'" data-ac="decline">Recusar</button></div></div>';});
+    h+='</div>';
+  }
+  h+='<div class="card"><h2 style="margin:0 0 6px">⚽ Próximos jogos oficiais</h2>';
+  if(!games.length)h+='<div class="empty" style="padding:10px 0">Nenhum jogo marcado para os seus times.</div>';
+  games.forEach(g=>{const live=g.status==='LIVE';
+    h+='<a class="listitem plain" href="'+(g.slug?'/t/'+esc(g.slug):'#/t/'+g.tournamentId)+'" style="padding:9px 0">'+
+      '<div class="grow"><div class="nm" style="font-size:14px">'+esc(g.home)+' <span style="color:var(--mut)">×</span> '+esc(g.away)+(live?' <span class="pill dang">AO VIVO '+(g.homeScore??0)+'–'+(g.awayScore??0)+'</span>':'')+'</div>'+
+      '<div class="sub">'+(g.scheduledAt?fmtDate(g.scheduledAt):'data a definir')+(g.location?' · '+esc(g.location):'')+'</div>'+
+      '<div class="sub">'+esc(g.tournament)+(g.category?' · '+esc(g.category):'')+'</div></div><span style="color:var(--mut)">›</span></a>';});
+  h+='</div>';
+  h+='<div class="card"><h2 style="margin:0 0 6px">🏃 Próximos treinos oficiais</h2>';
+  if(!trs.length)h+='<div class="empty" style="padding:10px 0">Nenhum treino agendado para os seus times.</div>';
+  trs.forEach(s=>{h+='<div style="padding:9px 0;border-bottom:1px solid var(--line)">'+
+    '<div data-act="open-treino" data-sid="'+s.id+'" style="cursor:pointer"><div class="nm" style="font-size:14px">'+esc(s.title)+' · '+esc(s.clubName||'')+(s.myRsvp?' <span class="pill '+(s.myRsvp==='GOING'?'ok':(s.myRsvp==='MAYBE'?'w':'g'))+'">'+RSVP_LBL[s.myRsvp]+'</span>':'')+'</div>'+
+    '<div class="sub">'+(s.scheduledAt?fmtDate(s.scheduledAt):'sem data')+(s.location?' · '+esc(s.location):'')+(s.focus?' · 🎯 '+esc(s.focus):'')+'</div></div>'+
+    '<div style="margin-top:6px">'+rsvpBtns(s.tournamentId,s.id,s.myRsvp).replace(/data-act="train-rsvp"/g,'data-act="dash-rsvp"')+'</div></div>';});
+  h+='</div>';
+  const pct=p.presencaPct==null?'—':p.presencaPct+'%';
+  h+='<div class="card"><h2 style="margin:0 0 8px">📊 Minha produção</h2>'+
+    '<div class="hd-stat" style="color:var(--ink)">'+
+      '<div class="b"><b>'+(p.treinos||0)+'</b><span>treinos</span></div>'+
+      '<div class="b"><b>'+pct+'</b><span>presença</span></div>'+
+      '<div class="b"><b>'+(p.gols||0)+'</b><span>gols treino</span></div>'+
+      '<div class="b"><b>'+(p.notaMedia==null?'—':p.notaMedia)+'</b><span>nota média</span></div></div>';
+  (p.byTournament||[]).forEach(b=>{h+='<div class="linkrow" data-act="nav" data-h="prontuario/'+b.tournamentId+'/'+esc(ME.id)+'"><div class="l"><span class="ic">📋</span> Prontuário · '+esc(b.tournament)+(b.evaluation&&b.evaluation.overall!=null?' <span class="pill g">avaliação '+b.evaluation.overall+'</span>':'')+'</div><span style="color:var(--mut)">›</span></div>';});
+  h+='<a class="linkrow plain" href="/atleta/'+esc(ME.username||ME.id)+'"><div class="l"><span class="ic">🪪</span> Meu card de atleta (jogos, gols, ranking)</div><span style="color:var(--mut)">›</span></a></div>';
+  h+='<div class="card"><h2 style="margin:0 0 6px">🛡️ Meus times</h2>';
+  if(!teams.length)h+='<div class="empty" style="padding:10px 0">Você ainda não está em nenhum time.<br>Abra um torneio e peça para entrar no seu time.</div>';
+  teams.forEach(t=>{const av=t.logoUrl?'<img class="av" src="'+esc(t.logoUrl)+'" style="object-fit:contain;background:#fff">':'<div class="av">'+esc((t.clubName||'?').slice(0,2).toUpperCase())+'</div>';
+    h+='<div class="listitem card-tap" data-act="open-t" data-id="'+t.tournamentId+'">'+av+'<div class="grow"><div class="nm">'+esc(t.clubName)+'</div><div class="sub">'+esc(t.tournament)+'</div></div><span style="color:var(--mut)">›</span></div>';});
+  h+='</div>';
+  return h;
 }
 
 // ---------- vitrine (public) ----------
@@ -1590,6 +1639,9 @@ document.addEventListener('click',async(ev)=>{
   if(a==='train-notes'){trainSaveNotes(el.dataset.sid);return;}
   if(a==='train-finalize'){trainFinalize(el.dataset.sid);return;}
   if(a==='train-rsvp'){trainRsvp(el.dataset.tid,el.dataset.sid,el.dataset.v);return;}
+  if(a==='logout'){if(confirm('Sair da sua conta?')){localStorage.removeItem('tc_token');localStorage.removeItem('tc_user');location.href='/';}return;}
+  if(a==='dash-rsvp'){try{await api('/trainings/'+el.dataset.sid+'/confirm',{method:'POST',body:{rsvp:el.dataset.v}});toast('Marcado: '+(RSVP_LBL[el.dataset.v]||el.dataset.v));renderHome();}catch(e){toast(e.message);}return;}
+  if(a==='dash-mem'){try{await api('/'+el.dataset.tid+'/memberships/'+el.dataset.mid+'/respond',{method:'POST',body:{action:el.dataset.ac}});toast(el.dataset.ac==='accept'?'Você entrou no time':'Convite recusado');renderHome();}catch(e){toast(e.message);}return;}
   if(a==='train-remind'){trainRemind(el.dataset.sid);return;}
   if(a==='plan-add'){planAddSheet(el.dataset.sid);return;}
   if(a==='bl-save'){planAdd(el.dataset.sid);return;}
