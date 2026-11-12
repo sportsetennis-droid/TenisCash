@@ -105,6 +105,47 @@ function isPublicSizeLabel(value) {
 // ou começando por código de artigo ("350001 TENIS ...", "U23TW014-...").
 const RAW_NFE_NAME = /\b\d{6,14}\b|\bTAM\s*[:.]|-[A-Z]{3}-\d{3}\b|^[A-Z0-9]*\d{4,}[A-Z0-9]*[- ]/i;
 
+// Endurecimento 2026-11-12 (raio-x: 158 de 184 "elegíveis" ainda tinham nome/cor crus).
+// Cada padrão abaixo foi visto em card real que passava na trava antiga.
+function rawNameReasons(name) {
+  const n = clean(name);
+  const out = [];
+  // "... BRANCO 37", "... 34/35", "TAM 42" — tamanho de UMA grade no nome do card inteiro.
+  // Número no fim só conta como tamanho depois de COR: "Gel-Nimbus 26"/"Pegasus 41" são modelo.
+  const trailingSizeAfterColor = /(?:\/[A-ZÀ-Ú]+|\b(?:PRETO|BRANCO|AZUL|VERMELHO|VERDE|AMARELO|ROSA|CINZA|MARINHO|BEGE|ROXO|LILAS|LARANJA|MARROM|CRU|DOURADO|PRATA|GRAFITE|CARAMELO|AMENDOA|VINHO|NUDE|WHITE|BLACK|PINK|BLU|BLUE|RED|GREEN|GRAY|GREY|SILVER|GOLD|NAVY))\s+\d{2}(?:[.,]5)?\s*$/i;
+  if (trailingSizeAfterColor.test(n) || /\s\d{2}\/\d{2}\b/.test(n) || /\bTAM\b/i.test(n)) {
+    out.push('tamanho no nome');
+  }
+  if (/\bREF\b/i.test(n)) out.push('REF no nome');
+  // código de artigo no meio do nome: CT09830001, TP05090001, SEFA217, U01FB043
+  if (/(?:^|[\s(\/-])(?=[A-Z0-9.]*[A-Z]{2})(?=[A-Z0-9.]*\d{3})[A-Z0-9.]{6,}(?=$|[\s)\/-])/i.test(n)) {
+    out.push('codigo de artigo no nome');
+  }
+  if (/CONCEBIDO PARA|DE USO (?:FEMININO|MASCULINO|UNISSEX)|\bADT\.|\bPRATICA DE\b/i.test(n)) {
+    out.push('texto fiscal da NFe no nome');
+  }
+  if (/[\/,;-]\s*$/.test(n)) out.push('nome termina truncado');
+  if (/\S {2,}\S/.test(n)) out.push('espaco duplo (texto colado da NFe)');
+  return out;
+}
+
+// Palavras de cor curtas que são legítimas (não abreviação de fornecedor).
+const SHORT_COLOR_WORDS = new Set([
+  'AZUL', 'ROSA', 'CRU', 'OURO', 'GELO', 'BEGE', 'ROXO', 'MEL', 'LIMA', 'RED', 'BLUE',
+  'GRAY', 'GREY', 'PINK', 'DARK', 'LIME', 'GOLD', 'NAVY', 'MINT', 'SAND', 'ROSE', 'ALL',
+  'OFF', 'TAN', 'NEON', 'CAFE', 'CAQUI', 'ONIX', 'FUME',
+]);
+
+function rawColorReason(color) {
+  const c = clean(color);
+  if (!c) return null;
+  if (/\d/.test(c) || /\bTAM\b/i.test(c)) return 'cor crua (numero/tamanho na cor)';
+  const tokens = c.split(/[\s\/\-]+/).filter(Boolean);
+  if (tokens.some((t) => t.length <= 2 && !/^(e|de|do|da)$/i.test(t))) return 'cor abreviada';
+  if (tokens.some((t) => /^[A-Z]{3,4}$/.test(t) && !SHORT_COLOR_WORDS.has(t))) return 'cor abreviada';
+  return null;
+}
+
 function assessProductForNuvemshop(product, options = {}) {
   const requireConfirmation = options.requireConfirmation !== false;
   const reasons = [];
@@ -151,6 +192,9 @@ function assessProductForNuvemshop(product, options = {}) {
   // nao pode haver erros"). Não corrige nada — só RECUSA o que subiria errado pro cliente.
   if (!clean(ctx.color)) reasons.push('sem cor (risco de foto da cor errada)');
   if (RAW_NFE_NAME.test(clean(product?.name))) reasons.push('nome cru da NFe (codigo/tamanho no nome)');
+  for (const r of rawNameReasons(product?.name)) reasons.push(`nome cru: ${r}`);
+  const colorIssue = rawColorReason(ctx.color);
+  if (colorIssue) reasons.push(colorIssue);
   if (!(cost > 0)) reasons.push('sem custo gravado (preco com markup nao verificavel)');
   if (placeholderStock > 0) reasons.push('tamanho tecnico (T-/codigo) com estoque');
   const barcodeCount = {};
@@ -226,5 +270,7 @@ module.exports = {
   nuvemshopStockStoreIds,
   nuvemshopStoreStocksQuery,
   physicalStock,
+  rawColorReason,
+  rawNameReasons,
   requiresPhysicalSizeConfirmation,
 };
