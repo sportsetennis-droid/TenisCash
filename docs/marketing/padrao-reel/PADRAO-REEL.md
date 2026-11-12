@@ -31,6 +31,8 @@ Gancho → oferta → motivos → onde comprar → fechamento com o nome da loja
 | Onde | "São cinco lojas te esperando: Tambiá, Bessa, Tambaú, Manaíra e Campina Grande!" | 11,6–17,4 s |
 | Fechamento | "Motivo não falta! A Antecipa Black já está nas lojas." + "Vem pra Isportis, i Tênis!" | 17,4–25,2 s |
 
+**Nomes oficiais das lojas (dono 2026-11-12):** Sports & Tennis Tambiá · Sports & Tennis Praia de Manaíra · Sports & Tennis Praia de Tambaú · Sports & Tennis Praia do Bessa · Sports & Tennis Rainha da Borborema (a de Campina Grande). Instagram (convidar as 5 como colaboradoras): @sportsetennistambia · @sportsetennismanaira · @sportsetennistambau · @sportsetennisbessa · @sportsetenniscg.
+
 **Regras de texto (inquebráveis):** a voz lê o que aparece na tela. "Até X%" só se autorizado e SEMPRE com "em produtos selecionados". Nunca inventar prazo, estoque, preço, "só hoje", "últimas unidades". Lojas exatamente como o dono definiu: Tambiá - Shopping Tambiá · Bessa — Parahyba Mall · Tambaú — Pirâmide Shopping Tambaú · Praia de Manaíra — Liv Mall · Campina Grande — Complexo K. Revisão do `safety-agent` antes de publicar.
 
 ## 3. Animação (técnicas Sanji Chien)
@@ -85,6 +87,10 @@ Passos:
 11. **safety-agent** → só então publicar (com ordem do dono).
 
 ## 7. Publicação
+
+**REGRA (dono 2026-11-12): toda publicação convida as 5 lojas como colaboradoras e os 5 convites têm que ser ACEITOS.** No navegador o Instagram não mostra o botão "Aceitar" → aceitar no app do celular, em cada conta de loja (Notificações → convite → Aceitar), ou via Graph API `collaboration_invites` com o token de cada loja.
+
+Publicação pelo navegador (Chrome logado em @sportsetennis): Criar → Postar → subir o MP4 → Cortar "Original" → capa = quadro com o título (subir JPG) → legenda → Adicionar colaboradores (as 5) → **Adicionar rótulo de IA = ligado** (voz sintética) → Compartilhar. Pela API o limite é 3 colaboradores; pelo navegador cabem as 5.
 
 - Instagram @sportsetennis via Graph API: IG Business ID `17841472762351439` + `META_PAGE_TOKEN` (ver memória `instagram-publicacao-api`). Ou o dono posta pelo app.
 - Legenda segue as mesmas regras (até X% + produtos selecionados, lojas exatas, sem prazo/estoque).
