@@ -472,6 +472,14 @@ router.get('/my-dashboard', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Meus jogos oficiais (passados/próximos) — ?scope=past|upcoming|all&limit=. Requer login.
+router.get('/my-games', authMiddleware, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json(await require('../services/athleteDashboard').myGames(req.userId, { scope: String(req.query.scope || 'all'), limit: req.query.limit }));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Torneios onde EU tenho papel (fundador ou nomeado) — pra home rotear. Requer login.
 router.get('/my-tournaments', authMiddleware, async (req, res) => {
   try {
@@ -1380,8 +1388,8 @@ router.post('/matches/:matchId/teams', authMiddleware, async (req, res) => {
 
 // =====================================================================
 // SÚMULA DIGITAL + ELENCO + ESTATÍSTICAS (futsal)
-// ⚠️ Escritas SEM token por enquanto (dono pediu) — re-proteger depois com
-// credencial de árbitro. Leituras são públicas.
+// Escritas exigem login + papel (coordenador/árbitro/admin/treinador do time —
+// ver tournamentRoles.can). Leituras são públicas.
 // =====================================================================
 
 // Elenco de um time (lista) — público
@@ -1732,6 +1740,15 @@ router.get('/athletes/:handle/card', async (req, res) => {
 });
 
 // Ranking por esporte (rating)
+// Artilharia/assistências do ESPORTE (todos os torneios dele) — pra esportes de time,
+// onde o rating individual não se aplica. Público.
+router.get('/rankings/:sport/scorers', async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json(await require('../services/athleteDashboard').sportScorers(req.params.sport, { limit: req.query.limit }));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.get('/rankings/:sport', async (req, res) => {
   try {
     const ratings = await prisma.athleteRating.findMany({

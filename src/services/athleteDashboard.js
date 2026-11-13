@@ -163,4 +163,93 @@ async function gameProduction(uid, tById) {
   return out;
 }
 
-module.exports = { dashboard, gameProduction };
+
+// Jogos oficiais dos meus times (vínculo ATIVO ou nome do elenco ligado à conta).
+// scope: upcoming (SCHEDULED/LIVE) | past (FINISHED/WALKOVER) | all.
+async function myGames(userId, { scope = 'all', limit = 50 } = {}) {
+  const uid = String(userId);
+  const lim = Math.max(1, Math.min(Number(limit) || 50, 200));
+  const mems = await prisma.teamMembership.findMany({ where: { userId: uid, status: 'ACTIVE' }, select: { tournamentId: true, clubName: true } });
+  const entryIds = new Set();
+  for (const m of mems) {
+    const es = await prisma.tournamentEntry.findMany({ where: { tournamentId: m.tournamentId, name: m.clubName }, select: { id: true } });
+    es.forEach((e) => entryIds.add(e.id));
+  }
+  const linked = await prisma.rosterPlayer.findMany({ where: { userId: uid }, select: { entryId: true } });
+  linked.forEach((p) => entryIds.add(p.entryId));
+  const ids = [...entryIds];
+  if (!ids.length) return { games: [] };
+  const statuses = scope === 'past' ? ['FINISHED', 'WALKOVER'] : scope === 'upcoming' ? ['SCHEDULED', 'LIVE'] : ['SCHEDULED', 'LIVE', 'FINISHED', 'WALKOVER'];
+  const ms = await prisma.tournamentMatch.findMany({
+    where: { status: { in: statuses }, OR: [{ homeEntryId: { in: ids } }, { awayEntryId: { in: ids } }] },
+    include: {
+      homeEntry: { select: { name: true, logoUrl: true } },
+      awayEntry: { select: { name: true, logoUrl: true } },
+      category: { select: { name: true } },
+      tournament: { select: { name: true, slug: true } },
+    },
+    orderBy: [{ scheduledAt: scope === 'upcoming' ? 'asc' : 'desc' }],
+    take: lim,
+  });
+  const games = ms.map((m) => {
+    const myEntryId = ids.includes(m.homeEntryId) ? m.homeEntryId : m.awayEntryId;
+    let result = null;
+    if (m.status === 'FINISHED' || m.status === 'WALKOVER') {
+      if (m.winnerEntryId) result = m.winnerEntryId === myEntryId ? 'W' : 'L';
+      else if (m.homeScore != null && m.awayScore != null) {
+        const my = myEntryId === m.homeEntryId ? m.homeScore : m.awayScore;
+        const op = myEntryId === m.homeEntryId ? m.awayScore : m.homeScore;
+        result = my > op ? 'W' : my < op ? 'L' : 'D';
+      }
+    }
+    return {
+      id: m.id, tournamentId: m.tournamentId, tournament: m.tournament ? m.tournament.name : '', slug: m.tournament ? m.tournament.slug : null,
+      category: m.category ? m.category.name : '', stage: m.stage, status: m.status, scheduledAt: m.scheduledAt, location: m.location,
+      home: m.homeEntry ? m.homeEntry.name : (m.homeSourceLabel || 'A definir'), away: m.awayEntry ? m.awayEntry.name : (m.awaySourceLabel || 'A definir'),
+      homeLogo: m.homeEntry ? m.homeEntry.logoUrl : null, awayLogo: m.awayEntry ? m.awayEntry.logoUrl : null,
+      homeScore: m.homeScore, awayScore: m.awayScore, homePenalties: m.homePenalties, awayPenalties: m.awayPenalties,
+      winnerEntryId: m.winnerEntryId, myEntryId, result,
+    };
+  });
+  return { games };
+}
+
+// Artilharia/assistências de um ESPORTE somando todos os torneios dele (súmula).
+// Agrupa por conta ligada (userId) ou, sem conta, por nome+time. Só jogos encerrados.
+async function sportScorers(sport, { limit = 50 } = {}) {
+  const lim = Math.max(1, Math.min(Number(limit) || 50, 200));
+  const ts = await prisma.tournament.findMany({ where: { sport: String(sport) }, select: { id: true } });
+  const tids = ts.map((t) => t.id);
+  if (!tids.length) return { sport, scorers: [] };
+  const matches = await prisma.tournamentMatch.findMany({ where: { tournamentId: { in: tids }, status: { in: ['FINISHED', 'WALKOVER'] } }, select: { id: true, homeEntryId: true, awayEntryId: true } });
+  if (!matches.length) return { sport, scorers: [] };
+  const gamesByEntry = {};
+  matches.forEach((m) => { [m.homeEntryId, m.awayEntryId].forEach((e) => { if (e) gamesByEntry[e] = (gamesByEntry[e] || 0) + 1; }); });
+  const evs = await prisma.matchEvent.findMany({ where: { matchId: { in: matches.map((m) => m.id) }, type: { in: ['GOAL', 'ASSIST', 'YELLOW', 'RED'] }, playerId: { not: null } }, select: { type: true, playerId: true } });
+  const pids = [...new Set(evs.map((e) => e.playerId))];
+  if (!pids.length) return { sport, scorers: [] };
+  const players = await prisma.rosterPlayer.findMany({ where: { id: { in: pids } }, select: { id: true, name: true, entryId: true, userId: true } });
+  const pById = Object.fromEntries(players.map((p) => [p.id, p]));
+  const entries = await prisma.tournamentEntry.findMany({ where: { id: { in: [...new Set(players.map((p) => p.entryId))] } }, select: { id: true, name: true } });
+  const eName = Object.fromEntries(entries.map((e) => [e.id, e.name]));
+  const agg = {};
+  const keyOf = (p) => (p.userId ? 'u:' + p.userId : 'n:' + String(p.name).trim().toLowerCase() + '|' + String(eName[p.entryId] || '').toLowerCase());
+  const seenEntry = {};
+  for (const e of evs) {
+    const p = pById[e.playerId]; if (!p) continue;
+    const k = keyOf(p);
+    const a = agg[k] = agg[k] || { name: p.name, team: eName[p.entryId] || '', userId: p.userId || null, goals: 0, assists: 0, yellow: 0, red: 0, games: 0 };
+    if (!seenEntry[k + '#' + p.entryId]) { seenEntry[k + '#' + p.entryId] = 1; a.games += gamesByEntry[p.entryId] || 0; }
+    if (e.type === 'GOAL') a.goals++; else if (e.type === 'ASSIST') a.assists++; else if (e.type === 'YELLOW') a.yellow++; else if (e.type === 'RED') a.red++;
+  }
+  const uids = Object.values(agg).map((a) => a.userId).filter(Boolean);
+  const users = uids.length ? await prisma.user.findMany({ where: { id: { in: uids } }, select: { id: true, username: true } }) : [];
+  const uName = Object.fromEntries(users.map((u) => [u.id, u.username]));
+  const scorers = Object.values(agg)
+    .map((a) => ({ ...a, username: a.userId ? (uName[a.userId] || null) : null }))
+    .sort((x, y) => y.goals - x.goals || y.assists - x.assists || x.name.localeCompare(y.name))
+    .slice(0, lim);
+  return { sport, scorers };
+}
+
+module.exports = { dashboard, gameProduction, myGames, sportScorers };
