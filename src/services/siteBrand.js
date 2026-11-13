@@ -107,11 +107,7 @@ function manifest() {
 // ---- Torneios (/torneios.html) no domínio do clube ----
 const TORNEIOS = path.join(__dirname, '../../public/torneios.html');
 const TORNEIOS_SWAPS = [
-  ['<title>TenisCash — Torneios</title>', '<title>Torneios — Club Sports &amp; Tennis</title>'],
   ['</head>', '<link rel="icon" type="image/svg+xml" href="/brand/sports-tennis-icon.svg?v=2">\n<link rel="apple-touch-icon" href="/brand/sports-tennis-icon-180.png?v=2">\n</head>'],
-  ['Use a mesma conta do TenisCash.', 'Use a mesma conta do Club Sports &amp; Tennis.'],
-  ['Atletas precisam ter conta TenisCash (@username).', 'Atletas precisam ter conta no Club Sports &amp; Tennis (@username).'],
-  ['Atletas têm que ter conta TenisCash.', 'Atletas têm que ter conta no Club Sports &amp; Tennis.'],
   // No clube, a entrada/cadastro é a tela da marca (/) — não o login simples daqui.
   ['function renderLogin(){', "function renderLogin(){location.replace('/');return;"],
   ["let html=topbar('Torneios');", "let html=topbar('Club Sports & Tennis');"],
