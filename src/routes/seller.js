@@ -2645,5 +2645,135 @@ router.post('/sale/:id/cancel', authMiddleware, sellerOnly, async (req, res) => 
   }
 });
 
+// =====================================================================
+// REATIVAR VENDA CANCELADA POR ENGANO (dono 2026-11-12: "essa venda foi
+// cancelada errada, corrija isso"). Desfaz EXATAMENTE o /cancel:
+//  1) estoque: baixa de novo SÓ o que o cancelamento devolveu (movimento
+//     'sale_cancel' do item) -> movimento 'sale_reactivate'
+//  2) cashback: devolve ao cliente o que o estorno TIROU de verdade (o estorno
+//     trava em 0, então pode ter tirado menos que o valor da venda)
+//  3) comissão por marca: recria com a regra da venda (só quando a venda tem
+//     vendedor de verdade) e o % atual da marca
+//  4) jornada de relacionamento: reabre o que o cancelamento reverteu
+// Só admin/gerente. Registra tudo (transação + nota + log).
+// =====================================================================
+router.post('/sale/:id/reactivate', authMiddleware, async (req, res) => {
+  try {
+    if (!['admin', 'superadmin', 'manager'].includes(req.userRole)) {
+      return res.status(403).json({ error: 'Só administrador/gerente pode reativar venda cancelada.' });
+    }
+    const saleId = String(req.params.id || '');
+    const reason = String((req.body && req.body.reason) || '').trim();
+    if (!reason) return res.status(400).json({ error: 'Informe o motivo da reativação.' });
+
+    const sale = await prisma.sale.findUnique({ where: { id: saleId }, include: { items: true, seller: { select: { id: true, role: true } } } });
+    if (!sale) return res.status(404).json({ error: 'Venda não encontrada.' });
+    if (sale.status !== 'canceled') return res.status(400).json({ error: 'Esta venda não está cancelada.' });
+
+    const operatorId = req.userId;
+    const result = await prisma.$transaction(async (tx) => {
+      // 1) ESTOQUE — só os itens que o cancelamento devolveu
+      let stockOut = 0;
+      for (const it of sale.items) {
+        const back = await tx.storeStockMovement.findFirst({ where: { saleItemId: it.id, type: 'sale_cancel' }, orderBy: { createdAt: 'desc' } });
+        if (!back) continue;
+        const undone = await tx.storeStockMovement.findFirst({ where: { saleItemId: it.id, type: 'sale_reactivate', createdAt: { gt: back.createdAt } } });
+        if (undone) continue;
+        await applyStoreStockDelta(tx, {
+          storeId: back.storeId,
+          productSizeId: back.productSizeId,
+          saleId,
+          saleItemId: it.id,
+          quantity: -Math.abs(back.quantity),
+          type: 'sale_reactivate',
+          source: 'admin_reactivate_api',
+          reason,
+          metadata: { reactivatedBy: operatorId },
+        });
+        stockOut += Math.abs(back.quantity);
+      }
+
+      // 2) CASHBACK — devolve o que o estorno tirou
+      let balanceRestored = 0;
+      const canceledTxn = await tx.transaction.findFirst({ where: { type: 'sale_canceled', metadata: { contains: saleId } }, orderBy: { createdAt: 'desc' } });
+      if (canceledTxn && canceledTxn.receiverId && canceledTxn.amount) {
+        const wanted = Math.abs(canceledTxn.amount);
+        let removed = wanted;
+        if (!(canceledTxn.balanceAfter > 0)) {
+          // o estorno travou em 0: tirou só o saldo que havia antes dele
+          const before = await tx.transaction.findFirst({
+            where: { receiverId: canceledTxn.receiverId, createdAt: { lt: canceledTxn.createdAt }, balanceAfter: { not: null } },
+            orderBy: { createdAt: 'desc' },
+            select: { balanceAfter: true },
+          });
+          if (before && before.balanceAfter != null) removed = Math.max(0, Math.min(wanted, before.balanceAfter));
+        }
+        removed = Math.round(removed * 100) / 100;
+        if (removed > 0) {
+          const u = await tx.user.update({ where: { id: canceledTxn.receiverId }, data: { balance: { increment: removed } }, select: { balance: true } });
+          await tx.transaction.create({
+            data: {
+              type: 'sale_reactivated',
+              amount: removed,
+              description: `Venda #${saleId.slice(0, 8)} reativada (cancelamento desfeito)`,
+              receiverId: canceledTxn.receiverId,
+              balanceAfter: u.balance,
+              metadata: JSON.stringify({ saleId, reactivatedBy: operatorId, reason }),
+            },
+          });
+          balanceRestored = removed;
+        }
+      }
+
+      // 3) COMISSÃO POR MARCA — mesma regra da venda (só com vendedor de verdade)
+      let commissionsCreated = 0;
+      const existing = await tx.saleCommission.count({ where: { saleId } });
+      if (!existing && sale.seller && sale.seller.role === 'seller') {
+        const byBrand = new Map();
+        for (const it of sale.items) byBrand.set(it.brand, (byBrand.get(it.brand) || 0) + (it.totalPrice || 0));
+        const rules = await tx.brandCommission.findMany({ where: { brand: { in: [...byBrand.keys()] }, active: true } });
+        const data = rules.filter((bc) => (byBrand.get(bc.brand) || 0) > 0).map((bc) => ({
+          saleId, sellerId: sale.sellerId, brand: bc.brand, saleAmount: byBrand.get(bc.brand),
+          pct: bc.commissionPct, amount: Math.round(byBrand.get(bc.brand) * bc.commissionPct / 100 * 100) / 100,
+        }));
+        if (data.length) { await tx.saleCommission.createMany({ data }); commissionsCreated = data.length; }
+      }
+
+      // 4) JORNADA DE RELACIONAMENTO — reabre o que o cancelamento reverteu
+      let journeyRestored = false;
+      const journey = await tx.sellerCommissionJourney.findUnique({ where: { saleId } });
+      if (journey && journey.status === 'CANCELED') {
+        const stages = await tx.sellerCommissionStage.findMany({ where: { journeyId: journey.id, status: 'REVERSED', reversalReason: journey.cancellationReason } });
+        for (const st of stages) {
+          await tx.sellerCommissionStage.update({
+            where: { id: st.id },
+            data: { status: st.completedAt ? 'COMPLETED' : (st.submittedAt ? 'SUBMITTED' : 'PENDING'), reversedAt: null, reversalReason: null },
+          });
+        }
+        await tx.sellerCommissionJourney.update({
+          where: { id: journey.id },
+          data: { status: journey.completedAt ? 'COMPLETED' : 'ACTIVE', earnedAmount: journey.reversedAmount, reversedAmount: 0, canceledAt: null, cancellationReason: null },
+        });
+        journeyRestored = true;
+      }
+
+      // 5) Venda volta a valer
+      const prevNote = String(sale.note || '');
+      await tx.sale.update({
+        where: { id: saleId },
+        data: { status: 'completed', note: ('REATIVADA (' + reason + ') | antes: ' + prevNote).slice(0, 1000) },
+      });
+
+      return { stockOut, balanceRestored, commissionsCreated, journeyRestored };
+    });
+
+    console.log('[sale reactivate]', JSON.stringify({ saleId, by: operatorId, reason, ...result }));
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error('Erro reativar venda:', err);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
 

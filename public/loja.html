@@ -2045,6 +2045,9 @@ function showSaleDetail(saleId) {
   let fiscalBlock;
   if (s.status === 'canceled') {
     fiscalBlock = `<div style="background:#fff1f0;border:2px solid #d70015;border-radius:10px;padding:12px;margin-top:12px;"><div style="color:#d70015;font-weight:800;font-size:15px;">🚫 Venda cancelada</div>${s.note ? `<div style="font-size:12px;color:#6e6e73;margin-top:6px;">${s.note}</div>` : ''}<div style="font-size:12px;color:#6e6e73;margin-top:6px;">Estoque devolvido, cashback estornado e comissões removidas.</div></div>`;
+    if (me && ['admin', 'superadmin', 'manager'].includes(me.role)) {
+      fiscalBlock += `<button type="button" data-reactivate-sale="${s.id}" style="width:100%;margin-top:10px;padding:13px;background:#E5571E;color:#fff;border:none;border-radius:8px;font-weight:800;font-size:15px;cursor:pointer;">♻️ Reativar venda (cancelada por engano)</button>`;
+    }
   } else if (f && f.status === 'authorized') {
     fiscalBlock = `<div style="background:#e8f7ee;border:2px solid #0a843d;border-radius:10px;padding:12px;margin-top:12px;"><div style="color:#0a843d;font-weight:800;font-size:15px;">✅ Cupom #${f.number} emitido</div><div style="font-family:monospace;font-size:10px;word-break:break-all;color:#6e6e73;margin:6px 0;">${f.accessKey || ''}</div><button onclick="reprintSale('${f.id}')" style="width:100%;padding:13px;background:#E5571E;color:#fff;border:none;border-radius:8px;font-weight:800;font-size:15px;cursor:pointer;">🖨️ Imprimir 2ª via</button><div style="display:flex;gap:6px;margin-top:8px;"><input id="waCupomPhone" inputmode="numeric" placeholder="WhatsApp do cliente (com DDD)" value="${s.clientPhone || ''}" style="flex:1;padding:12px;border:1px solid #bbb;border-radius:8px;font-size:14px;"><button id="waCupomBtn" onclick="sendCupomWhats('${f.id}')" style="padding:0 16px;background:#25D366;color:#fff;border:none;border-radius:8px;font-weight:800;font-size:14px;cursor:pointer;white-space:nowrap;">📲 Enviar</button></div></div>`;
   } else {
@@ -2152,6 +2155,28 @@ async function sendCupomWhats(documentId) {
 }
 
 // Cancela uma venda registrada que AINDA NÃO emitiu cupom: devolve estoque, estorna cashback, remove comissões.
+// Reativar venda cancelada por engano (só admin/gerente). Botão gerado por JS ->
+// listener por delegação (sem onclick em HTML gerado, regra do projeto).
+document.addEventListener('click', async (ev) => {
+  const btn = ev.target.closest && ev.target.closest('[data-reactivate-sale]');
+  if (!btn) return;
+  const saleId = btn.getAttribute('data-reactivate-sale');
+  const reason = prompt('Por que está reativando esta venda? (fica registrado)');
+  if (reason === null) return;
+  if (!reason.trim()) { alert('Informe o motivo.'); return; }
+  if (!confirm('Reativar esta venda?\n\nVai BAIXAR o estoque de novo, DEVOLVER o cashback ao cliente e RECRIAR as comissões.')) return;
+  btn.disabled = true;
+  try {
+    const r = await api('/api/seller/sale/' + saleId + '/reactivate', { method: 'POST', body: JSON.stringify({ reason: reason.trim() }) });
+    alert('✅ Venda reativada.\n📦 Estoque baixado: ' + (r.stockOut || 0) + ' un\n💳 Cashback devolvido: ' + fmt(r.balanceRestored || 0) + '\n🧾 Comissões recriadas: ' + (r.commissionsCreated || 0) + (r.journeyRestored ? '\n🤝 Jornada do vendedor reaberta' : ''));
+    closeSaleModal();
+    loadSalesList();
+  } catch (e) {
+    btn.disabled = false;
+    alert('Não reativou: ' + e.message);
+  }
+});
+
 async function cancelSale(saleId) {
   const reason = prompt('Por que está cancelando esta venda? (motivo fica registrado)');
   if (reason === null) return;              // fechou o prompt
