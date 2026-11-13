@@ -642,6 +642,78 @@ h1,h2,h3{font-weight:800}
 .brk .cardk::before{width:8px;height:11px}
 .teaser.g4{grid-template-columns:auto 1fr 1fr}
 
+/* ---------- papéis: função hoje + gestão ---------- */
+.o0{order:0}
+.rolec{margin-top:24px;padding:18px 18px 0;border-radius:var(--r);overflow:hidden}
+.rolec-h h2{font-size:22px;font-stretch:112%;letter-spacing:-.015em;margin-top:6px}
+.rps{display:flex;flex-wrap:wrap;gap:6px}
+.rolec-h .rps{margin-top:12px}
+.rolec .rlist{margin-top:6px}
+.rolec .lrow{min-height:76px;align-items:center}
+.rolec .lrow .tx i{display:flex;align-items:center;gap:6px;font-style:normal;font-size:10px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-bottom:3px}
+.rolec .lrow .tx i.acc{color:var(--acc)}
+.rolec .lrow .tx i.warn{color:#8a5a00}
+.rolec .lrow .tx i u{width:6px;height:6px;border-radius:50%;background:currentColor;animation:pulse 1.2s ease-in-out infinite}
+.lrow .lic.acc{background:var(--acc);color:var(--onacc)}
+.lrow .lic.warn{background:var(--warnbg);color:var(--warntx)}
+.lrow .side{flex:none;display:flex;align-items:center;gap:6px}
+.rolec .more{display:flex;align-items:center;justify-content:center;gap:4px;min-height:50px;margin:0 -18px;border-top:1px solid var(--line);font-size:14px;font-weight:800;color:var(--acc2)}
+.rolec .more svg{width:16px;height:16px}
+.glead{margin:-10px 0 4px;color:var(--mut);font-size:14.5px;max-width:52ch}
+.refc{display:block;padding:16px;margin-bottom:10px}
+.orgc,.cgrid>.team{margin-bottom:10px}
+.refc .row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.refc .when{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--acc2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.refc .gteams{margin-top:14px}
+.refc .meta{margin-top:14px;font-size:12.5px}
+.refc .go{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line);font-size:14px;font-weight:800;color:var(--acc2)}
+.refc .go svg{width:18px;height:18px}
+.refc.wh .go{color:var(--acc)}
+.trow{display:flex;align-items:center;gap:12px;min-height:60px;padding:10px 0;border-bottom:1px solid var(--line)}
+.trow:last-child{border-bottom:0}
+.trow .datebox{width:44px;height:50px;border-radius:12px}
+.trow .datebox b{font-size:21px}
+.trow .tx{flex:1;min-width:0}
+.trow .tx b{display:block;font-size:14.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trow .tx span{display:block;font-size:12.5px;color:var(--mut);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trow>svg{width:18px;height:18px;color:var(--dim);flex:none}
+.trow .datebox.warn{background:var(--warnbg)}
+.trow .datebox.warn i{color:var(--warntx)}
+.rolec .lrow .tx b{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.25}
+.tlist{margin-top:14px}
+.tlist .eyebrow{display:block;margin:6px 0 2px}
+.orgc{padding:18px}
+.orgc-h{display:flex;align-items:center;gap:14px}
+.orgc-h .lic{width:48px;height:48px;border-radius:14px;background:#fff;color:#D9461F;display:grid;place-items:center;flex:none;box-shadow:0 10px 18px -12px rgba(60,16,0,.9)}
+.orgc-h .lic svg{width:22px;height:22px}
+.orgc-h .tx{flex:1;min-width:0}
+.orgc-h .tx b{display:block;font-size:17px;font-weight:800;font-stretch:108%;line-height:1.2;overflow-wrap:anywhere}
+.orgc-h .tx span{display:block;font-size:12.5px;color:var(--mut);margin-top:4px}
+.orgc .rps{margin-top:14px}
+.orgc .team-a{margin-top:14px}
+.gfoot{display:flex;justify-content:center;margin-top:30px}
+/* notificações tocáveis */
+a.nrow{position:relative;align-items:flex-start;transition:background .2s}
+a.nrow>div{flex:1;min-width:0}
+a.nrow>svg{width:18px;height:18px;color:var(--dim);flex:none;align-self:center}
+a.nrow:active{background:rgba(255,255,255,.08)}
+/* ranking: artilharia */
+.rkv{margin-top:14px}
+.pod .tmn{display:block;width:100%;margin-top:3px;font-size:11.5px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pod .rt small,.rk .v small,.mypos .v small{font-size:.42em;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-left:3px;opacity:.75}
+/* passkey */
+.pkbtn{margin-top:10px!important}
+.pkbtn svg{width:22px;height:22px}
+.pkc{padding:18px}
+.pkc-h{display:flex;align-items:center;gap:14px}
+.pkc-h .lic{width:44px;height:44px;border-radius:14px;background:var(--card2);display:grid;place-items:center;color:var(--acc2);flex:none}
+.pkc-h .lic svg{width:22px;height:22px}
+.pkc-h .tx{flex:1;min-width:0}
+.pkc-h .tx b{display:block;font-size:15.5px;font-weight:700}
+.pkc-h .tx span{display:block;font-size:12.5px;color:var(--mut);margin-top:2px}
+.pkc p{margin-top:12px;font-size:13.5px;color:var(--mut);line-height:1.5}
+.pkc .btn{margin-top:14px}
+
 /* ---------- tablet: layout mobile alargado ---------- */
 @media (min-width:768px) and (max-width:1023px){
   #app{max-width:720px}
@@ -747,6 +819,8 @@ h1,h2,h3{font-weight:800}
   .apanel .card{background:rgba(255,255,255,.1)}
   .apanel .btn.full{margin-top:18px!important}
 
+  .dgrid.g2{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .dgrid.g2 .cgrid{grid-template-columns:minmax(0,1fr)}
   .dgrid.prod1{grid-template-columns:minmax(0,1.08fr) minmax(0,1fr)}
   .dgrid.prod1 .sec-h{margin-top:0!important}
   .gp{padding:30px 30px 26px}
@@ -792,6 +866,13 @@ h1,h2,h3{font-weight:800}
   .page.narrow .dhero .vs{max-width:600px;margin-left:auto;margin-right:auto}
   .page.narrow .dhero .vs .tm b{font-size:18px}
   .nlist{padding:6px 24px;border-radius:var(--r);background:var(--card);box-shadow:inset 0 0 0 1px var(--line),var(--sh)}
+  a.nrow:hover{background:rgba(255,255,255,.07);box-shadow:-24px 0 0 rgba(255,255,255,.07),24px 0 0 rgba(255,255,255,.07)}
+  .dgrid.home .o0{margin-top:0}
+  .dgrid.home .o0+.o1>*{margin-top:24px}
+  .rkv{max-width:480px}
+  .rolec .lrow:hover .lic{filter:brightness(.97)}
+  .rolec .more:hover{background:rgba(234,81,40,.06)}
+  .refc.press:hover,.orgc:hover{transform:translateY(-3px)}
 
   /* modais centrados */
   #scrim,#sheet,#toast{position:fixed}
@@ -911,7 +992,11 @@ var I={
  id:ic('<rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="8.5" cy="11" r="2"/><path d="M5.8 16c.5-1.4 1.5-2 2.7-2s2.2.6 2.7 2M14 10h4M14 14h3"/>'),
  cog:ic('<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>'),
  eye:ic('<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.8"/>'),
- flag:ic('<path d="M5.5 21V4M5.5 5h11l-2 3.5 2 3.5h-11"/>')
+ flag:ic('<path d="M5.5 21V4M5.5 5h11l-2 3.5 2 3.5h-11"/>'),
+ whistle:ic('<path d="M3.5 12.5a5 5 0 0 0 9.6 1.9L20.5 11V7H9.5a5 5 0 0 0-6 5.5Z"/><circle cx="8.5" cy="12.5" r="1.5"/><path d="M13 7V4.5"/>'),
+ clip:ic('<rect x="5" y="4.5" width="14" height="16" rx="2.5"/><path d="M9 4.5V3h6v1.5"/><path d="m9 12.5 2 2 4-4.2"/>'),
+ face:ic('<path d="M4 8.5V6.5A2.5 2.5 0 0 1 6.5 4h2M15.5 4h2A2.5 2.5 0 0 1 20 6.5v2M20 15.5v2a2.5 2.5 0 0 1-2.5 2.5h-2M8.5 20h-2A2.5 2.5 0 0 1 4 17.5v-2"/><path d="M9 9.5v1.2M15 9.5v1.2M12.2 9.5v3.6h-1M9.4 15.6c1.5 1.1 3.7 1.1 5.2 0"/>'),
+ grid:ic('<rect x="4" y="4" width="6.5" height="6.5" rx="1.8"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.8"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.8"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.8"/>')
 };
 var COURT='<svg class="court" viewBox="0 0 400 640" fill="none" stroke="#fff" stroke-width="2.4" preserveAspectRatio="none" aria-hidden="true"><rect x="12" y="12" width="376" height="616"/><path d="M12 320h376"/><circle cx="200" cy="320" r="62"/><circle cx="200" cy="320" r="3" fill="#fff"/><path d="M100 12c0 62 44 104 100 104s100-42 100-104M100 628c0-62 44-104 100-104s100 42 100 104"/><path d="M160 12v-0M150 12h100M150 628h100"/><circle cx="200" cy="96" r="3" fill="#fff"/><circle cx="200" cy="544" r="3" fill="#fff"/></svg>';
 
@@ -920,10 +1005,12 @@ function crest(name,logo,size){var u=safeUrl(logo);if(u)return '<span class="cre
 
 /* ===================== state ===================== */
 var S={me:null,dash:null,card:null,notif:null,hist:null,histState:'',pront:{},train:{},err:null,
-       agendaTab:'up',agendaF:'all',agSel:'',prodTid:null,loginMode:'phone',loading:false,rank:{},rkSport:null,chal:null};
+       agendaTab:'up',agendaF:'all',agSel:'',prodTid:null,loginMode:'phone',loading:false,rank:{},rkSport:null,chal:null,
+       scor:{},rkView:'gols',staffState:'',ref:{},mteam:{},ttr:{},pk:null};
 function token(){try{return localStorage.getItem('tc_token')||'';}catch(e){return '';}}
 function setSession(tk,user){try{if(tk)localStorage.setItem('tc_token',tk);if(user)localStorage.setItem('tc_user',JSON.stringify(user));}catch(e){}}
-function clearSession(){try{localStorage.removeItem('tc_token');localStorage.removeItem('tc_user');}catch(e){}S.me=S.dash=S.card=S.notif=S.hist=S.chal=null;S.pront={};S.train={};S.rank={};S.histState='';}
+function resetStaff(){S.staffState='';S.ref={};S.mteam={};S.ttr={};}
+function clearSession(){try{localStorage.removeItem('tc_token');localStorage.removeItem('tc_user');}catch(e){}S.me=S.dash=S.card=S.notif=S.hist=S.chal=S.pk=null;S.pront={};S.train={};S.rank={};S.scor={};S.histState='';resetStaff();}
 
 /* ===================== API ===================== */
 function api(path,o){
@@ -932,7 +1019,7 @@ function api(path,o){
   var h={Accept:'application/json'},tk=token();
   if(tk)h.Authorization='Bearer '+tk;
   if(o.body!==undefined)h['Content-Type']='application/json';
-  return fetch('/api'+path,{method:o.method||'GET',headers:h,body:o.body!==undefined?JSON.stringify(o.body):undefined,cache:'no-store'})
+  return fetch('/api'+path,{method:o.method||'GET',headers:h,body:o.body!==undefined?JSON.stringify(o.body):undefined,cache:'no-store',keepalive:!!o.keepalive})
   .catch(function(){throw new Error('Sem conexão. Verifique sua internet e tente de novo.');})
   .then(function(r){
     if(r.status===401&&!o.login){sessionExpired();var e=new Error('Sessão expirada. Entre novamente.');e.status=401;throw e;}
@@ -949,7 +1036,7 @@ function sessionExpired(){clearSession();closeSheet();if(!PUB[curRoute().name]){
 function loadCore(force){
   if(S.loading)return S.loading;
   if(S.dash&&!force)return Promise.resolve();
-  S.err=null;
+  S.err=null;if(force)resetStaff();
   S.loading=api('/auth/me').then(function(r){
     S.me=r.user||r;if(r.token)setSession(r.token,null);
     var id=S.me.username||S.me.id;
@@ -970,15 +1057,26 @@ function myTids(){var s={};((S.dash&&S.dash.teams)||[]).forEach(function(t){s[t.
 function handle(){return (S.card&&S.card.user&&S.card.user.username)||(S.me&&S.me.username)||'';}
 function avatarUrl(){return (S.card&&S.card.user&&S.card.user.avatarUrl)||(S.me&&S.me.avatarUrl)||'';}
 
-/* histórico: treinos passados + jogos (encerrados) dos meus times, via endpoints existentes */
+/* histórico: treinos passados (my-trainings) + jogos realizados (my-games; se falhar, varre categoria por categoria) */
 function loadHist(){
   if(S.histState)return;
   S.histState='loading';
-  var tids=myTids(),games=[],trains=[];
-  Promise.all(tids.map(function(tid){
+  var tids=myTids(),trains=[];
+  var tr=Promise.all(tids.map(function(tid){
+    var t=tById(tid)||{};
+    return api(T+'/'+tid+'/my-trainings').then(function(r){(r.sessions||[]).forEach(function(s){trains.push(Object.assign({},s,{tournament:t.name||''}));});}).catch(function(){});
+  }));
+  var gm=api(T+'/my-games?scope=past&limit=60').then(function(r){
+    if(!r||!Array.isArray(r.games))throw new Error('formato inesperado');
+    return r.games.map(function(g){return Object.assign({},g,{decidedByPenalties:g.homePenalties!=null&&g.awayPenalties!=null&&g.homeScore===g.awayScore});});
+  }).catch(function(){return legacyGames(tids);});
+  Promise.all([tr,gm]).then(function(res){S.hist={games:res[1]||[],trainings:trains};S.histState='ok';redraw();});
+}
+function legacyGames(tids){
+  var games=[];
+  return Promise.all(tids.map(function(tid){
     var t=tById(tid)||{},clubs=myClubs(tid);
-    var a=api(T+'/'+tid+'/my-trainings').then(function(r){(r.sessions||[]).forEach(function(s){trains.push(Object.assign({},s,{tournament:t.name||''}));});}).catch(function(){});
-    var b=api(T+'/'+tid).then(function(full){
+    return api(T+'/'+tid).then(function(full){
       return Promise.all(((full&&full.categories)||[]).slice(0,16).map(function(c){
         return api(T+'/'+tid+'/categories/'+c.id+'/matches').then(function(r){
           (r.matches||[]).forEach(function(m){
@@ -991,15 +1089,16 @@ function loadHist(){
         }).catch(function(){});
       }));
     }).catch(function(){});
-    return Promise.all([a,b]);
-  })).then(function(){S.hist={games:games,trainings:trains};S.histState='ok';redraw();});
+  })).then(function(){return games;});
 }
 function allGames(){var m={},o=[];((S.hist&&S.hist.games)||[]).concat((S.dash&&S.dash.games)||[]).forEach(function(g){if(!m[g.id])o.push(g);m[g.id]=Object.assign(m[g.id]||{},g);});return o.map(function(g){return m[g.id];});}
 function allTrainings(){var m={},o=[];((S.hist&&S.hist.trainings)||[]).concat((S.dash&&S.dash.trainings)||[]).forEach(function(t){if(!m[t.id])o.push(t);m[t.id]=Object.assign(m[t.id]||{},t);});return o.map(function(t){return m[t.id];});}
 function gameDone(g){return g.status==='FINISHED'||g.status==='WALKOVER';}
 function gameUpcoming(g){if(g.status==='LIVE')return true;if(g.status!=='SCHEDULED')return false;return !g.scheduledAt||new Date(g.scheduledAt).getTime()>Date.now()-6*36e5;}
 function trainUpcoming(t){return t.status==='SCHEDULED'&&(!t.scheduledAt||new Date(t.scheduledAt).getTime()>Date.now()-6*36e5);}
+var RES={W:{k:'V',l:'Vitória',c:'ok'},D:{k:'E',l:'Empate',c:'line'},L:{k:'D',l:'Derrota',c:'bad'}};
 function outcome(g){
+  if(gameDone(g)&&g.result&&RES[g.result])return RES[g.result];
   if(!gameDone(g)||g.homeScore==null||g.awayScore==null)return null;
   var clubs=myClubs(g.tournamentId),side=clubs.indexOf(g.home)>=0?'h':(clubs.indexOf(g.away)>=0?'a':null);if(!side)return null;
   var a=g.homeScore,b=g.awayScore;if(a===b&&g.decidedByPenalties){a=g.homePenalties||0;b=g.awayPenalties||0;}
@@ -1012,7 +1111,7 @@ var TABS=[['inicio','Início',I.home],['agenda','Agenda',I.cal],['producao','Pro
 function curRoute(){var h=(location.hash||'').replace(/^#\/?/,'');var p=h.split('/').filter(Boolean);return {name:p[0]||'',arg:p[1]?safeDec(p[1]):''};}
 function safeDec(v){try{return decodeURIComponent(v);}catch(e){return v;}}
 function go(r){if(location.hash==='#/'+r)route();else location.hash='#/'+r;}
-var VIEWS={entrar:vLogin,cadastro:vSignup,esqueci:vForgot,inicio:vHome,agenda:vAgenda,producao:vProd,times:vTeams,perfil:vProfile,treino:vTraining,jogo:vGame,avisos:vNotifs,competir:vCompete};
+var VIEWS={entrar:vLogin,cadastro:vSignup,esqueci:vForgot,inicio:vHome,agenda:vAgenda,producao:vProd,times:vTeams,perfil:vProfile,treino:vTraining,jogo:vGame,avisos:vNotifs,competir:vCompete,gestao:vGestao};
 var PUB={entrar:1,cadastro:1,esqueci:1};
 var lastRoute='',navCount=0;
 function route(){
@@ -1049,7 +1148,7 @@ function chrome(r){
   if(pub){navEl.innerHTML='';dtopEl.innerHTML='';return;}
   var cur={treino:'agenda',jogo:'agenda'}[r.name]||r.name,nb=chalInbox(),nm=(S.me&&S.me.name)||'',hd=handle(),un=S.notif&&S.notif.unread>0;
   navEl.innerHTML='<a class="logo" href="#/inicio" aria-label="Club Sports &amp; Tennis, início"><img src="'+BRAND+'club-sports-tennis.svg" alt="" width="148" height="48"></a>'+
-    '<nav aria-label="Navegação principal">'+NAV.map(function(t){var on=t[0]===cur;return '<a href="#/'+t[0]+'" class="'+(on?'on':'')+'"'+(on?' aria-current="page"':'')+'>'+t[2]+'<span>'+t[1]+'</span>'+(t[0]==='competir'&&nb?'<span class="nbdg">'+nb+'</span>':'')+'</a>';}).join('')+'</nav>'+
+    '<nav aria-label="Navegação principal">'+(staffInfo()?NAV.slice(0,5).concat([['gestao','Gestão',I.grid]],NAV.slice(5)):NAV).map(function(t){var on=t[0]===cur;return '<a href="#/'+t[0]+'" class="'+(on?'on':'')+'"'+(on?' aria-current="page"':'')+'>'+t[2]+'<span>'+t[1]+'</span>'+(t[0]==='competir'&&nb?'<span class="nbdg">'+nb+'</span>':'')+'</a>';}).join('')+'</nav>'+
     '<div class="nav-foot"><a class="me" href="#/perfil">'+avatar(nm||'Atleta',avatarUrl(),40)+'<span class="tx"><b>'+esc(nm||'Atleta')+'</b><span>'+(hd?'@'+esc(hd):'Ver perfil')+'</span></span></a>'+
     '<button class="out" type="button" data-act="logout">'+I.out+'Sair</button></div>';
   dtopEl.className=r.name==='inicio'?'big':'';
@@ -1110,6 +1209,7 @@ function vLogin(){
      '<div class="field"><input id="l-pw" name="password" type="password" autocomplete="current-password" placeholder=" "><label for="l-pw">Senha</label><button type="button" class="eye" data-act="eye" aria-label="Mostrar senha">'+I.eye+'</button></div>'+
      '<div class="lerr" id="lerr" role="alert"></div>'+
      '<button class="btn pri full" id="lbtn" type="submit">Entrar</button>'+
+     (pkSupported()?'<button class="btn ghost full pkbtn" id="pkbtn" type="button" data-act="pklogin">'+I.face+'Entrar com Face ID / digital</button>':'')+
      '<div class="llinks"><a href="#/cadastro">Criar conta</a><a class="mut" href="#/esqueci">Esqueci a senha</a></div>'+
    '</form></section>';
 }
@@ -1127,6 +1227,89 @@ function doLogin(){
     btn.disabled=false;btn.textContent='Entrar';
     err.textContent=e.status===401?'Celular, e-mail ou senha incorretos.':(e.message||'Não foi possível entrar.');
   });
+}
+
+/* ===================== FACE ID / DIGITAL (WebAuthn / passkey) =====================
+   Mesmo contrato do /api/webauthn (src/routes/webauthn.js) e do helper public/_webauthn.js, só a parte WebAuthn
+   (sem o fallback de câmera). O servidor escolhe o RP ID pelo host (clubsportsetennis.com.br tem chave própria). */
+function pkSupported(){if(MOCK&&QS.get('pk')==='0')return false;return !!(window.PublicKeyCredential&&navigator.credentials&&navigator.credentials.get);}
+function b64uToBuf(s){s=String(s||'').replace(/-/g,'+').replace(/_/g,'/');var pd=(4-s.length%4)%4,bin=atob(s+'===='.slice(0,pd)),u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return u.buffer;}
+function bufToB64u(b){var u=new Uint8Array(b),s='';for(var i=0;i<u.length;i++)s+=String.fromCharCode(u[i]);return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}
+function pkCancelErr(){var e=new Error('Cancelado');e.name='NotAllowedError';return e;}
+/* no ?mock=1 não existe autenticador: simula o aparelho (pk=cancel simula o usuário fechando o Face ID) */
+function pkMockDevice(kind){return new Promise(function(res,rej){setTimeout(function(){if(QS.get('pk')==='cancel')return rej(pkCancelErr());if(kind==='create'&&QS.get('pk')==='dup'){var e=new Error('já registrado');e.name='InvalidStateError';return rej(e);}res({id:'mock-cred',type:'public-key',response:{}});},300);});}
+function pkAssert(o){
+  if(MOCK)return pkMockDevice('get');
+  o.challenge=b64uToBuf(o.challenge);
+  if(Array.isArray(o.allowCredentials))o.allowCredentials.forEach(function(c){c.id=b64uToBuf(c.id);});
+  return navigator.credentials.get({publicKey:o}).then(function(a){
+    if(!a)throw pkCancelErr();
+    return {id:a.id,rawId:bufToB64u(a.rawId),type:a.type,response:{authenticatorData:bufToB64u(a.response.authenticatorData),clientDataJSON:bufToB64u(a.response.clientDataJSON),signature:bufToB64u(a.response.signature),userHandle:a.response.userHandle?bufToB64u(a.response.userHandle):undefined},
+      clientExtensionResults:a.getClientExtensionResults?a.getClientExtensionResults():{},authenticatorAttachment:a.authenticatorAttachment||undefined};
+  });
+}
+function pkCreate(o){
+  if(MOCK)return pkMockDevice('create');
+  o.challenge=b64uToBuf(o.challenge);if(o.user)o.user.id=b64uToBuf(o.user.id);
+  if(Array.isArray(o.excludeCredentials))o.excludeCredentials.forEach(function(c){c.id=b64uToBuf(c.id);});
+  return navigator.credentials.create({publicKey:o}).then(function(c){
+    if(!c)throw pkCancelErr();
+    return {id:c.id,rawId:bufToB64u(c.rawId),type:c.type,response:{attestationObject:bufToB64u(c.response.attestationObject),clientDataJSON:bufToB64u(c.response.clientDataJSON),transports:c.response.getTransports?c.response.getTransports():[]},
+      clientExtensionResults:c.getClientExtensionResults?c.getClientExtensionResults():{},authenticatorAttachment:c.authenticatorAttachment||undefined};
+  });
+}
+function pkCanceled(e){return !!e&&(e.name==='NotAllowedError'||e.name==='AbortError'||/cancel/i.test(String(e.message||'')));}
+function pkMsg(e,reg){
+  var n=e&&e.name;
+  if(n==='InvalidStateError')return 'Este aparelho já está ativado. Na próxima, é só tocar em Entrar com Face ID / digital.';
+  if(n==='NotSupportedError')return 'Este aparelho não oferece Face ID / digital.';
+  if(n==='SecurityError')return 'Face ID / digital não está disponível neste endereço.';
+  if(!reg&&e&&e.status===401)return 'Não reconhecemos este aparelho. Entre com a senha e ative o Face ID / digital no Perfil.';
+  return capMsg(e&&e.message);
+}
+function pkDevice(){var u=navigator.userAgent||'';return /iPhone/.test(u)?'iPhone':/iPad/.test(u)?'iPad':/Android/.test(u)?'Android':/Macintosh/.test(u)?'Mac':/Windows/.test(u)?'Windows':'Navegador';}
+function pkLogin(btn){
+  var err=$('#lerr'),lb=btn.innerHTML;if(err)err.textContent='';
+  btn.disabled=true;btn.innerHTML='<span class="spin"></span>';
+  api('/webauthn/auth/options',{method:'POST',body:{},login:true}).then(pkAssert).then(function(cred){
+    return api('/webauthn/auth/verify',{method:'POST',body:{cred:cred},login:true});
+  }).then(function(r){
+    if(!r||!r.token)throw new Error('Não foi possível entrar.');
+    setSession(r.token,r.user);S.me=r.user||null;go('inicio');toast('Bem-vindo de volta!');
+  }).catch(function(e){
+    btn.disabled=false;btn.innerHTML=lb;
+    if(pkCanceled(e)){toast('Entrada com Face ID / digital cancelada.');return;}
+    var m=pkMsg(e,false);if(err)err.textContent=m;else toast(m,true);
+  });
+}
+function loadPk(){
+  if(S.pk||!pkSupported())return;S.pk='loading';
+  api('/webauthn/status').then(function(r){S.pk={enrolled:!!(r&&r.enrolled),count:(r&&r.count)||0,credentials:(r&&r.credentials)||[]};}).catch(function(e){S.pk=e.status===401?null:'error';}).then(function(){redraw(true);});
+}
+function pkRegister(btn){
+  var lb=btn.innerHTML;btn.disabled=true;btn.innerHTML='<span class="spin"></span>';
+  api('/webauthn/register/options',{method:'POST',body:{}}).then(pkCreate).then(function(cred){
+    return api('/webauthn/register/verify',{method:'POST',body:{cred:cred,label:pkDevice()}});
+  }).then(function(){
+    S.pk=null;loadPk();toast('Face ID / digital ativado. Na próxima, entre sem senha.');
+  }).catch(function(e){
+    btn.disabled=false;btn.innerHTML=lb;
+    if(e&&e.status===401)return;
+    if(pkCanceled(e)){toast('Ativação cancelada.');return;}
+    toast(pkMsg(e,true),e&&e.name!=='InvalidStateError');
+  });
+}
+function pkSec(){
+  var h='<section class="sec"><div class="sec-h"><h2>Entrada rápida</h2></div><div class="card pkc">';
+  if(!pkSupported())return h+'<div class="pkc-h"><span class="lic">'+I.face+'</span><div class="tx"><b>Face ID / digital</b><span>Indisponível neste navegador</span></div><span class="pill line">Off</span></div><p>Abra o Club no Safari do iPhone ou no Chrome do Android para entrar com o rosto ou a digital.</p></div></section>';
+  var st=S.pk;if(!st)setTimeout(loadPk,0);
+  if(!st||st==='loading')return h+'<div class="pkc-h"><span class="lic">'+I.face+'</span><div class="tx"><b>Face ID / digital</b><span>Verificando…</span></div></div><div class="sk" style="height:44px;margin-top:14px;border-radius:22px"></div></div></section>';
+  var on=st!=='error'&&st.enrolled,last=null;
+  if(on)(st.credentials||[]).forEach(function(c){var t=c.lastUsedAt||c.createdAt;if(t&&(!last||new Date(t)>new Date(last)))last=t;});
+  var sub=st==='error'?'Não deu para verificar agora':on?(pl(st.count,'aparelho ativado','aparelhos ativados')+(last?' · usado há '+ago(last):'')):'Desligada';
+  return h+'<div class="pkc-h"><span class="lic">'+I.face+'</span><div class="tx"><b>Face ID / digital</b><span>'+esc(sub)+'</span></div>'+(on?'<span class="pill ok">Ativa</span>':st==='error'?'':'<span class="pill line">Off</span>')+'</div>'+
+    '<p>'+(on?'Para entrar com o rosto ou a digital também neste aparelho, ative aqui. A biometria nunca sai do seu celular.':'Entre no Club sem digitar senha. A biometria nunca sai do seu celular: o Club só guarda uma chave de acesso.')+'</p>'+
+    '<button class="btn '+(on?'ghost':'lt')+' sm full" data-act="pkreg">'+I.face+(on?'Ativar neste aparelho':'Ativar entrada com Face ID / digital')+'</button></div></section>';
 }
 
 /* ===================== CADASTRO / ESQUECI A SENHA ===================== */
@@ -1346,8 +1529,13 @@ function vCompete(arg){
 function rankHtml(){
   var order=sportOrder();
   if(!S.rkSport||SPORTS.indexOf(S.rkSport)<0)S.rkSport=order[0];
-  var sp=S.rkSport,d=S.rank[sp];if(!d)setTimeout(function(){loadRank(sp);},0);
+  var sp=S.rkSport,d=S.rank[sp];if(!d&&(!isTeamSport(sp)||S.rkView==='rating'))setTimeout(function(){loadRank(sp);},0);
   var h='<div class="chips" style="margin-top:16px">'+order.map(function(s){return '<button class="chip'+(s===sp?' on':'')+'" data-act="rksport" data-s="'+s+'">'+esc(sportN(s))+'</button>';}).join('')+'</div>';
+  if(isTeamSport(sp)){
+    var vw=['gols','assist','rating'].indexOf(S.rkView)>=0?S.rkView:'gols';
+    h+='<div class="seg rkv" role="tablist">'+[['gols','Artilharia'],['assist','Assistências'],['rating','Rating 1x1']].map(function(x){return '<button type="button" role="tab" data-act="rkview" data-v="'+x[0]+'" class="'+(vw===x[0]?'on':'')+'" aria-selected="'+(vw===x[0])+'">'+x[1]+'</button>';}).join('')+'</div>';
+    if(vw!=='rating')return h+scorersHtml(sp,vw);
+  }
   if(!d||d==='loading')return h+'<div class="sk" style="height:250px;margin-top:26px;border-radius:22px"></div><div class="sk" style="height:78px;margin-top:10px;border-radius:22px"></div><div class="sk" style="height:200px;margin-top:10px;border-radius:22px"></div>';
   if(d==='error')return h+'<div style="margin-top:22px">'+empty(I.bolt,'Não deu para carregar','Não foi possível abrir o ranking agora.','<button class="btn lt sm" data-act="rkretry">Tentar de novo</button>')+'</div>';
   var l=d.ranking||[];
@@ -1367,6 +1555,43 @@ function rankHtml(){
     return '<a class="rk'+(r.userId===myId?' me':'')+'" href="'+esc(athHref(r))+'"><span class="pos num">'+esc(r.rank)+'</span>'+avatar(r.name||'Atleta',null,40)+'<div class="tx"><b>'+esc(r.name||'Atleta')+(r.userId===myId?' (você)':'')+'</b><span>'+esc([r.city,r.wins+'V '+r.losses+'D',pl(r.matches,'jogo','jogos')].filter(Boolean).join(' · '))+'</span></div><b class="v num">'+num(r.rating,2)+'</b></a>';
   }).join('')+'</div>';
   return h+'<p class="fine">Rating de 0 a 7. Vitórias sobem, derrotas descem.</p></div></div>';
+}
+/* esportes de time: rating individual não se aplica — o ranking é a súmula (gols/assistências, só torneios públicos) */
+var TEAM_SP={FUTSAL:1,SOCCER:1,VOLLEY:1,BASKETBALL:1,HANDBALL:1};
+function isTeamSport(s){return !!TEAM_SP[String(s||'').toUpperCase()];}
+function loadScor(sp){
+  if(S.scor[sp])return;S.scor[sp]='loading';
+  api(T+'/rankings/'+encodeURIComponent(sp)+'/scorers?limit=100').then(function(r){S.scor[sp]={scorers:(r&&Array.isArray(r.scorers))?r.scorers:[]};}).catch(function(){S.scor[sp]='error';}).then(redraw);
+}
+function scorersHtml(sp,vw){
+  var d=S.scor[sp];if(!d)setTimeout(function(){loadScor(sp);},0);
+  if(!d||d==='loading')return '<div class="sk" style="height:250px;margin-top:22px;border-radius:22px"></div><div class="sk" style="height:78px;margin-top:10px;border-radius:22px"></div><div class="sk" style="height:200px;margin-top:10px;border-radius:22px"></div>';
+  if(d==='error')return '<div style="margin-top:22px">'+empty(I.bolt,'Não deu para carregar','Não foi possível abrir a artilharia agora.','<button class="btn lt sm" data-act="scretry">Tentar de novo</button>')+'</div>';
+  var as=vw==='assist',key=as?'assists':'goals',other=as?'goals':'assists';
+  var l=(d.scorers||[]).filter(function(x){return Number(x[key])>0;}).sort(function(a,b){return (b[key]-a[key])||(b[other]-a[other])||String(a.name||'').localeCompare(String(b.name||''));});
+  var unit=function(n){return as?'assist.':(Number(n)===1?'gol':'gols');};
+  if(!l.length)return '<div style="margin-top:22px">'+empty(as?I.swap:I.ball,as?'Assistências em aberto':'Artilharia em aberto',
+    'Nenhum'+(as?'a assistência':' gol')+' de '+sportN(sp)+' lançado em súmula ainda. Os números entram quando a arbitragem fecha os jogos dos torneios públicos.')+'</div>';
+  var myId=S.me&&S.me.id,me=null,meRank=0;
+  l.forEach(function(x,i){x._rank=i+1;if(myId&&x.userId===myId&&!me){me=x;meRank=i+1;}});
+  function lnk(x){return x.userId||x.username?athHref({username:x.username,userId:x.userId}):'';}
+  function pod(x,cls,sz){
+    if(!x)return '<div class="pod '+cls+'" aria-hidden="true"></div>';
+    var href=lnk(x),tag=href?'a':'div';
+    return '<'+tag+' class="pod '+cls+'"'+(href?' href="'+esc(href)+'"':'')+' aria-label="'+esc(x._rank+'º: '+(x.name||'Atleta')+', '+x[key]+' '+unit(x[key]))+'">'+avatar(x.name||'Atleta',null,sz)+'<span class="nm">'+esc(x.name||'Atleta')+'</span><span class="tmn">'+esc(x.team||'')+'</span>'+
+      (x===me?'<span class="pill soft you">Você</span>':'')+'<b class="rt num">'+esc(x[key])+'<small>'+unit(x[key])+'</small></b><span class="base"><b class="num">'+x._rank+'</b></span></'+tag+'>';
+  }
+  var h='<div class="dgrid rank2"><div><div class="podium">'+pod(l[1],'p2',64)+pod(l[0],'p1',86)+pod(l[2],'p3',64)+'</div>';
+  if(me)h+='<div class="card mypos wh"><b class="p num"><small>#</small>'+meRank+'</b><div class="tx"><b>Sua posição</b><span>'+esc([pl(me.goals,'gol','gols'),pl(me.assists,'assistência','assistências'),pl(me.games,'jogo','jogos')].join(' · '))+'</span></div><div class="v"><b class="num">'+esc(me[key])+'</b><span>'+(as?'Assist.':'Gols')+'</span></div></div>';
+  else h+='<div class="card mypos wh"><div class="tx"><b>Você ainda não aparece aqui</b><span>Gols e assistências vêm da súmula oficial. Peça ao treinador para vincular seu nome no elenco.</span></div></div>';
+  h+='</div><div>';
+  var rest=l.slice(3,50);
+  if(rest.length)h+='<div class="card list" style="margin-top:10px;overflow:hidden">'+rest.map(function(x){
+    var href=lnk(x),tag=href?'a':'div',sub=[x.team,pl(x[other],as?'gol':'assistência',as?'gols':'assistências'),pl(x.games,'jogo','jogos')];
+    if(x.yellow)sub.push(pl(x.yellow,'amarelo','amarelos'));if(x.red)sub.push(pl(x.red,'vermelho','vermelhos'));
+    return '<'+tag+' class="rk'+(x===me?' me':'')+'"'+(href?' href="'+esc(href)+'"':'')+'><span class="pos num">'+x._rank+'</span>'+avatar(x.name||'Atleta',null,40)+'<div class="tx"><b>'+esc(x.name||'Atleta')+(x===me?' (você)':'')+'</b><span>'+esc(sub.filter(Boolean).join(' · '))+'</span></div><b class="v num">'+esc(x[key])+'</b></'+tag+'>';
+  }).join('')+'</div>';
+  return h+'<p class="fine">'+(as?'Assistências':'Gols')+' de súmula em jogos encerrados de torneios públicos de '+esc(sportN(sp))+'.</p></div></div>';
 }
 function chalCard(c){
   var my=S.me.id,sent=c.challengerId===my,opp=(sent?c.challenged:c.challenger)||{},nm=opp.name||(opp.username?'@'+opp.username:'Atleta');
@@ -1440,6 +1665,163 @@ function competeSec(){
   return '<section class="sec o7"><div class="sec-h"><h2>Competir</h2></div><div class="duo">'+
     '<a class="card ctile press" href="#/competir/ranking"><span class="lic">'+I.trophy+'</span><div><b>Ranking</b><span class="s">'+(best?'Rating '+num(best.rating,2)+' · '+esc(sportL(best.sport)):'Veja quem lidera')+'</span></div></a>'+
     '<a class="card ctile press'+(nb?' hot wh':'')+'" href="#/competir/desafios"><span class="lic">'+I.bolt+'</span>'+(nb?'<span class="pill acc bdg">'+nb+' novo'+(nb>1?'s':'')+'</span>':'')+'<div><b>Desafios 1x1</b><span class="s">'+(nb?'Esperando sua resposta':'Chame um atleta')+'</span></div></a></div></section>';
+}
+
+/* ===================== PAPÉIS: arbitragem / treinador / organização ===================== */
+/* O mesmo usuário pode ser atleta E staff. Papéis vêm de my-dashboard.tournaments[].myRoles (+ ownerId = fundador). */
+var STAFF={FOUNDER:'Fundador',COORDINATOR:'Coordenação',TEAM_ADMIN:'Admin do time',COACH:'Treinador',REFEREE:'Arbitragem'};
+var STAFF_ORDER=['REFEREE','COACH','TEAM_ADMIN','COORDINATOR','FOUNDER'];
+function rolesOf(t){
+  var rs=[];(t.myRoles||[]).forEach(function(r){if(r&&r.role&&rs.indexOf(r.role)<0)rs.push(r.role);});
+  if(S.me&&t.ownerId&&t.ownerId===S.me.id&&rs.indexOf('FOUNDER')<0)rs.push('FOUNDER');
+  return rs;
+}
+function staffInfo(){
+  if(!S.dash||!S.me)return null;
+  var ref=[],team=[],org=[],all={};
+  S.dash.tournaments.forEach(function(t){
+    var rs=rolesOf(t);
+    rs.forEach(function(r){if(STAFF[r])all[r]=1;});
+    if(rs.indexOf('REFEREE')>=0)ref.push(t);
+    var te=(t.myRoles||[]).filter(function(r){return (r.role==='COACH'||r.role==='TEAM_ADMIN');});
+    if(te.length)team.push({t:t,entryIds:te.map(function(r){return r.entryId;}).filter(Boolean),roles:rs});
+    if(rs.indexOf('FOUNDER')>=0||rs.indexOf('COORDINATOR')>=0)org.push({t:t,roles:rs});
+  });
+  if(!ref.length&&!team.length&&!org.length)return null;
+  return {ref:ref,team:team,org:org,roles:STAFF_ORDER.filter(function(r){return all[r];})};
+}
+function isStaffIn(tid){var t=tById(tid);return !!t&&rolesOf(t).some(function(r){return !!STAFF[r];});}
+function admHref(path){return '/torneios.html#/'+path;}
+function loadStaff(){
+  var si=staffInfo();if(!si||S.staffState)return;
+  S.staffState='loading';
+  var jobs=[];
+  si.ref.forEach(function(t){
+    jobs.push(api(T+'/'+encodeURIComponent(t.id)+'/my-matches').then(function(r){S.ref[t.id]=(r&&r.matches)||[];}).catch(function(){S.ref[t.id]='error';}));
+  });
+  si.team.forEach(function(x){
+    var tid=x.t.id;
+    jobs.push(api(T+'/'+encodeURIComponent(tid)+'/my-team').then(function(r){return (r&&r.clubs)||[];}).catch(function(){S.mteam[tid]='error';return null;}).then(function(clubs){
+      if(clubs)S.mteam[tid]=clubs;
+      /* treinos são por clube: basta 1 inscrição (entry) de cada clube */
+      var eids=clubs&&clubs.length?clubs.map(function(c){return c.entries&&c.entries[0]&&c.entries[0].entryId;}).filter(Boolean):x.entryIds.slice(0,1);
+      return Promise.all(eids.map(function(eid){
+        return api(T+'/'+encodeURIComponent(tid)+'/teams/'+encodeURIComponent(eid)+'/trainings').then(function(r){
+          var cn=(r&&r.clubName)||eid;S.ttr[tid+'|'+cn]={tid:tid,clubName:cn,entryId:eid,sessions:(r&&r.sessions)||[]};
+        }).catch(function(){S.ttr[tid+'|'+eid]={tid:tid,clubName:'',entryId:eid,error:true,sessions:[]};});
+      }));
+    }));
+  });
+  Promise.all(jobs).then(function(){S.staffState='ok';redraw(true);});
+}
+function refMatches(){
+  var out=[];Object.keys(S.ref).forEach(function(tid){var l=S.ref[tid];if(!Array.isArray(l))return;var t=tById(tid)||{};l.forEach(function(m){out.push(Object.assign({tournament:t.name||'',slug:t.slug||null},m));});});
+  return out;
+}
+function refOpen(){return refMatches().filter(function(m){return m.status==='LIVE'||m.status==='SCHEDULED';}).sort(function(a,b){
+  if((a.status==='LIVE')!==(b.status==='LIVE'))return a.status==='LIVE'?-1:1;
+  return (a.scheduledAt?new Date(a.scheduledAt).getTime():Infinity)-(b.scheduledAt?new Date(b.scheduledAt).getTime():Infinity);});}
+function coachSessions(){var out=[];Object.keys(S.ttr).forEach(function(k){var c=S.ttr[k];(c.sessions||[]).forEach(function(s){out.push(Object.assign({clubName:c.clubName,tid:c.tid},s,{clubName:s.clubName||c.clubName,tournamentId:s.tournamentId||c.tid}));});});return out;}
+function needsRollCall(s){return s.status==='SCHEDULED'&&s.scheduledAt&&new Date(s.scheduledAt).getTime()<Date.now();}
+function coachUpcoming(s){return s.status==='SCHEDULED'&&(!s.scheduledAt||new Date(s.scheduledAt).getTime()>=Date.now());}
+function byAt(a,b){return (a.scheduledAt?new Date(a.scheduledAt).getTime():Infinity)-(b.scheduledAt?new Date(b.scheduledAt).getTime():Infinity);}
+function rolePills(rs){return '<div class="rps">'+rs.filter(function(r){return STAFF[r];}).map(function(r){return '<span class="pill soft">'+esc(STAFF[r])+'</span>';}).join('')+'</div>';}
+function whenL(d){if(!d)return 'Data a definir';return relDay(d)+' · '+dTime(d);}
+function teamsLine(m){return esc(m.home||'A definir')+' × '+esc(m.away||'A definir');}
+
+/* bloco compacto no Início: o que a pessoa tem que fazer hoje como staff */
+function roleBlock(si){
+  if(!S.staffState)setTimeout(loadStaff,0);
+  var rows=[],busy=S.staffState!=='ok',n=0;
+  function row(href,ext,lic,licCls,k,t,s){return '<a class="lrow" href="'+esc(href)+'"><span class="lic'+(licCls?' '+licCls:'')+'">'+lic+'</span><div class="tx"><i class="'+(licCls||'')+'">'+k+'</i><b>'+t+'</b><span>'+s+'</span></div>'+(ext?I.ext:I.chev)+'</a>';}
+  if(si.ref.length){
+    var ro=refOpen(),m=ro[0];
+    if(m){var live=m.status==='LIVE',more=ro.length-1;
+      rows.push(row(admHref('sumula/'+encodeURIComponent(m.id)),true,I.whistle,live?'acc':'',live?'<u></u>Apitando agora · ao vivo':'Jogo pra apitar',teamsLine(m),esc([live?'Súmula aberta':whenL(m.scheduledAt),m.category].filter(Boolean).join(' · '))+(more>0?' · +'+more+' jogo'+(more>1?'s':''):'')));}
+    else if(!busy)rows.push(row('#/gestao',false,I.whistle,'','Arbitragem','Nenhum jogo pra apitar','Quando a coordenação te escalar, o jogo aparece aqui.'));
+  }
+  if(si.team.length){
+    var cs=coachSessions(),pend=cs.filter(needsRollCall).sort(byAt).reverse(),nx=cs.filter(coachUpcoming).sort(byAt)[0];
+    if(pend.length)rows.push(row(admHref('treino/'+encodeURIComponent(pend[0].id)),true,I.clip,'warn','Chamada pendente'+(pend.length>1?' · '+pend.length+' treinos':''),esc(pend[0].title||'Treino'),esc([whenL(pend[0].scheduledAt),pend[0].clubName].filter(Boolean).join(' · '))));
+    if(nx)rows.push(row(admHref('treino/'+encodeURIComponent(nx.id)),true,I.bolt,'','Próximo treino',esc(nx.title||'Treino'),esc([whenL(nx.scheduledAt),nx.clubName,nx.counts?pl(nx.counts.going,'confirmado','confirmados'):''].filter(Boolean).join(' · '))));
+    if(!pend.length&&!nx&&!busy){var t0=si.team[0].t;rows.push(row(admHref('t/'+encodeURIComponent(t0.id)),true,I.shield,'','Meu time','Nenhum treino marcado',esc(t0.name)));}
+  }
+  si.org.slice(0,2).forEach(function(o){rows.push(row(admHref('t/'+encodeURIComponent(o.t.id)),true,I.trophy,'',o.roles.indexOf('FOUNDER')>=0?'Seu campeonato':'Você coordena',esc(o.t.name),esc([sportL(o.t.sport),TSTATUS[o.t.status]||''].filter(Boolean).join(' · '))));});
+  n=rows.length;
+  var body=rows.slice(0,4).join('');
+  if(busy&&n<2)body+='<div class="sk" style="height:46px;margin:10px 0;border-radius:14px"></div>';
+  var ro2=refOpen(),today=dKey(Date.now()),ttl=busy?'Carregando tarefas':ro2.some(function(m){return m.status==='LIVE';})?'Tem jogo rolando':coachSessions().some(needsRollCall)?'Chamada pendente':ro2.some(function(m){return m.scheduledAt&&dKey(m.scheduledAt)===today;})?'Dia de apitar':'Tudo sob controle';
+  return '<section class="card wh rolec o0" aria-label="Sua função hoje"><div class="rolec-h"><div><div class="eyebrow acc">Sua função hoje</div><h2>'+ttl+'</h2></div>'+rolePills(si.roles)+'</div>'+
+    '<div class="rlist">'+body+'</div><a class="more" href="#/gestao">Abrir gestão'+I.chev+'</a></section>';
+}
+
+/* página Gestão: jogos pra apitar, meu time, meus campeonatos */
+function refCard(m){
+  var live=m.status==='LIVE',today=m.scheduledAt&&dKey(m.scheduledAt)===dKey(Date.now()),sc=m.homeScore!=null&&live;
+  return '<a class="card refc press'+(live||today?' wh':'')+'" href="'+esc(admHref('sumula/'+encodeURIComponent(m.id)))+'"><div class="row"><span class="when">'+(live?'Em andamento'+(m.scheduledAt?' · desde '+esc(dTime(m.scheduledAt)):''):esc(whenL(m.scheduledAt)))+'</span>'+
+    (live?'<span class="pill acc"><span class="live"></span>Ao vivo</span>':m.nominated?'<span class="pill ok">Escalado</span>':'<span class="pill line">Sem árbitro</span>')+'</div>'+
+    '<div class="gteams"><div>'+crest(m.home,null,34)+'<b>'+esc(m.home||'A definir')+'</b>'+(sc?'<span class="n num">'+esc(m.homeScore)+'</span>':'')+'</div><div>'+crest(m.away,null,34)+'<b>'+esc(m.away||'A definir')+'</b>'+(sc?'<span class="n num">'+esc(m.awayScore)+'</span>':'')+'</div></div>'+
+    '<div class="meta"><span>'+I.trophy+esc([m.category,STAGE_S[m.stage]||'',m.groupName?'Grupo '+m.groupName:''].filter(Boolean).join(' · ')||m.tournament)+'</span>'+(m.location?'<span>'+I.pin+esc(m.location)+'</span>':'')+'</div>'+
+    '<div class="go"><span>'+(live?'Continuar súmula':'Abrir súmula')+'</span>'+I.arrow+'</div></a>';
+}
+function trainRow(s,warn){
+  var at=s.scheduledAt,c=s.counts||{};
+  return '<a class="trow" href="'+esc(admHref('treino/'+encodeURIComponent(s.id)))+'"><div class="datebox'+(warn?' warn':'')+'">'+(at?'<i>'+esc(dWd(at))+'</i><b class="num">'+esc(dDay(at))+'</b>':'<i>data</i><b class="num">–</b>')+'</div>'+
+    '<div class="tx"><b>'+esc(s.title||'Treino')+'</b><span>'+esc([at?(warn?relDay(at)+' ':'')+dTime(at):'',warn?pl(c.going||0,'confirmou','confirmaram'):pl(c.going||0,'confirmado','confirmados'),s.location||''].filter(Boolean).join(' · '))+'</span></div>'+I.ext+'</a>';
+}
+function vGestao(){
+  var h='<div class="page detail">'+backBtn().replace('class="back"','class="back cback"')+'<div class="ptitle"><h1 class="disp">Gestão</h1></div>';
+  if(S.err&&!S.dash)return h+errBox()+'</div>';
+  if(!S.dash)return h+'<div class="sk" style="height:200px;border-radius:22px"></div><div class="sk" style="height:200px;margin-top:14px;border-radius:22px"></div></div>';
+  var si=staffInfo();
+  if(!si)return h+empty(I.grid,'Nenhuma função de gestão','Quando um campeonato te nomear árbitro, treinador ou coordenador, suas tarefas aparecem aqui.','<a class="btn lt sm" href="#/inicio">Voltar ao início</a>')+'</div>';
+  if(!S.staffState)setTimeout(loadStaff,0);
+  var busy=S.staffState!=='ok',sk='<div class="sk" style="height:190px;border-radius:22px"></div>';
+  h+='<p class="glead">Súmulas, chamada do treino e os campeonatos que você organiza. As telas de edição abrem no painel de torneios.</p>'+rolePills(si.roles).replace('class="rps"','class="rps" style="margin-top:14px"');
+  if(si.ref.length){
+    var ro=refOpen(),done=refMatches().filter(function(m){return gameDone(m);}).length,errs=si.ref.filter(function(t){return S.ref[t.id]==='error';});
+    h+='<section class="sec"><div class="sec-h"><h2>Jogos pra apitar</h2>'+(ro.length?'<span class="pill soft">'+ro.length+'</span>':'')+'</div>';
+    if(busy&&!ro.length)h+=sk;
+    else if(ro.length)h+='<div class="cgrid">'+ro.slice(0,12).map(refCard).join('')+'</div>';
+    else h+=empty(I.whistle,'Nenhum jogo pra apitar',errs.length?'Não foi possível carregar seus jogos agora.':'Quando a coordenação te escalar para uma partida, ela aparece aqui com a súmula a um toque.',errs.length?'<button class="btn lt sm" data-act="staffretry">Tentar de novo</button>':'');
+    if(done)h+='<p class="fine" style="text-align:left">'+pl(done,'jogo encerrado','jogos encerrados')+' · <a href="'+esc(admHref('t/'+encodeURIComponent(si.ref[0].id)))+'" style="color:var(--tx);font-weight:700;text-decoration:underline;text-underline-offset:3px">ver no painel</a></p>';
+    h+='</section>';
+  }
+  var two=si.team.length&&si.org.length;if(two)h+='<div class="dgrid g2">';
+  if(si.team.length){
+    h+='<section class="sec"><div class="sec-h"><h2>Meu time</h2></div>';
+    var cards=[];
+    si.team.forEach(function(x){
+      var tid=x.t.id,clubs=Array.isArray(S.mteam[tid])?S.mteam[tid]:[];
+      var names=clubs.map(function(c){return c.name;});
+      Object.keys(S.ttr).forEach(function(k){var c=S.ttr[k];if(c.tid===tid&&c.clubName&&names.indexOf(c.clubName)<0){names.push(c.clubName);clubs.push({name:c.clubName,entries:[]});}});
+      if(!clubs.length&&!busy)clubs=[{name:'',entries:[]}];
+      clubs.forEach(function(c){
+        var ss=coachSessions().filter(function(s){return s.tid===tid&&(!c.name||s.clubName===c.name);}),pend=ss.filter(needsRollCall).sort(byAt).reverse(),up=ss.filter(coachUpcoming).sort(byAt);
+        var ros=(c.entries||[]).reduce(function(a,e){return a+(Number(e.roster)||0);},0),cats=(c.entries||[]).map(function(e){return e.category;}).filter(Boolean);
+        var hh='<article class="card team" style="--h:'+hue(c.name)+'"><div class="team-h">'+crest(c.name||x.t.name,c.logoUrl,60)+'<div class="tx"><div class="eyebrow acc">'+esc(x.roles.filter(function(r){return r==='COACH'||r==='TEAM_ADMIN';}).map(function(r){return STAFF[r];}).join(' · '))+'</div><h3 class="disp" style="margin-top:6px">'+esc(c.name||'Meu time')+'</h3><span>'+esc([x.t.name,cats.join(', ')].filter(Boolean).join(' · '))+'</span></div></div>'+
+          '<div class="team-s"><div><b class="num">'+(cats.length||'–')+'</b><span>Categorias</span></div><div><b class="num">'+(ros||'–')+'</b><span>No elenco</span></div><div><b class="num"'+(pend.length?' style="color:var(--warn)"':'')+'>'+pend.length+'</b><span>Pendentes</span></div></div>';
+        if(pend.length||up.length){
+          hh+='<div class="tlist">'+(pend.length?'<span class="eyebrow">Chamada pendente</span>'+pend.slice(0,3).map(function(s){return trainRow(s,true);}).join(''):'')+(up.length?'<span class="eyebrow"'+(pend.length?' style="margin-top:12px"':'')+'>Próximos treinos</span>'+up.slice(0,3).map(function(s){return trainRow(s,false);}).join(''):'')+'</div>';
+        }else if(busy)hh+='<div class="sk" style="height:60px;margin-top:14px;border-radius:14px"></div>';
+        else hh+='<p class="mut" style="margin-top:14px;font-size:13.5px">Nenhum treino marcado. Marque o próximo pelo painel do time.</p>';
+        hh+='<div class="team-a"><a class="btn lt sm" href="'+esc(admHref('t/'+encodeURIComponent(tid)))+'">Painel do time</a>'+(x.t.slug?'<a class="btn ghost sm" href="/t/'+encodeURIComponent(x.t.slug)+'">Tabela</a>':'')+'</div></article>';
+        cards.push(hh);
+      });
+    });
+    h+=cards.length?'<div class="cgrid">'+cards.join('')+'</div>':sk;
+    h+='</section>';
+  }
+  if(si.org.length){
+    h+='<section class="sec"><div class="sec-h"><h2>Meus campeonatos</h2><span class="pill soft">'+si.org.length+'</span></div><div class="cgrid">'+si.org.map(function(o){
+      var t=o.t,st=t.status;
+      return '<article class="card orgc"><div class="orgc-h"><span class="lic">'+I.trophy+'</span><div class="tx"><b>'+esc(t.name)+'</b><span>'+esc(sportL(t.sport))+'</span></div></div>'+
+        '<div class="rps">'+(TSTATUS[st]?'<span class="pill '+(st==='ONGOING'?'acc':st==='OPEN'?'ok':'line')+'">'+esc(TSTATUS[st])+'</span>':'')+o.roles.filter(function(r){return r==='FOUNDER'||r==='COORDINATOR';}).map(function(r){return '<span class="pill soft">'+esc(STAFF[r])+'</span>';}).join('')+'</div>'+'<div class="team-a"><a class="btn lt sm" href="'+esc(admHref('t/'+encodeURIComponent(t.id)))+'">Gerenciar</a>'+(t.slug?'<a class="btn ghost sm" href="/t/'+encodeURIComponent(t.slug)+'">Página pública</a>':'')+'</div></article>';
+    }).join('')+'</div></section>';
+  }
+  if(two)h+='</div>';
+  h+='<div class="gfoot"><a class="btn ghost sm" href="/torneios.html">'+I.ext+'Painel completo de torneios</a></div>';
+  return h+'</div>';
 }
 
 /* ===================== produção em jogos oficiais (súmula) ===================== */
@@ -1518,6 +1900,7 @@ function vHome(){
   var ne=nextEvent();
   var a='',b='';
   h+='<div class="dgrid home">';
+  var si=staffInfo();if(si)a+=roleBlock(si);
   if(ne)a+='<div class="o1">'+(ne.k==='g'?heroGame(ne.o):heroTrain(ne.o))+'</div>';
   else a+='<div class="o1"><div style="margin-top:24px">'+empty(I.cal,'Agenda livre por enquanto','Quando seu time marcar um jogo ou treino oficial, ele aparece aqui com contagem regressiva.',d.teams.length?'':'<a class="btn pri sm" href="#/times">Entrar em um time</a>')+'</div></div>';
 
@@ -1769,14 +2152,17 @@ function vProfile(){
   if((c.ratings||[]).length){
     h+='<section class="sec"><div class="sec-h"><h2>Ranking</h2><a href="#/competir/ranking">Ver ranking'+I.chev+'</a></div>'+c.ratings.map(function(r){return '<div class="card rate"><span class="lic" style="width:44px;height:44px;border-radius:14px;background:var(--card2);display:grid;place-items:center;color:var(--acc2)"><span style="width:20px;height:20px;display:block">'+I.trophy+'</span></span><div class="tx"><b>'+esc(sportL(r.sport))+'</b><span>'+esc(r.matches)+' jogos · '+esc(r.wins)+'V '+esc(r.losses)+'D</span></div><b class="v num">'+num(r.rating,2)+'</b></div>';}).join('')+'</section>';
   }
-  var manages=(S.dash.tournaments||[]).some(function(t){return (t.myRoles||[]).some(function(r){return r.role&&r.role!=='PLAYER';});})||/admin/i.test(String(S.me.role||''));
+  var si=staffInfo(),manages=!!si||(S.dash.tournaments||[]).some(function(t){return (t.myRoles||[]).some(function(r){return r.role&&r.role!=='PLAYER';});})||/admin|manager/i.test(String(S.me.role||''));
   function row(href,icon,t,s,ext){return '<a class="lrow" href="'+href+'"><span class="lic">'+icon+'</span><div class="tx"><b>'+t+'</b><span>'+s+'</span></div>'+(ext?I.ext:I.chev)+'</a>';}
+  if(si)h+='<section class="sec"><div class="sec-h"><h2>Gestão</h2></div><div class="card list">'+
+    row('#/gestao',I.grid,'Gestão',esc(si.roles.map(function(r){return STAFF[r];}).join(' · ')))+'</div></section>';
+  h+=pkSec();
   h+='<section class="sec"><div class="sec-h"><h2>Conta</h2></div><div class="card list">'+
     row('/atleta/'+encodeURIComponent(hd||S.me.id),I.id,'Card de atleta','Sua página pública para compartilhar',true)+
     row('#/competir/ranking',I.trophy,'Ranking e desafios',chalInbox()?esc(chalInbox())+' desafio'+(chalInbox()>1?'s':'')+' para responder':'Leaderboard por esporte e desafios 1x1')+
     row('#/avisos',I.bell,'Avisos',(S.notif&&S.notif.unread)?esc(S.notif.unread)+' não lido'+(S.notif.unread>1?'s':''):'Tudo em dia')+
     row('#/producao',I.chart,'Produção','Presença, gols, passes e avaliação')+
-    (manages?row('/torneios.html',I.cog,'Área de gestão','Organização, elenco e súmula',true):'')+
+    (manages?row('/torneios.html',I.cog,'Painel de torneios','Organização, elenco e súmula completos',true):'')+
     '<button class="lrow danger" data-act="logout"><span class="lic">'+I.out+'</span><div class="tx"><b>Sair</b><span style="color:var(--mut)">Encerrar sessão neste aparelho</span></div></button></div></section></div></div>';
   h+='<div class="foot-brand"><img src="'+BRAND+'club-sports-tennis.svg" alt="" width="135" height="44"><p>João Pessoa · Paraíba</p></div>';
   return h+'</div>';
@@ -1846,7 +2232,7 @@ function gameBody(id){
     '<div class="vs" style="margin-top:34px"><div class="tm">'+crest(g.home,g.homeLogo,84)+'<b>'+esc(g.home)+'</b></div>'+
     (hasSc?'<div class="sc num" style="font-size:64px">'+esc(g.homeScore)+'<i>:</i>'+esc(g.awayScore)+'</div>':'<div class="x">VS</div>')+
     '<div class="tm">'+crest(g.away,g.awayLogo,84)+'<b>'+esc(g.away)+'</b></div></div>'+
-    (g.decidedByPenalties?'<p style="text-align:center;margin-top:18px;font-size:13px;font-weight:700;letter-spacing:.06em;color:var(--mut)">PÊNALTIS '+esc(g.homePenalties)+' × '+esc(g.awayPenalties)+'</p>':'')+
+    (g.decidedByPenalties||(done&&g.homePenalties!=null&&g.awayPenalties!=null)?'<p style="text-align:center;margin-top:18px;font-size:13px;font-weight:700;letter-spacing:.06em;color:var(--mut)">PÊNALTIS '+esc(g.homePenalties)+' × '+esc(g.awayPenalties)+'</p>':'')+
     (!done&&!live&&g.scheduledAt?cdHtml(g.scheduledAt):'')+'</section>';
   var t=tById(g.tournamentId)||{},slug=g.slug||t.slug;
   h+='<div class="info"><div class="card irow"><span class="lic">'+I.clock+'</span><div class="tx"><span>Quando</span><b>'+esc(g.scheduledAt?dLong(g.scheduledAt)+' · '+dTime(g.scheduledAt):'Data a definir')+'</b></div></div>'+
@@ -1862,9 +2248,47 @@ function vNotifs(){
   if(!S.notif)return h+[1,2,3,4].map(function(){return '<div class="sk" style="height:76px;margin-top:10px;border-radius:18px"></div>';}).join('')+'</div>';
   var l=S.notif.notifications||[];
   if(!l.length)return h+empty(I.bell,'Tudo em dia','Convites, mudanças de horário e resultados chegam por aqui.')+'</div>';
-  var ICN={challenge:I.bolt,entry:I.shield,result:I.trophy,schedule:I.cal,team:I.shield,training:I.bolt};
-  h+='<div class="nlist">'+l.map(function(n){var ch=n.type==='challenge';return '<'+(ch?'a href="#/competir/desafios"':'div')+' class="nrow'+(n.read?'':' un')+'"><span class="lic">'+(ICN[n.type]||I.bell)+'</span><div><b>'+esc(n.title||'Aviso')+'</b><p>'+esc(n.body)+'</p><time>'+esc(ago(n.createdAt))+'</time></div></'+(ch?'a':'div')+'>';}).join('')+'</div>';
+  var ICN={challenge:I.bolt,entry:I.shield,result:I.trophy,schedule:I.cal,team:I.shield,training:I.bolt,referee:I.whistle};
+  h+='<div class="nlist">'+l.map(function(n){
+    var t=notifTarget(n),inner='<span class="lic">'+(ICN[n.type]||I.bell)+'</span><div><b>'+esc(n.title||'Aviso')+'</b><p>'+esc(n.body)+'</p><time>'+esc(ago(n.createdAt))+'</time></div>';
+    if(!t)return '<div class="nrow'+(n.read?'':' un')+'">'+inner+'</div>';
+    return '<a class="nrow'+(n.read?'':' un')+'" href="'+esc(t.href)+'" data-act="nopen" data-id="'+esc(n.id)+'"'+(t.ext?' data-ext="1"':'')+'>'+inner+(t.ext?I.ext:I.chev)+'</a>';
+  }).join('')+'</div>';
   return h+'</div>';
+}
+/* link do aviso -> destino. Formatos vistos no backend: "#/t/<id>", "/torneios.html#t/<id>", "/torneios.html#/treino/<id>",
+   "#/sumula/<id>", "#/desafios". Treino/desafios abrem dentro do Club; súmula e telas de gestão abrem o painel de torneios. */
+function notifTarget(n){
+  var l=String((n&&n.link)||'').trim();
+  if(!l)return n&&n.type==='challenge'?{href:'#/competir/desafios'}:null;
+  var i=l.indexOf('#'),path=i>=0?l.slice(0,i):l,hash=i>=0?l.slice(i+1):'';
+  if(path&&!/^\/?(torneios\.html)?$/i.test(path)){var u=safeUrl(l);return u&&u.charAt(0)==='/'?{href:u,ext:true}:null;}
+  var p=hash.replace(/^\/+/,'').split('/').filter(Boolean);
+  if(p.some(function(x){return !/^[\w-]{1,80}$/.test(x);}))return null;
+  var v=p[0]||'',id=p[1]||'';
+  if(!v)return {href:'/torneios.html',ext:true};
+  if(v==='treino'&&id)return {href:'#/treino/'+encodeURIComponent(id)};
+  if(v==='desafios'||v==='ranking')return {href:'#/competir/'+v};
+  if(v==='avisos')return {href:'#/avisos'};
+  if(v==='t'&&id){
+    var t=tById(id),d=S.dash||{};
+    /* resultado/jogo agendado/prêmio = notícia de atleta: página pública, mesmo que a pessoa também seja staff */
+    if((n.type==='result'||n.type==='schedule')&&t&&t.slug)return {href:'/t/'+encodeURIComponent(t.slug),ext:true};
+    if(n.type==='team'&&(d.invites||[]).some(function(x){return x.tournamentId===id;}))return {href:'#/inicio'};
+    if(isStaffIn(id))return {href:admHref('t/'+id),ext:true};
+    if((d.invites||[]).some(function(x){return x.tournamentId===id;}))return {href:'#/inicio'};
+    if(n.type==='team'&&myTids().indexOf(id)>=0)return {href:'#/times'};
+    if(t&&t.slug)return {href:'/t/'+encodeURIComponent(t.slug),ext:true};
+    if(myTids().indexOf(id)>=0)return {href:'#/times'};
+    return {href:admHref('t/'+id),ext:true};
+  }
+  return {href:admHref(p.join('/')),ext:true};
+}
+function notifRead(id){
+  var l=(S.notif&&S.notif.notifications)||[],hit=null;l.forEach(function(n){if(n.id===id)hit=n;});
+  if(!hit||hit.read)return;
+  hit.read=true;S.notif.unread=Math.max(0,(S.notif.unread||0)-1);
+  api(T+'/notifications/'+encodeURIComponent(id)+'/read',{method:'POST',keepalive:true}).catch(function(){});
 }
 
 /* ===================== sheet / toast ===================== */
@@ -1934,6 +2358,12 @@ document.addEventListener('click',function(e){
   else if(a==='cseg'){e.preventDefault();var hr=el.getAttribute('href');if(location.hash!==hr){segNav=true;location.replace(hr);}}
   else if(a==='rksport'){S.rkSport=d.s;redraw(true);}
   else if(a==='rkretry'){delete S.rank[S.rkSport];redraw();}
+  else if(a==='rkview'){S.rkView=d.v;redraw(true);}
+  else if(a==='scretry'){delete S.scor[S.rkSport];redraw();}
+  else if(a==='staffretry'){resetStaff();redraw();}
+  else if(a==='nopen')notifRead(d.id);
+  else if(a==='pklogin'){e.preventDefault();pkLogin(el);}
+  else if(a==='pkreg'){e.preventDefault();pkRegister(el);}
   else if(a==='chretry'){S.chal=null;redraw();}
   else if(a==='chnew')chalNewSheet();
   else if(a==='ncsport'){NC.sport=d.s;var cs=sheetEl.querySelectorAll('#nc-sports .chip');for(var ci=0;ci<cs.length;ci++)cs[ci].classList.toggle('on',cs[ci]===el);}
@@ -1963,9 +2393,27 @@ var mockApi=(function(){
   function at(dayOff,hm){var k=dKey(Date.now()+dayOff*864e5);return new Date(k+'T'+hm+':00-03:00').toISOString();}
   var uid='u_rafa';
   var me={id:uid,name:'Rafael Nóbrega',phone:'83999990000',role:'customer',city:'João Pessoa',state:'PB'};
-  var t1={id:'t1',name:'II Futsal Master Cup 2026',slug:'futsal-master-cup-2026',sport:'FUTSAL',status:'ONGOING'};
-  var t2={id:'t2',name:'Circuito Beach Tennis Tambaú',slug:'circuito-beach-tennis-tambau',sport:'BEACH_TENNIS',status:'ONGOING'};
+  var t1={id:'t1',name:'II Futsal Master Cup 2026',slug:'futsal-master-cup-2026',sport:'FUTSAL',status:'ONGOING',ownerId:'u_org'};
+  var t2={id:'t2',name:'Circuito Beach Tennis Tambaú',slug:'circuito-beach-tennis-tambau',sport:'BEACH_TENNIS',status:'ONGOING',ownerId:'u_org2'};
   var t3={id:'t3',name:'Copa Bessa de Futevôlei',slug:'copa-bessa-futevolei',sport:'OTHER',status:'OPEN'};
+  /* staff (desliga com ?staff=0): árbitro no t1, treinador no t6, fundador do t5 */
+  var STAFFON=QS.get('staff')!=='0';
+  var t5={id:'t5',name:'Liga Society Sports & Tennis 2026',slug:'liga-society-st-2026',sport:'SOCCER',status:'OPEN',ownerId:uid};
+  var t6={id:'t6',name:'Copa Escolinhas Sub-13',slug:'copa-escolinhas-sub13',sport:'FUTSAL',status:'ONGOING',ownerId:'u_org3'};
+  function inH(h){return new Date(Date.now()+h*36e5).toISOString();}
+  var refM=[
+    {id:'rm1',tournamentId:'t1',categoryId:'c50',category:'Master 50+',stage:'GROUP',round:3,groupName:'A',status:'LIVE',scheduledAt:inH(-0.4),location:'Ginásio Ronaldão',homeScore:2,awayScore:1,home:'Veteranos do Bessa',away:'ABC Master',nominated:true},
+    {id:'rm2',tournamentId:'t1',categoryId:'c50',category:'Master 50+',stage:'GROUP',round:3,groupName:'B',status:'SCHEDULED',scheduledAt:inH(2.5),location:'Ginásio Ronaldão',homeScore:null,awayScore:null,home:'Treze Master',away:'Santa Cruz PB',nominated:true},
+    {id:'rm3',tournamentId:'t1',categoryId:'c40',category:'Master 40+',stage:'SEMI',round:1,groupName:null,status:'SCHEDULED',scheduledAt:inH(50),location:'Ginásio do SESC Gravatá',homeScore:null,awayScore:null,home:'1º Chave A',away:'2º Chave B',nominated:false},
+    {id:'rm4',tournamentId:'t1',categoryId:'c50',category:'Master 50+',stage:'GROUP',round:2,groupName:'A',status:'FINISHED',scheduledAt:inH(-72),location:'Ginásio Ronaldão',homeScore:3,awayScore:3,home:'ABC Master',away:'Brasil Sertão',nominated:true}
+  ];
+  var coachTr=[
+    {id:'ct0',tournamentId:'t6',clubName:'Escolinha Pio X',title:'Treino técnico Sub-13',focus:'Passe curto',scheduledAt:inH(-20),location:'Quadra do Colégio Pio X',status:'SCHEDULED',plan:[],counts:{confirmed:9,going:9,maybe:2,declined:1,present:0,absent:0}},
+    {id:'ct1',tournamentId:'t6',clubName:'Escolinha Pio X',title:'Treino tático Sub-13',focus:'Marcação por zona',scheduledAt:inH(26),location:'Quadra do Colégio Pio X',status:'SCHEDULED',plan:[],counts:{confirmed:11,going:11,maybe:1,declined:0,present:0,absent:0}},
+    {id:'ct2',tournamentId:'t6',clubName:'Escolinha Pio X',title:'Coletivo e bola parada',focus:'',scheduledAt:inH(74),location:'Vila Olímpica Parahyba',status:'SCHEDULED',plan:[],counts:{confirmed:4,going:4,maybe:3,declined:0,present:0,absent:0}},
+    {id:'ct3',tournamentId:'t6',clubName:'Escolinha Pio X',title:'Treino físico',focus:'',scheduledAt:inH(-96),location:'Quadra do Colégio Pio X',status:'DONE',plan:[],counts:{confirmed:12,going:12,maybe:0,declined:1,present:12,absent:2}}
+  ];
+  var pk={on:QS.get('pkon')==='1'};
   var plan=[{name:'Aquecimento com bola',minutes:12,description:'Rondo 4x2 em dois toques, mobilidade de quadril e tornozelo.'},{name:'Saída de pressão',minutes:20,description:'Goleiro-linha contra marcação alta. Fixo oferece linha de passe por dentro.'},{name:'Bola parada',minutes:15,description:'Três jogadas ensaiadas de escanteio e lateral ofensivo.'},{name:'Coletivo 4x4',minutes:25,description:'Dois tempos de 12 minutos aplicando a saída treinada.'},{name:'Volta à calma',minutes:8,description:'Alongamento e conversa final do grupo.'}];
   var trainings=[
     {id:'tr1',tournamentId:'t1',clubName:'Cabo Branco',title:'Treino tático',focus:'Saída de pressão e bola parada',scheduledAt:at(2,'20:00'),location:'Ginásio do Colégio Pio X',status:'SCHEDULED',plan:plan,myRsvp:null,myPresent:null,tournament:t1.name},
@@ -1988,7 +2436,8 @@ var mockApi=(function(){
   var invites=[{id:'mb9',tournamentId:'t3',tournament:t3.name,clubName:'Bessa Beach Club'}];
   var prodT1={treinos:14,marcados:13,presencas:12,faltas:1,confirmados:12,presencaPct:92,gols:19,passes:318,eficienciaMedia:78,notaMedia:8.6};
   var prodT2={treinos:6,marcados:5,presencas:4,faltas:1,confirmados:4,presencaPct:80,gols:0,passes:94,eficienciaMedia:71,notaMedia:7.9};
-  function dash(){return {tournaments:[Object.assign({},t1,{myRoles:[{role:'PLAYER'}],myClubs:['Cabo Branco']}),Object.assign({},t2,{myRoles:[{role:'PLAYER'}],myClubs:['Arena Tambaú']})],
+  function dash(){return {tournaments:[Object.assign({},t1,{myRoles:STAFFON?[{role:'PLAYER',entryId:'e1'},{role:'REFEREE',entryId:null}]:[{role:'PLAYER'}],myClubs:['Cabo Branco']}),Object.assign({},t2,{myRoles:[{role:'PLAYER'}],myClubs:['Arena Tambaú']})]
+      .concat(STAFFON?[Object.assign({},t5,{myRoles:[{role:'FOUNDER'}],myClubs:[]}),Object.assign({},t6,{myRoles:[{role:'COACH',entryId:'e61'},{role:'COACH',entryId:'e62'}],myClubs:[]})]:[]),
     teams:[{tournamentId:'t1',tournament:t1.name,clubName:'Cabo Branco',entryId:'e1',logoUrl:null},{tournamentId:'t2',tournament:t2.name,clubName:'Arena Tambaú',entryId:'e9',logoUrl:null}],
     invites:invites.slice(),games:games,trainings:trainings,
     production:{treinos:20,presencas:16,faltas:2,presencaPct:89,gols:19,passes:412,eficienciaMedia:75,notaMedia:8.3,games:QS.get('nogames')?undefined:gamesProd,byTournament:[{tournamentId:'t1',tournament:t1.name,summary:prodT1,evaluation:{overall:8.3,count:5}},{tournamentId:'t2',tournament:t2.name,summary:prodT2,evaluation:null}]}};}
@@ -2001,15 +2450,29 @@ var mockApi=(function(){
   var names=['Rafael Nóbrega','Thiago Cavalcanti','Bruno Lacerda','Diego Farias','Marcelo Queiroz','Anderson Pessoa','Felipe Maroja','Gustavo Trigueiro','Leandro Vital','Paulo Honorato','Ricardo Gadelha','Sérgio Bandeira','Vinícius Coutinho','Wagner Lucena'];
   function roster(sid){var all=trainings.concat(pastTr),s=all.filter(function(x){return x.id===sid;})[0];var rs=['GOING','GOING','GOING','MAYBE','GOING','DECLINED','GOING',null,'GOING','GOING',null,'MAYBE','GOING',null];
     return names.map(function(n,i){var mine=i===0,done=s&&s.status==='DONE';return {userId:mine?uid:'u'+i,name:n,username:null,confirmed:false,rsvp:mine?(s?s.myRsvp:null):rs[i],present:done?(mine?s.myPresent:i%5!==0):null,goals:mine&&done&&s.myPresent?3:null,passes:mine&&done&&s.myPresent?31:null,efficiency:mine&&done&&s.myPresent?84:null,rating:mine&&done&&s.myPresent?9.1:null,note:mine&&done&&s.myPresent?'Melhor treino do mês. Decidiu bem no último terço.':null};});}
-  var notifs=[{id:'n1',type:'team',title:'Convite para o elenco',body:'Bessa Beach Club convidou você para a Copa Bessa de Futevôlei.',read:false,createdAt:new Date(Date.now()-40*6e4).toISOString()},
-    {id:'n2',type:'schedule',title:'Treino marcado',body:'Treino tático do Cabo Branco no Ginásio do Colégio Pio X.',read:false,createdAt:new Date(Date.now()-5*36e5).toISOString()},
-    {id:'n3',type:'result',title:'Resultado lançado',body:'Cabo Branco 4 × 2 Causos FC. Você marcou 2 gols.',read:true,createdAt:new Date(Date.now()-3*864e5).toISOString()},
-    {id:'n4',type:'info',title:'Avaliação atualizada',body:'Seu treinador registrou uma nova avaliação. Nota geral 8,4.',read:true,createdAt:new Date(Date.now()-6*864e5).toISOString()}];
+  var notifs=[{id:'n1',type:'team',title:'Convite para o elenco',body:'Bessa Beach Club convidou você para a Copa Bessa de Futevôlei.',link:'/torneios.html#t/t3',read:false,createdAt:new Date(Date.now()-40*6e4).toISOString()},
+    {id:'n2',type:'training',title:'Treino marcado',body:'Treino tático do Cabo Branco no Ginásio do Colégio Pio X. Confirme presença.',link:'/torneios.html#/treino/tr1',read:false,createdAt:new Date(Date.now()-5*36e5).toISOString()}]
+    .concat(STAFFON?[{id:'n7',type:'referee',title:'Você vai apitar',body:'Treze Master × Santa Cruz PB, hoje no Ginásio Ronaldão.',link:'#/sumula/rm2',read:false,createdAt:new Date(Date.now()-7*36e5).toISOString()},
+      {id:'n6',type:'team',title:'Pedido pra entrar no time',body:'Lucas Andrade quer entrar no Escolinha Pio X. Aceite ou recuse.',link:'/torneios.html#t/t6',read:false,createdAt:new Date(Date.now()-9*36e5).toISOString()}]:[])
+    .concat([{id:'n5',type:'challenge',title:'Novo desafio 1x1',body:'Bruno Lacerda desafiou você no Futsal.',link:'#/desafios',read:true,createdAt:new Date(Date.now()-26*36e5).toISOString()},
+    {id:'n3',type:'result',title:'Resultado lançado',body:'Cabo Branco 4 × 2 Causos FC. Você marcou 2 gols.',link:'#/t/t1',read:true,createdAt:new Date(Date.now()-3*864e5).toISOString()},
+    {id:'n4',type:'info',title:'Avaliação atualizada',body:'Seu treinador registrou uma nova avaliação. Nota geral 8,4.',read:true,createdAt:new Date(Date.now()-6*864e5).toISOString()}]);
   var gamesProd={jogos:13,vitorias:8,empates:2,derrotas:3,gols:14,assistencias:9,amarelos:3,vermelhos:0,byTournament:[{tournamentId:'t1',tournament:t1.name,jogos:9,gols:11,assistencias:7,amarelos:2,vermelhos:0},{tournamentId:'t4',tournament:'Copa Verão de Society 2026',jogos:4,gols:3,assistencias:2,amarelos:1,vermelhos:0}]};
   function bad(msg,data){return Object.assign(new Error(msg),{status:400,data:data||{error:msg}});}
   function rk(l){return l.map(function(x,i){return {rank:i+1,userId:x[0],name:x[1],username:x[2],city:x[3],rating:x[4],matches:x[5],wins:x[6],losses:x[5]-x[6]};});}
   var ranks={FUTSAL:rk([['u21','Thiago Cavalcanti','thiagocav','João Pessoa',4.86,22,17],['u22','Bruno Lacerda','brunolacerda','Cabedelo',4.51,19,13],['u23','Diego Farias','diegofarias','João Pessoa',4.3,17,11],[uid,me.name,'rafanobrega','João Pessoa',4.12,14,9],['u25','Marcelo Queiroz','marceloq','Bayeux',3.97,16,9],['u26','Anderson Pessoa',null,'João Pessoa',3.74,12,6],['u27','Felipe Maroja','felipemaroja','Santa Rita',3.52,11,5],['u28','Gustavo Trigueiro','gutrigueiro','João Pessoa',3.31,9,4],['u29','Leandro Vital','leovital','Campina Grande',3.05,8,3]]),
     BEACH_TENNIS:rk([['u31','Camila Azevedo','camilaazv','João Pessoa',4.4,18,13],[uid,me.name,'rafanobrega','João Pessoa',3.48,8,5],['u33','Paulo Honorato','paulohonorato','Cabedelo',3.2,10,5],['u34','Larissa Ramalho','lariramalho','João Pessoa',2.95,7,3]])};
+  function sc(n,team,g,a,y,r,j,u,un){return {name:n,team:team,goals:g,assists:a,yellow:y,red:r,games:j,userId:u||null,username:un||null};}
+  var scorers={FUTSAL:[sc('Thiago Cavalcanti','Treze Master',17,6,2,0,9,'u21','thiagocav'),sc('Bruno Lacerda','Santa Cruz PB',15,4,1,0,9,'u22','brunolacerda'),sc(me.name,'Cabo Branco',14,9,3,0,13,uid,'rafanobrega'),
+    sc('Diego Farias','EBN Futsal',12,11,0,0,9,'u23','diegofarias'),sc('Marcelo Queiroz','Causos FC',9,3,1,1,8),sc('Anderson Pessoa','Cabo Branco',7,8,2,0,9),sc('Felipe Maroja','ABC Master',6,2,0,0,8,'u27','felipemaroja'),
+    sc('Gustavo Trigueiro','Brasil Sertão',5,5,1,0,8),sc('Leandro Vital','Amigos CG',4,7,0,0,7,'u29','leovital'),sc('Paulo Honorato','Veteranos do Bessa',3,1,0,0,6),sc('Ricardo Gadelha','Treze Master',0,6,2,0,9)]};
+  function myGamesPast(){
+    var g=pastMatches.map(function(x){var mine=x.homeEntry.name==='Cabo Branco'?'h':'a',my=mine==='h'?x.homeScore:x.awayScore,op=mine==='h'?x.awayScore:x.homeScore;
+      return {id:x.id,tournamentId:'t1',tournament:t1.name,slug:t1.slug,category:'Master 40+',stage:x.stage,status:x.status,scheduledAt:x.scheduledAt,location:x.location,home:x.homeEntry.name,away:x.awayEntry.name,homeLogo:null,awayLogo:null,
+        homeScore:x.homeScore,awayScore:x.awayScore,homePenalties:null,awayPenalties:null,winnerEntryId:null,myEntryId:'eCabo Branco',result:my>op?'W':my<op?'L':'D'};});
+    g.push({id:'m5',tournamentId:'t1',tournament:t1.name,slug:t1.slug,category:'Master 40+',stage:'QUARTER',status:'FINISHED',scheduledAt:at(-21,'20:00'),location:'Ginásio Ronaldão',home:'Cabo Branco',away:'Amigos CG',homeLogo:null,awayLogo:null,homeScore:2,awayScore:2,homePenalties:4,awayPenalties:3,winnerEntryId:'eCabo Branco',myEntryId:'eCabo Branco',result:'W'});
+    return g;
+  }
   function U(id,n,u){return {id:id,name:n,username:u};}
   var meU=U(uid,me.name,'rafanobrega');
   function ch(id,from,to,sport,st,msg,hrs,x){var mine=from===meU;return Object.assign({id:id,challengerId:from.id,challengedId:to.id,challenger:from,challenged:to,sport:sport,status:st,message:msg,proposedAt:null,location:null,homeScore:null,awayScore:null,winnerId:null,createdAt:new Date(Date.now()-hrs*36e5).toISOString()},x||{});}
@@ -2028,7 +2491,18 @@ var mockApi=(function(){
     ['POST',/^\/auth\/register$/,function(m,b){if(!b.name||!b.password||!b.birthDate||!b.lgpdAccepted)throw bad('Dados incompletos');me.name=b.name;return {token:'mock',user:me};}],
     ['POST',/^\/auth\/forgot-send-code$/,function(m,b){if(b.method==='whatsapp'){if(String(b.phone)==='83900000000')throw bad('WhatsApp indisponível no momento',{whatsappDown:true,hasEmail:true});if(String(b.phone)==='83911111111')throw bad('Telefone não cadastrado');return {success:true,message:'Código enviado para seu WhatsApp'};}if(/^nao@/.test(String(b.email)))throw bad('E-mail não cadastrado');return {success:true,message:'Código enviado para seu e-mail'};}],
     ['POST',/^\/auth\/forgot-reset$/,function(m,b){if(!b.password||b.password.length<4)throw bad('Senha deve ter no mínimo 4 caracteres');return {success:true,message:'Senha alterada com sucesso'};}],
+    ['GET',/^\/tournaments\/rankings\/([A-Z_]+)\/scorers/,function(m){if(QS.get('scfail'))throw Object.assign(new Error('falhou'),{status:500});return {sport:m[1],scorers:scorers[m[1]]||[]};}],
     ['GET',/^\/tournaments\/rankings\/([A-Z_]+)$/,function(m){return {sport:m[1],ranking:ranks[m[1]]||[]};}],
+    ['GET',/^\/tournaments\/my-games/,function(m,b,p){if(QS.get('mygames')==='fail')throw Object.assign(new Error('falhou'),{status:500});var sc=(p.match(/scope=(\w+)/)||[])[1]||'all';return {games:sc==='upcoming'?[]:myGamesPast()};}],
+    ['GET',/^\/tournaments\/(t\d)\/my-matches$/,function(m){return {matches:m[1]==='t1'&&STAFFON?refM:[]};}],
+    ['GET',/^\/tournaments\/(t\d)\/my-team$/,function(m){return m[1]==='t6'?{clubs:[{name:'Escolinha Pio X',logoUrl:null,entries:[{entryId:'e61',category:'Sub-13',categoryId:'k13',roster:16},{entryId:'e62',category:'Sub-11',categoryId:'k11',roster:12}]}]}:{clubs:[]};}],
+    ['GET',/^\/tournaments\/(t\d)\/teams\/([^/]+)\/trainings$/,function(m){return m[1]==='t6'?{clubName:'Escolinha Pio X',sessions:coachTr}:{clubName:null,sessions:[]};}],
+    ['POST',/^\/tournaments\/notifications\/([^/]+)\/read$/,function(m){notifs.forEach(function(n){if(n.id===m[1])n.read=true;});return {ok:true};}],
+    ['POST',/^\/webauthn\/auth\/options$/,function(){return {challenge:'bW9jay1jaGFsbGVuZ2U',rpId:'clubsportsetennis.com.br',allowCredentials:[],userVerification:'preferred',timeout:60000};}],
+    ['POST',/^\/webauthn\/auth\/verify$/,function(m,b){if(QS.get('pk')==='unknown')throw Object.assign(new Error('Biometria não reconhecida. Entre com a senha.'),{status:401});if(!b.cred||!b.cred.id)throw bad('Resposta inválida.');return {token:'mock',user:me};}],
+    ['GET',/^\/webauthn\/status$/,function(){return pk.on?{enrolled:true,count:1,credentials:[{id:'wc1',deviceLabel:'iPhone',createdAt:inH(-24*20),lastUsedAt:inH(-26)}]}:{enrolled:false,count:0,credentials:[]};}],
+    ['POST',/^\/webauthn\/register\/options$/,function(){return {challenge:'bW9jay1yZWc',rp:{id:'clubsportsetennis.com.br',name:'Club Sports & Tennis'},user:{id:'dV9yYWZh',name:me.phone,displayName:me.name},pubKeyCredParams:[{type:'public-key',alg:-7}],excludeCredentials:[]};}],
+    ['POST',/^\/webauthn\/register\/verify$/,function(m,b){if(!b.cred)throw bad('Não foi possível registrar a biometria.');pk.on=true;return {ok:true};}],
     ['GET',/^\/tournaments\/challenges\/mine$/,function(){return {challenges:chals};}],
     ['POST',/^\/tournaments\/challenges$/,function(m,b){var to=String(b.challengedUsername||'');if(!to||/^ninguem$/i.test(to))throw bad('oponente não encontrado');if(to==='rafanobrega')throw bad('não dá pra desafiar você mesmo');var c=ch('c'+Date.now(),meU,U('u_'+to,to.charAt(0).toUpperCase()+to.slice(1),to),b.sport||'TENNIS','PENDING',b.message||null,0);chals.unshift(c);return c;}],
     ['POST',/^\/tournaments\/challenges\/([^/]+)\/respond$/,function(m,b){var c=chById(m[1]);c.status={accept:'ACCEPTED',decline:'DECLINED',cancel:'CANCELED'}[b.action]||c.status;return c;}],
@@ -2061,6 +2535,7 @@ var mockApi=(function(){
 /* ===================== boot ===================== */
 if(MOCK&&QS.get('tab')==='past')S.agendaTab='past';
 if(MOCK&&QS.get('rk'))S.rkSport=QS.get('rk');
+if(MOCK&&QS.get('rkv'))S.rkView=QS.get('rkv');
 if(MOCK&&QS.get('sel'))S.agSel=QS.get('sel');
 if(MOCK&&QS.get('still'))document.documentElement.classList.add('still');
 route();
