@@ -1932,6 +1932,127 @@ router.post('/batches/auto', async (req, res) => {
   }
 });
 
+// =====================================================================
+// ETIQUETAS DA NF-e DE ENTRADA (dono 2026-11-13: "tem uma NFe ... que foi dado
+// entrada, preciso fazer as etiquetas desses produtos"). Uma etiqueta por
+// MODELO (card) que a nota trouxe — nunca por tamanho —, no modelo escolhido.
+// NÃO exige estoque bipado na loja: a mercadoria acabou de chegar.
+// Produto sem preço / marca "A DEFINIR" / item sem card ficam de fora e são
+// listados no retorno pra corrigir (nunca etiqueta com preço inventado).
+// =====================================================================
+router.get('/nfes', async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    const where = { docType: 'entrada' };
+    if (q) {
+      const digits = q.replace(/\D/g, '');
+      where.OR = [
+        { issuerName: { contains: q, mode: 'insensitive' } },
+        ...(digits ? [{ number: { contains: digits.replace(/^0+/, '') || digits } }, { accessKey: { contains: digits } }] : []),
+      ];
+    }
+    const docs = await prisma.xmlFiscalDocument.findMany({
+      where,
+      orderBy: [{ issueDate: 'desc' }, { createdAt: 'desc' }],
+      take: 40,
+      select: { id: true, number: true, issuerName: true, issueDate: true, createdAt: true, recipientName: true, recipientCnpj: true, _count: { select: { items: true } } },
+    });
+    const ids = docs.map((d) => d.id);
+    const linked = ids.length ? await prisma.xmlFiscalItem.groupBy({
+      by: ['fiscalDocumentId', 'productId'],
+      where: { fiscalDocumentId: { in: ids }, productId: { not: null } },
+    }) : [];
+    const models = new Map();
+    for (const r of linked) models.set(r.fiscalDocumentId, (models.get(r.fiscalDocumentId) || 0) + 1);
+    res.json({
+      nfes: docs.map((d) => ({
+        id: d.id, number: d.number, issuerName: d.issuerName, issueDate: d.issueDate || d.createdAt,
+        recipientName: d.recipientName, items: d._count.items, models: models.get(d.id) || 0,
+      })),
+    });
+  } catch (err) {
+    console.error('[labels/nfes] erro:', err);
+    res.status(500).json({ error: 'Erro ao listar NF-e', detail: err.message });
+  }
+});
+
+router.post('/batches/from-nfe', async (req, res) => {
+  try {
+    const { nfeId, templateId, storeId, usePromo, name } = req.body || {};
+    if (!nfeId) return res.status(400).json({ error: 'Escolha a NF-e.' });
+    await ensureDefaultTemplates();
+    const templateMeta = templateId
+      ? await prisma.labelTemplate.findUnique({ where: { id: templateId } })
+      : await prisma.labelTemplate.findFirst({ where: { isDefault: true } });
+    if (!templateMeta) return res.status(404).json({ error: 'Modelo de etiqueta não encontrado' });
+
+    const doc = await prisma.xmlFiscalDocument.findUnique({
+      where: { id: String(nfeId) },
+      select: { id: true, number: true, issuerName: true, recipientCnpj: true, docType: true, items: { select: { productId: true, description: true } } },
+    });
+    if (!doc) return res.status(404).json({ error: 'NF-e não encontrada' });
+    if (doc.docType && doc.docType !== 'entrada') return res.status(400).json({ error: 'Só NF-e de ENTRADA (compra de fornecedor) gera etiqueta de produto.' });
+
+    // Loja do lote: a escolhida; senão a destinatária da nota (CNPJ -> emissor -> loja)
+    let store = null;
+    if (storeId && storeId !== 'all') store = await prisma.store.findUnique({ where: { id: String(storeId) }, select: { id: true, code: true, name: true } });
+    if (!store && doc.recipientCnpj) {
+      store = await prisma.store.findFirst({
+        where: { active: true, fiscalIssuer: { cnpj: String(doc.recipientCnpj).replace(/\D/g, '') } },
+        select: { id: true, code: true, name: true },
+      });
+    }
+
+    const semCard = doc.items.filter((i) => !i.productId).map((i) => i.description);
+    const ids = [...new Set(doc.items.map((i) => i.productId).filter(Boolean))];
+    const all = ids.length ? await prisma.product.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, sku: true, name: true, brand: true, price: true, promoPrice: true, active: true },
+      orderBy: [{ brand: 'asc' }, { name: 'asc' }],
+    }) : [];
+    const ok = [];
+    const skipped = [];
+    for (const p of all) {
+      if (!p.active) skipped.push({ name: p.name, motivo: 'card inativo' });
+      else if (!(p.price > 0)) skipped.push({ name: p.name, motivo: 'sem preço de venda' });
+      else if (String(p.brand || '').trim().localeCompare(INVALID_LABEL_BRAND, 'pt-BR', { sensitivity: 'base' }) === 0) skipped.push({ name: p.name, motivo: 'marca A DEFINIR' });
+      else ok.push(p);
+    }
+    if (!ok.length) {
+      return res.status(400).json({ error: 'Nenhum produto desta NF-e está pronto pra etiqueta.', skipped, semCard: semCard.length });
+    }
+
+    const items = ok.map((p) => ({
+      productId: p.id,
+      quantity: 1, // uma etiqueta por modelo, nunca por tamanho
+      price: p.price,
+      promotionalPrice: usePromo ? p.promoPrice : null,
+      barcode: p.sku,
+    }));
+    const totalLabels = items.length * labelsPerProduct(templateMeta);
+    const batch = await prisma.labelBatch.create({
+      data: {
+        name: name || `NF-e ${doc.number || ''} — ${(doc.issuerName || '').slice(0, 40)}`.trim(),
+        templateId: templateMeta.id,
+        storeId: store ? store.id : null,
+        createdById: req.userId,
+        status: 'DRAFT',
+        totalLabels,
+        items: { create: items },
+      },
+      select: { id: true, name: true },
+    });
+    res.json({
+      batch, models: ok.length, physicalLabels: totalLabels, templateName: templateMeta.name,
+      store: store ? store.code + ' — ' + store.name : null,
+      skipped, semCard: semCard.length,
+    });
+  } catch (err) {
+    console.error('[labels/batches/from-nfe] erro:', err);
+    res.status(500).json({ error: 'Erro ao gerar etiquetas da NF-e', detail: err.message });
+  }
+});
+
 // Exposto apenas para os testes determinísticos de composição das etiquetas;
 // o objeto continua sendo um Router Express normalmente.
 router.labelProductName = labelProductName;

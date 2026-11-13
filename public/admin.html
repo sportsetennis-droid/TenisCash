@@ -2057,6 +2057,13 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button type="button" id="labels-generate-auto" style="padding:9px 14px;background:#8d3216;color:white;border:none;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer">⚡ GERAR POR FILTROS</button>
     <span style="font-size:11px;color:#8e6253">Uma etiqueta por modelo com estoque na loja — nunca por tamanho.</span>
   </div>
+  <div id="labels-nfe-panel" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0 0 14px;padding:12px 14px;background:#fff7f2;border:1px solid #ffd8c5;border-radius:12px">
+    <strong style="font-size:12px;color:#8d3216;letter-spacing:.4px">DA NF-e DE ENTRADA</strong>
+    <input id="labels-nfe-q" class="search-box" placeholder="Fornecedor ou nº da nota" style="min-width:200px">
+    <select id="labels-nfe-select" class="search-box" style="min-width:320px"><option value="">Carregando notas...</option></select>
+    <button type="button" id="labels-generate-nfe" style="padding:9px 14px;background:#E5571E;color:white;border:none;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer">🧾 GERAR DA NF-e</button>
+    <span style="font-size:11px;color:#8e6253">Uma etiqueta por modelo que a nota trouxe — não precisa estar bipado.</span>
+  </div>
   <!-- Compat: hidden -->
   <input type="hidden" id="labels-search">
   <input type="hidden" id="labels-qty" value="1">
@@ -10481,6 +10488,64 @@ async function labelsGenerateAutomatic() {
     if (button) { button.disabled = false; button.textContent = '⚡ GERAR POR FILTROS'; }
   }
 }
+// ---- Etiquetas da NF-e de entrada ----
+let _lblNfeTimer = null;
+async function loadLabelNfes() {
+  const sel = document.getElementById('labels-nfe-select');
+  if (!sel) return;
+  const q = (document.getElementById('labels-nfe-q')?.value || '').trim();
+  try {
+    const data = await api('/admin/labels/nfes' + (q ? '?q=' + encodeURIComponent(q) : ''));
+    if (data.error) throw new Error(data.error);
+    const list = data.nfes || [];
+    sel.innerHTML = list.length
+      ? list.map(n => {
+        const dt = n.issueDate ? new Date(n.issueDate).toLocaleDateString('pt-BR') : '';
+        return `<option value="${escapeHtml(n.id)}">Nº ${escapeHtml(n.number || '?')} · ${escapeHtml((n.issuerName || '').slice(0, 34))} · ${dt} · ${n.models} modelo(s)</option>`;
+      }).join('')
+      : '<option value="">Nenhuma NF-e de entrada encontrada</option>';
+  } catch (e) {
+    sel.innerHTML = '<option value="">Erro ao carregar notas</option>';
+  }
+}
+async function labelsGenerateFromNfe() {
+  const button = document.getElementById('labels-generate-nfe');
+  const nfeId = document.getElementById('labels-nfe-select')?.value;
+  if (!nfeId) { alert('Escolha a NF-e.'); return; }
+  const templateSelect = document.getElementById('labels-template');
+  const defaultTemplate = Object.values(_lblTemplates).find(t => t.isDefault);
+  const templateId = templateSelect?.value || defaultTemplate?.id;
+  const storeValue = document.getElementById('labels-auto-store')?.value || 'all';
+  if (button) { button.disabled = true; button.textContent = 'GERANDO...'; }
+  try {
+    const data = await api('/admin/labels/batches/from-nfe', 'POST', {
+      nfeId, templateId, storeId: storeValue === 'all' ? null : storeValue,
+      usePromo: !!document.getElementById('labels-use-promo')?.checked,
+    });
+    const skippedTxt = (data.skipped || []).length
+      ? '\n\nFicaram de fora (' + data.skipped.length + '):\n' + data.skipped.slice(0, 15).map(x => '• ' + x.name + ' — ' + x.motivo).join('\n') + (data.skipped.length > 15 ? '\n…' : '')
+      : '';
+    const semCardTxt = data.semCard ? '\n\n' + data.semCard + ' item(ns) da nota ainda sem card no catálogo.' : '';
+    if (data.error) { alert(data.error + skippedTxt + semCardTxt); return; }
+    await loadLabelBatches();
+    const opened = await openAuthedFile('/admin/labels/batches/' + data.batch.id + '/pdf', { skipPrint: true });
+    const cartSummary = document.getElementById('labels-cart-summary');
+    if (cartSummary) cartSummary.textContent = `NF-e: ${data.models} modelo(s), ${data.physicalLabels} etiqueta(s) · ${data.templateName || ''}${data.store ? ' · ' + data.store : ''}`;
+    if (skippedTxt || semCardTxt) alert('Etiquetas geradas: ' + data.models + ' modelo(s).' + skippedTxt + semCardTxt);
+    if (!opened) return;
+  } catch (e) {
+    alert('Erro ao gerar etiquetas da NF-e: ' + e.message);
+  } finally {
+    if (button) { button.disabled = false; button.textContent = '🧾 GERAR DA NF-e'; }
+  }
+}
+document.addEventListener('click', (ev) => {
+  if (ev.target && ev.target.id === 'labels-generate-nfe') labelsGenerateFromNfe();
+});
+document.addEventListener('input', (ev) => {
+  if (ev.target && ev.target.id === 'labels-nfe-q') { clearTimeout(_lblNfeTimer); _lblNfeTimer = setTimeout(loadLabelNfes, 400); }
+});
+
 async function initLabelsTab() {
   api('/admin/labels/everlast-payment-offer').then(result => {
     if (!result.error) document.getElementById('labels-everlast-status').textContent = `${result.configured}/${result.total} Everlast com oferta configurada na etiqueta 5×7: BAIXOU.` + (result.withoutPrice?.length ? ` Sem preço normal (${result.withoutPrice.length}): ${result.withoutPrice.map(p => p.name).join('; ')}` : '');
@@ -10570,6 +10635,7 @@ async function initLabelsTab() {
   }
   await loadLabelTemplates();
   if (!_lblAutoOptionsLoaded) await loadLabelAutoOptions();
+  loadLabelNfes();
   // Auto-seleciona o novo modelo 5×7 duplex; mantém fallback para instalações antigas.
   const sel = document.getElementById('labels-template');
   if (sel) {
