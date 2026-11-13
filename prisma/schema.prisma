@@ -3840,6 +3840,7 @@ model TournamentMatch {
   winnerEntry   TournamentEntry? @relation("winnerEntry", fields: [winnerEntryId], references: [id])
 
   status    String @default("SCHEDULED") // SCHEDULED | LIVE | FINISHED | WALKOVER | CANCELED
+  reminderSentAt DateTime? // lembrete automático já enviado (push, ~3h antes)
   liveState Json? // placar ao vivo: { sets:[...], currentGame, server, ... }
 
   // Avanço automático na chave (mata-mata): vencedor sobe pra nextMatch no slot nextSlot
@@ -4062,6 +4063,7 @@ model TrainingSession {
   notes             String?
   plan              Json? // plano em blocos [{name, minutes, description}]
   recurrenceGroupId String? // agrupa uma série recorrente (toda terça/quinta...)
+  reminderSentAt    DateTime? // lembrete automático já enviado (push, ~3h antes)
   createdByUserId   String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt

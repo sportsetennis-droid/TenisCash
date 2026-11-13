@@ -162,6 +162,9 @@ const STATEMENTS = [
   // PLANO do treino em blocos cronometrados (aquecimento→técnico→tático→coletivo→...).
   // plan = JSON array [{name, minutes, description}]. O atleta já sabe o que vai ser.
   `ALTER TABLE "TrainingSession" ADD COLUMN IF NOT EXISTS "plan" JSONB`,
+  // Lembrete automático (push grátis ~3h antes) — marca pra não lembrar 2x.
+  `ALTER TABLE "TrainingSession" ADD COLUMN IF NOT EXISTS "reminderSentAt" TIMESTAMP(3)`,
+  `ALTER TABLE "TournamentMatch" ADD COLUMN IF NOT EXISTS "reminderSentAt" TIMESTAMP(3)`,
   // Templates de plano reutilizáveis por clube (padrão Sportplan/Practice Plan).
   `CREATE TABLE IF NOT EXISTS "TrainingTemplate" (
      "id" TEXT NOT NULL,

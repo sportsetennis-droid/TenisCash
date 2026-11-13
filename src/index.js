@@ -2001,6 +2001,9 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     try { startServicesCron(); } catch (e) { console.error('[servicesCron] falha ao iniciar:', e.message); }
   }
 
+  // APEX: lembrete automático de treino/jogo ~3h antes (push grátis; desliga com DISABLE_ACTIVITY_REMINDERS=1)
+  try { require('./services/activityReminders').startActivityReminders(); } catch (e) { console.error('[activityReminders] falha ao iniciar:', e.message); }
+
   // Robô do grupo da empresa (relatórios de vendas/presença/tarefas 13h/18h/21h no WhatsApp):
   // DESATIVADO a pedido do dono em 2026-07-29 — não publicar relatórios das pessoas no grupo.
   // Para reativar, descomente a linha abaixo (e faça deploy).

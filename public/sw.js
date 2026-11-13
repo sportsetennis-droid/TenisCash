@@ -100,6 +100,15 @@ self.addEventListener('notificationclick', (event) => {
   const url = (event.notification.data && event.notification.data.url) || '/app.html';
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      // aviso de torneio/treino: reaproveita a aba do /torneios.html e leva pro link
+      if (url.includes('/torneios.html')) {
+        for (const c of clients) {
+          if (c.url.includes('/torneios.html')) {
+            return c.focus().then((w) => (w && w.navigate ? w.navigate(url) : w)).catch(() => self.clients.openWindow(url));
+          }
+        }
+        return self.clients.openWindow(url);
+      }
       // se já tem aba aberta do app, foca nela
       for (const c of clients) {
         if (c.url.includes('/app.html') || c.url.includes('/mensagens.html')) {
