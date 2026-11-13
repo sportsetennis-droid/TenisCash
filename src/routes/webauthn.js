@@ -19,6 +19,13 @@ const RP_ID = process.env.WEBAUTHN_RP_ID || 'teniscash.com.br';
 const RP_NAME = 'TenisCash';
 // aceita com/sem www; rpID 'teniscash.com.br' já cobre o subdomínio www
 const ORIGINS = (process.env.WEBAUTHN_ORIGINS || 'https://teniscash.com.br,https://www.teniscash.com.br').split(',');
+// Domínio do clube: chave própria (a chave do aparelho é presa ao domínio).
+const CLUB_RP = { id: 'clubsportsetennis.com.br', name: 'Club Sports & Tennis', origins: ['https://clubsportsetennis.com.br', 'https://www.clubsportsetennis.com.br'] };
+function rpFor(req) {
+  const h = String((req && req.hostname) || '').toLowerCase();
+  if (h === CLUB_RP.id || h === 'www.' + CLUB_RP.id) return CLUB_RP;
+  return { id: RP_ID, name: RP_NAME, origins: ORIGINS };
+}
 
 // includeRich igual ao /login (pra o payload de retorno ser idêntico)
 const includeRich = {
@@ -52,7 +59,7 @@ router.post('/register/options', authMiddleware, async (req, res) => {
     const user = await prisma.user.findUnique({ where: { id: req.userId }, include: { webauthnCredentials: true } });
     if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
     const options = await generateRegistrationOptions({
-      rpName: RP_NAME, rpID: RP_ID,
+      rpName: rpFor(req).name, rpID: rpFor(req).id,
       userID: Buffer.from(user.id),
       userName: user.phone || user.name || user.id,
       userDisplayName: user.name || user.phone || 'Usuário',
@@ -71,7 +78,7 @@ router.post('/register/verify', authMiddleware, async (req, res) => {
     if (!c) return res.status(400).json({ error: 'Sessão expirada — tente ativar de novo.' });
     const verification = await verifyRegistrationResponse({
       response: req.body.cred || req.body,
-      expectedChallenge: c.challenge, expectedOrigin: ORIGINS, expectedRPID: RP_ID,
+      expectedChallenge: c.challenge, expectedOrigin: rpFor(req).origins, expectedRPID: rpFor(req).id,
       requireUserVerification: false,
     });
     if (!verification.verified || !verification.registrationInfo) return res.status(400).json({ error: 'Não foi possível registrar a biometria.' });
@@ -91,9 +98,9 @@ router.post('/register/verify', authMiddleware, async (req, res) => {
 });
 
 // ===== PASSO B — ENTRAR com biometria (público, discoverable) =====
-router.post('/auth/options', async (_req, res) => {
+router.post('/auth/options', async (req, res) => {
   try {
-    const options = await generateAuthenticationOptions({ rpID: RP_ID, userVerification: 'preferred', allowCredentials: [] });
+    const options = await generateAuthenticationOptions({ rpID: rpFor(req).id, userVerification: 'preferred', allowCredentials: [] });
     putChallenge('auth:' + options.challenge, options.challenge, null);
     res.json(options);
   } catch (e) { console.error('[webauthn] auth/options', e); res.status(500).json({ error: e.message }); }
@@ -109,7 +116,7 @@ router.post('/auth/verify', async (req, res) => {
     const cred = await prisma.webauthnCredential.findUnique({ where: { credentialId: resp.id }, include: { user: { include: includeRich } } });
     if (!cred) return res.status(401).json({ error: 'Biometria não reconhecida. Entre com a senha.' });
     const verification = await verifyAuthenticationResponse({
-      response: resp, expectedChallenge: c.challenge, expectedOrigin: ORIGINS, expectedRPID: RP_ID,
+      response: resp, expectedChallenge: c.challenge, expectedOrigin: rpFor(req).origins, expectedRPID: rpFor(req).id,
       requireUserVerification: false,
       credential: { id: cred.credentialId, publicKey: new Uint8Array(cred.publicKey), counter: cred.counter, transports: cred.transports ? cred.transports.split(',') : undefined },
     });
