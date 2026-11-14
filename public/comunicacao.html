@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="referrer" content="no-referrer">
+<link rel="manifest" href="/manifest.json">
+<title>Central de Comunicação</title>
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--ink:#18212d;--mut:#5d6776;--line:#e1e5ea;--ok:#176437;--okbg:#e4f6ea;--bad:#a62525;--badbg:#fdeaea;--warn:#8a5a00;--warnbg:#fff3d6;--acc:#F2561D}
+*{box-sizing:border-box}html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;padding:env(safe-area-inset-top) 0 calc(72px + env(safe-area-inset-bottom))}
+.app{max-width:480px;margin:0 auto;padding:0 12px}
+header{position:sticky;top:0;z-index:5;background:var(--acc);color:#fff;margin:0 -12px 12px;padding:14px 16px}
+header h1{margin:0;font-size:18px}header p{margin:2px 0 0;font-size:13px;opacity:.9}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+h2{font-size:16px;margin:16px 0 8px}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;text-align:center}.kpi b{display:block;font-size:20px}.kpi span{font-size:12px;color:var(--mut)}
+.canal .top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}.canal h3{margin:0;font-size:15px}.meta{color:var(--mut);font-size:13px}
+.chip{display:inline-block;font-size:12px;font-weight:700;padding:3px 9px;border-radius:99px;white-space:nowrap}.on{background:var(--okbg);color:var(--ok)}.off{background:var(--badbg);color:var(--bad)}.mid{background:var(--warnbg);color:var(--warn)}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+button{font:inherit;font-weight:700;min-height:44px;padding:10px 14px;border:0;border-radius:11px;background:var(--acc);color:#fff;cursor:pointer}button.sec{background:#eef0f3;color:var(--ink)}button:disabled{opacity:.5}
+input,select,textarea{width:100%;font:inherit;min-height:44px;padding:10px 12px;border:1px solid #c5ccd5;border-radius:10px;background:#fff;color:var(--ink)}textarea{min-height:90px}
+label{display:block;font-weight:650;font-size:13px;margin:10px 0 5px}
+.switch{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--mut);min-height:44px}.switch input{width:22px;min-height:22px;height:22px}
+.ct{display:flex;justify-content:space-between;gap:10px;padding:12px 2px;border-bottom:1px solid var(--line);cursor:pointer;min-height:44px}.ct:last-child{border-bottom:0}.ct b{display:block}.ct small{color:var(--mut)}
+nav{position:fixed;left:0;right:0;bottom:0;z-index:6;background:#fff;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+nav .in{max-width:480px;margin:0 auto;display:grid;grid-template-columns:repeat(3,1fr)}
+nav button{background:none;color:var(--mut);border-radius:0;min-height:60px;font-size:13px;padding:6px 4px;border-top:3px solid transparent}nav button.act{color:var(--ink);border-top-color:var(--c,var(--acc))}
+.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9;display:none}.sheet-bg.open{display:block}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:10;max-width:480px;margin:0 auto;background:#fff;border-radius:18px 18px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom));max-height:88vh;overflow:auto;transform:translateY(105%);transition:transform .2s}.sheet.open{transform:none}
+.sheet h3{margin:0 0 6px}#qrImg{display:block;width:min(100%,300px);margin:12px auto;image-rendering:pixelated}
+.err{color:var(--bad)}.okmsg{color:var(--ok)}.hint{font-size:13px;color:var(--mut)}
+[hidden]{display:none!important}
+@media(min-width:900px){body{padding-top:24px}.app{box-shadow:0 10px 40px rgba(0,0,0,.12);border-radius:22px;background:var(--bg);padding-bottom:20px;min-height:90vh}header{border-radius:22px 22px 0 0}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header id="hdr"><h1 id="hTitle">Central de Comunicação</h1><p id="hSub">WhatsApp · Instagram · CRM</p></header>
+
+  <form id="login" class="card" hidden>
+    <p>Entre com sua conta de administrador.</p>
+    <label for="identity">WhatsApp ou e-mail</label><input id="identity" autocomplete="username" required>
+    <label for="password">Senha</label><input id="password" type="password" autocomplete="current-password" required>
+    <p id="loginErr" class="err"></p><button type="submit" style="width:100%">Entrar</button>
+  </form>
+
+  <main id="main" hidden>
+    <div class="kpis"><div class="kpi"><b id="kTotal">–</b><span>contatos</span></div><div class="kpi"><b id="kHoje">–</b><span>novos hoje</span></div><div class="kpi"><b id="kSemNome">–</b><span>sem nome</span></div></div>
+
+    <h2>Números e contas</h2>
+    <div id="canais"></div>
+
+    <h2>Mandar mensagem entre canais</h2>
+    <div class="card">
+      <label for="sFrom">Sai pelo número de</label><select id="sFrom"></select>
+      <label for="sTo">Para</label><select id="sTo"></select>
+      <input id="sPhone" placeholder="Telefone com DDD" inputmode="tel" hidden style="margin-top:8px">
+      <label for="sText">Mensagem</label><textarea id="sText" placeholder="Escreva a mensagem"></textarea>
+      <div class="row"><button id="sBtn" type="button">Enviar</button><span id="sMsg"></span></div>
+      <p class="hint">Só aparecem canais desta empresa. Mensagem pra outra empresa é bloqueada.</p>
+    </div>
+
+    <h2>CRM — contatos</h2>
+    <div class="card">
+      <input id="q" type="search" placeholder="Buscar nome, telefone ou @">
+      <label class="switch"><input id="fSemNome" type="checkbox"> Só quem ainda está sem nome</label>
+      <div id="contatos"></div>
+      <div class="row"><button id="more" class="sec" type="button" hidden>Ver mais</button></div>
+    </div>
+  </main>
+  <p id="boot" class="hint">Carregando…</p>
+</div>
+
+<nav><div class="in" id="nav"></div></nav>
+
+<div class="sheet-bg" id="bg"></div>
+<div class="sheet" id="sheet"></div>
+
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let token=localStorage.getItem('tc_admin_token')||'';
+let DATA=null,EMP=(()=>{try{return localStorage.getItem('comms_emp')||'st'}catch(_){return 'st'}})(),OFFSET=0,qrTimer=null;
+async function api(path,body,method){
+  const r=await fetch('/api'+path,{method:method||(body===undefined?'GET':'POST'),cache:'no-store',headers:{...(token?{Authorization:'Bearer '+token}:{}),...(body===undefined?{}:{'Content-Type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)})});
+  const d=await r.json().catch(()=>({}));if(!r.ok){const e=new Error(d.error||('Erro '+r.status));e.status=r.status;throw e;}return d;
+}
+const fmtPhone=p=>{const d=String(p||'').replace(/\D/g,'');if(d.length===13)return `(${d.slice(2,4)}) ${d.slice(4,9)}-${d.slice(9)}`;if(d.length===12)return `(${d.slice(2,4)}) ${d.slice(4,8)}-${d.slice(8)}`;return p||'';};
+const ago=t=>{const s=(Date.now()-new Date(t))/1000;if(s<60)return 'agora';if(s<3600)return Math.floor(s/60)+' min';if(s<86400)return Math.floor(s/3600)+' h';return Math.floor(s/86400)+' d';};
+function statusChip(c){
+  if(c.status==='open')return '<span class="chip on">Conectado</span>';
+  if(c.status==='connecting')return '<span class="chip mid">Aguardando QR</span>';
+  if(c.status==='nao_criado')return '<span class="chip off">Não ligado</span>';
+  return '<span class="chip off">Desconectado</span>';
+}
+const emp=()=>DATA.empresas.find(e=>e.key===EMP)||DATA.empresas[0];
+
+function renderNav(){
+  $('nav').innerHTML=DATA.empresas.map(e=>`<button type="button" data-e="${e.key}" class="${e.key===EMP?'act':''}" style="--c:${e.cor}">${esc(e.nome)}</button>`).join('');
+  $('nav').querySelectorAll('button').forEach(b=>b.onclick=()=>{EMP=b.dataset.e;try{localStorage.setItem('comms_emp',EMP)}catch(_){};OFFSET=0;render();loadContatos(true);});
+}
+function render(){
+  const e=emp();renderNav();
+  $('hdr').style.background=e.cor;$('hTitle').textContent=e.nome;$('hSub').textContent='Central de comunicação · sistema próprio';
+  $('kTotal').textContent=e.crm.total??'–';$('kHoje').textContent=e.crm.novosHoje??'–';$('kSemNome').textContent=e.crm.semNome??'–';
+  $('canais').innerHTML=e.canais.map(c=>`<div class="card canal">
+    <div class="top"><div><h3>${esc(c.label)}</h3>
+      <div class="meta">${c.whatsapp?'WhatsApp '+esc(fmtPhone(c.whatsapp)):'WhatsApp não cadastrado'}${c.instagram?' · @'+esc(c.instagram):''}</div>
+      ${c.numberMismatch?`<div class="meta err">⚠ Conectado em outro número: ${esc(fmtPhone(c.connectedNumber))}</div>`:''}
+      <div class="meta">${c.contatos??0} contatos · ${c.novosHoje??0} hoje · ${c.mode==='loja'?'equipe atende':c.mode==='central'?'robô + equipe':'robô próprio'}</div></div>${statusChip(c)}</div>
+    <div class="row">${c.status!=='open'?`<button type="button" data-qr="${esc(c.instance)}">${c.status==='nao_criado'?'Ligar número (QR)':'Reconectar (QR)'}</button>`:''}
+      <label class="switch"><input type="checkbox" data-ask="${esc(c.instance)}" ${c.perguntaNome?'checked':''}> Perguntar o nome a quem chega</label></div></div>`).join('');
+  $('canais').querySelectorAll('[data-qr]').forEach(b=>b.onclick=()=>openQr(b.dataset.qr));
+  $('canais').querySelectorAll('[data-ask]').forEach(i=>i.onchange=async()=>{try{await api('/admin/comms/canais/'+encodeURIComponent(i.dataset.ask)+'/pergunta-nome',{on:i.checked});}catch(err){alert(err.message);i.checked=!i.checked;}});
+  const opts=e.canais.map(c=>`<option value="${esc(c.instance)}">${esc(c.label)}</option>`).join('');
+  $('sFrom').innerHTML=opts;$('sTo').innerHTML=e.canais.map(c=>`<option value="${esc(c.instance)}">${esc(c.label)}</option>`).join('')+'<option value="__phone">Outro telefone…</option>';
+  if(e.canais[1])$('sTo').value=e.canais[1].instance;
+}
+$('sTo').onchange=()=>{$('sPhone').hidden=$('sTo').value!=='__phone';};
+$('sBtn').onclick=async()=>{
+  const to=$('sTo').value==='__phone'?$('sPhone').value:$('sTo').value;
+  $('sBtn').disabled=true;$('sMsg').textContent='';$('sMsg').className='';
+  try{await api('/admin/comms/enviar',{from:$('sFrom').value,to,text:$('sText').value});$('sMsg').textContent='Enviado ✓';$('sMsg').className='okmsg';$('sText').value='';}
+  catch(err){$('sMsg').textContent=err.message;$('sMsg').className='err';}finally{$('sBtn').disabled=false;}
+};
+
+function openSheet(html){$('sheet').innerHTML=html;$('sheet').classList.add('open');$('bg').classList.add('open');}
+function closeSheet(){clearTimeout(qrTimer);$('sheet').classList.remove('open');$('bg').classList.remove('open');}
+$('bg').onclick=closeSheet;
+
+async function openQr(inst){
+  const c=emp().canais.find(x=>x.instance===inst);
+  openSheet(`<h3>${esc(c.label)}</h3><p class="hint">No celular ${c.whatsapp?'do número <b>'+esc(fmtPhone(c.whatsapp))+'</b>':'da loja'}: WhatsApp → <b>Aparelhos conectados → Conectar um aparelho</b> e aponte pra este QR.</p>
+    <p id="qrSt" class="hint">Gerando QR…</p><img id="qrImg" alt="QR Code" hidden><p id="qrCode" class="hint"></p><div class="row"><button class="sec" type="button" id="qrClose">Fechar</button></div>`);
+  $('qrClose').onclick=()=>{closeSheet();load();};
+  const tick=async()=>{
+    try{const d=await api('/admin/comms/canais/'+encodeURIComponent(inst)+'/conectar',{});
+      if(d.state==='open'){$('qrSt').innerHTML='<b class="okmsg">Conectado ✓</b>';$('qrImg').hidden=true;$('qrCode').textContent='';setTimeout(()=>{closeSheet();load();},1500);return;}
+      if(d.qr){$('qrImg').src=d.qr.startsWith('data:')?d.qr:'data:image/png;base64,'+d.qr;$('qrImg').hidden=false;$('qrSt').textContent='Aguardando leitura… (o QR troca sozinho)';}
+      else $('qrSt').textContent='Sem QR ainda, tentando de novo…';
+      $('qrCode').textContent=d.pairingCode?'Ou use o código: '+d.pairingCode:'';
+    }catch(err){$('qrSt').innerHTML='<span class="err">'+esc(err.message)+'</span>';}
+    qrTimer=setTimeout(tick,20000);
+  };
+  tick();
+}
+
+async function loadContatos(reset){
+  if(reset){OFFSET=0;$('contatos').innerHTML='';}
+  const p=new URLSearchParams({empresa:EMP,limit:'30',offset:String(OFFSET)});
+  if($('q').value.trim())p.set('q',$('q').value.trim());if($('fSemNome').checked)p.set('semNome','1');
+  try{
+    const d=await api('/admin/comms/contatos?'+p);
+    const labels=Object.fromEntries(emp().canais.map(c=>[c.instance,c.label.replace(/^Sports & Tennis\s*/,'')]));
+    const html=d.contatos.map(c=>`<div class="ct" data-id="${esc(c.id)}"><div><b>${esc(c.name||c.profileName||'Sem nome')}${c.name?'':' <span class="chip mid">sem nome</span>'}</b>
+      <small>${/^\d+$/.test(c.phone)?esc(fmtPhone(c.phone)):(c.instagram?'@'+esc(c.instagram):'Instagram')} · ${esc(labels[c.lastChannel]||c.lastChannel)}</small></div><small>${ago(c.lastSeenAt)}</small></div>`).join('');
+    if(!d.contatos.length&&!OFFSET)$('contatos').innerHTML='<p class="hint">Nenhum contato ainda. Quem escrever nos números conectados entra aqui.</p>';
+    else $('contatos').insertAdjacentHTML('beforeend',html);
+    window._ct=Object.assign(window._ct||{},Object.fromEntries(d.contatos.map(c=>[c.id,c])));
+    OFFSET+=d.contatos.length;$('more').hidden=OFFSET>=d.total;
+    $('contatos').querySelectorAll('.ct').forEach(el=>el.onclick=()=>openContato(el.dataset.id));
+  }catch(err){$('contatos').innerHTML='<p class="err">'+esc(err.message)+'</p>';}
+}
+$('more').onclick=()=>loadContatos(false);
+let qT;$('q').oninput=()=>{clearTimeout(qT);qT=setTimeout(()=>loadContatos(true),350);};$('fSemNome').onchange=()=>loadContatos(true);
+
+function openContato(id){
+  const c=window._ct[id];const e=emp();const tel=/^\d+$/.test(c.phone)?c.phone:null;
+  openSheet(`<h3>${esc(c.name||c.profileName||'Sem nome')}</h3>
+    <p class="hint">${tel?esc(fmtPhone(tel))+' · ':''}${c.messages} mensagens · chegou por ${esc(c.firstChannel)} · ${c.userId?'cliente TenisCash':'ainda não é cliente'}${c.profileName?'<br>Perfil: '+esc(c.profileName):''}</p>
+    ${tel?`<div class="row"><a href="https://wa.me/${tel}" target="_blank" rel="noopener"><button type="button" class="sec">Abrir conversa</button></a></div>`:''}
+    <label for="cName">Nome</label><input id="cName" value="${esc(c.name||'')}" placeholder="Nome do cliente">
+    <label for="cNotes">Anotações</label><textarea id="cNotes">${esc(c.notes||'')}</textarea>
+    <div class="row"><button type="button" id="cSave">Salvar</button><span id="cMsg"></span></div>
+    <h3 style="margin-top:18px">Repassar pra outro canal</h3>
+    <label for="rFrom">Sai pelo número de</label><select id="rFrom">${e.canais.map(x=>`<option value="${esc(x.instance)}" ${x.instance===c.lastChannel?'selected':''}>${esc(x.label)}</option>`).join('')}</select>
+    <label for="rTo">Vai para</label><select id="rTo">${e.canais.filter(x=>x.whatsapp).map(x=>`<option value="${esc(x.instance)}">${esc(x.label)}</option>`).join('')}</select>
+    <label for="rNota">Recado (o que o cliente quer)</label><input id="rNota" placeholder="Ex: procura chuteira society 41">
+    <div class="row"><button type="button" id="rBtn">Repassar</button><span id="rMsg"></span></div>
+    <div class="row"><button type="button" class="sec" id="cClose">Fechar</button></div>`);
+  $('cClose').onclick=closeSheet;
+  $('cSave').onclick=async()=>{try{await api('/admin/comms/contatos/'+id,{name:$('cName').value,notes:$('cNotes').value},'PATCH');$('cMsg').textContent='Salvo ✓';$('cMsg').className='okmsg';loadContatos(true);}catch(err){$('cMsg').textContent=err.message;$('cMsg').className='err';}};
+  $('rBtn').onclick=async()=>{$('rBtn').disabled=true;try{await api('/admin/comms/repassar',{from:$('rFrom').value,to:$('rTo').value,contatoId:id,nota:$('rNota').value});$('rMsg').textContent='Repassado ✓';$('rMsg').className='okmsg';}catch(err){$('rMsg').textContent=err.message;$('rMsg').className='err';}finally{$('rBtn').disabled=false;}};
+}
+
+async function load(){
+  try{DATA=await api('/admin/comms/overview');if(!DATA.empresas.some(e=>e.key===EMP))EMP='st';$('boot').hidden=true;$('login').hidden=true;$('main').hidden=false;render();}
+  catch(err){if(err.status===401||err.status===403){showLogin(err.status===403?'Esta conta não é de administrador.':'');}else $('boot').textContent=err.message;}
+}
+function showLogin(m){$('boot').hidden=true;$('main').hidden=true;$('login').hidden=false;$('loginErr').textContent=m||'';}
+$('login').onsubmit=async ev=>{ev.preventDefault();const id=$('identity').value.trim();
+  try{token='';const d=await api('/auth/login',{password:$('password').value,...(id.includes('@')?{email:id}:{phone:id.replace(/\D/g,'')})});token=d.token;localStorage.setItem('tc_admin_token',token);await load();loadContatos(true);}
+  catch(err){$('loginErr').textContent=err.message;}finally{$('password').value='';}};
+(async()=>{if(!token){showLogin();return;}await load();if(DATA)loadContatos(true);})();
+</script>
+</body>
+</html>

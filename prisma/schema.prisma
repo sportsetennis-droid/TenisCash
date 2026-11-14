@@ -4072,6 +4072,35 @@ model TrainingSession {
 }
 
 // Fila de saída do WhatsApp (ponte não-oficial via QR). Alimentada só se WA_BRIDGE_KEY.
+// CRM de contatos da COMUNICAÇÃO (WhatsApp/Instagram) — 1 por (empresa, telefone).
+// empresa: st | baratao | metafard (sistemas separados — ver src/config/canais.js).
+// phone: telefone canônico (55+DDD+9+8) ou "ig:<id>" / jid @lid quando não há telefone.
+model CrmContact {
+  id           String    @id @default(cuid())
+  empresa      String
+  phone        String
+  name         String?
+  nameSource   String? // perguntado | cadastro | manual
+  nameState    String? // aguardando | ok | desistiu
+  nameAskedAt  DateTime?
+  pendingText  String?   @db.Text // 1ª mensagem guardada enquanto pergunta o nome
+  profileName  String? // nome do perfil do WhatsApp/Instagram (provisório)
+  instagram    String?
+  firstChannel String
+  lastChannel  String
+  storeCode    String?
+  userId       String? // cliente TenisCash já cadastrado
+  notes        String?   @db.Text
+  messages     Int       @default(0)
+  firstSeenAt  DateTime  @default(now())
+  lastSeenAt   DateTime  @default(now())
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([empresa, phone])
+  @@index([empresa, lastSeenAt])
+}
+
 model WhatsAppOutbox {
   id        String    @id @default(cuid())
   phone     String
