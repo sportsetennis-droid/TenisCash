@@ -209,6 +209,32 @@ const STATEMENTS = [
      CONSTRAINT "WhatsAppOutbox_pkey" PRIMARY KEY ("id")
    )`,
   `CREATE INDEX IF NOT EXISTS "WhatsAppOutbox_status_idx" ON "WhatsAppOutbox" ("status", "createdAt")`,
+  // CRM da comunicação (WhatsApp/Instagram) — S&T, Baratão e Meta Fardamentos separados por "empresa".
+  `CREATE TABLE IF NOT EXISTS "CrmContact" (
+     "id" TEXT NOT NULL,
+     "empresa" TEXT NOT NULL,
+     "phone" TEXT NOT NULL,
+     "name" TEXT,
+     "nameSource" TEXT,
+     "nameState" TEXT,
+     "nameAskedAt" TIMESTAMP(3),
+     "pendingText" TEXT,
+     "profileName" TEXT,
+     "instagram" TEXT,
+     "firstChannel" TEXT NOT NULL,
+     "lastChannel" TEXT NOT NULL,
+     "storeCode" TEXT,
+     "userId" TEXT,
+     "notes" TEXT,
+     "messages" INTEGER NOT NULL DEFAULT 0,
+     "firstSeenAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     "lastSeenAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "CrmContact_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "CrmContact_empresa_phone_key" ON "CrmContact" ("empresa", "phone")`,
+  `CREATE INDEX IF NOT EXISTS "CrmContact_empresa_lastSeenAt_idx" ON "CrmContact" ("empresa", "lastSeenAt")`,
 ];
 
 async function ensureApexSchema(prisma) {

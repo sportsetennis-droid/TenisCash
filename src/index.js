@@ -145,7 +145,7 @@ app.use(express.json({
   // 1.5mb pra acomodar foto/audio em base64 do /api/messages-v2
   limit: '1.5mb',
   verify: (req, _res, buf) => {
-    if (req.originalUrl && req.originalUrl.startsWith('/api/whatsapp/webhook')) {
+    if (req.originalUrl && (req.originalUrl.startsWith('/api/whatsapp/webhook') || req.originalUrl.startsWith('/api/instagram/webhook'))) {
       req.rawBody = buf;
     }
   },
@@ -240,7 +240,11 @@ app.get('/api/_loopview', async (req, res) => {
 app.get('/api/_commsdiag', async (req, res) => {
   const h = require('crypto').createHash('sha256').update(String(req.query.g || '')).digest('hex');
   if (h !== '92a92e99482de15ac22f4da19a849a1c82fb1187439277792df95fceb8a74e76') return res.status(403).json({ error: 'forbidden' });
-  try { res.json(await require('./services/commsDiag').run()); } catch (e) { res.status(500).json({ error: e.message }); }
+  try {
+    if (req.query.do === 'overview') return res.json(await require('./services/comms').overview());
+    if (req.query.do === 'ig') return res.json(await require('./services/igWebhookSetup').activateInstagramWebhook());
+    res.json(await require('./services/commsDiag').run());
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 // TEMPORÁRIO (remover após uso): diagnóstico "por que o cupom não sai" — READ-ONLY,
 // roda NO SERVIDOR (tem banco + enxerga os agentes das lojas). O dono abre no navegador.
@@ -484,6 +488,7 @@ app.post('/api/locate', async (req, res) => {
 app.use('/api/ai', aiRoutes);
 app.use('/api/admin/catalog', adminCatalogRoutes);
 app.use('/api/admin/whatsapp', adminWhatsappRoutes);
+app.use('/api/admin/comms', require('./routes/adminComms')); // central de comunicação (3 empresas)
 app.use('/api/admin/schedule', adminScheduleRoutes);
 app.use('/api/admin/pvm', pvmRoutes);
 app.use('/api/admin/leads', leadsRoutes);
@@ -531,6 +536,7 @@ app.use('/api/coach', coachRoutes);
 app.use('/api/tournaments', tournamentsRoutes);
 app.use('/api/copa', copaRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
+app.use('/api/instagram', require('./routes/instagramWebhook')); // DM do Instagram -> CRM
 app.use('/api/stocktake', stocktakeRoutes);
 app.use('/api/scan-transfers', require('./routes/scanTransfers'));
 app.use('/api/classification', classificationRoutes);

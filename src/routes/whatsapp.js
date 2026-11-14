@@ -11,6 +11,8 @@ const { handleMetaApsWebhook, INSTANCE: METAAPS_INSTANCE } = require('../service
 const { captureEvolutionMessages } = require('../services/whatsappInbox');
 const { STORE_ARCHIVE } = require('../services/whatsappStoreArchive');
 const waFunctions = require('../services/whatsappFunctions');
+const crm = require('../services/crmContacts');
+const { canalByInstance } = require('../config/canais');
 
 // Anti-duplicata do webhook: id da mensagem -> quando foi processada (10 min).
 const SEEN_TTL_MS = 10 * 60 * 1000;
@@ -176,12 +178,32 @@ router.post('/evolution', async (req, res) => {
     if (isStoreArchive) {
       const archiveData = Array.isArray(body.data?.messages) ? body.data.messages : body.data;
       await captureEvolutionMessages({ ...body, data: archiveData });
+      // CRM: mensagem NOVA (não o histórico do pareamento) cadastra o contato e pergunta o nome.
+      if (/messages[._]upsert/i.test(event) && !Array.isArray(body.data?.messages)) {
+        await crm.handleEvolutionInbound({ instance, body }).catch((e) => console.error('[crm] loja:', e.message));
+      }
       return;
     }
 
     // MONITOR: grava toda mensagem (todas as instancias) pro dono acompanhar no admin.
     // Fire-and-forget + try/catch interno: NUNCA atrapalha o atendente de IA.
     captureEvolutionMessages(body).catch(() => {});
+
+    // NÚMEROS DAS LOJAS S&T (Bessa, Tambiá, Rainha, Manaíra...): a equipe atende pelo
+    // celular. O sistema só cadastra quem chega no CRM da S&T e pergunta o nome.
+    const canal = canalByInstance(instance);
+    if (canal && canal.mode === 'loja') {
+      await crm.handleEvolutionInbound({ instance, body }).catch((e) => console.error('[crm] loja:', e.message));
+      return;
+    }
+
+    // BARATÃO e META FARDAMENTOS: cadastra no CRM DA PRÓPRIA EMPRESA e pergunta o nome
+    // antes do atendente. Quando o nome chega, o atendente recebe a 1ª mensagem original.
+    if (instance && (instance === METAFARD_INSTANCE || instance === BARATAO_INSTANCE)) {
+      const g = await crm.handleEvolutionInbound({ instance, body }).catch((e) => { console.error('[crm]', e.message); return { action: 'continue' }; });
+      if (g.action === 'stop') return;
+      if (g.parsed && typeof g.text === 'string' && g.text && g.text !== g.parsed.text) crm.rewriteText(body, g.text);
+    }
 
     // META FARDAMENTOS: instancia propria -> atendente proprio, isolado da S&T.
     if (instance && instance === METAFARD_INSTANCE) {
@@ -237,7 +259,10 @@ router.post('/evolution', async (req, res) => {
     const pushName = data.pushName || (isGroup ? 'colega' : 'cliente');
 
     const m = data.message || {};
-    const text = (m.conversation || (m.extendedTextMessage && m.extendedTextMessage.text) || '').trim();
+    let text = (m.conversation || (m.extendedTextMessage && m.extendedTextMessage.text) || '').trim();
+
+    // CRM: todo contato que escreve no privado entra no CRM da S&T (com ou sem robô).
+    const crmReg = !isGroup ? await crm.registerFromEvolution(instance, body).catch(() => null) : null;
 
     // DONO: "IA OFF" / "IA ON" / "IA STATUS" — funciona com o robô ligado ou desligado.
     const roboCmd = !isGroup && text && isOwnerPhone(phone) ? parseRoboCmd(text) : null;
@@ -269,6 +294,13 @@ router.post('/evolution', async (req, res) => {
         console.log('[whatsapp/evolution] conversa humana (equipe respondeu nos ultimos 30d) -> robo quieto', phone);
         return;
       }
+    }
+
+    // CRM: 1º contato sem nome -> pergunta o nome; a mensagem original é respondida depois.
+    if (!isGroup && roboOn && crmReg && crmReg.contact && !isOwnerPhone(phone)) {
+      const g = await crm.applyGate({ ...crmReg, text, send: sendToClient }).catch(() => ({ action: 'continue', text }));
+      if (g.action === 'stop') return;
+      text = (g.text || '').trim();
     }
 
     if (!text) {
