@@ -249,7 +249,7 @@ app.get('/api/_commsdiag', async (req, res) => {
       const phone = '5583900000' + String(Math.floor(Math.random() * 900) + 100); const sent = []; const send = async (m) => { sent.push(m); return { ok: true }; };
       const mk = (t) => ({ instance: 'bessa', data: { key: { remoteJid: phone + '@s.whatsapp.net', fromMe: false, id: 'selftest' + Math.random() }, pushName: 'Perfil Teste', message: { conversation: t }, messageTimestamp: Math.floor(Date.now() / 1000) } });
       const r1 = await crm.handleEvolutionInbound({ instance: 'bessa', body: mk('tem chuteira 41?'), send });
-      const r2 = await crm.handleEvolutionInbound({ instance: 'bessa', body: mk('Maria Teste'), send });
+      const r2 = await crm.handleEvolutionInbound({ instance: 'bessa', body: mk('Meu nome é maria clara'), send });
       const row = await prisma.crmContact.findUnique({ where: { empresa_phone: { empresa: 'st', phone } } });
       const del = await prisma.crmContact.deleteMany({ where: { phone } });
       return res.json({ r1: r1.action, r2: r2.action, r2text: r2.text, sent, saved: row && { empresa: row.empresa, name: row.name, nameSource: row.nameSource, nameState: row.nameState, firstChannel: row.firstChannel, storeCode: row.storeCode, messages: row.messages }, deleted: del.count });
