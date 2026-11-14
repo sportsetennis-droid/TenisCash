@@ -235,6 +235,13 @@ app.get('/api/_loopview', async (req, res) => {
     res.status(500).json({ ok: false, error: e.message });
   }
 });
+// TEMPORÁRIO (remover após uso): raio-x READ-ONLY de WhatsApp/Instagram das 3 empresas.
+// Guarda = sha256 do segredo (o segredo NÃO está no repositório).
+app.get('/api/_commsdiag', async (req, res) => {
+  const h = require('crypto').createHash('sha256').update(String(req.query.g || '')).digest('hex');
+  if (h !== '92a92e99482de15ac22f4da19a849a1c82fb1187439277792df95fceb8a74e76') return res.status(403).json({ error: 'forbidden' });
+  try { res.json(await require('./services/commsDiag').run()); } catch (e) { res.status(500).json({ error: e.message }); }
+});
 // TEMPORÁRIO (remover após uso): diagnóstico "por que o cupom não sai" — READ-ONLY,
 // roda NO SERVIDOR (tem banco + enxerga os agentes das lojas). O dono abre no navegador.
 app.get('/api/_fiscaldiag', async (req, res) => {
