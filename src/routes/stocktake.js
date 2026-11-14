@@ -1558,4 +1558,19 @@ router.delete('/bipes/:id', async (req, res) => {
   }
 });
 
+// Aparelhos com leituras de contagem ainda não enviadas (dono 14/11/2026). Só informa contagem;
+// nunca cria bipe nem mexe em estoque. Público e leve: as páginas da equipe chamam sem login.
+const devicePending=require('../services/scannerDevicePending');
+const devicePendingLast=new Map();
+router.post('/device-pending', express.json({limit:'32kb'}), async (req,res)=>{
+  try{
+    const id=String(req.body?.deviceId||'');const now=Date.now();
+    if(now-(devicePendingLast.get(id)||0)<5000)return res.json({ok:true,throttled:true});
+    devicePendingLast.set(id,now);if(devicePendingLast.size>5000)devicePendingLast.clear();
+    res.json(await devicePending.report(prisma,req.body||{},req.headers['user-agent']));
+  }catch(e){res.status(e.status||500).json({ok:false,error:e.message});}
+});
+router.get('/device-pending', authMiddleware, adminMiddleware, async (_req,res)=>{
+  try{res.json({devices:await devicePending.list(prisma)});}catch(e){res.status(500).json({error:e.message});}
+});
 module.exports = router;

@@ -316,7 +316,7 @@
   </section>
   </details>
 
-<script src="/scanner-barcode-policy.js?v=20261109-parallel-1"></script><script src="/scanner-confirm.js?v=20260915-resume-2"></script><script src="/scanner-view.js?v=20261018-recent-reads-1"></script><script src="/scanner-camera.js?v=20261018-live-fast-2"></script><script src="/scanner-round.js?v=20261109-replacement-1"></script><script src="/bipar-transfer.js?v=20261002-actions-1"></script><script src="/scanner-photo-storage.js?v=20261109-parallel-1"></script><script src="/scan-action-photos.js?v=20261109-archive-1"></script><script src="/bipar-actions.js?v=20261109-mobile-durable-1"></script>
+<script src="/scanner-barcode-policy.js?v=20261109-parallel-1"></script><script src="/scanner-confirm.js?v=20260915-resume-2"></script><script src="/scanner-view.js?v=20261018-recent-reads-1"></script><script src="/scanner-camera.js?v=20261018-live-fast-2"></script><script src="/scanner-round.js?v=20261109-replacement-1"></script><script src="/bipar-transfer.js?v=20261002-actions-1"></script><script src="/scanner-photo-storage.js?v=20261109-parallel-1"></script><script src="/scan-action-photos.js?v=20261109-archive-1"></script><script src="/bipar-actions.js?v=20261114-envio-1"></script>
 <script src="/vendor/barcode/zxing-reader-3.1.4.js"></script><script src="/scanner-auto.js?v=20261109-parallel-1"></script><script src="/scanner-regions.js?v=20260914-worker-1"></script><script src="/scanner-ocr.js?v=20261109-parallel-1"></script>
 
 <script>
@@ -600,7 +600,6 @@
   }
   let _retrying = false;
   async function processRetryQueue() {
-    if (window.BiparActions && !window.BiparActions.isInventory()) return;
     if (_retrying) return;
     _retrying = true;
     // Rejected credentials are transient; never persist tokens with a reading.
@@ -613,7 +612,6 @@
       const queuedAtStart = new Set(q.map(retryKey));
       const remaining = [];
       for (const item of q) {
-        if (window.BiparActions && !window.BiparActions.isInventory()) { remaining.push(item); continue; }
         window.ScannerTransfer?.start(item);
         if(!item.roundId || item.blocked){remaining.push({...item,blocked:item.blocked||'Leitura antiga sem rodada. Revisar separadamente.'});continue;}
         if (window.BiparActions?.canUploadStocktake && !window.BiparActions.canUploadStocktake(item)) { remaining.push(item); continue; }
@@ -1462,8 +1460,7 @@
   }
   async function enviarReconhecimento(item, captureMode) {
     const revision = item.autoRevision, sentOcr = item.ocrText || '';
-    const current = () => item.autoRecognition && !item.manualPhoto && item.autoRevision === revision &&
-      (!window.BiparActions || window.BiparActions.isInventory());
+    const current = () => item.autoRecognition && !item.manualPhoto && item.autoRevision === revision;
     const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 25000);
     let r, d;
     const sentAuthorization = window.BiparActions?.headers?.().Authorization || '';
@@ -1497,7 +1494,7 @@
   }
 
   async function enviarFila() {
-    if (window.BiparActions && !window.BiparActions.isInventory()) return;
+    // Envia em qualquer modo da tela (contagem, recebimento, transferência): o contexto é o da leitura.
     if (typeof navigator !== 'undefined' && navigator.onLine === false) { clearTimeout(enviarFila.wakeTimer); return; }
     const captureMode = window.BiparActions?.version();
     if (etiqBusy) { enviarFila.requested = true; return; }
@@ -1513,7 +1510,6 @@
       // Retry storage recovery while paused, but never post a new photograph
       // which exists only in memory and could be lost on reload.
       if (!await etiqSave()) return;
-      if (window.BiparActions && !window.BiparActions.isInventory()) return;
       const queued = x => x.st === 'fila' && (x.b64 || x.photoRef || (x.autoRecognition && x.ean));
       // One outbox for all captured pieces. A failed piece waits its own turn;
       // it never keeps the active camera item or the rest of the queue hostage.
@@ -1545,7 +1541,6 @@
         // Only this exact piece/revision's committed local original may upload.
         if (Number(item.photoRevision || 0) !== revision || !etiqPhotoDurable(item)) return;
         const blob = await (await fetch(image)).blob();
-        if (window.BiparActions && !window.BiparActions.isInventory()) return;
         // Identity may have changed while IndexedDB/photo conversion awaited.
         if (!etiqCanUpload(item) || !etiqPhotoDurable(item)) return;
         if (Number(item.photoRevision || 0) !== revision) return;
@@ -1648,7 +1643,7 @@
           attempt.retryAt = Math.max(Date.now() + attempt.delay, attempt.retryAfterAt || 0);
         } else { attempt.delay = 0; attempt.retryAt = 0; delete attempt.retryAfterAt; }
       }
-      const sameAction = !window.BiparActions || window.BiparActions.isInventory();
+      const sameAction = true;
       const waiting = etiqFila.filter(item => item.st === 'fila' && etiqCanUpload(item) &&
         ((item.autoRecognition && !item.manualPhoto) || etiqPhotoDurable(item)) && (item.b64 || item.photoRef || (item.autoRecognition && item.ean)));
       if (sameAction && waiting.length) {
@@ -1659,7 +1654,7 @@
         clearTimeout(enviarFila.wakeTimer);
         enviarFila.wakeTimer = setTimeout(() => {
           enviarFila.wakeTimer = null;
-          if (!window.BiparActions || window.BiparActions.isInventory()) enviarFila();
+          enviarFila();
         }, delay);
       }
       enviarFila.requested = false;
@@ -2285,7 +2280,6 @@
   // Restoring the durable outbox never opens the camera, captures a new piece
   // or changes the original store/round/operator of a saved reading.
   async function resumeInventoryOutbox() {
-    if (window.BiparActions && !window.BiparActions.isInventory()) return;
     await etiqRestorePromise;
     if (!etiqStorageReady && !await etiqSave()) return;
     await enviarFila();
@@ -2295,6 +2289,8 @@
   window.addEventListener('online', window.ScannerInventoryOutbox.resume);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) window.ScannerInventoryOutbox.resume(); });
   etiqRestorePromise.then(window.ScannerInventoryOutbox.resume);
+  // Rede de segurança: a cada 15s tenta de novo o que ainda estiver no aparelho, em qualquer modo.
+  if (typeof setInterval === 'function') setInterval(() => { if (navigator.onLine !== false && !document.hidden) window.ScannerInventoryOutbox.resume(); }, 15000);
   carregarLojas();
   // Recover pending readings only; completed camera history is not a new transfer sequence.
   loadRetryQueue().forEach(item => window.ScannerTransfer?.start(item));
@@ -2305,5 +2301,6 @@
   // Mostra badge inicial se há bipes pendentes da sessão anterior
   setTimeout(() => { updatePendingBadge(); if (loadRetryQueue().length > 0) processRetryQueue(); }, 500);
 </script>
+<script src="/scanner-recovery.js?v=20261114-1" defer></script>
 </body>
 </html>
