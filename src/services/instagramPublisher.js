@@ -44,13 +44,11 @@ async function api(path, opts = {}) {
   return data;
 }
 
+// ID da conta vem do resolvedor único (confere no Graph; se a env estiver
+// errada, descobre o ID real pela Página). Ver src/services/igAccount.js.
+const { getIgCredentials } = require('./igAccount');
 function getCredentials() {
-  const userId = process.env.META_IG_USER_ID || process.env.META_INSTAGRAM_ID;
-  const token = process.env.META_IG_ACCESS_TOKEN || process.env.META_PAGE_TOKEN;
-  if (!userId || !token) {
-    throw new Error('META_IG_USER_ID/META_INSTAGRAM_ID e META_IG_ACCESS_TOKEN/META_PAGE_TOKEN obrigatórios no .env');
-  }
-  return { userId, token };
+  return getIgCredentials();
 }
 
 // Espera o container ficar com status FINISHED antes de publicar
@@ -71,7 +69,7 @@ async function waitForContainerReady(containerId, token, maxWaitSec = 120) {
  * @returns {Promise<{ mediaId, permalink }>}
  */
 async function publishPhoto({ imageUrl, caption, collaborators }) {
-  const { userId, token } = getCredentials();
+  const { userId, token } = await getCredentials();
 
   // 1. Cria container
   const container = await api(`/${userId}/media`, {
@@ -108,7 +106,7 @@ async function publishPhoto({ imageUrl, caption, collaborators }) {
  * @returns {Promise<{ mediaId }>}
  */
 async function publishStory({ imageUrl }) {
-  const { userId, token } = getCredentials();
+  const { userId, token } = await getCredentials();
 
   const container = await api(`/${userId}/media`, {
     method: 'POST',
@@ -133,7 +131,7 @@ async function publishStory({ imageUrl }) {
  * Publica Reel (vídeo vertical 9:16) no IG.
  */
 async function publishReel({ videoUrl, caption, shareToFeed = true, collaborators, coverUrl, thumbOffset }) {
-  const { userId, token } = getCredentials();
+  const { userId, token } = await getCredentials();
 
   const container = await api(`/${userId}/media`, {
     method: 'POST',
@@ -175,7 +173,7 @@ async function publishReel({ videoUrl, caption, shareToFeed = true, collaborator
  * @param {string[]} collaborators  usernames a convidar (máx 3, contas públicas)
  */
 async function publishCarousel({ imageUrls = [], caption, collaborators }) {
-  const { userId, token } = getCredentials();
+  const { userId, token } = await getCredentials();
   if (imageUrls.length < 2) throw new Error('Carrossel precisa de pelo menos 2 imagens');
 
   // 1. Cria um container-filho por imagem
@@ -222,7 +220,7 @@ async function publishCarousel({ imageUrls = [], caption, collaborators }) {
  * Roda depois (cron diário) pra atualizar MarketingPublication.metric*
  */
 async function getInsights(mediaId) {
-  const { token } = getCredentials();
+  const { token } = await getCredentials();
   const metrics = 'impressions,reach,likes,comments,shares,saved';
   const data = await api(`/${mediaId}/insights?metric=${metrics}&access_token=${token}`);
   const out = {};

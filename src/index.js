@@ -633,6 +633,8 @@ app.get('/api/health', (req, res) => {
   try { imageRepair = require('./services/imageRepairCron').getImageRepairCronState(); } catch (_) {}
   let waHealth = null;
   try { waHealth = getWhatsappHealthState(); } catch (_) {}
+  let igHealth = null;
+  try { igHealth = require('./services/igAccount').getIgHealthState(); } catch (_) {}
   res.json({
     status: 'ok',
     service: 'TenisCash API',
@@ -641,6 +643,7 @@ app.get('/api/health', (req, res) => {
     qrOffers,
     imageRepair,
     waHealth,
+    igHealth,
     scannerPipeline: 'durable-queue-v1',
     scannerRuntime: process.versions.node,
   });
@@ -2006,6 +2009,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   // Para reativar, descomente a linha abaixo (e faça deploy).
   // try { startEquipeReportsCron(); } catch (e) { console.error('[equipeReports] falha ao iniciar:', e.message); }
   try { startWhatsappHealthCron(); } catch (e) { console.error('[waHealth] falha ao iniciar:', e.message); }
+  try { require('./services/igAccount').startIgHealthCheck(); } catch (e) { console.error('[igAccount] falha ao iniciar:', e.message); }
 
   // Checklist diario dos vendedores escalados. Nao aplica penalidades automaticamente.
   if (process.env.DISABLE_SELLER_PRODUCTION_CRON !== '1') {
