@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const { PrismaClient } = require('@prisma/client');
 const { allocateInternalBarcode } = require('./services/internalBarcode');
 const { isAdminRole, isDesignRole, isDesignRequestAllowed } = require('./services/designAccess');
+const { normalizeProductColorContext } = require('./services/colorName');
 const prisma = new PrismaClient();
 
 // Todo produto criado pelo fluxo principal já nasce com o código interno.
@@ -15,6 +16,24 @@ prisma.$use(async (params, next) => {
       if (!row || row.internalBarcode) continue;
       if (!row.id) row.id = crypto.randomUUID();
       row.internalBarcode = await allocateInternalBarcode(prisma, row.id);
+    }
+  }
+  return next(params);
+});
+
+// Constituição 14/11/2026: cor do card SEMPRE por extenso e em português
+// (nunca sigla tipo "BR/RO/AMC" nem inglês). Vale pra todo caminho que grava
+// Product por este cliente (admin, importação de NF-e, curadoria...).
+prisma.$use(async (params, next) => {
+  if (params.model === 'Product' && ['create', 'update', 'upsert', 'createMany', 'updateMany'].includes(params.action)) {
+    const rows = params.action === 'upsert'
+      ? [params.args.create, params.args.update]
+      : (Array.isArray(params.args.data) ? params.args.data : [params.args.data]);
+    for (const row of rows) {
+      if (!row || !row.aiContext || typeof row.aiContext !== 'object') continue;
+      try {
+        normalizeProductColorContext(row.aiContext, typeof row.brand === 'string' ? row.brand : '');
+      } catch (_) { /* nunca derruba a gravação por causa da cor */ }
     }
   }
   return next(params);

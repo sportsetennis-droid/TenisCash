@@ -25,6 +25,7 @@ const { resolveBrandLogoUrl, validateBrandLogoUrl } = require('../services/brand
 const { fraseDaMarca } = require('../config/frases-marcas');
 const { ensureProductInternalBarcode } = require('../services/internalBarcode');
 const labelColorReviewLedger = require('../data/label-color-review-ledger.json');
+const { labelColorName } = require('../services/colorName');
 const { applyOffer, productOffer } = require('../services/everlastPaymentOffer');
 const { applyBrandThirtyOffer, campaignFootwear } = require('../services/brandThirtyOffer');
 
@@ -331,11 +332,20 @@ function labelProductColorReviewFingerprint(product, context = {}) {
   return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
 }
 
+// Constituição 14/11/2026: a cor da etiqueta sai POR EXTENSO e em PORTUGUÊS
+// (MULTICOLOR→MULTICOLORIDO, LILAS→LILÁS, BLACK→PRETO...). Só troca quando a
+// tradução é certa; senão mantém a cor já revisada (nunca imprime chute).
+function fullPortugueseLabelColor(color, brand) {
+  if (!color) return color;
+  const full = labelColorName(color, { brand });
+  return full || color;
+}
+
 function reviewedLabelProductColorDecision(product, context = {}) {
   // Objetos sem id existem apenas nos testes unitários e em chamadas internas.
   // Produtos reais sempre precisam passar pela revisão individual registrada.
   if (!product?.id) {
-    const color = inferLabelProductColor(product, context);
+    const color = fullPortugueseLabelColor(inferLabelProductColor(product, context), product?.brand);
     return { color, issue: color ? null : inferLabelProductColorIssue(product, context), review: null };
   }
 
@@ -366,7 +376,7 @@ function reviewedLabelProductColorDecision(product, context = {}) {
   }
 
   if (review.status === 'confirmed' && review.color) {
-    return { color: review.color, issue: null, review };
+    return { color: fullPortugueseLabelColor(review.color, product?.brand), issue: null, review };
   }
   return {
     color: '',
