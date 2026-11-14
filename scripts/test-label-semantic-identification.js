@@ -251,7 +251,8 @@ assert.equal(
 );
 assert.equal(
   labels.labelProductColor({ name: 'PRODUTO TESTE', brand: 'CAJU BRASIL' }, { color: 'Azul Blue Jeans' }),
-  'Azul Blue Jeans',
+  // Constituição 14/11/2026: cor por extenso e em português ("Blue Jeans" → Jeans).
+  'Azul Jeans',
 );
 assert.equal(
   labels.labelProductColor({ name: 'ROYAL ULTRA FLASH', brand: 'REEBOK' }, {}),
@@ -326,7 +327,7 @@ assert.equal(
     { name: 'LUVAS KICK PRETO FUCCIA AZUL CLARO/TAMANHO', brand: 'REEBOK' },
     { color: 'CLARO/TAMANHO' },
   ),
-  'PRETO/FUCSIA/AZUL CLARO',
+  'PRETO/FÚCSIA/AZUL CLARO',
 );
 assert.equal(
   labels.labelProductColor({ name: 'POCHETE TRIATHLON PRETO G/GG', brand: 'HIDROLIGHT' }, { color: 'G/GG' }),
