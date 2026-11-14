@@ -8,17 +8,23 @@
 // SETUP ÚNICO (passo-a-passo) está em INSTAGRAM_SETUP.md.
 // =====================================================================
 
-const ACCESS_TOKEN = process.env.META_IG_ACCESS_TOKEN;
-const BUSINESS_ID = process.env.META_IG_BUSINESS_ID;
+// Token + ID da conta vêm do resolvedor único (src/services/igAccount.js).
+const { igToken, resolveIgAccount } = require('./igAccount');
+let ACCESS_TOKEN = igToken();
+let BUSINESS_ID = null;
 const GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v21.0';
 
 function isConfigured() {
-  return !!(ACCESS_TOKEN && BUSINESS_ID);
+  return !!igToken();
 }
 
-function configError() {
-  if (!ACCESS_TOKEN) return 'META_IG_ACCESS_TOKEN não configurada no Railway';
-  if (!BUSINESS_ID) return 'META_IG_BUSINESS_ID não configurada no Railway';
+// Resolve token + conta antes de cada chamada (cacheado no igAccount).
+async function configError() {
+  ACCESS_TOKEN = igToken();
+  if (!ACCESS_TOKEN) return 'Token Meta (META_IG_ACCESS_TOKEN / META_PAGE_TOKEN) não configurado no Railway';
+  const acc = await resolveIgAccount();
+  if (!acc.ok) return `Conta Instagram não encontrada: ${acc.error}`;
+  BUSINESS_ID = acc.igId;
   return null;
 }
 
@@ -43,7 +49,7 @@ async function metaApi(path, method = 'GET', body = null, query = {}) {
  * @param {string} opts.caption - legenda completa (até 2200 chars)
  */
 async function postFeed({ imageUrl, caption }) {
-  const cfgErr = configError();
+  const cfgErr = await configError();
   if (cfgErr) return { ok: false, error: cfgErr };
   if (!imageUrl) return { ok: false, error: 'imageUrl é obrigatório' };
 
@@ -70,7 +76,7 @@ async function postFeed({ imageUrl, caption }) {
  * Stories duram 24h. Story só aceita media_type=STORIES.
  */
 async function postStory({ imageUrl }) {
-  const cfgErr = configError();
+  const cfgErr = await configError();
   if (cfgErr) return { ok: false, error: cfgErr };
   if (!imageUrl) return { ok: false, error: 'imageUrl é obrigatório' };
 
@@ -93,7 +99,7 @@ async function postStory({ imageUrl }) {
  * getInsights — métricas básicas de um post do feed.
  */
 async function getInsights(postId) {
-  const cfgErr = configError();
+  const cfgErr = await configError();
   if (cfgErr) return { ok: false, error: cfgErr };
   try {
     const data = await metaApi(`${postId}/insights`, 'GET', null, {
@@ -109,7 +115,7 @@ async function getInsights(postId) {
  * getAccountInfo — confirma que as credenciais funcionam.
  */
 async function getAccountInfo() {
-  const cfgErr = configError();
+  const cfgErr = await configError();
   if (cfgErr) return { ok: false, error: cfgErr };
   try {
     const data = await metaApi(BUSINESS_ID, 'GET', null, {

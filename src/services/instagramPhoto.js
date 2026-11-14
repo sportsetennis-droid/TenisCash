@@ -14,21 +14,25 @@ const GRAPH = `https://graph.facebook.com/${process.env.META_GRAPH_VERSION || pr
 // Resolve token + id da conta IG que CONSULTA (Business Discovery), caindo pros
 // nomes de env que o resto do projeto já usa (o publisher de IG funciona com
 // META_PAGE_TOKEN + META_INSTAGRAM_ID), pra ligar sem o dono criar segredo novo.
-function igToken() {
-  return process.env.META_IG_ACCESS_TOKEN || process.env.META_PAGE_TOKEN || process.env.META_USER_TOKEN || null;
-}
-function igBizId() {
+// Token e ID vêm do resolvedor único (src/services/igAccount.js), que confere
+// o ID no Graph e cai pro ID real da Página se a env estiver errada.
+const { igToken, resolveIgAccount } = require('./igAccount');
+function envBizId() {
   return process.env.META_IG_BUSINESS_ID || process.env.META_IG_USER_ID || process.env.META_INSTAGRAM_ID || null;
+}
+async function igBizId() {
+  const acc = await resolveIgAccount().catch(() => null);
+  return acc && acc.ok ? acc.igId : null;
 }
 
 function igConfigured() {
-  return !!(igToken() && igBizId());
+  return !!(igToken() && envBizId());
 }
 
 // Retorna { username, name, picUrl } ou null (não configurado / conta pessoal / não achou).
 async function fetchInstagramProfile(handle) {
   const token = igToken();
-  const biz = igBizId();
+  const biz = await igBizId();
   const h = String(handle || '').replace(/^@/, '').trim();
   if (!token || !biz || !h) return null;
   try {
@@ -49,7 +53,7 @@ async function fetchInstagramProfile(handle) {
 // por que o Business Discovery não acha. NUNCA inclui o token na saída.
 async function diagnoseInstagram(handle) {
   const token = igToken();
-  const biz = igBizId();
+  const biz = await igBizId();
   const h = String(handle || '').replace(/^@/, '').trim();
   const out = { hasToken: !!token, hasBizId: !!biz, bizIdLen: biz ? String(biz).length : 0, graphVersion: GRAPH.split('/').pop() };
   if (!token || !biz || !h) { out.error = 'faltam token/bizId/handle'; return out; }
