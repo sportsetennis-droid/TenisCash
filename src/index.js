@@ -286,6 +286,31 @@ app.post('/api/_loopbrain', async (req, res) => {
     res.status(500).json({ ok: false, error: e.message });
   }
 });
+// TEMPORÁRIO (remover após uso): publica a rotina 15/11 noite (formato problema→solução) no IG @sportsetennis. Guard ?g=.
+app.post('/api/_igpub1115n', async (req, res) => {
+  if (req.query.g !== 'noite1115dor') return res.status(403).json({ error: 'forbidden' });
+  const jobs = (global.__igpub1115n = global.__igpub1115n || {});
+  const op = String(req.query.op || 'status');
+  if (op === 'status') return res.json({ jobs });
+  if (jobs[op] && jobs[op].status !== 'failed') return res.status(409).json({ error: 'já rodou', job: jobs[op] });
+  const pub = require('./services/instagramPublisher');
+  const B = 'https://teniscash.com.br/mkt/rotina-2026-11-15-noite/';
+  jobs[op] = { status: 'running', startedAt: new Date().toISOString() };
+  res.json({ started: op });
+  try {
+    if (op === 'carousel') {
+      jobs[op].result = await pub.publishCarousel({
+        imageUrls: ['st-1.jpg', 'st-2.jpg', 'st-3.jpg', 'st-4.jpg'].map((f) => B + f),
+        caption: 'Terminou o treino com o joelho reclamando? 🧡 Às vezes o problema não é você, é o tênis. Passa numa Sports & Tennis, prova com calma e sai com o tênis certo pro seu treino. Corre mais. Sente menos.\n📍 Tambiá · Praia do Bessa · Praia de Tambaú · Praia de Manaíra · Rainha da Borborema',
+        collaborators: ['sportsetennismanaira', 'sportsetenniscg', 'sportsetennisbessa'],
+      });
+    } else if (op === 'story') {
+      jobs[op].result = await pub.publishStory({ imageUrl: B + 'st-story.jpg' });
+    } else throw new Error('op inválida');
+    jobs[op].status = 'done';
+  } catch (e) { jobs[op].status = 'failed'; jobs[op].error = e.message; }
+});
+
 // TEMPORÁRIO (remover após uso): gera 1 foto editorial premium server-side (Railway tem FAL_KEY). Guard ?g=.
 app.post('/api/_falgen', async (req, res) => {
   if (req.query.g !== 'reinado2026') return res.status(403).json({ error: 'forbidden' });
