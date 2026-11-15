@@ -235,6 +235,26 @@ app.get('/api/_loopview', async (req, res) => {
     res.status(500).json({ ok: false, error: e.message });
   }
 });
+// TEMPORÁRIO (remover após uso): QR pra conectar um número de loja sem login (pedido do dono 15/11).
+// Guarda = sha256 do segredo (fora do repositório). Só canais do mapa (config/canais.js).
+app.get('/api/_waqr', async (req, res) => {
+  const h = require('crypto').createHash('sha256').update(String(req.query.g || '')).digest('hex');
+  if (h !== '99d1f448f5617fa3942e49088439d1f55a54b85faad02795e182e4535837e9e5') return res.status(403).json({ error: 'forbidden' });
+  res.set('Cache-Control', 'no-store');
+  const inst = String(req.query.i || '');
+  const { canalByInstance } = require('./config/canais');
+  const canal = canalByInstance(inst);
+  if (!canal) return res.status(404).json({ error: 'canal desconhecido' });
+  if (req.query.json) {
+    try { return res.json(await require('./services/comms').connectCanal(inst)); } catch (e) { return res.status(500).json({ error: e.message }); }
+  }
+  const esc = (x) => String(x || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  res.type('html').send(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Conectar ${esc(canal.label)}</title>
+<style>body{margin:0;background:#f4f5f7;font:16px system-ui,sans-serif;color:#18212d;text-align:center}main{max-width:520px;margin:24px auto;background:#fff;border-radius:18px;padding:22px;border:1px solid #e1e5ea}h1{font-size:22px;margin:0 0 6px}img{width:min(100%,380px);image-rendering:pixelated;margin:14px auto;display:block}.ok{color:#176437;font-size:22px;font-weight:800}.st{font-weight:650}ol{text-align:left;line-height:1.7}</style></head>
+<body><main><h1>${esc(canal.label)}</h1><p>WhatsApp ${esc(canal.whatsapp || '')}</p><p id="st" class="st">Gerando QR…</p><img id="qr" alt="QR" hidden><p id="code"></p>
+<ol><li>No celular da loja abra o <b>WhatsApp</b>.</li><li>Toque em <b>⋮ / Configurações → Aparelhos conectados → Conectar um aparelho</b>.</li><li>Aponte a câmera pra este QR.</li></ol><p style="font-size:13px;color:#5d6776">O QR troca sozinho a cada 20 segundos.</p></main>
+<script>const u=location.pathname+location.search+'&json=1';let done=false;async function t(){if(done)return;try{const r=await fetch(u,{cache:'no-store'});const d=await r.json();if(d.state==='open'){done=true;document.getElementById('qr').hidden=true;document.getElementById('code').textContent='';document.getElementById('st').innerHTML='<span class=ok>✅ Conectado!</span>';return;}if(d.qr){const q=document.getElementById('qr');q.src=d.qr.startsWith('data:')?d.qr:'data:image/png;base64,'+d.qr;q.hidden=false;document.getElementById('st').textContent='Aguardando leitura…';}else document.getElementById('st').textContent=d.error||'Sem QR ainda, tentando…';document.getElementById('code').textContent=d.pairingCode?'Código: '+d.pairingCode:'';}catch(e){document.getElementById('st').textContent='Erro: '+e.message;}setTimeout(t,20000);}t();</script></body></html>`);
+});
 // TEMPORÁRIO (remover após uso): diagnóstico "por que o cupom não sai" — READ-ONLY,
 // roda NO SERVIDOR (tem banco + enxerga os agentes das lojas). O dono abre no navegador.
 app.get('/api/_fiscaldiag', async (req, res) => {
