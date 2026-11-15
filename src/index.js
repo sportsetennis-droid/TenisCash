@@ -287,6 +287,31 @@ app.post('/api/_loopbrain', async (req, res) => {
   }
 });
 // TEMPORÁRIO (remover após uso): gera 1 foto editorial premium server-side (Railway tem FAL_KEY). Guard ?g=.
+// TEMPORÁRIO (remover após uso): publica a rotina 15/11 no IG @sportsetennis (token Meta só no Railway). Guard ?g=.
+app.post('/api/_igpub1115', async (req, res) => {
+  if (req.query.g !== 'tarde1115sx') return res.status(403).json({ error: 'forbidden' });
+  const jobs = (global.__igpub1115 = global.__igpub1115 || {});
+  const op = String(req.query.op || 'status');
+  if (op === 'status') return res.json({ jobs });
+  if (jobs[op] && jobs[op].status !== 'failed') return res.status(409).json({ error: 'já rodou', job: jobs[op] });
+  const pub = require('./services/instagramPublisher');
+  const B = 'https://teniscash.com.br/mkt/rotina-2026-11-15/';
+  jobs[op] = { status: 'running', startedAt: new Date().toISOString() };
+  res.json({ started: op });
+  try {
+    if (op === 'carousel') {
+      jobs[op].result = await pub.publishCarousel({
+        imageUrls: ['01-domingo-acaba.jpg', '02-segunda-tem-treino.jpg', '03-o-seu-numero.jpg', '04-garante-antes.jpg'].map((f) => B + f),
+        caption: "O domingo acaba. A segunda tem treino. 🧡\nNa Antecipa Black, tamanho bom sai primeiro. Garante o seu antes da segunda.\n📍 Sports & Tennis Tambiá · Praia do Bessa · Praia de Tambaú · Praia de Manaíra · Rainha da Borborema",
+        collaborators: ['sportsetennistambia', 'sportsetennisbessa', 'sportsetennistambau'],
+      });
+    } else if (op === 'story') {
+      jobs[op].result = await pub.publishStory({ imageUrl: B + 'story-primeiro-km.jpg' });
+    } else throw new Error('op inválida');
+    jobs[op].status = 'done';
+  } catch (e) { jobs[op].status = 'failed'; jobs[op].error = e.message; }
+});
+
 app.post('/api/_falgen', async (req, res) => {
   if (req.query.g !== 'reinado2026') return res.status(403).json({ error: 'forbidden' });
   const keys = { falKey: !!process.env.FAL_KEY, openaiKey: !!process.env.OPENAI_API_KEY };
