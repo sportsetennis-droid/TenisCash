@@ -218,13 +218,15 @@ function createQueue(db,options={}){
   const priorities=await prioritize();
   // Recovery only schedules stored events. It does not decode, create bipes,
   // or alter balances. A pending piece is retried on its own schedule.
-  // Applied pieces still need catalog-image review refresh; processJob skips
-  // OCR for those and never applies their unit again.
+  // Applied pieces are NOT polled here: re-enqueuing every applied capture each
+  // pendingAgeMs created ~10k jobs/hour (907k rows in a week), blocked the event
+  // loop and slowed the whole site (15/11/2026). Their image review is refreshed
+  // when the operator confirms (POST /replacements/:id/images/:bipeId enqueues).
   const select=()=>db.$queryRawUnsafe(`SELECT c.id FROM "ProductCapture" c JOIN "StocktakeRound" r ON r.id=c."roundId"
    LEFT JOIN "StocktakeBipe" b ON b.id=c."bipeId" LEFT JOIN "StockReplacementCheck" v ON v."bipeId"=b.id
    WHERE c."excludedAt" IS NULL AND c.status<>'descartado' AND c.photo IS NOT NULL AND c.barcode IS NOT NULL
     AND r."operationType"='replacement' AND r.status IN ('counting','review')
-    AND (c."bipeId" IS NULL OR (b."excludedAt" IS NULL AND (v."bipeId" IS NULL OR v."checkedAt"<$1)))
+    AND (c."bipeId" IS NULL OR (b."excludedAt" IS NULL AND b.applied IS NOT TRUE AND (v."bipeId" IS NULL OR v."checkedAt"<$1)))
     AND NOT EXISTS (SELECT 1 FROM ${SCHEMA}.job j WHERE j.name=$3 AND j.data->>'captureId'=c.id AND ${currentSnapshotSql()} AND j.created_on>$1)
     AND NOT EXISTS (SELECT 1 FROM ${SCHEMA}.job j WHERE j.name=$3 AND j.data->>'captureId'=c.id AND ${currentSnapshotSql()} AND j.state IN ('created','retry','active'))
     AND ($2::text IS NULL OR c.id>$2) ORDER BY c.id LIMIT 100`,new Date(Date.now()-pendingAgeMs),lastId,QUEUE);
