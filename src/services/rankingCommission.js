@@ -11,6 +11,25 @@ function isSportsClothing(item) {
     && ['roupa', 'roupas', 'vestuario', 'vestuarios', 'vestuarioesportivo'].includes(category);
 }
 
+// Campanha de meias (dono 15/11/2026): meia e meião de QUALQUER marca contam.
+// Reconhece pelo nome do item vendido ("Meia Lupo...", "KIT MEIAO...", "MEIÃO
+// UMBRO") ou pela categoria Meia/Meias. Soquete/outro nome não entra.
+const fold = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+function isSock(item) {
+  const name = fold(item.productName || item.product?.name);
+  const category = normalize(item.category || item.product?.category);
+  if (/(^|[^a-z])meias? ?-?(manga|mangas|estacao|lua|idade|noite|hora|duzia)([^a-z]|$)/.test(name)) return false; // "camiseta meia manga" não é meia
+  return /(^|[^a-z])mei(a|as|ao|oes)([^a-z]|$)/.test(name) || ['meia', 'meias', 'meiao', 'meioes'].includes(category);
+}
+
+// Valor da venda que cabe aos itens escolhidos, já com o desconto da venda rateado.
+function allocatedCents(sale, predicate) {
+  const items = sale.items || [];
+  const gross = items.reduce((sum, item) => sum + Math.max(0, cents(item.totalPrice)), 0);
+  const part = items.filter(predicate).reduce((sum, item) => sum + Math.max(0, cents(item.totalPrice)), 0);
+  return gross ? Math.round(Math.max(0, cents(sale.totalAmount)) * part / gross) : 0;
+}
+
 function clothingCents(sale) {
   const items = sale.items || [];
   const gross = items.reduce((sum, item) => sum + Math.max(0, cents(item.totalPrice)), 0);
@@ -29,6 +48,7 @@ function commissionWindow(start, end) {
 function calculateRankingCommissions(sales, { start, end, storeId = null }) {
   const sellers = new Map();
   const clothingItems = new Map();
+  const socks = new Map();
   for (const sale of sales) {
     if (sale.status === 'canceled') continue;
     const key = monthKey(sale.createdAt);
@@ -55,6 +75,24 @@ function calculateRankingCommissions(sales, { start, end, storeId = null }) {
           quantity: item.quantity || 1, amount: (nextAllocated - allocated) / 100 });
         allocated = nextAllocated;
       }
+      const sockItems = (sale.items || []).filter(isSock);
+      if (sockItems.length) {
+        if (!socks.has(sale.sellerId)) socks.set(sale.sellerId, { quantity: 0, cents: 0, items: [] });
+        const acc = socks.get(sale.sellerId);
+        const sockTotal = allocatedCents(sale, isSock);
+        const grossSocks = sockItems.reduce((sum, item) => sum + Math.max(0, cents(item.totalPrice)), 0);
+        let sockCumulative = 0, sockAllocated = 0;
+        for (const item of sockItems) {
+          sockCumulative += Math.max(0, cents(item.totalPrice));
+          const next = grossSocks ? Math.round(sockTotal * sockCumulative / grossSocks) : 0;
+          const quantity = Math.max(0, Number(item.quantity) || 0) || 1;
+          acc.quantity += quantity;
+          acc.items.push({ saleId: sale.id, itemId: item.id, date: sale.createdAt,
+            productName: item.productName || item.product?.name || 'Meia', quantity, amount: (next - sockAllocated) / 100 });
+          sockAllocated = next;
+        }
+        acc.cents += sockTotal;
+      }
     }
   }
   const result = new Map();
@@ -79,9 +117,11 @@ function calculateRankingCommissions(sales, { start, end, storeId = null }) {
       totalAt1Percent: money(total / 100 * 0.01),
       totalAt2And4Percent: Math.round((total - clothing) * 0.02 + clothing * 0.04) / 100,
       earnedAmount: earned / 100, clothingItems: (clothingItems.get(sellerId) || []).sort((a, b) => new Date(b.date) - new Date(a.date)),
-      months: targets.sort((a, b) => a.month.localeCompare(b.month)) });
+      months: targets.sort((a, b) => a.month.localeCompare(b.month)),
+      socksQuantity: socks.get(sellerId)?.quantity || 0, socksAmount: (socks.get(sellerId)?.cents || 0) / 100,
+      socksItems: (socks.get(sellerId)?.items || []).sort((a, b) => new Date(b.date) - new Date(a.date)) });
   }
   return result;
 }
 
-module.exports = { isSportsClothing, clothingCents, commissionWindow, calculateRankingCommissions };
+module.exports = { isSock, isSportsClothing, clothingCents, commissionWindow, calculateRankingCommissions };
