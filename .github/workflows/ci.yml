@@ -43,6 +43,8 @@ jobs:
         run: npm run test:fin-http
       - name: Medalhas digitais — assinatura OB 3.0, emissão pelo resultado oficial, revogação (Postgres descartável)
         run: MEDAL_TEST_DATABASE_URL="$DATABASE_URL" npm run test:medals
+      - name: Contracheque — ponta a ponta com Postgres (acesso, isolamento, fechar/reabrir, PDF, auditoria)
+        run: npm run test:payroll-http
   boot-check:
     name: deps + sintaxe + requires resolvem
     runs-on: ubuntu-latest
@@ -77,3 +79,6 @@ jobs:
 
       - name: Financeiro e Stone — centavos, plano de contas, auditoria, pedido da maquininha (sem banco)
         run: npm run test:fin
+
+      - name: Contracheque — motor de cálculo (44h, 12x36, domingo, feriado, comissão, INSS/IRRF/FGTS)
+        run: npm run test:payroll
