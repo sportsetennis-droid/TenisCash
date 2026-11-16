@@ -719,7 +719,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
     <div class="action-btn" onclick="showScreen('seller-schedule')"><span>📅</span><span>Minha escala</span></div>
     <div class="action-btn" onclick="showScreen('seller-production')"><span>✓</span><span>Produção diária</span></div>
     <div class="action-btn" onclick="showScreen('seller-clock')"><span>⏱</span><span>Ponto</span></div>
-    <div class="action-btn" onclick="location.href='/meu-pagamento.html'"><span>💵</span><span>Meu pagamento</span></div>
+    <div class="action-btn" onclick="showScreen('seller-payment')"><span>💵</span><span>Meu pagamento</span></div>
     <div class="action-btn" onclick="showScreen('seller-portfolio')"><span>👥</span><span>Minha Carteira</span></div>
     <div class="action-btn" onclick="showScreen('seller-interview')"><span>📝</span><span>Entrevista</span></div>
   </div>
@@ -797,6 +797,11 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 </div>
 
 <!-- SELLER CLOCK-IN -->
+<div id="seller-payment" class="screen" style="padding:0">
+  <div class="back-header" style="padding-left:20px;padding-right:20px"><span class="back-arrow" onclick="showScreen('seller-home')">←</span><p style="font-size:18px;font-weight:700">Meu pagamento</p></div>
+  <iframe id="seller-payment-frame" title="Meu pagamento" style="display:block;width:100%;height:calc(100vh - 64px);height:calc(100dvh - 64px);border:0;background:#fff"></iframe>
+</div>
+
 <div id="seller-clock" class="screen">
   <div class="back-header"><span class="back-arrow" onclick="showScreen('seller-home')">←</span><p style="font-size:18px;font-weight:700">Ponto Digital</p></div>
 
@@ -1633,6 +1638,7 @@ function showScreen(id) {
   if (id === 'seller-home') loadSellerHome();
   if (id === 'seller-agent') initSellerAgent();
   if (id === 'seller-clock') initSellerClock();
+  if (id === 'seller-payment') { const f = document.getElementById('seller-payment-frame'); if (f) f.src = '/meu-pagamento.html?embed=1&_=' + Date.now(); }
   if (id === 'seller-messages') initSellerMessages();
   if (id === 'seller-message-new') initSellerMessageNew();
   if (id === 'seller-catalog') initSellerCatalogAi();
