@@ -1762,7 +1762,8 @@ router.get('/rankings', sellerOnly, async (req, res) => {
         : (s.sellerId === owner?.id && selectedStore) || u?.store;
       const commission = commissionBySeller.get(s.sellerId) || { baseAmount: 0, at50kAmount: 0,
         clothingSalesAmount: 0, clothingBaseAmount: 0, at20kClothingAmount: 0, totalAt1Percent: 0,
-        totalAt2And4Percent: 0, earnedAmount: 0, clothingItems: [], months: [] };
+        totalAt2And4Percent: 0, earnedAmount: 0, clothingItems: [], months: [],
+        socksQuantity: 0, socksAmount: 0, socksItems: [] };
       return {
         position: i + 1,
         sellerId: s.sellerId,
