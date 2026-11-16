@@ -4341,50 +4341,7 @@ async function loadRanking({ silent = false } = {}) {
       </div>
     ` : '';
 
-    // Campanha de meias (dono 15/11/2026): meia e meião de qualquer marca.
-    // Ganha R$ 50 quem vender mais em VALOR no mês; quantidade só acompanha.
-    const socksRank = [...d.ranking]
-      .map(r => ({ name: r.name, store: storesLabel(r), quantity: r.commission?.socksQuantity || 0, amount: r.commission?.socksAmount || 0, items: r.commission?.socksItems || [] }))
-      .sort((a, b) => b.amount - a.amount || b.quantity - a.quantity || a.name.localeCompare(b.name, 'pt-BR'));
-    const socksLeader = socksRank[0]?.amount > 0 ? socksRank[0].amount : 0;
-    const socksTotalQty = socksRank.reduce((sum, r) => sum + r.quantity, 0);
-    const socksPeriodNote = period === 'month' ? 'Contando as vendas deste mês.'
-      : 'Período escolhido acima. O prêmio vale pelo <strong>Mês atual</strong>.';
-    const socksHtml = `
-      <h3 class="section-title"><span class="section-title-icon">🧦</span>Campanha das Meias · R$ 50 pra quem mais vender</h3>
-      <p style="font-size:12px;color:rgba(255,255,255,0.9);margin:-4px 0 10px;">Meia e meião de qualquer marca. Ganha quem vender mais em <strong>valor</strong>. ${socksPeriodNote} Total: ${socksTotalQty} un.</p>
-      <div class="ranking-scroll" style="margin-bottom:20px;">
-      <table class="modern">
-        <colgroup><col style="width:9%"><col style="width:37%"><col style="width:14%"><col style="width:20%"><col style="width:20%"></colgroup>
-        <thead><tr>
-          <th style="text-align:center;">Pos.</th>
-          <th>Vendedor</th>
-          <th style="text-align:center;">Qtd</th>
-          <th style="text-align:right;">Valor</th>
-          <th style="text-align:right;">Falta pro 1º</th>
-        </tr></thead>
-        <tbody>
-          ${socksRank.map((r, i) => {
-            const first = socksLeader > 0 && r.amount === socksLeader;
-            const gap = Math.max(0, Math.round((socksLeader - r.amount) * 100) / 100);
-            const items = r.items.length ? `<details style="margin-top:4px;font-size:11px;font-weight:400;">
-              <summary style="cursor:pointer;color:#b83d0a;">Ver ${r.quantity} meia(s)</summary>
-              ${r.items.map(item => `<div style="border-top:1px solid #ddd;margin-top:4px;padding-top:4px;line-height:1.4;">${new Date(item.date).toLocaleDateString('pt-BR', {timeZone:'America/Recife'})} · ${item.quantity}x ${escPreco(item.productName)} · <strong>${fmt(item.amount)}</strong></div>`).join('')}
-            </details>` : '';
-            return `<tr style="${first ? 'background:#fff0e5;' : ''}">
-              <td style="text-align:center;font-weight:700;">${first ? '🏆' : '#' + (i + 1)}</td>
-              <td><div style="font-weight:600;">${escPreco(r.name)}</div><div style="font-size:11px;color:var(--text-muted);">${escPreco(r.store) || '—'}</div>${items}</td>
-              <td style="text-align:center;font-weight:700;">${r.quantity}</td>
-              <td style="text-align:right;font-weight:800;color:var(--primary);">${fmt(r.amount)}</td>
-              <td style="text-align:right;">${first ? '<strong style="color:#146c36;">Na frente</strong>' : fmt(gap)}</td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
-      </div>
-    `;
-
-    document.getElementById('rankingTable').innerHTML = socksHtml + top3Html + restHtml;
+    document.getElementById('rankingTable').innerHTML = top3Html + restHtml;
   } catch (e) {
     if (!silent && sessionToken === token && requestId === rankRequestId && selection.key === rankingSelection().key) {
       status.textContent = 'Não foi possível atualizar o ranking: ' + e.message;
