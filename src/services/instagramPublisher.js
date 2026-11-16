@@ -46,8 +46,15 @@ async function api(path, opts = {}) {
 
 // ID da conta vem do resolvedor único (confere no Graph; se a env estiver
 // errada, descobre o ID real pela Página). Ver src/services/igAccount.js.
-const { getIgCredentials } = require('./igAccount');
-function getCredentials() {
+const { getIgCredentials, igToken } = require('./igAccount');
+// igUserId opcional: publica em OUTRA conta do portfólio (lojas, Meta, Baratão)
+// usando o token do usuário do sistema (META_SYSTEM_TOKEN), que enxerga todas.
+async function getCredentials(igUserId) {
+  if (igUserId) {
+    const token = process.env.META_SYSTEM_TOKEN || igToken();
+    if (!token) throw new Error('sem token Meta (META_SYSTEM_TOKEN)');
+    return { userId: String(igUserId), token };
+  }
   return getIgCredentials();
 }
 
@@ -68,8 +75,8 @@ async function waitForContainerReady(containerId, token, maxWaitSec = 120) {
  * Publica foto no Feed do IG.
  * @returns {Promise<{ mediaId, permalink }>}
  */
-async function publishPhoto({ imageUrl, caption, collaborators }) {
-  const { userId, token } = await getCredentials();
+async function publishPhoto({ imageUrl, caption, collaborators, igUserId }) {
+  const { userId, token } = await getCredentials(igUserId);
 
   // 1. Cria container
   const container = await api(`/${userId}/media`, {
@@ -105,8 +112,8 @@ async function publishPhoto({ imageUrl, caption, collaborators }) {
  * Publica STORY (imagem 9:16) no IG. Story não tem caption visível nem collaborators via API.
  * @returns {Promise<{ mediaId }>}
  */
-async function publishStory({ imageUrl }) {
-  const { userId, token } = await getCredentials();
+async function publishStory({ imageUrl, igUserId }) {
+  const { userId, token } = await getCredentials(igUserId);
 
   const container = await api(`/${userId}/media`, {
     method: 'POST',
@@ -130,8 +137,8 @@ async function publishStory({ imageUrl }) {
 /**
  * Publica Reel (vídeo vertical 9:16) no IG.
  */
-async function publishReel({ videoUrl, caption, shareToFeed = true, collaborators, coverUrl, thumbOffset }) {
-  const { userId, token } = await getCredentials();
+async function publishReel({ videoUrl, caption, shareToFeed = true, collaborators, coverUrl, thumbOffset, igUserId }) {
+  const { userId, token } = await getCredentials(igUserId);
 
   const container = await api(`/${userId}/media`, {
     method: 'POST',
@@ -172,8 +179,8 @@ async function publishReel({ videoUrl, caption, shareToFeed = true, collaborator
  * @param {string}   caption
  * @param {string[]} collaborators  usernames a convidar (máx 3, contas públicas)
  */
-async function publishCarousel({ imageUrls = [], caption, collaborators }) {
-  const { userId, token } = await getCredentials();
+async function publishCarousel({ imageUrls = [], caption, collaborators, igUserId }) {
+  const { userId, token } = await getCredentials(igUserId);
   if (imageUrls.length < 2) throw new Error('Carrossel precisa de pelo menos 2 imagens');
 
   // 1. Cria um container-filho por imagem
@@ -230,4 +237,4 @@ async function getInsights(mediaId) {
   return out;
 }
 
-module.exports = { publishPhoto, publishStory, publishReel, publishCarousel, getInsights };
+module.exports = { api, getCredentials, publishPhoto, publishStory, publishReel, publishCarousel, getInsights };

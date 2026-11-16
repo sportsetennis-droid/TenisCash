@@ -546,6 +546,7 @@ app.use('/api/tournaments', tournamentsRoutes);
 app.use('/api/copa', copaRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/instagram', require('./routes/instagramWebhook')); // DM do Instagram -> CRM
+app.use('/api/ig', require('./routes/igPublish')); // publicação multi-conta (lojas, Meta, Baratão) via usuário do sistema
 app.use('/api/stocktake', stocktakeRoutes);
 app.use('/api/scan-transfers', require('./routes/scanTransfers'));
 app.use('/api/classification', classificationRoutes);
