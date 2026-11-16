@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>{{OG_TITLE}}</title>
+<meta name="description" content="{{OG_DESC}}">
+<meta property="og:title" content="{{OG_TITLE}}">
+<meta property="og:description" content="{{OG_DESC}}">
+<meta property="og:type" content="profile">
+<meta name="theme-color" content="#0b0b0d">
+<meta name="color-scheme" content="dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="icon" href="/brand/sports-tennis-icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/medalhas/medal-ui.css">
+<link rel="stylesheet" href="/medalhas/medal-card.css">
+<style>
+.es-top{display:flex;gap:14px;align-items:center;margin:6px 0 4px}
+.es-av{width:72px;height:72px;border-radius:50%;object-fit:cover;border:3px solid var(--o1);background:var(--o1);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:26px;flex:0 0 auto}
+.es-top h1{margin:0;font-size:24px;line-height:1.1;font-weight:900;font-stretch:112%;font-style:italic}
+.es-top p{margin:2px 0 0;color:var(--mut);font-size:14px}
+.es-chips{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 4px}
+.es-chips span{font-size:12px;font-weight:800;padding:6px 10px;border-radius:999px;background:#1e1e24;border:1px solid var(--line)}
+.es-verified{display:inline-flex;gap:6px;align-items:center;margin-top:10px;font-size:12px;color:var(--mut)}
+.es-verified b{color:var(--ok)}
+.es-foot{margin:32px 0 0;text-align:center;font-size:12px;color:var(--dim)}
+.es-foot a{color:var(--mut)}
+.es-skel{height:420px;border-radius:16px;background:linear-gradient(90deg,#16161a,#1f1f25,#16161a);background-size:200% 100%;animation:es-sk 1.2s infinite}
+@keyframes es-sk{to{background-position:-200% 0}}
+</style>
+</head>
+<body class="mu">
+<main class="mu-wrap">
+  <p class="mu-kicker">Club Sports &amp; Tennis · Perfil esportivo verificado</p>
+  <div id="head"></div>
+  <div id="shelf"><div class="es-skel"></div></div>
+  <div class="mu-actions mu-actions-big" id="acts" hidden>
+    <button class="mu-btn mu-btn-main" id="shareProfile" type="button">Compartilhar perfil</button>
+    <a class="mu-btn" href="/verificar">Verificar uma medalha</a>
+  </div>
+  <p class="es-foot">Só entram aqui conquistas com resultado confirmado e assinadas pelo organizador, escola ou federação. Nada autodeclarado.<br><a href="/">Club Sports &amp; Tennis</a></p>
+</main>
+<div class="mu-sheet" id="sheet" hidden></div>
+<script src="/medalhas/medal-template.js"></script>
+<script src="/medalhas/medal-card.js"></script>
+<script src="/medalhas/medal-shelf.js"></script>
+<script>
+(function () {
+  'use strict';
+  var esc = MedalTemplate.esc;
+  var handle = decodeURIComponent((/\/estante\/([^/?#]+)/.exec(location.pathname) || [])[1] || new URLSearchParams(location.search).get('u') || '');
+  var openSerial = new URLSearchParams(location.search).get('m');
+  function fail(msg) { document.getElementById('shelf').innerHTML = '<div class="ms-none"><p><b>' + esc(msg) + '</b></p></div>'; }
+  if (!handle) return fail('Atleta não informado.');
+  var mine = {};
+  var token = null; try { token = localStorage.getItem('tc_token'); } catch (_) {}
+  var meP = token ? fetch('/api/medals/me', { headers: { Authorization: 'Bearer ' + token }, cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : { medals: [] }; }).catch(function () { return { medals: [] }; }) : Promise.resolve({ medals: [] });
+  Promise.all([fetch('/api/medals/u/' + encodeURIComponent(handle), { cache: 'no-store' }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || 'Atleta não encontrado.'); return j; }); }), meP])
+    .then(function (all) {
+      var d = all[0];
+      (all[1].medals || []).forEach(function (m) { mine[m.serial] = m.ownershipCode; });
+      var a = d.athlete || {}, ini = (a.name || '?').split(' ').filter(Boolean).slice(0, 2).map(function (w) { return w[0]; }).join('').toUpperCase();
+      var sports = {}; d.medals.forEach(function (m) { sports[m.event.sport] = 1; });
+      document.getElementById('head').innerHTML = '<div class="es-top">' + (a.avatarUrl ? '<img class="es-av" src="' + esc(a.avatarUrl) + '" alt="">' : '<div class="es-av">' + esc(ini) + '</div>') +
+        '<div><h1>' + esc(a.name || 'Atleta') + '</h1><p>' + (a.username ? '@' + esc(a.username) : '') + ([a.city, a.state].filter(Boolean).length ? ' · ' + esc([a.city, a.state].filter(Boolean).join('/')) : '') + '</p></div></div>' +
+        (Object.keys(sports).length ? '<div class="es-chips">' + Object.keys(sports).map(function (s) { return '<span>' + esc(MedalTemplate.SPORTS[s] || s) + '</span>'; }).join('') + '</div>' : '') +
+        '<div class="es-verified"><b>✓</b> Cada medalha é assinada digitalmente e pode ser conferida por qualquer pessoa.</div>';
+      var sheet = document.getElementById('sheet');
+      function open(v) { v = Object.assign({}, v, mine[v.serial] ? { ownershipCode: mine[v.serial] } : {}); MedalShelf.openSheet(sheet, v); }
+      MedalShelf.render(document.getElementById('shelf'), d.medals, { onOpen: open });
+      document.getElementById('acts').hidden = false;
+      if (openSerial) { var m = d.medals.filter(function (x) { return x.serial === openSerial.toUpperCase(); })[0]; if (m) open(m); }
+      document.getElementById('shareProfile').addEventListener('click', function () {
+        var url = location.origin + '/estante/' + encodeURIComponent(a.username || handle);
+        var text = (a.name || 'Atleta') + ' — ' + d.medals.length + ' medalhas verificadas no Club Sports & Tennis';
+        if (navigator.share) navigator.share({ title: 'Estante de medalhas', text: text, url: url }).catch(function () {});
+        else if (navigator.clipboard) navigator.clipboard.writeText(url).then(function () { alert('Link copiado: ' + url); });
+      });
+    })
+    .catch(function (e) { fail(e.message); });
+})();
+</script>
+</body>
+</html>

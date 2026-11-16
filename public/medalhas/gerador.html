@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Medalhas do evento — organizador</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0b0b0d">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="/brand/sports-tennis-icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/medalhas/medal-ui.css">
+<link rel="stylesheet" href="/medalhas/medal-card.css">
+<style>
+.g-step{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin-top:16px}
+.g-step h2{margin:0 0 4px;font-size:18px;font-weight:900}
+.g-step>p{margin:0 0 12px;color:var(--mut);font-size:14px}
+.g-f{display:grid;gap:10px;grid-template-columns:minmax(0,1fr)}
+.g-f label{display:grid;gap:4px;min-width:0;font-size:12px;font-weight:800;color:var(--dim);text-transform:uppercase;letter-spacing:.6px}
+.g-f input,.g-f select{width:100%;min-width:0;min-height:44px;border-radius:12px;border:1px solid var(--line);background:#101014;color:#fff;padding:0 12px;font-size:15px;text-transform:none;letter-spacing:0;font-weight:500}
+.g-f input[type=color]{padding:4px;height:44px}
+.g-2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.g-prev{display:flex;gap:12px;overflow-x:auto;padding:6px 2px 10px;scroll-snap-type:x mandatory;margin-top:14px}
+.g-prev .ms-card{flex:0 0 46%;scroll-snap-align:start}
+.g-prev figure{margin:0;flex:0 0 46%;scroll-snap-align:start}
+.g-prev figcaption{font-size:11px;color:var(--dim);font-weight:800;text-align:center;margin-top:6px;text-transform:uppercase;letter-spacing:.6px}
+.g-note{overflow-wrap:anywhere;font-size:13px;color:var(--mut);background:#101014;border:1px dashed var(--line);border-radius:12px;padding:10px 12px;margin-top:10px}
+.g-msg{font-size:14px;margin-top:10px}
+.g-msg.ok{color:var(--ok)}.g-msg.bad{color:var(--bad)}
+.g-cat{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}
+.g-cat h3{margin:0 0 6px;font-size:15px}
+.g-cat table{width:100%;border-collapse:collapse;font-size:13px}
+.g-cat td{padding:6px 4px;border-bottom:1px solid rgba(255,255,255,.06);vertical-align:top}
+.g-tier{font-weight:900;font-size:11px;padding:3px 7px;border-radius:999px;background:#2a2a30;white-space:nowrap}
+.g-tier.GOLD{background:#e8c35a;color:#3d2a05}.g-tier.SILVER{background:#c7ced6;color:#262c33}.g-tier.BRONZE{background:#c98450;color:#3a1c08}.g-tier.SPECIAL{background:linear-gradient(90deg,#ff5f6d,#4facfe);color:#fff}
+.g-chk{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+.g-chk label{font-size:12px;display:flex;gap:4px;align-items:center;color:var(--mut)}
+.g-warn{color:#f5c56b;font-size:13px}
+.g-block{color:var(--dim);font-size:12px;margin:6px 0 0;padding-left:16px}
+@media(min-width:900px){.mu-wrap{max-width:760px}.g-prev .ms-card,.g-prev figure{flex-basis:23%}}
+</style>
+</head>
+<body class="mu">
+<main class="mu-wrap">
+  <header class="mu-head">
+    <p class="mu-kicker">Club Sports &amp; Tennis · Organizador</p>
+    <h1>Medalhas do evento</h1>
+    <p class="mu-lead">Crie a identidade visual do campeonato, emita as medalhas com base no resultado oficial e, se precisar, revogue com motivo. A medalha comum é gratuita e permanente para o atleta.</p>
+    <p class="g-note" id="loginNote" hidden>Você não está logado. Dá pra montar e ver o visual, mas para <b>salvar, emitir ou revogar</b> entre primeiro no <a href="/" style="color:#fff">app do Club</a> e volte aqui.</p>
+  </header>
+
+  <section class="g-step" id="stIssuer">
+    <h2>1. Emissor (quem assina)</h2>
+    <p>Organização, escola ou federação que assina as medalhas. Cada emissor recebe uma chave digital própria; a assinatura é dele, não da plataforma.</p>
+    <div id="issuerBox"></div>
+  </section>
+
+  <section class="g-step">
+    <h2>2. Identidade do evento</h2>
+    <p>Escudo, cores, tipografia e padrão próprios. O mesmo nome gera sempre o mesmo visual; ajuste o que quiser.</p>
+    <form class="g-f" id="tplForm" autocomplete="off">
+      <label>Nome do evento<input name="name" required maxlength="120" value="Circuito de Beach Tennis — Etapa 1"></label>
+      <div class="g-2">
+        <label>Esporte<select name="sport" id="sport"></select></label>
+        <label>Circuito / série<input name="circuit" maxlength="80" placeholder="opcional"></label>
+      </div>
+      <div class="g-2">
+        <label>Cor principal<input type="color" name="primary" value="#0e6ba8"></label>
+        <label>Cor secundária<input type="color" name="secondary" value="#f2a516"></label>
+      </div>
+      <div class="g-2">
+        <label>Tipografia<select name="font" id="font"></select></label>
+        <label>Padrão de fundo<select name="pattern" id="pattern"></select></label>
+      </div>
+      <div class="g-2">
+        <label>Formato do escudo<select name="shape" id="shape"></select></label>
+        <label>Iniciais do escudo<input name="initials" maxlength="3" placeholder="auto"></label>
+      </div>
+      <label>Escudo oficial (imagem, opcional)<input type="file" id="crestFile" accept="image/png,image/jpeg,image/webp,image/svg+xml"></label>
+      <label>Vincular a um torneio do Club<select name="tournamentId" id="tplTournament"><option value="">— nenhum (corrida, escolar, externo) —</option></select></label>
+      <div class="mu-actions">
+        <button type="button" class="mu-btn" id="shuffle">Sortear outro visual</button>
+        <button type="button" class="mu-btn" id="clearCrest">Tirar escudo enviado</button>
+        <button type="submit" class="mu-btn mu-btn-main">Salvar identidade</button>
+      </div>
+      <p class="g-msg" id="tplMsg"></p>
+    </form>
+    <div class="g-prev" id="preview" aria-label="Prévia das cartas"></div>
+    <p class="mu-hint">Toque numa carta para ver a animação e o verso. Prévia com dados fictícios.</p>
+  </section>
+
+  <section class="g-step">
+    <h2>3. Emitir medalhas do torneio</h2>
+    <p>O pódio sai do <b>resultado oficial</b> lançado no sistema (final encerrada ou liga concluída). Ninguém autodeclara medalha. Atleta sem CPF no cadastro fica de fora até completar o cadastro.</p>
+    <div class="g-f">
+      <label>Torneio<select id="issueT"><option value="">Carregando…</option></select></label>
+      <button type="button" class="mu-btn" id="loadPreview">Ver resultado oficial</button>
+    </div>
+    <div id="issueBox"></div>
+  </section>
+
+  <section class="g-step">
+    <h2>4. Revogar medalha</h2>
+    <p>Só em caso de recurso, doping ou erro de resultado. A revogação fica pública no histórico da medalha e a carta passa a mostrar REVOGADA.</p>
+    <form class="g-f" id="revForm">
+      <label>Número de série<input name="serial" required placeholder="CST-2026-000123" autocapitalize="characters"></label>
+      <label>Motivo<select name="reason"><option value="APPEAL">Recurso</option><option value="DOPING">Doping</option><option value="RESULT_ERROR">Erro no resultado</option><option value="OTHER">Outro motivo</option></select></label>
+      <label>Decisão (vai pro histórico público)<input name="note" required minlength="5" maxlength="300" placeholder="Ex.: recurso 03/2026 julgado procedente"></label>
+      <button type="submit" class="mu-btn">Revogar</button>
+      <p class="g-msg" id="revMsg"></p>
+    </form>
+  </section>
+</main>
+<div class="mu-sheet" id="sheet" hidden></div>
+<script src="/medalhas/medal-template.js"></script>
+<script src="/medalhas/medal-card.js"></script>
+<script src="/medalhas/medal-shelf.js"></script>
+<script>
+(function () {
+  'use strict';
+  var T = MedalTemplate, esc = T.esc, $ = function (id) { return document.getElementById(id); };
+  var token = null; try { token = localStorage.getItem('tc_token'); } catch (_) {}
+  if (!token) $('loginNote').hidden = false;
+  function api(path, opts) {
+    opts = opts || {};
+    var h = { 'Content-Type': 'application/json' }; if (token) h.Authorization = 'Bearer ' + token;
+    return fetch('/api/medals' + path, { method: opts.method || 'GET', headers: h, body: opts.body ? JSON.stringify(opts.body) : undefined, cache: 'no-store' })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(j.error || ('Erro ' + r.status)); return j; }); });
+  }
+  function opts(sel, map, val) { sel.innerHTML = Object.keys(map).map(function (k) { var l = typeof map[k] === 'string' ? map[k] : map[k].label; return '<option value="' + k + '"' + (k === val ? ' selected' : '') + '>' + esc(l) + '</option>'; }).join(''); }
+  opts($('sport'), T.SPORTS, 'BEACH_TENNIS'); opts($('font'), T.FONTS, 'archivo'); opts($('pattern'), T.PATTERNS, 'waves'); opts($('shape'), T.SHIELDS, 'round');
+
+  var state = { issuers: [], templates: [], issuer: null, crest: null, salt: '', editing: null };
+
+  // ---------- emissor ----------
+  function renderIssuer() {
+    var box = $('issuerBox');
+    if (!token) { box.innerHTML = '<p class="g-note">Entre no app para cadastrar ou escolher o emissor.</p>'; return; }
+    if (state.issuers.length) {
+      box.innerHTML = '<div class="g-f"><label>Assinar como<select id="issuerSel">' + state.issuers.map(function (i) { return '<option value="' + i.id + '">' + esc(i.name) + ' (' + ({ ORGANIZER: 'organizador', SCHOOL: 'escola', FEDERATION: 'federação', CLUB: 'clube' }[i.kind] || i.kind) + ')</option>'; }).join('') + '</select></label>' +
+        '<p class="g-note" id="issuerDid"></p><button type="button" class="mu-btn" id="newIssuerBtn">Cadastrar outro emissor</button></div><div id="newIssuer" hidden></div>';
+      var sel = $('issuerSel');
+      var pick = function () { state.issuer = state.issuers.filter(function (i) { return i.id === sel.value; })[0]; $('issuerDid').innerHTML = 'Chave pública: <code style="word-break:break-all">' + esc(state.issuer.did) + '</code>'; draw(); };
+      sel.addEventListener('change', pick); pick();
+      $('newIssuerBtn').addEventListener('click', function () { $('newIssuer').hidden = false; $('newIssuer').innerHTML = issuerForm(); bindIssuerForm(); });
+    } else { box.innerHTML = issuerForm(); bindIssuerForm(); }
+  }
+  function issuerForm() {
+    return '<form class="g-f" id="issuerForm"><label>Nome da organização<input name="name" required minlength="3" maxlength="120" placeholder="Ex.: Liga Paraibana de Beach Tennis"></label>' +
+      '<div class="g-2"><label>Tipo<select name="kind"><option value="ORGANIZER">Organizador</option><option value="SCHOOL">Escola</option><option value="FEDERATION">Federação</option><option value="CLUB">Clube</option></select></label>' +
+      '<label>Quem assina<input name="signatoryName" maxlength="80" placeholder="Nome do responsável"></label></div>' +
+      '<button class="mu-btn mu-btn-main" type="submit">Criar emissor e chave</button><p class="g-msg" id="issuerMsg"></p></form>';
+  }
+  function bindIssuerForm() {
+    $('issuerForm').addEventListener('submit', function (e) {
+      e.preventDefault(); var f = new FormData(e.target);
+      api('/issuers', { method: 'POST', body: { name: f.get('name'), kind: f.get('kind'), signatoryName: f.get('signatoryName') } })
+        .then(function () { return loadMine(); }).catch(function (err) { $('issuerMsg').className = 'g-msg bad'; $('issuerMsg').textContent = err.message; });
+    });
+  }
+  function loadMine() {
+    if (!token) { renderIssuer(); return Promise.resolve(); }
+    return api('/my-issuers').then(function (d) { state.issuers = d.issuers; state.templates = d.templates; renderIssuer(); }).catch(function (e) { $('issuerBox').innerHTML = '<p class="g-msg bad">' + esc(e.message) + '</p>'; });
+  }
+
+  // ---------- template + prévia ----------
+  function formInput() {
+    var f = new FormData($('tplForm'));
+    return { name: f.get('name'), sport: f.get('sport'), circuit: f.get('circuit'), primary: f.get('primary'), secondary: f.get('secondary'), font: f.get('font'), pattern: f.get('pattern'), shape: f.get('shape'), initials: f.get('initials') || undefined, crestImage: state.crest || undefined, tournamentId: f.get('tournamentId') || null };
+  }
+  function sample(design, inp, o) {
+    return Object.assign({
+      sample: true, serial: 'CST-0000-000000', status: 'ACTIVE', achievement: 'PLACEMENT', distinctions: [], edition: { n: 1, total: 1 },
+      athlete: { name: 'Nome do Atleta' }, event: { name: inp.name || 'Evento', category: 'Categoria', sport: inp.sport, circuit: inp.circuit, date: new Date().toISOString(), location: 'Local do evento' },
+      result: { score: '6/4 6/3', opponent: 'Adversário' }, organizer: { name: state.issuer ? state.issuer.name : 'Organizador', signatory: state.issuer ? state.issuer.signatoryName : 'Assinatura', did: state.issuer ? state.issuer.did : '' },
+      verificationCode: 'XXXX-XXXX-XXXX', verifyUrl: 'https://clubsportsetennis.com.br/v/CST-0000-000000', qr: null, design: design,
+    }, o);
+  }
+  var drawT;
+  function draw() {
+    clearTimeout(drawT);
+    drawT = setTimeout(function () {
+      var inp = formInput(); var gi = Object.assign({}, inp);
+      var design = T.generate(gi); design.crest.initials = (inp.initials || T.initialsOf(inp.name)).toUpperCase().slice(0, 3);
+      state.design = design;
+      MedalCard.ensureFonts(design);
+      var items = [
+        ['Ouro', sample(design, inp, { tier: 'GOLD', placement: 1 })],
+        ['Prata', sample(design, inp, { tier: 'SILVER', placement: 2 })],
+        ['Bronze', sample(design, inp, { tier: 'BRONZE', placement: 3 })],
+        ['Concluinte', sample(design, inp, { tier: 'FINISHER', placement: 47, edition: { n: 47, total: 312 } })],
+        ['Raro: invicto', sample(design, inp, { tier: 'GOLD', placement: 1, distinctions: ['UNBEATEN'] })],
+        ['Raro: artilheiro', sample(design, inp, { tier: 'SPECIAL', achievement: 'TOP_SCORER', placement: null, result: { score: '12 gols' } })],
+      ];
+      state.items = items;
+      $('preview').innerHTML = items.map(function (it, i) { return '<figure><button type="button" class="ms-card ms-' + it[1].tier.toLowerCase() + (MedalCard.isRare(it[1]) ? ' ms-rare' : '') + '" data-i="' + i + '">' + MedalCard.front(it[1], { uid: 'g' + i }) + '<i class="ms-shine"></i></button><figcaption>' + it[0] + '</figcaption></figure>'; }).join('') +
+        '<figure><button type="button" class="ms-card" data-i="0">' + MedalCard.back(items[0][1], { uid: 'gb' }) + '</button><figcaption>Verso (súmula)</figcaption></figure>';
+    }, 120);
+  }
+  $('preview').addEventListener('click', function (e) { var b = e.target.closest('[data-i]'); if (b) MedalShelf.openSheet($('sheet'), state.items[+b.dataset.i][1]); });
+  $('tplForm').addEventListener('input', draw);
+  $('shuffle').addEventListener('click', function () {
+    state.salt = ' #' + Math.random().toString(36).slice(2, 6);
+    var d = T.generate({ name: formInput().name + state.salt, sport: formInput().sport });
+    var f = $('tplForm'); f.primary.value = d.palette.primary; f.secondary.value = d.palette.secondary; f.font.value = d.font; f.pattern.value = d.pattern; f.shape.value = d.crest.shape;
+    draw();
+  });
+  $('crestFile').addEventListener('change', function (e) {
+    var file = e.target.files[0]; if (!file) return;
+    var img = new Image(), url = URL.createObjectURL(file);
+    img.onload = function () {
+      var s = 256, c = document.createElement('canvas'); c.width = c.height = s;
+      var k = Math.min(s / img.width, s / img.height), w = img.width * k, h = img.height * k;
+      c.getContext('2d').drawImage(img, (s - w) / 2, (s - h) / 2, w, h);
+      state.crest = c.toDataURL('image/png'); URL.revokeObjectURL(url); draw();
+    };
+    img.src = url;
+  });
+  $('clearCrest').addEventListener('click', function () { state.crest = null; $('crestFile').value = ''; draw(); });
+  $('tplForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var msg = $('tplMsg');
+    if (!token) { msg.className = 'g-msg bad'; msg.textContent = 'Entre no app para salvar.'; return; }
+    if (!state.issuer) { msg.className = 'g-msg bad'; msg.textContent = 'Cadastre ou escolha o emissor no passo 1.'; return; }
+    var inp = formInput();
+    var design = { primary: inp.primary, secondary: inp.secondary, font: inp.font, pattern: inp.pattern, shape: inp.shape, initials: inp.initials, crestImage: inp.crestImage };
+    api('/templates', { method: 'POST', body: { issuerId: state.issuer.id, tournamentId: inp.tournamentId, name: inp.name, sport: inp.sport, circuit: inp.circuit, design: design } })
+      .then(function (r) { msg.className = 'g-msg ok'; msg.textContent = 'Identidade salva (versão ' + r.template.version + ').' + (inp.tournamentId ? ' As medalhas deste torneio usarão este visual.' : ''); })
+      .catch(function (err) { msg.className = 'g-msg bad'; msg.textContent = err.message; });
+  });
+
+  // ---------- emissão ----------
+  var TIER_L = { GOLD: 'Ouro', SILVER: 'Prata', BRONZE: 'Bronze', FINISHER: 'Concluinte', SPECIAL: 'Especial' };
+  function loadTournaments() {
+    if (!token) { $('issueT').innerHTML = '<option value="">Entre no app para ver seus torneios</option>'; return; }
+    api('/my-tournaments').then(function (d) {
+      var o = d.tournaments.map(function (t) { return '<option value="' + t.id + '">' + esc(t.name) + ' · ' + esc(T.SPORTS[t.sport] || t.sport) + ' · ' + esc(t.status) + '</option>'; }).join('');
+      $('issueT').innerHTML = o || '<option value="">Nenhum torneio seu</option>';
+      $('tplTournament').innerHTML = '<option value="">— nenhum (corrida, escolar, externo) —</option>' + o;
+    }).catch(function (e) { $('issueT').innerHTML = '<option value="">' + esc(e.message) + '</option>'; });
+  }
+  var pv = null;
+  $('loadPreview').addEventListener('click', function () {
+    var id = $('issueT').value; if (!id) return;
+    $('issueBox').innerHTML = '<p class="g-note">Lendo o resultado oficial…</p>';
+    api('/tournaments/' + id + '/preview').then(function (d) { pv = d; renderPreview(); }).catch(function (e) { $('issueBox').innerHTML = '<p class="g-msg bad">' + esc(e.message) + '</p>'; });
+  });
+  function renderPreview() {
+    var h = '';
+    if (!pv.issuer) h += '<p class="g-warn">O fundador do torneio ainda não cadastrou o emissor (passo 1). Sem emissor não há assinatura.</p>';
+    if (!pv.template) h += '<p class="g-note">Sem identidade salva para este torneio: será usado o visual automático do evento. Para personalizar, salve o passo 2 vinculado a ele.</p>';
+    var total = 0;
+    pv.categories.forEach(function (c) {
+      h += '<div class="g-cat"><h3>' + esc(c.name) + (c.unbeaten ? ' · <span style="color:#f5c56b">' + (c.gender === 'F' ? 'campeã invicta' : 'campeão invicto') + '</span>' : '') + '</h3>';
+      if (!c.confirmed) { h += '<p class="g-warn">Ainda não dá para emitir: ' + esc(c.reason) + '</p></div>'; return; }
+      var toIssue = c.medals.filter(function (m) { return !m.issued; });
+      total += toIssue.length;
+      h += '<table>' + c.medals.map(function (m) {
+        var champ = m.placement === 1 && m.achievement === 'PLACEMENT' && !m.issued;
+        return '<tr><td><span class="g-tier ' + m.tier + '">' + (m.achievement === 'TOP_SCORER' ? 'Artilheiro' : TIER_L[m.tier]) + '</span></td><td><b>' + esc(m.athlete) + '</b><br><span style="color:var(--dim)">' + esc(m.entry || '') + (m.edition ? ' · ' + m.edition.n + ' de ' + m.edition.total : '') + '</span>' +
+          (champ ? '<div class="g-chk"><label><input type="checkbox" data-u="' + m.userId + '" value="STATE_CHAMPION">Título estadual</label><label><input type="checkbox" data-u="' + m.userId + '" value="NATIONAL_CHAMPION">Título nacional</label></div>' : '') +
+          '</td><td style="text-align:right;white-space:nowrap">' + (m.issued ? '<a href="/v/' + m.issued + '" target="_blank" style="color:var(--ok)">emitida</a>' : 'a emitir') + '</td></tr>';
+      }).join('') + '</table>';
+      var cands = c.medals.filter(function (m) { return m.achievement === 'PLACEMENT'; });
+      if (cands.length) h += '<div class="g-f" style="margin-top:8px"><label>Melhor atleta (opcional)<select data-mvp="' + c.categoryId + '"><option value="">— não premiar —</option>' + cands.map(function (m) { return '<option value="' + m.userId + '">' + esc(m.athlete) + '</option>'; }).join('') + '</select></label></div>';
+      if (c.blocked.length) h += '<ul class="g-block">' + c.blocked.map(function (b) { return '<li>' + esc([b.entry, b.athlete].filter(Boolean).join(' · ')) + ': ' + esc(b.reason) + '</li>'; }).join('') + '</ul>';
+      h += '</div>';
+    });
+    h += '<div class="mu-actions"><button type="button" class="mu-btn mu-btn-main" id="doIssue"' + (!pv.issuer || !total ? ' disabled' : '') + '>Confirmar resultado e emitir ' + total + ' medalha' + (total === 1 ? '' : 's') + '</button></div><p class="g-msg" id="issueMsg"></p>';
+    $('issueBox').innerHTML = h;
+    var btn = $('doIssue');
+    if (btn) btn.addEventListener('click', function () {
+      if (!confirm('Confirmo que este é o resultado OFICIAL do torneio "' + pv.tournament.name + '". As medalhas serão assinadas e não podem ser transferidas. Emitir?')) return;
+      var dist = {}, mvp = {};
+      document.querySelectorAll('#issueBox input[type=checkbox]:checked').forEach(function (cb) { (dist[cb.dataset.u] = dist[cb.dataset.u] || []).push(cb.value); });
+      document.querySelectorAll('#issueBox [data-mvp]').forEach(function (s) { if (s.value) mvp[s.dataset.mvp] = s.value; });
+      btn.disabled = true; btn.textContent = 'Assinando…';
+      api('/tournaments/' + pv.tournament.id + '/issue', { method: 'POST', body: { distinctions: dist, mvp: mvp } }).then(function (r) {
+        $('issueMsg').className = 'g-msg ok';
+        $('issueMsg').innerHTML = r.issued.length + ' medalha(s) emitida(s).' + (r.issued.length ? '<br>' + r.issued.slice(0, 30).map(function (x) { return '<a style="color:#fff" target="_blank" href="/v/' + x.serial + '">' + esc(x.serial) + '</a> ' + esc(x.athlete); }).join('<br>') : '') + (r.skipped.length ? '<br><span style="color:var(--dim)">' + r.skipped.length + ' pulada(s): ' + esc(r.skipped.slice(0, 5).map(function (s) { return (s.athlete || s.category || '') + ' (' + s.reason + ')'; }).join('; ')) + '</span>' : '');
+        btn.textContent = 'Emitidas';
+      }).catch(function (e) { $('issueMsg').className = 'g-msg bad'; $('issueMsg').textContent = e.message; btn.disabled = false; btn.textContent = 'Tentar de novo'; });
+    });
+  }
+
+  // ---------- revogação ----------
+  $('revForm').addEventListener('submit', function (e) {
+    e.preventDefault(); var f = new FormData(e.target), msg = $('revMsg');
+    if (!token) { msg.className = 'g-msg bad'; msg.textContent = 'Entre no app.'; return; }
+    if (!confirm('Revogar a medalha ' + f.get('serial') + '? A revogação fica pública no histórico.')) return;
+    api('/' + encodeURIComponent(String(f.get('serial')).trim().toUpperCase()) + '/revoke', { method: 'POST', body: { reason: f.get('reason'), note: f.get('note') } })
+      .then(function (r) { msg.className = 'g-msg ok'; msg.innerHTML = 'Medalha <a style="color:#fff" href="/v/' + r.serial + '" target="_blank">' + esc(r.serial) + '</a> revogada.'; })
+      .catch(function (err) { msg.className = 'g-msg bad'; msg.textContent = err.message; });
+  });
+
+  loadMine(); loadTournaments(); draw();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Medalhas — galeria de exemplo</title>
+<meta name="color-scheme" content="dark">
+<meta name="robots" content="noindex">
+<link rel="icon" href="/brand/sports-tennis-icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/medalhas/medal-card.css">
+<link rel="stylesheet" href="/medalhas/medal-ui.css">
+</head>
+<body class="mu">
+<main class="mu-wrap">
+  <header class="mu-head">
+    <p class="mu-kicker">Club Sports &amp; Tennis · Medalhas digitais</p>
+    <h1>Galeria de exemplo</h1>
+    <p class="mu-lead">Todas as raridades, frente e verso. Toque na carta para virar. Os dados são fictícios e as cartas levam a marca d'água EXEMPLO.</p>
+  </header>
+  <section class="mu-grid" id="grid"></section>
+  <section class="mu-section">
+    <h2>Estante (exemplo)</h2>
+    <div id="shelf"></div>
+  </section>
+</main>
+<div class="mu-sheet" id="sheet" hidden></div>
+<script src="/medalhas/medal-template.js"></script>
+<script src="/medalhas/medal-card.js"></script>
+<script src="/medalhas/medal-shelf.js"></script>
+<script src="/medalhas/demo-data.js"></script>
+<script>
+(function () {
+  var NAMES = { gold: 'Ouro + Campeã invicta (raro)', silver: 'Prata', bronze: 'Bronze', finisher: 'Concluinte · 47 de 312', scorer: 'Artilheiro (raro)', state: 'Campeã estadual (raro)', revoked: 'Revogada' };
+  var grid = document.getElementById('grid');
+  window.MEDAL_DEMO.forEach(function (v) {
+    var cell = document.createElement('article');
+    cell.className = 'mu-cell';
+    cell.innerHTML = '<h3>' + NAMES[v.key] + '</h3><div class="mu-slot"></div><div class="mu-actions"><button type="button" class="mu-btn" data-a="open">Abrir</button><button type="button" class="mu-btn" data-a="flip">Virar</button><button type="button" class="mu-btn" data-a="png">Imagem</button><a class="mu-btn" href="/verificar#c=' + v.credentialJwt + '" target="_blank" rel="noopener">Verificar</a></div>';
+    grid.appendChild(cell);
+    var slot = cell.querySelector('.mu-slot');
+    var card = MedalCard.mount(slot, v, {});
+    cell.addEventListener('click', function (e) {
+      var a = e.target.closest('[data-a]'); if (!a) return;
+      if (a.dataset.a === 'flip') card.flip();
+      if (a.dataset.a === 'open') { slot.innerHTML = ''; card = MedalCard.mount(slot, v, { reveal: true }); }
+      if (a.dataset.a === 'png') { a.disabled = true; MedalCard.share(v, { side: 'both' }).finally(function () { a.disabled = false; }); }
+    });
+  });
+  MedalShelf.render(document.getElementById('shelf'), window.MEDAL_DEMO.filter(function (v) { return v.status !== 'REVOKED' && /Marina|Rafael/.test(v.athlete.name); }), {
+    onOpen: function (v) { MedalShelf.openSheet(document.getElementById('sheet'), v); },
+  });
+})();
+</script>
+</body>
+</html>

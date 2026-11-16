@@ -1,0 +1,65 @@
+/* =====================================================================
+ * Carta da medalha — tilt 3D, brilho holográfico, flip e abertura.
+ * Tamanho: a carta ocupa a largura do contêiner (proporção 2,5 x 3,5).
+ * ===================================================================== */
+.mc{--mx:50%;--my:50%;--rx:0deg;--ry:0deg;--hp:50%;position:relative;width:100%;max-width:360px;aspect-ratio:5/7;perspective:1100px;cursor:pointer;outline:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.mc:focus-visible .mc-card{box-shadow:0 0 0 3px #fff,0 0 0 6px #EA5128}
+.mc-tilt{position:absolute;inset:0;transform:rotateX(var(--rx)) rotateY(var(--ry));transform-style:preserve-3d;transition:transform .5s cubic-bezier(.2,.8,.2,1)}
+.mc.is-hover .mc-tilt{transition:transform .08s linear}
+.mc-card{position:absolute;inset:0;transform-style:preserve-3d;transition:transform .8s cubic-bezier(.3,1.4,.4,1);border-radius:6.4%/4.6%}
+.mc.is-flipped .mc-card{transform:rotateY(180deg)}
+.mc-face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:6.4%/4.6%;overflow:hidden;box-shadow:0 18px 40px rgba(0,0,0,.45),0 2px 6px rgba(0,0,0,.35)}
+.mc-back{transform:rotateY(180deg)}
+.mc-svg{display:block;width:100%;height:100%}
+.mc-face>i{position:absolute;inset:0;pointer-events:none;border-radius:inherit}
+
+/* reflexo que segue o dedo */
+.mc-glare{background:radial-gradient(circle at var(--mx) var(--my),rgba(255,255,255,.38),rgba(255,255,255,0) 46%);mix-blend-mode:soft-light;opacity:0;transition:opacity .3s}
+.mc.is-hover .mc-glare{opacity:1}
+
+/* holográfico: prata < ouro < raro */
+.mc-holo{background:repeating-linear-gradient(115deg,#ff5f6d 0%,#ffc371 6%,#f9f871 12%,#47e5bc 18%,#4facfe 24%,#a18cd1 30%,#ff5f6d 36%);background-size:300% 300%;background-position:var(--hp) 50%;mix-blend-mode:color-dodge;opacity:0;transition:opacity .4s}
+.mc-silver .mc-holo{opacity:.06}
+.mc-gold .mc-holo{opacity:.1}
+.mc-rare .mc-holo,.mc-special .mc-holo{opacity:.22}
+.mc.is-hover.mc-gold .mc-holo{opacity:.2}
+.mc.is-hover.mc-rare .mc-holo{opacity:.42}
+.mc-finisher .mc-holo,.mc-bronze .mc-holo{display:none}
+
+/* faixa de luz que passa sozinha (metal) */
+.mc-sweep{background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.55) 48%,rgba(255,255,255,0) 60%);background-size:260% 100%;background-position:150% 0;mix-blend-mode:overlay;opacity:0}
+.mc-gold .mc-sweep,.mc-silver .mc-sweep,.mc-rare .mc-sweep,.mc-special .mc-sweep{opacity:1;animation:mc-sweep 4.8s ease-in-out 1.2s infinite}
+.mc-silver .mc-sweep{animation-duration:6.5s}
+.mc-rare .mc-sweep{animation-duration:3.4s}
+@keyframes mc-sweep{0%{background-position:150% 0}45%,100%{background-position:-60% 0}}
+
+/* raro: halo pulsando atrás da carta */
+.mc-rare::before{content:"";position:absolute;inset:1%;border-radius:8%;background:conic-gradient(from 0deg,#ff5f6d,#ffc371,#47e5bc,#4facfe,#a18cd1,#ff5f6d);filter:blur(16px);opacity:.32;animation:mc-halo 6s linear infinite;z-index:-1}
+@keyframes mc-halo{to{transform:rotate(360deg)}}
+
+/* revogada: sem brilho */
+.mc-revoked .mc-holo,.mc-revoked .mc-sweep{display:none}
+.mc-revoked .mc-face{filter:saturate(.35)}
+
+/* ---------- abertura (pacote) ---------- */
+.mc.is-revealing .mc-tilt{animation:mc-open 1.6s cubic-bezier(.2,.9,.25,1) both}
+@keyframes mc-open{
+  0%{transform:translateY(40px) scale(.35) rotateY(-540deg);filter:brightness(3) blur(6px);opacity:0}
+  35%{opacity:1}
+  70%{transform:translateY(-8px) scale(1.06) rotateY(12deg);filter:brightness(1.4) blur(0)}
+  100%{transform:none;filter:none}
+}
+.mc-burst{position:absolute;left:50%;top:50%;width:0;height:0;pointer-events:none;z-index:2}
+.mc-rays{position:absolute;left:-260px;top:-260px;width:520px;height:520px;border-radius:50%;background:repeating-conic-gradient(rgba(255,231,150,.55) 0 6deg,transparent 6deg 18deg);mask:radial-gradient(circle,#000 18%,transparent 66%);-webkit-mask:radial-gradient(circle,#000 18%,transparent 66%);opacity:0;animation:mc-rays 2.2s ease-out .35s both}
+.mc-burst-0 .mc-rays{display:none}
+.mc-burst-1 .mc-rays{background:repeating-conic-gradient(rgba(230,236,245,.5) 0 6deg,transparent 6deg 18deg)}
+.mc-burst-3 .mc-rays{background:repeating-conic-gradient(rgba(255,95,109,.5) 0 5deg,rgba(79,172,254,.5) 5deg 10deg,transparent 10deg 18deg)}
+@keyframes mc-rays{0%{opacity:0;transform:scale(.2) rotate(0)}30%{opacity:1}100%{opacity:0;transform:scale(1.25) rotate(50deg)}}
+.mc-burst b{position:absolute;left:-4px;top:-4px;width:8px;height:8px;border-radius:50%;background:#fff6cf;box-shadow:0 0 10px 3px rgba(255,214,102,.9);opacity:0;animation:mc-spark 1.1s ease-out var(--dl) both}
+.mc-burst-3 b:nth-child(odd){background:#bfe6ff;box-shadow:0 0 10px 3px rgba(79,172,254,.9)}
+@keyframes mc-spark{0%{opacity:1;transform:rotate(var(--a)) translateX(0) scale(1)}100%{opacity:0;transform:rotate(var(--a)) translateX(var(--d)) scale(.2)}}
+
+@media (prefers-reduced-motion:reduce){
+  .mc-tilt,.mc-card{transition:none}
+  .mc-sweep,.mc-rare::before{animation:none}
+}
