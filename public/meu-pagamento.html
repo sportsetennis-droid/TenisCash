@@ -458,14 +458,12 @@ textarea.in{min-height:96px;resize:vertical}
         <div class="tiny">${proj.basis ? 'Se mantiver o ' + esc(proj.basis) : 'Estimativa'} — é só uma estimativa.</div></div></div>` : ''}
     </div>`;
 
-    h += cardPendencias(r, true);
     h += cardContrato(r);
     h += cardHoras(r);
     h += cardEspeciais(r);
     h += cardComissao(r);
     h += cardLancamentos(r);
     h += cardCalculo(r, 'Como cada valor foi calculado');
-    if (r.pendencies && r.pendencies.length) h += cardPendencias(r, false);
     el.innerHTML = h;
   }
 
@@ -824,7 +822,6 @@ textarea.in{min-height:96px;resize:vertical}
         <div class="note">Confirmar ciência só registra que você viu este contracheque. Não é comprovante de pagamento e não impede você de pedir revisão.</div>`)}</div>`;
     h += `<button type="button" class="btn ghost block" data-act="dispute" style="margin-top:10px">Pedir revisão</button><div id="dispBox"></div>`;
     if (r.items) h += cardCalculo(r, 'Como cada valor foi calculado');
-    if (r.pendencies && r.pendencies.length) h += cardPendencias(r, false);
     $('#sheetBody').innerHTML = h;
     $('#sheetBody').dataset.slipId = p.id;
     $('#sheetBody').dataset.comp = p.competence;
