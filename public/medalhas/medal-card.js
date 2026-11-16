@@ -136,6 +136,12 @@
     var sub = [T.SPORTS[v.event.sport] || v.event.sport, v.event.circuit].filter(Boolean).join(' · ').toUpperCase();
     s += txt(134, evLines.length > 1 ? 120 : 92, sub, { size: 13, family: BODY, weight: 700, fill: pal.accent, ls: 1.5 });
 
+    // MEDALHA: foto do 3D (opt.medalImage), espaço livre pro 3D ao vivo (opt.medalSlot) ou vetor (fallback)
+    if (opt.medalImage) {
+      // a fita some suave no topo (não cobre o subtítulo) — igual ao 3D ao vivo
+      s += '<defs><linearGradient id="' + u + 'mg" x1="0" y1="0" x2="0" y2="1"><stop offset=".07" stop-color="#000"/><stop offset=".19" stop-color="#fff"/></linearGradient><mask id="' + u + 'mm" maskContentUnits="objectBoundingBox"><rect width="1" height="1" fill="url(#' + u + 'mg)"/></mask></defs>';
+      s += '<image href="' + esc(opt.medalImage) + '" x="' + MEDAL_BOX.x + '" y="' + MEDAL_BOX.y + '" width="' + MEDAL_BOX.w + '" height="' + MEDAL_BOX.h + '" preserveAspectRatio="xMidYMid meet" mask="url(#' + u + 'mm)"/>';
+    } else if (!opt.medalSlot) {
     // fita (V) com as cores do evento
     s += '<g filter="url(#' + u + 'sh)">';
     s += '<path d="M188 120 L238 120 L272 236 L234 250 Z" fill="' + pal.secondary + '"/><path d="M206 120 L220 120 L256 242 L246 246 Z" fill="' + pal.accent + '" opacity=".85"/>';
@@ -167,18 +173,9 @@
     s += txt(250, 378, discLabel, { anchor: 'middle', size: 13, family: BODY, weight: 800, fill: fi.text, ls: 4, opacity: 0.85 });
     // reflexo no aro
     s += '<path d="M168 262 A100 100 0 0 1 300 214" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" opacity=".45"/>';
+    }
 
-    // numeração "1 DE 1"
-    var ed = editionText(v);
-    if (ed) {
-      var ew = 24 + ed.length * 9.6;
-      s += '<g transform="translate(' + (466 - ew) + ' 140)"><rect width="' + ew + '" height="30" rx="15" fill="#000" fill-opacity=".35" stroke="' + hi(fi) + '" stroke-opacity=".8"/>' + txt(ew / 2, 21, ed, { anchor: 'middle', size: 15, family: BODY, weight: 800, fill: '#fff', ls: 1 }) + '</g>';
-    }
-    // título raro (faixa)
-    var dl = distinctionLabels(v);
-    if (dl.length) {
-      s += '<g transform="translate(34 140)"><rect width="' + (40 + dl[0].length * 10.6) + '" height="30" rx="6" fill="url(#' + u + 'holo)"/>' + txt(12, 21, '★ ' + dl[0], { size: 14, family: BODY, weight: 900, fill: '#1b1030', ls: 0.5 }) + '</g>';
-    }
+    if (!opt.noTop) s += topLayer(v, u, fi);
 
     // rótulo da colocação
     var pl = placementLabel(v), plf = fit(pl, 360, 46, 24, F.k);
@@ -195,9 +192,40 @@
     s += txt(40, 664, v.serial || '', { size: 11, family: BODY, weight: 600, fill: pal.ink, opacity: 0.6, ls: 1 });
     var ok = v.status !== 'REVOKED';
     s += '<g transform="translate(460 640)">' + txt(0, 6, ok ? '✓ VERIFICADA' : '✕ REVOGADA', { anchor: 'end', size: 13, family: BODY, weight: 900, fill: ok ? pal.accent : '#ff5a5a', ls: 1.2 }) + txt(0, 24, 'OPEN BADGES 3.0', { anchor: 'end', size: 10, family: BODY, weight: 700, fill: pal.ink, opacity: 0.55, ls: 1.5 }) + '</g>';
-    if (v.sample) s += '<g transform="rotate(-28 250 350)" opacity=".3">' + txt(250, 360, 'EXEMPLO', { anchor: 'middle', size: 92, family: BODY, weight: 900, fill: '#fff', ls: 6 }) + '</g>';
-    if (!ok) s += stamp();
+    if (!opt.noTop) s += marks(v);
     return s + '</svg>';
+  }
+
+  // Área da medalha na carta (coordenadas do SVG 500x700) — o 3D ocupa esse retângulo.
+  var MEDAL_BOX = { x: 100, y: 96, w: 300, h: 360 };
+  function topLayer(v, u, fi) {
+    var s = '';
+      // numeração "1 DE 1"
+      var ed = editionText(v);
+      if (ed) {
+        var ew = 24 + ed.length * 9.6;
+        s += '<g transform="translate(' + (466 - ew) + ' 140)"><rect width="' + ew + '" height="30" rx="15" fill="#000" fill-opacity=".35" stroke="' + hi(fi) + '" stroke-opacity=".8"/>' + txt(ew / 2, 21, ed, { anchor: 'middle', size: 15, family: BODY, weight: 800, fill: '#fff', ls: 1 }) + '</g>';
+      }
+      // título raro (faixa)
+      var dl = distinctionLabels(v);
+      if (dl.length) {
+        s += '<g transform="translate(34 140)"><rect width="' + (40 + dl[0].length * 10.6) + '" height="30" rx="6" fill="url(#' + u + 'holo)"/>' + txt(12, 21, '★ ' + dl[0], { size: 14, family: BODY, weight: 900, fill: '#1b1030', ls: 0.5 }) + '</g>';
+      }
+
+    return s;
+  }
+  function marks(v) {
+    var s = '';
+    if (v.sample) s += '<g transform="rotate(-28 250 350)" opacity=".3">' + txt(250, 360, 'EXEMPLO', { anchor: 'middle', size: 92, family: BODY, weight: 900, fill: '#fff', ls: 6 }) + '</g>';
+    if (v.status === 'REVOKED') s += stamp();
+    return s;
+  }
+  // Camada de cima isolada (pílulas, marca d'água, carimbo) — vai acima do canvas 3D.
+  function frontTop(v, opt) {
+    opt = opt || {};
+    var u = 't' + (opt.uid || Math.random().toString(36).slice(2, 8));
+    var fi = finishOf(v);
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 700" class="mc-svg mc-top" aria-hidden="true"><defs><linearGradient id="' + u + 'holo" x1="0" y1="0" x2="1" y2="1">' + gradStops(HOLO) + '</linearGradient></defs>' + topLayer(v, u, fi) + marks(v) + '</svg>';
   }
 
   function stamp() {
@@ -292,6 +320,17 @@
     var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = href; document.head.appendChild(l);
   }
 
+  function has3d() { return typeof window !== 'undefined' && window.Medal3D && window.Medal3D.ready && window.Medal3D.supported(); }
+  // Libera o WebGL das cartas dentro de um contêiner (o navegador limita contextos 3D abertos).
+  function unmount(container) {
+    if (!container || !container.querySelectorAll) return;
+    container.querySelectorAll('.mc').forEach(function (m) { if (m.__m3d) { m.__m3d.dispose(); m.__m3d = null; } });
+  }
+  // "Foto" da medalha 3D pra usar em SVG estático (estante, PNG). null se não houver 3D.
+  function medalPhoto(v, w, h, quality) {
+    if (!has3d()) return Promise.resolve(null);
+    return window.Medal3D.snapshot(v, w || 600, h || 720, quality).catch(function () { return null; });
+  }
   function reduceMotion() { return typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches; }
 
   // Monta a carta interativa. opts: { reveal, flippable, tilt, onFlip }
@@ -311,6 +350,17 @@
       '</div></div>';
     container.appendChild(el);
     var tilt = el.querySelector('.mc-tilt');
+    var m3d = null;
+    function upgrade3d() {
+      if (opts.medal3d === false || !has3d() || !el.isConnected || el.__m3dStarted) return;
+      el.__m3dStarted = true;
+      var face = el.querySelector('.mc-front');
+      var base = face.querySelector('.mc-svg');
+      base.outerHTML = front(v, { uid: uid + 'b', medalSlot: true, noTop: true }) + '<div class="mc-3dwrap"></div>' + frontTop(v, { uid: uid + 't' });
+      window.Medal3D.mountLive(face.querySelector('.mc-3dwrap'), v, { reveal: !!opts.reveal }).then(function (ctrl) { m3d = ctrl; el.__m3d = ctrl; if (!el.isConnected && ctrl) ctrl.dispose(); });
+    }
+    if (has3d()) upgrade3d();
+    else if (typeof window !== 'undefined' && opts.medal3d !== false) window.addEventListener('medal3d-ready', upgrade3d, { once: true });
     var flipped = false;
     function flip() { flipped = !flipped; el.classList.toggle('is-flipped', flipped); if (opts.onFlip) opts.onFlip(flipped); }
     if (opts.flippable !== false) {
@@ -324,6 +374,7 @@
         el.style.setProperty('--rx', ((0.5 - py) * 18).toFixed(2) + 'deg');
         el.style.setProperty('--ry', ((px - 0.5) * 22).toFixed(2) + 'deg');
         el.style.setProperty('--hp', (px * 100).toFixed(1) + '%');
+        if (m3d) m3d.onMove(px, py);
       };
       el.addEventListener('pointermove', function (e) {
         var r = tilt.getBoundingClientRect();
@@ -402,7 +453,8 @@
   function toPng(v, opts) {
     opts = opts || {};
     var side = opts.side || 'front', W = opts.width || 1000, H = Math.round(W * 1.4);
-    return inlineFonts(v.design).then(function (fontCss) {
+    return Promise.all([inlineFonts(v.design), medalPhoto(v, 600, 720, 'high')]).then(function (pre) {
+      var fontCss = pre[0], photo = pre[1];
       var style = fontCss ? '<style>' + fontCss + '</style>' : '';
       var draw = function (svg) {
         svg = svg.replace('<defs>', '<defs>' + style).replace('<svg ', '<svg width="' + W + '" height="' + H + '" ');
@@ -413,7 +465,8 @@
           img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
         });
       };
-      var sides = side === 'both' ? [front(v, { uid: 'pf' }), back(v, { uid: 'pb' })] : [side === 'back' ? back(v, { uid: 'pb' }) : front(v, { uid: 'pf' })];
+      var fr = front(v, { uid: 'pf', medalImage: photo || undefined });
+      var sides = side === 'both' ? [fr, back(v, { uid: 'pb' })] : [side === 'back' ? back(v, { uid: 'pb' }) : fr];
       return Promise.all(sides.map(draw)).then(function (imgs) {
         var gap = side === 'both' ? Math.round(W * 0.06) : 0;
         var cv = document.createElement('canvas');
@@ -443,7 +496,7 @@
   }
 
   return {
-    front: front, back: back, mount: mount, reveal: reveal, toPng: toPng, share: share, bake: bake, ensureFonts: ensureFonts,
+    front: front, back: back, frontTop: frontTop, mount: mount, unmount: unmount, medalPhoto: medalPhoto, has3d: has3d, MEDAL_BOX: MEDAL_BOX, reveal: reveal, toPng: toPng, share: share, bake: bake, ensureFonts: ensureFonts,
     placementLabel: placementLabel, distinctionLabels: distinctionLabels, isRare: isRare, editionText: editionText, TIER: TIER,
   };
 });

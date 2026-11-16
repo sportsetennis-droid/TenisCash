@@ -27,6 +27,7 @@
 <script src="/medalhas/medal-template.js"></script>
 <script src="/medalhas/medal-card.js"></script>
 <script src="/medalhas/medal-shelf.js"></script>
+<script type="module" src="/medalhas/medal-3d.js"></script>
 <script src="/medalhas/demo-data.js"></script>
 <script>
 (function () {
@@ -42,7 +43,7 @@
     cell.addEventListener('click', function (e) {
       var a = e.target.closest('[data-a]'); if (!a) return;
       if (a.dataset.a === 'flip') card.flip();
-      if (a.dataset.a === 'open') { slot.innerHTML = ''; card = MedalCard.mount(slot, v, { reveal: true }); }
+      if (a.dataset.a === 'open') { MedalCard.unmount(slot); slot.innerHTML = ''; card = MedalCard.mount(slot, v, { reveal: true }); }
       if (a.dataset.a === 'png') { a.disabled = true; MedalCard.share(v, { side: 'both' }).finally(function () { a.disabled = false; }); }
     });
   });

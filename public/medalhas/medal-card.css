@@ -11,6 +11,10 @@
 .mc-face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:6.4%/4.6%;overflow:hidden;box-shadow:0 18px 40px rgba(0,0,0,.45),0 2px 6px rgba(0,0,0,.35)}
 .mc-back{transform:rotateY(180deg)}
 .mc-svg{display:block;width:100%;height:100%}
+.mc-top{position:absolute;inset:0;pointer-events:none}
+/* medalha 3D ao vivo: ocupa a área da medalha (100,96 300x360 no SVG 500x700) */
+.mc-3dwrap{position:absolute;left:20%;top:13.714%;width:60%;height:51.43%;pointer-events:none;-webkit-mask-image:linear-gradient(to bottom,transparent 0,transparent 7%,#000 19%);mask-image:linear-gradient(to bottom,transparent 0,transparent 7%,#000 19%)}
+.mc-3d{display:block;width:100%;height:100%}
 .mc-face>i{position:absolute;inset:0;pointer-events:none;border-radius:inherit}
 
 /* reflexo que segue o dedo */
@@ -23,7 +27,7 @@
 .mc-gold .mc-holo{opacity:.1}
 .mc-rare .mc-holo,.mc-special .mc-holo{opacity:.22}
 .mc.is-hover.mc-gold .mc-holo{opacity:.2}
-.mc.is-hover.mc-rare .mc-holo{opacity:.42}
+.mc.is-hover.mc-rare .mc-holo{opacity:.26}
 .mc-finisher .mc-holo,.mc-bronze .mc-holo{display:none}
 
 /* faixa de luz que passa sozinha (metal) */

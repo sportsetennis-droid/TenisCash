@@ -89,6 +89,19 @@
     el.querySelectorAll('.ms-card').forEach(function (b) {
       b.addEventListener('click', function () { if (opts.onOpen) opts.onOpen(all[+b.dataset.i]); });
     });
+    // medalha 3D (foto renderizada) nas miniaturas, em sequência pra não travar o celular
+    function photos() {
+      var btns = Array.prototype.slice.call(el.querySelectorAll('.ms-card'));
+      btns.reduce(function (p, b) {
+        return p.then(function () {
+          var v = all[+b.dataset.i];
+          return C.medalPhoto(v, 300, 360, 'normal').then(function (url) {
+            if (url && b.isConnected) { var svg = b.querySelector('svg'); if (svg) svg.outerHTML = C.front(v, { uid: 'p' + b.dataset.i, medalImage: url }); }
+          });
+        });
+      }, Promise.resolve());
+    }
+    if (C.has3d()) photos(); else if (typeof window !== 'undefined') window.addEventListener('medal3d-ready', photos, { once: true });
   }
 
   // Bottom-sheet com a carta animada + ações.
@@ -102,7 +115,7 @@
       '<a class="mu-btn" href="' + esc(v.verifyUrl || '#') + '" target="_blank" rel="noopener">Verificar</a></div>' +
       (v.ownershipCode ? '<p class="mu-own">Código de titularidade (só seu): <code>' + esc(v.ownershipCode) + '</code><br><small>Com ele e o seu CPF, qualquer pessoa confirma que a medalha é sua.</small></p>' : '') + '</div>';
     C.mount(sheet.querySelector('.mu-sheet-card'), v, { reveal: opts.reveal !== false, gyro: true });
-    function close() { sheet.hidden = true; sheet.innerHTML = ''; document.body.style.overflow = ''; document.removeEventListener('keydown', onKey); }
+    function close() { C.unmount(sheet); sheet.hidden = true; sheet.innerHTML = ''; document.body.style.overflow = ''; document.removeEventListener('keydown', onKey); }
     function onKey(e) { if (e.key === 'Escape') close(); }
     document.addEventListener('keydown', onKey);
     sheet.querySelectorAll('[data-x]').forEach(function (x) { x.addEventListener('click', close); });

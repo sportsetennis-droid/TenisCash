@@ -47,11 +47,12 @@
     WAVE: '<path d="M12 50c10-10 18-10 26 0s18 10 26 0 18-10 26 0M12 68c10-10 18-10 26 0s18 10 26 0 18-10 26 0"/><circle cx="62" cy="28" r="8"/>',
     BIKE: '<circle cx="26" cy="62" r="16"/><circle cx="74" cy="62" r="16"/><path d="M26 62l16-24h22l10 24M42 38l12 24h20M58 30h10"/>',
     STAR: '<path d="M50 14l10 22 24 2-18 16 6 24-22-12-22 12 6-24-18-16 24-2z"/>',
+    FLAG: '<path d="M26 90V12"/><path d="M26 14h50l-9 15 9 15H26"/><path d="M42 14v30M58 14v30M26 29h44"/>',
     TROPHY: '<path d="M32 18h36v16c0 14-8 24-18 24s-18-10-18-24z"/><path d="M32 24H18c0 12 6 18 16 18M68 24h14c0 12-6 18-16 18M50 58v12M36 82h28M40 70h20v12H40z"/>',
   };
   var SPORT_ICON = {
     BEACH_TENNIS: 'PADDLE', PADEL: 'PADDLE', TENNIS: 'RACKET', FUTSAL: 'BALL', SOCCER: 'BALL', HANDBALL: 'BALL',
-    VOLLEY: 'VOLLEY', BEACH_VOLLEY: 'VOLLEY', BASKET: 'BALL', RUNNING: 'SHOE', SWIM: 'WAVE', CYCLING: 'BIKE', GENERIC: 'TROPHY',
+    VOLLEY: 'VOLLEY', BEACH_VOLLEY: 'VOLLEY', BASKET: 'BALL', RUNNING: 'FLAG', SWIM: 'WAVE', CYCLING: 'BIKE', GENERIC: 'TROPHY',
   };
 
   // ---------------- cor ----------------
