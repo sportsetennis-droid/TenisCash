@@ -182,6 +182,20 @@ router.post('/publish', async (req, res) => {
   }
 });
 
+// Teste de permissão SEM publicar: cria só o container (rascunho) na Meta,
+// que expira sozinho em 24h. Prova que o token pode postar naquela conta.
+router.post('/check', async (req, res) => {
+  try {
+    const { account, imageUrl } = req.body || {};
+    const acc = await resolveAccount(account);
+    const token = process.env.META_SYSTEM_TOKEN || igToken();
+    const c = await ig.api(`/${acc.id}/media`, { method: 'POST', body: { image_url: imageUrl, media_type: 'STORIES', access_token: token } });
+    res.json({ ok: true, account: acc.username || acc.id, containerId: c.id, published: false });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
 router.get('/jobs/:id', (req, res) => {
   const j = jobs.get(req.params.id);
   if (!j) return res.status(404).json({ error: 'job não encontrado' });
