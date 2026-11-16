@@ -201,7 +201,9 @@ function createPayrollRouter({ prisma = defaultPrisma, isOwner = (req) => isFinO
   router.get('/admin/overview', adminOnly, async (req, res) => {
     try {
       const competence = competenceOr(req.query.competence);
-      const users = await prisma.user.findMany({ where: { active: true, OR: [{ role: { in: ['seller', 'manager'] } }, { id: { in: (await prisma.payrollEmployeeProfile.findMany({ select: { userId: true } })).map((p) => p.userId) } }] },
+      // O dono aparece na lista para poder testar a folha com a própria conta.
+      const selfIds = (await isOwner(req)) ? [req.userId] : [];
+      const users = await prisma.user.findMany({ where: { active: true, OR: [{ role: { in: ['seller', 'manager'] } }, { id: { in: [...selfIds, ...(await prisma.payrollEmployeeProfile.findMany({ select: { userId: true } })).map((p) => p.userId)] } }] },
         select: { id: true, name: true, role: true, storeId: true, storeIds: true }, orderBy: { name: 'asc' } });
       const visible = [];
       for (const u of users) if (await canSee(req, u.id)) visible.push(u);
