@@ -7654,14 +7654,74 @@ async function loadSellers() {
     html += '</div></div>';
     html += '<div style="font-size:12px;color:#8e8e93;">📱 ' + escapeHtml(s.phone || '—') + '</div>';
     if (sStores.length) html += '<div style="font-size:12px;color:#1d1d1f;padding:6px 10px;background:#f5f5f7;border-radius:8px;line-height:1.6;">🏬 ' + sStores.map(st => '<strong>' + escapeHtml(st.code) + '</strong> ' + escapeHtml(st.name)).join(' · ') + (sStores.length > 1 ? ' <span style="color:#0a843d;font-weight:700;">(' + sStores.length + ' lojas)</span>' : '') + '</div>';
+    html += '<button class="js-pay-contract" data-seller-id="' + s.id + '" data-seller-name="' + escapeHtml(s.name || '') + '" style="padding:8px;background:#FFF4EE;border:1px solid #F6C9B3;border-radius:8px;font-size:12px;font-weight:700;color:#C2410C;cursor:pointer;margin-top:auto;">💵 Contrato e salário</button>';
     html += '<button class="js-remove-seller" data-seller-id="' + s.id + '" data-seller-name="' + escapeHtml(s.name || '') + '" style="padding:8px;background:white;border:1px solid #e5e5ea;border-radius:8px;font-size:12px;color:#d70015;cursor:pointer;margin-top:auto;">🗑 Remover</button>';
     html += '</div>';
   });
   html += '</div>';
   wrap.innerHTML = html;
+  Array.from(wrap.querySelectorAll('.js-pay-contract')).forEach(btn => {
+    btn.onclick = () => openPayContract(btn.dataset.sellerId, btn.dataset.sellerName);
+  });
   Array.from(wrap.querySelectorAll('.js-remove-seller')).forEach(btn => {
     btn.onclick = () => removeSellerConfirm(btn.dataset.sellerId, btn.dataset.sellerName);
   });
+}
+
+// Contrato do vendedor (folha/contracheque) — grava em PayrollEmployeeProfile.
+const PAY_CONTRACTS = [['MENSALISTA','Mensalista (CLT)'],['HORISTA','Horista'],['ESCALA_12X36','Escala 12x36'],['APRENDIZ','Aprendiz'],['PARCIAL','Tempo parcial'],['SEM_REGISTRO','Sem registro']];
+async function openPayContract(userId, name) {
+  let ov = document.getElementById('pay-contract-ov');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'pay-contract-ov'; document.body.appendChild(ov); }
+  ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.innerHTML = '<div style="background:#fff;border-radius:14px;padding:20px;width:100%;max-width:440px;color:#1d1d1f">Carregando…</div>';
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  const box = ov.firstChild;
+  const data = await api('/payroll/admin/profiles/' + encodeURIComponent(userId));
+  if (data.error) { box.innerHTML = '<div style="color:#d70015">' + escapeHtml(data.error) + '</div><button type="button" class="btn" style="margin-top:12px" onclick="document.getElementById(\'pay-contract-ov\').remove()">Fechar</button>'; return; }
+  const p = data.profile || {}; const u = data.user || {};
+  const cents = p.baseSalaryCents != null ? p.baseSalaryCents : (u.baseSalary != null ? Math.round(Number(u.baseSalary) * 100) : null);
+  const money = (c) => c == null ? '' : (c / 100).toFixed(2).replace('.', ',');
+  const adm = p.admissionDate || (u.hireDate ? String(u.hireDate).slice(0, 10) : '');
+  const inp = 'width:100%;height:40px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;box-sizing:border-box';
+  const lab = 'display:block;font-size:11px;font-weight:700;color:#555;margin-top:10px';
+  box.style.cssText = 'background:#fff;border-radius:14px;padding:20px;width:100%;max-width:440px;max-height:90vh;overflow:auto;color:#1d1d1f';
+  box.innerHTML =
+    '<div style="font-weight:800;font-size:16px">💵 Contrato e salário</div><div style="font-size:13px;color:#8e8e93;margin-top:2px">' + escapeHtml(name || '') + '</div>' +
+    '<label style="' + lab + '">Tipo de contrato<select id="pc-type" style="' + inp + '">' + PAY_CONTRACTS.map(([v, l]) => '<option value="' + v + '"' + ((p.contractType || 'MENSALISTA') === v ? ' selected' : '') + '>' + l + '</option>').join('') + '</select></label>' +
+    '<label style="' + lab + '">Data de admissão<input id="pc-adm" type="date" value="' + escapeHtml(adm) + '" style="' + inp + '"></label>' +
+    '<label style="' + lab + '">Salário mensal (R$)<input id="pc-sal" inputmode="decimal" placeholder="ex: 1790,00" value="' + money(cents) + '" style="' + inp + '"></label>' +
+    '<label style="' + lab + '">Valor da hora (R$) — só horista<input id="pc-hour" inputmode="decimal" value="' + money(p.hourlyRateCents) + '" style="' + inp + '"></label>' +
+    '<div style="display:flex;gap:10px"><label style="' + lab + ';flex:1">Horas por semana<input id="pc-wh" inputmode="numeric" value="' + (p.weeklyMinutes ? p.weeklyMinutes / 60 : 44) + '" style="' + inp + '"></label>' +
+    '<label style="' + lab + ';flex:1">Dias por semana<input id="pc-wd" inputmode="numeric" value="' + (p.workDaysPerWeek || 6) + '" style="' + inp + '"></label></div>' +
+    '<label style="' + lab + '">CPF ' + (p.cpfLast4 ? '(já cadastrado, final ' + escapeHtml(p.cpfLast4) + ' — deixe vazio para manter)' : '') + '<input id="pc-cpf" inputmode="numeric" placeholder="só números" style="' + inp + '"></label>' +
+    '<div style="display:flex;gap:10px"><label style="' + lab + ';flex:1">Dependentes (IR)<input id="pc-dep" inputmode="numeric" value="' + (p.irrfDependents || 0) + '" style="' + inp + '"></label>' +
+    '<label style="' + lab + ';flex:1">Filhos até 14 anos<input id="pc-kids" inputmode="numeric" value="' + (p.familyAllowanceChildren || 0) + '" style="' + inp + '"></label></div>' +
+    '<label style="display:flex;gap:8px;align-items:center;margin-top:12px;font-size:13px"><input id="pc-vt" type="checkbox"' + (p.vtOptIn ? ' checked' : '') + '> Usa vale-transporte (desconta até 6%)</label>' +
+    '<div id="pc-msg" style="margin-top:10px;font-size:13px"></div>' +
+    '<div style="display:flex;gap:8px;margin-top:14px"><button type="button" id="pc-save" class="btn btn-primary" style="flex:1">Salvar</button><button type="button" class="btn" style="flex:1" onclick="document.getElementById(\'pay-contract-ov\').remove()">Fechar</button></div>';
+  const num = (v) => { const t = String(v || '').trim().replace(/\./g, '').replace(',', '.'); return t === '' ? null : Number(t); };
+  document.getElementById('pc-save').onclick = async () => {
+    const msg = document.getElementById('pc-msg');
+    const sal = num(document.getElementById('pc-sal').value); const hr = num(document.getElementById('pc-hour').value);
+    const wh = num(document.getElementById('pc-wh').value); const wd = num(document.getElementById('pc-wd').value);
+    if ((sal != null && !(sal >= 0)) || (hr != null && !(hr >= 0)) || !(wh > 0) || !(wd > 0)) { msg.innerHTML = '<span style="color:#d70015">Confira os números.</span>'; return; }
+    const body = {
+      contractType: document.getElementById('pc-type').value,
+      admissionDate: document.getElementById('pc-adm').value || null,
+      baseSalaryCents: sal == null ? null : Math.round(sal * 100),
+      hourlyRateCents: hr == null ? null : Math.round(hr * 100),
+      weeklyMinutes: Math.round(wh * 60), workDaysPerWeek: Math.round(wd),
+      irrfDependents: Math.round(num(document.getElementById('pc-dep').value) || 0),
+      familyAllowanceChildren: Math.round(num(document.getElementById('pc-kids').value) || 0),
+      vtOptIn: document.getElementById('pc-vt').checked, active: true, reason: 'Cadastro do vendedor (admin)',
+    };
+    const cpf = document.getElementById('pc-cpf').value.replace(/\D/g, '');
+    if (cpf) body.cpf = cpf;
+    msg.textContent = 'Salvando…';
+    const r = await api('/payroll/admin/profiles/' + encodeURIComponent(userId), 'PUT', body);
+    msg.innerHTML = r.error ? '<span style="color:#d70015">' + escapeHtml(r.error) + '</span>' : '<span style="color:#0a843d;font-weight:700">Salvo. Já vale no contracheque.</span>';
+  };
 }
 
 async function assignSeller() {
