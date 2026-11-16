@@ -365,6 +365,8 @@ model ClockIn {
   latitude  Float?
   longitude Float?
   note      String?
+  source       String? // origem: app | pdv | correcao (correção aprovada; a batida original não muda)
+  correctionId String? // PayrollClockCorrection que gerou esta batida
   createdAt DateTime @default(now())
 
   @@index([userId, timestamp])
@@ -6242,4 +6244,253 @@ model FinSettlement {
 
   @@index([titleId])
   @@index([paidAt])
+}
+
+// ───────────────────────── CONTRACHEQUE DIGITAL (folha do varejo) ─────────────────────────
+// SQL em prisma/migrations/20261116_payroll (aplicado no boot por src/services/payroll/schema.js).
+// Valores em centavos. Fechado = congelado; correção vira versão nova. Ver docs/contracheque.md.
+
+model PayrollEmployeeProfile {
+  id                      String   @id @default(cuid())
+  userId                  String   @unique
+  issuerId                String? // FiscalIssuer = estabelecimento/CNPJ empregador
+  storeId                 String?
+  registration            String? // matrícula
+  jobTitle                String?
+  cbo                     String?
+  contractType            String   @default("MENSALISTA") // MENSALISTA | HORISTA | ESCALA_12X36 | APRENDIZ | PARCIAL | SEM_REGISTRO
+  registered              Boolean  @default(true)
+  admissionDate           String? // AAAA-MM-DD
+  terminationDate         String?
+  baseSalaryCents         Int?
+  hourlyRateCents         Int?
+  weeklyMinutes           Int      @default(2640) // 44h
+  workDaysPerWeek         Int      @default(6)
+  shiftMinutes            Int? // 12x36: 720
+  apprenticeContractRef   String?
+  timeBankAgreementRef    String? // acordo de banco de horas (sem ele não há banco)
+  irrfDependents          Int      @default(0)
+  familyAllowanceChildren Int      @default(0)
+  vtOptIn                 Boolean  @default(false)
+  unionName               String?
+  cctRef                  String?
+  cpfEnc                  String?
+  cpfLast4                String?
+  bankEnc                 String?
+  notes                   String?
+  active                  Boolean  @default(true)
+  createdById             String?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @default(now()) @updatedAt
+}
+
+model PayrollParam {
+  id          String   @id @default(cuid())
+  key         String
+  value       Json
+  validFrom   String // AAAA-MM-DD
+  validTo     String?
+  issuerId    String?
+  storeId     String?
+  locality    String?
+  unionName   String?
+  category    String?
+  status      String   @default("ACTIVE") // ACTIVE | PENDING_VALIDATION | REVOKED
+  source      String?
+  documentRef String?
+  notes       String?
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  @@index([key, validFrom])
+}
+
+model PayrollHoliday {
+  id          String   @id @default(cuid())
+  date        String // AAAA-MM-DD
+  name        String
+  scope       String   @default("NACIONAL") // NACIONAL | ESTADUAL | MUNICIPAL | CCT
+  locality    String?
+  storeId     String?
+  source      String?
+  active      Boolean  @default(true)
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@unique([date, scope, locality])
+}
+
+model PayrollCommissionRule {
+  id          String   @id @default(cuid())
+  name        String
+  validFrom   String
+  validTo     String?
+  issuerId    String?
+  storeId     String?
+  userId      String?
+  config      Json
+  priority    Int      @default(0)
+  active      Boolean  @default(true)
+  version     Int      @default(1)
+  previousId  String?
+  notes       String?
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+}
+
+model PayrollEntry {
+  id               String   @id @default(cuid())
+  userId           String
+  issuerId         String?
+  storeId          String?
+  competence       String
+  date             String
+  kind             String // ADIANTAMENTO | PASSAGEM | VALE_TRANSPORTE | VALE_ALIMENTACAO | DOMINGO_PAGO | FERIADO_PAGO | COMISSAO_ANTECIPADA | COMPRA_LOJA | EMPRESTIMO | PENSAO | OUTRO_DESCONTO | BONUS | GRATIFICACAO | OUTRO_PROVENTO
+  amountCents      Int
+  description      String?
+  referenceDate    String? // domingo/feriado a que o pagamento antecipado se refere
+  receiptRef       String?
+  origin           String?
+  pixRef           String?
+  authorized       Boolean  @default(false)
+  authorizationRef String?
+  status           String   @default("ATIVO") // ATIVO | CANCELADO
+  canceledReason   String?
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @default(now()) @updatedAt
+
+  @@index([userId, competence])
+}
+
+model PayrollDayMark {
+  id            String    @id @default(cuid())
+  userId        String
+  date          String
+  kind          String // FOLGA | FOLGA_COMPENSATORIA | ATESTADO | ABONO | FALTA_CONFIRMADA | ATRASO_CONFIRMADO | FERIAS | AFASTAMENTO
+  minutes       Int?
+  refDate       String? // folga compensatória: domingo/feriado que ela compensa
+  status        String    @default("APROVADO") // APROVADO | PENDENTE | RECUSADO
+  note          String?
+  attachmentRef String?
+  createdById   String?
+  reviewedById  String?
+  reviewedAt    DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([userId, date])
+}
+
+model PayrollClockCorrection {
+  id             String    @id @default(cuid())
+  userId         String
+  storeId        String?
+  date           String
+  type           String // entry | break_start | break_end | exit
+  claimedTime    String // HH:MM
+  justification  String
+  attachment     Bytes?
+  attachmentMime String?
+  status         String    @default("PENDENTE") // PENDENTE | APROVADA | RECUSADA
+  reviewNote     String?
+  reviewedById   String?
+  reviewedAt     DateTime?
+  clockInId      String?
+  createdAt      DateTime  @default(now())
+
+  @@index([userId, date])
+  @@index([status])
+}
+
+model Payslip {
+  id              String    @id @default(cuid())
+  userId          String
+  issuerId        String?
+  storeId         String?
+  competence      String
+  kind            String    @default("MENSAL")
+  version         Int       @default(1)
+  status          String    @default("EM_CONFERENCIA") // EM_CONFERENCIA | COM_PENDENCIAS | APROVADO | FECHADO | PAGO | REABERTO | CORRIGIDO | CANCELADO
+  snapshot        Json?
+  result          Json?
+  grossCents      Int       @default(0)
+  deductionsCents Int       @default(0)
+  netCents        Int       @default(0)
+  inputHash       String?
+  verifyCode      String?   @unique
+  paymentDate     String?
+  approvedById    String?
+  approvedAt      DateTime?
+  closedById      String?
+  closedAt        DateTime?
+  paidById        String?
+  paidAt          DateTime?
+  paymentRef      String?
+  supersedesId    String?
+  supersededById  String?
+  reason          String?
+  notifiedAt      DateTime?
+  createdById     String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @default(now()) @updatedAt
+
+  @@unique([userId, competence, kind, version])
+  @@index([competence, status])
+}
+
+model PayslipFile {
+  id        String   @id @default(cuid())
+  payslipId String   @unique
+  mime      String   @default("application/pdf")
+  fileName  String
+  content   Bytes
+  sha256    String
+  sizeBytes Int
+  createdAt DateTime @default(now())
+}
+
+model PayslipAcknowledgment {
+  id        String   @id @default(cuid())
+  payslipId String
+  userId    String
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@unique([payslipId, userId])
+}
+
+model PayrollDispute {
+  id            String    @id @default(cuid())
+  userId        String
+  payslipId     String?
+  competence    String
+  message       String
+  status        String    @default("ABERTA") // ABERTA | RESPONDIDA | ENCERRADA
+  response      String?
+  respondedById String?
+  respondedAt   DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model PayrollAuditLog {
+  id            String   @id @default(cuid())
+  entity        String
+  entityId      String
+  action        String
+  subjectUserId String?
+  actorId       String?
+  actorRole     String?
+  before        Json?
+  after         Json?
+  reason        String?
+  ip            String?
+  at            DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([subjectUserId, at])
 }

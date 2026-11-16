@@ -43,6 +43,7 @@ const tiktokShopRoutes = require('./routes/tiktokShop');
 const shippingRoutes = require('./routes/shipping');
 const financialRoutes = require('./routes/financial');
 const finRoutes = require('./routes/fin');
+const payrollRoutes = require('./routes/payroll');
 const suppliersRoutes = require('./routes/suppliers');
 const categoriesRoutes = require('./routes/categories');
 const campaignsRoutes = require('./routes/campaigns');
@@ -519,6 +520,40 @@ app.use('/api/admin/xml', xmlImportRoutes);
 app.use('/api/admin/recommendations', recommendationsRoutes);
 app.use('/api/admin/financial', financialRoutes);
 app.use('/api/fin', finRoutes); // financeiro do varejo (plano de contas, contas, auditoria)
+app.use('/api/payroll', payrollRoutes); // contracheque digital (prévia, fechamento, PDF, auditoria)
+// Verificação pública do contracheque (QR do PDF): confirma autenticidade sem expor valores.
+app.get('/contracheque/verificar/:code', async (req, res) => {
+  try {
+    const { prisma } = require('./middleware');
+    await payrollRoutes.ensureSchema();
+    const code = String(req.params.code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 20);
+    const p = code ? await prisma.payslip.findUnique({ where: { verifyCode: code }, select: { id: true, competence: true, version: true, status: true, closedAt: true, userId: true, issuerId: true } }) : null;
+    const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    let body;
+    if (!p) body = '<h1>Documento não encontrado</h1><p>Este código não corresponde a nenhum contracheque emitido.</p>';
+    else {
+      const [user, issuer, file] = await Promise.all([
+        prisma.user.findUnique({ where: { id: p.userId }, select: { name: true } }),
+        p.issuerId ? prisma.fiscalIssuer.findUnique({ where: { id: p.issuerId }, select: { companyName: true, cnpj: true } }) : null,
+        prisma.payslipFile.findUnique({ where: { payslipId: p.id }, select: { sha256: true } }),
+      ]);
+      const initials = String(user?.name || '').split(' ').filter(Boolean).map((w) => w[0].toUpperCase() + '.').join(' ');
+      const valid = ['FECHADO', 'PAGO'].includes(p.status);
+      body = `<h1>${valid ? 'Contracheque autêntico' : 'Versão substituída'}</h1>
+        <p><b>Empresa:</b> ${esc(issuer?.companyName || '—')} ${issuer?.cnpj ? '· CNPJ ' + esc(issuer.cnpj) : ''}</p>
+        <p><b>Funcionário:</b> ${esc(initials)}</p><p><b>Competência:</b> ${esc(p.competence.split('-').reverse().join('/'))} · versão ${p.version}</p>
+        <p><b>Situação:</b> ${esc(p.status)}${valid ? '' : ' — existe versão mais nova deste contracheque'}</p>
+        <p><b>Fechado em:</b> ${p.closedAt ? new Date(p.closedAt).toLocaleString('pt-BR', { timeZone: 'America/Fortaleza' }) : '—'}</p>
+        <p style="word-break:break-all;font-size:12px;color:#666">SHA-256 do PDF: ${esc(file?.sha256 || '—')}</p>`;
+    }
+    res.set('Cache-Control', 'no-store').type('html').send(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Verificar contracheque</title>
+      <style>body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:480px;margin:0 auto;padding:24px 16px;color:#1d1d1f;background:#fff}h1{font-size:22px;color:#E5571E}p{margin:8px 0}</style></head>
+      <body>${body}<p style="margin-top:24px;font-size:12px;color:#888">Verificação TenisCash · os valores só aparecem para o funcionário logado.</p></body></html>`);
+  } catch (err) {
+    console.error('[payroll verify]', err.message);
+    res.status(500).send('Erro ao verificar');
+  }
+});
 app.use('/api/admin/security', securityRoutes);
 app.use('/api/admin/store-radio', storeRadioRoutes);
 // Player da rádio: mesmo router, mas FORA de /api/admin (autentica pela chave fixa da loja, sem token).
@@ -1992,6 +2027,21 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     }).catch((e) => console.error('[finSchema] erro:', e.message));
   } catch (e) {
     console.error('[finSchema] falha ao iniciar:', e.message);
+  }
+
+  // Contracheque: SQL aditivo + sementes legais no boot; prévia semanal pelo WhatsApp
+  // (dono, 16/11/2026) às segundas 09:07 de Fortaleza. PAYROLL_WHATSAPP=off desliga.
+  try {
+    payrollRoutes.ensureSchema().then(() => {
+      console.log('[payrollSchema] ok');
+      const { prisma } = require('./middleware');
+      const payrollNotify = require('./services/payroll/notify');
+      require('node-cron').schedule('7 9 * * 1', () => payrollNotify.sendWeeklyPreviews(prisma)
+        .then((r) => console.log('[payroll] prévia semanal', JSON.stringify(r)))
+        .catch((e) => console.error('[payroll] prévia semanal:', e.message)), { timezone: 'America/Fortaleza' });
+    }).catch((e) => console.error('[payrollSchema] erro:', e.message));
+  } catch (e) {
+    console.error('[payrollSchema] falha ao iniciar:', e.message);
   }
 
   try {
