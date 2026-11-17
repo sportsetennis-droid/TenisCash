@@ -7,6 +7,8 @@
 
 const TZ_OFFSET_MS = 3 * 3600 * 1000; // America/Fortaleza (UTC-3, sem horário de verão)
 const TIER_CENTS = Number(process.env.PULSE_TIER_CENTS || 2000000); // R$ 20 mil: comissão 1% → 2% (dono 16/11)
+// Meta diária de cada vendedor (dono 17/11/2026: "Meta diária é mil reais").
+const DAILY_GOAL = Number(process.env.PULSE_DAILY_GOAL || 1000);
 const WEEKDAYS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
 
 const brl = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -221,11 +223,17 @@ async function buildPreShift(prisma, sellerId, { nowMs = Date.now() } = {}) {
   const shifts = await shiftsBetween(prisma, sellerId, p.today, lastDay);
   const today = shifts[0] || {};
   const workDaysLeft = shifts.filter((s) => s.start).length;
+  // Meta do mês: a cadastrada no admin; senão R$ 1.000 × dias de escala do vendedor no mês.
   const [goalRow] = (await getGoals(prisma, p.today.slice(0, 7))).filter((g) => g.sellerId === sellerId);
-  const goal = goalRow ? Number(goalRow.goalCents) / 100 : null;
+  let goal = goalRow ? Number(goalRow.goalCents) / 100 : null, goalSource = goalRow ? 'cadastrada' : null, monthWorkDays = null;
+  if (goal == null) {
+    const monthShifts = await shiftsBetween(prisma, sellerId, p.today.slice(0, 7) + '-01', lastDay);
+    monthWorkDays = monthShifts.filter((x) => x.start).length;
+    if (monthWorkDays) { goal = DAILY_GOAL * monthWorkDays; goalSource = 'diaria'; }
+  }
   const missing = goal != null ? Math.max(0, goal - p.month.total) : null;
-  const dayGoal = goal != null && missing > 0 ? missing / Math.max(1, workDaysLeft || p.month.daysLeft) : null;
-  return { ...p, shiftToday: today, workDaysLeft, goal, goalMissing: missing, dayGoal };
+  const yesterdayHit = p.yesterdayResult.revenue >= DAILY_GOAL;
+  return { ...p, shiftToday: today, workDaysLeft, goal, goalSource, monthWorkDays, goalMissing: missing, dayGoal: DAILY_GOAL, yesterdayHit };
 }
 
 function formatPreShift(p, { nowMs = Date.now() } = {}) {
@@ -238,10 +246,11 @@ function formatPreShift(p, { nowMs = Date.now() } = {}) {
   const yr = p.yesterdayResult;
   if (yr.count) L.push(`📊 *Ontem (${WEEKDAYS[dow(p.yesterday)]}, ${br(p.yesterday)}):* ${yr.count} ${yr.count === 1 ? 'venda' : 'vendas'} · ${brl(yr.revenue)} · ticket ${brl(yr.ticket)}`);
   else L.push(`📊 *Ontem (${WEEKDAYS[dow(p.yesterday)]}, ${br(p.yesterday)}):* ${yr.wasOff ? 'você não estava na loja.' : 'nenhuma venda registrada no seu nome.'}`);
+  if (yr.count) L.push(yr.revenue >= p.dayGoal ? '✅ Bateu a meta do dia ontem!' : `Faltaram ${brl0(p.dayGoal - yr.revenue)} para a meta do dia ontem.`);
+  L.push(`🎯 *Meta de hoje:* ${brl0(p.dayGoal)}`);
   if (p.goal != null) {
-    if (p.dayGoal) L.push(`🎯 *Meta de hoje:* ${brl0(p.dayGoal)}`);
     const pct = p.goal > 0 ? Math.round((p.month.total / p.goal) * 100) : 0;
-    L.push(`📅 *Meta do mês:* ${brl0(p.goal)} · você está em ${brl0(p.month.total)} (${pct}%)${p.month.position ? ` · ${p.month.position}º lugar na rede` : ''}`);
+    L.push(`📅 *Meta do mês:* ${brl0(p.goal)}${p.goalSource === 'diaria' ? ` (${p.monthWorkDays} dias × ${brl0(p.dayGoal)})` : ''} · você está em ${brl0(p.month.total)} (${pct}%)${p.month.position ? ` · ${p.month.position}º lugar na rede` : ''}`);
     if (p.goalMissing <= 0) L.push('🏆 Meta do mês batida! Agora é ir além.');
   } else {
     L.push(`📅 *No mês:* ${brl0(p.month.total)}${p.month.position ? ` · ${p.month.position}º lugar na rede` : ''}`);
@@ -301,7 +310,9 @@ async function notifyClock(prisma, { userId, storeName, type, at }, { send = def
     const start = dayBounds(localYmd(new Date(at).getTime())).start;
     const agg = await prisma.sale.aggregate({ where: { sellerId: userId, createdAt: { gte: start }, status: { not: 'canceled' } }, _sum: { totalAmount: true }, _count: { _all: true } });
     const n = agg._count._all;
-    msg += n ? `\nHoje: ${n} ${n === 1 ? 'venda' : 'vendas'} · ${brl(agg._sum.totalAmount)}.` : '';
+    const total = Number(agg._sum.totalAmount || 0);
+    msg += n ? `\nHoje: ${n} ${n === 1 ? 'venda' : 'vendas'} · ${brl(total)}.` : '\nHoje: nenhuma venda registrada no seu nome.';
+    msg += total >= DAILY_GOAL ? ' ✅ Meta do dia batida!' : ` Faltaram ${brl0(DAILY_GOAL - total)} para a meta do dia (${brl0(DAILY_GOAL)}).`;
     msg += `\nObrigado pelo dia, ${firstName(u.name)}. Descansa! 🧡`;
   }
   return send(u.phone, msg).catch((e) => ({ ok: false, error: e.message }));
