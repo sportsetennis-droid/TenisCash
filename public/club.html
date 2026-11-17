@@ -904,6 +904,21 @@ a.nrow:active{background:rgba(255,255,255,.08)}
 }
 @media (max-width:359px){.page{padding-left:16px;padding-right:16px}.cd div{min-width:60px}.prod-hero{grid-template-columns:120px 1fr}.ring{width:120px;height:120px}.ring .in b{font-size:40px}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}}
+/* F5: ranking por nível/temporada/circuito, push e clubes */
+.rkf{margin-top:12px}
+.rkf .chip{min-height:40px;padding:0 14px;font-size:13.5px}
+.rkf select option{color:#2a1206}
+.rkbar{display:block;height:5px;border-radius:5px;background:var(--line);margin-top:7px;overflow:hidden}
+.rkbar i{display:block;height:100%;background:var(--acc)}
+.pushst{display:flex;align-items:center;gap:12px;padding:14px 16px;margin-top:14px}
+.pushst .tx{flex:1;min-width:0}.pushst .tx b{display:block;font-size:15px}.pushst .tx span{display:block;font-size:12.5px;color:var(--mut)}
+.tgls{padding:4px 16px}
+.tgl{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:52px;border-bottom:1px solid var(--line);font-size:14px}
+.tgl:last-child{border-bottom:0}.tgl.off{opacity:.5}
+.tgl input{appearance:none;-webkit-appearance:none;width:46px;height:28px;border-radius:14px;background:var(--line2);position:relative;flex:none;cursor:pointer;transition:background .2s}
+.tgl input:before{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.25);transition:transform .2s}
+.tgl input:checked{background:var(--acc)}.tgl input:checked:before{transform:translateX(18px)}
+#sheet .list .lrow{padding:10px 14px}
 </style>
 </head>
 <body>
@@ -1008,7 +1023,10 @@ var S={me:null,dash:null,card:null,notif:null,hist:null,histState:'',pront:{},tr
        agendaTab:'up',agendaF:'all',agSel:'',prodTid:null,loginMode:'phone',loading:false,rank:{},rkSport:null,chal:null,
        scor:{},rkView:'gols',staffState:'',ref:{},mteam:{},ttr:{},pk:null};
 function token(){try{return localStorage.getItem('tc_token')||'';}catch(e){return '';}}
-function setSession(tk,user){try{if(tk)localStorage.setItem('tc_token',tk);if(user)localStorage.setItem('tc_user',JSON.stringify(user));}catch(e){}}
+function setSession(tk,user){try{if(tk)localStorage.setItem('tc_token',tk);if(user)localStorage.setItem('tc_user',JSON.stringify(user));}catch(e){}
+  // veio de um convite de clube (/clube/:slug?convite=...): depois do login volta pra lá
+  if(tk&&user&&!MOCK){try{var back=localStorage.getItem('club_join_return');if(back&&/^\/clube\/[a-z0-9-]+(\?convite=[A-Za-z0-9]+)?$/.test(back)){localStorage.removeItem('club_join_return');setTimeout(function(){location.href=back;},60);}}catch(e){}}
+  if(tk&&!MOCK)setTimeout(pushSync,1500);}
 function resetStaff(){S.staffState='';S.ref={};S.mteam={};S.ttr={};}
 function clearSession(){try{localStorage.removeItem('tc_token');localStorage.removeItem('tc_user');}catch(e){}S.me=S.dash=S.card=S.notif=S.hist=S.chal=S.pk=null;S.pront={};S.train={};S.rank={};S.scor={};S.histState='';resetStaff();}
 
@@ -1510,10 +1528,6 @@ function mySports(){
 }
 function sportOrder(){var m=mySports();return m.concat(SPORTS.filter(function(s){return m.indexOf(s)<0;}));}
 function sportN(s){return s==='OTHER'?'Outros':sportL(s);}
-function loadRank(sp){
-  if(S.rank[sp])return;S.rank[sp]='loading';
-  api(T+'/rankings/'+encodeURIComponent(sp)).then(function(r){S.rank[sp]={ranking:(r&&r.ranking)||[]};}).catch(function(){S.rank[sp]='error';}).then(redraw);
-}
 function loadChal(){api(T+'/challenges/mine').then(function(r){S.chal=r.challenges||[];}).catch(function(){if(!Array.isArray(S.chal))S.chal='error';}).then(redraw);}
 function chalInbox(){return Array.isArray(S.chal)&&S.me?S.chal.filter(function(c){return c.status==='PENDING'&&c.challengedId===S.me.id;}).length:0;}
 function chalFind(id){var l=Array.isArray(S.chal)?S.chal:[];for(var i=0;i<l.length;i++)if(l[i].id===id)return l[i];return null;}
@@ -1526,35 +1540,87 @@ function vCompete(arg){
   if(!S.me||!S.dash)return h+'<div class="sk" style="height:44px;margin-top:16px;border-radius:22px"></div><div class="sk" style="height:250px;margin-top:22px;border-radius:22px"></div><div class="sk" style="height:76px;margin-top:10px;border-radius:22px"></div></div>';
   return h+(tab==='ranking'?rankHtml():chalHtml())+'</div>';
 }
+/* ---------- ranking F5: nível Glicko-2 (0–7 + confiabilidade), temporada, mês e circuito ---------- */
+var RKM=[['nivel','Nível'],['temporada','Temporada'],['mes','Mês'],['circuito','Circuito']];
+function rkMode(){return ['nivel','temporada','mes','circuito'].indexOf(S.rkMode)>=0?S.rkMode:'nivel';}
+function rkFmt(sp){return isTeamSport(sp)?'TEAM':(S.rkFmt==='DOUBLES'?'DOUBLES':'SINGLES');}
+function rkKey(sp){return [sp,rkMode(),rkFmt(sp),S.rkGender||'',rkMode()==='nivel'?'':(S.rkCat||'')].join('|');}
+function fzNow(){var d=new Date(Date.now()-3*3600000);return {y:d.getUTCFullYear(),m:d.getUTCMonth()+1};}
+function rkUrl(sp){
+  var m=rkMode(),q=['format='+rkFmt(sp)],n=fzNow();
+  if(S.rkGender)q.push('gender='+S.rkGender);
+  if(m!=='nivel'&&S.rkCat)q.push('category='+encodeURIComponent(S.rkCat));
+  if(m==='temporada')q.push('year='+n.y);
+  if(m==='mes'){q.push('year='+n.y);q.push('month='+n.m);}
+  return '/club-ranking/'+encodeURIComponent(sp)+'/'+(m==='nivel'?'rating':m==='circuito'?'circuit':'season')+'?'+q.join('&');
+}
+function loadRank(sp){
+  var k=rkKey(sp);if(S.rank[k])return;S.rank[k]='loading';
+  api(rkUrl(sp)).then(function(r){S.rank[k]=r||{ranking:[]};}).catch(function(){S.rank[k]='error';}).then(redraw);
+}
+function loadRkCats(sp){
+  S.rkCats=S.rkCats||{};if(S.rkCats[sp])return;S.rkCats[sp]='loading';
+  api('/club-ranking/'+encodeURIComponent(sp)+'/categories').then(function(r){S.rkCats[sp]=(r&&r.categories)||[];}).catch(function(){S.rkCats[sp]=[];}).then(redraw);
+}
+var MES=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+function rkVal(r){var m=rkMode();return m==='nivel'?num(r.level,1):num(r.points);}
+function rkUnit(){var m=rkMode();return m==='nivel'?'Nível':'Pontos';}
+function rkSub(r){
+  var m=rkMode(),s=[];
+  if(m==='nivel'){s.push((r.provisional?'Provisório · ':'')+'confiab. '+num(r.reliability)+'%');s.push(r.wins+'V '+(r.draws?r.draws+'E ':'')+r.losses+'D');}
+  else if(m==='circuito'){s.push(pl(r.counted,'resultado','resultados')+(r.events>r.counted?' de '+r.events:''));if(r.titles)s.push(pl(r.titles,'título','títulos'));}
+  else{s.push(pl(r.played,'jogo','jogos'));s.push(r.wins+'V '+(r.draws?r.draws+'E ':'')+r.losses+'D');if(r.level!=null)s.push('nível '+num(r.level,1));}
+  if(r.city&&m==='nivel')s.unshift(r.city);
+  return s.join(' · ');
+}
+function rkFine(d){
+  var m=rkMode(),n=fzNow();
+  if(m==='nivel')return 'Nível de 0 a 7 pelo sistema Glicko-2 (domínio público). A confiabilidade sobe a cada jogo; abaixo de ~80% o nível é provisório e muda mais rápido. Simples, duplas e times têm rankings separados.';
+  if(m==='circuito')return 'Pontos por colocação final nas categorias encerradas, somando os '+esc((d&&d.best)||10)+' melhores resultados das últimas '+esc((d&&d.weeks)||52)+' semanas (padrão do circuito de beach tennis).';
+  return (m==='mes'?'Jogos de '+MES[n.m-1]+' de '+n.y:'Jogos da temporada '+n.y)+'. Vitória vale 3, empate 1. Desempate: vitórias, aproveitamento e nível.';
+}
 function rankHtml(){
   var order=sportOrder();
   if(!S.rkSport||SPORTS.indexOf(S.rkSport)<0)S.rkSport=order[0];
-  var sp=S.rkSport,d=S.rank[sp];if(!d&&(!isTeamSport(sp)||S.rkView==='rating'))setTimeout(function(){loadRank(sp);},0);
+  var sp=S.rkSport,team=isTeamSport(sp),m=rkMode();
   var h='<div class="chips" style="margin-top:16px">'+order.map(function(s){return '<button class="chip'+(s===sp?' on':'')+'" data-act="rksport" data-s="'+s+'">'+esc(sportN(s))+'</button>';}).join('')+'</div>';
-  if(isTeamSport(sp)){
+  if(team){
     var vw=['gols','assist','rating'].indexOf(S.rkView)>=0?S.rkView:'gols';
-    h+='<div class="seg rkv" role="tablist">'+[['gols','Artilharia'],['assist','Assistências'],['rating','Rating 1x1']].map(function(x){return '<button type="button" role="tab" data-act="rkview" data-v="'+x[0]+'" class="'+(vw===x[0]?'on':'')+'" aria-selected="'+(vw===x[0])+'">'+x[1]+'</button>';}).join('')+'</div>';
+    h+='<div class="seg rkv" role="tablist">'+[['gols','Artilharia'],['assist','Assistências'],['rating','Times']].map(function(x){return '<button type="button" role="tab" data-act="rkview" data-v="'+x[0]+'" class="'+(vw===x[0]?'on':'')+'" aria-selected="'+(vw===x[0])+'">'+x[1]+'</button>';}).join('')+'</div>';
     if(vw!=='rating')return h+scorersHtml(sp,vw);
   }
+  h+='<div class="seg rkv" role="tablist" aria-label="Tipo de ranking">'+RKM.map(function(x){return '<button type="button" role="tab" data-act="rkmode" data-v="'+x[0]+'" class="'+(m===x[0]?'on':'')+'" aria-selected="'+(m===x[0])+'">'+x[1]+'</button>';}).join('')+'</div>';
+  var f='<div class="chips rkf" style="margin-top:12px">';
+  if(!team)f+=[['SINGLES','Simples'],['DOUBLES','Duplas']].map(function(x){return '<button class="chip'+(rkFmt(sp)===x[0]?' on':'')+'" data-act="rkfmt" data-v="'+x[0]+'">'+x[1]+'</button>';}).join('');
+  f+=[['','Todos'],['M','Masc.'],['F','Fem.']].map(function(x){return '<button class="chip'+((S.rkGender||'')===x[0]?' on':'')+'" data-act="rkgender" data-v="'+x[0]+'">'+x[1]+'</button>';}).join('');
+  if(m!=='nivel'){
+    var cats=S.rkCats&&S.rkCats[sp];if(!cats)setTimeout(function(){loadRkCats(sp);},0);
+    if(Array.isArray(cats)&&cats.length)f+='<label class="chip rkcat" style="display:inline-flex;align-items:center"><select data-act="rkcat" aria-label="Categoria" style="background:none;border:0;font:inherit;color:inherit;min-height:40px;max-width:180px"><option value="">Todas as categorias</option>'+cats.map(function(c){return '<option value="'+esc(c.name)+'"'+(S.rkCat===c.name?' selected':'')+'>'+esc(c.name)+'</option>';}).join('')+'</select></label>';
+  }
+  h+=f+'</div>';
+  var d=S.rank[rkKey(sp)];if(!d)setTimeout(function(){loadRank(sp);},0);
   if(!d||d==='loading')return h+'<div class="sk" style="height:250px;margin-top:26px;border-radius:22px"></div><div class="sk" style="height:78px;margin-top:10px;border-radius:22px"></div><div class="sk" style="height:200px;margin-top:10px;border-radius:22px"></div>';
   if(d==='error')return h+'<div style="margin-top:22px">'+empty(I.bolt,'Não deu para carregar','Não foi possível abrir o ranking agora.','<button class="btn lt sm" data-act="rkretry">Tentar de novo</button>')+'</div>';
   var l=d.ranking||[];
-  if(!l.length)return h+'<div style="margin-top:22px">'+empty(I.trophy,'Ranking em aberto','Ninguém ranqueado em '+sportN(sp)+' ainda. Jogue um desafio 1x1 e seja o primeiro da lista.','<a class="btn pri sm" href="#/competir/desafios" data-act="cseg">Desafiar um atleta</a>')+'</div>';
-  var myId=S.me.id,me=null;l.forEach(function(r){if(r.userId===myId)me=r;});
+  if(!l.length)return h+'<div style="margin-top:22px">'+empty(I.trophy,'Ranking em aberto',m==='circuito'?'Nenhuma categoria encerrada de '+sportN(sp)+' nesse filtro ainda.':'Ninguém ranqueado em '+sportN(sp)+' nesse filtro ainda. Jogue um torneio ou um desafio 1x1 e entre na lista.',team?'':'<a class="btn pri sm" href="#/competir/desafios" data-act="cseg">Desafiar um atleta</a>')+'<p class="fine">'+rkFine(d)+'</p></div>';
+  var myId=S.me.id,me=null;l.forEach(function(r){if(r.userId&&r.userId===myId)me=r;});
+  function href(r){return r.userId?athHref(r):'';}
   function pod(r,cls,sz){
     if(!r)return '<div class="pod '+cls+'" aria-hidden="true"></div>';
-    return '<a class="pod '+cls+'" href="'+esc(athHref(r))+'" aria-label="'+esc(r.rank+'º lugar: '+(r.name||'Atleta'))+'">'+avatar(r.name||'Atleta',null,sz)+'<span class="nm">'+esc(r.name||'Atleta')+'</span>'+
-      (r.userId===myId?'<span class="pill soft you">Você</span>':'')+'<b class="rt num">'+num(r.rating,2)+'</b><span class="base"><b class="num">'+esc(r.rank)+'</b></span></a>';
+    var hr=href(r),tag=hr?'a':'div';
+    return '<'+tag+' class="pod '+cls+'"'+(hr?' href="'+esc(hr)+'"':'')+' aria-label="'+esc(r.rank+'º lugar: '+(r.name||'Atleta'))+'">'+avatar(r.name||'Atleta',r.avatarUrl||null,sz)+'<span class="nm">'+esc(r.name||'Atleta')+'</span>'+
+      (r===me?'<span class="pill soft you">Você</span>':(m==='nivel'&&r.provisional?'<span class="pill soft you" style="background:rgba(255,255,255,.2);color:#fff">Provisório</span>':''))+'<b class="rt num">'+rkVal(r)+'</b><span class="base"><b class="num">'+esc(r.rank)+'</b></span></'+tag+'>';
   }
   h+='<div class="dgrid rank2"><div><div class="podium">'+pod(l[1],'p2',64)+pod(l[0],'p1',86)+pod(l[2],'p3',64)+'</div>';
-  if(me)h+='<a class="card mypos press wh" href="'+esc(athHref(me))+'"><b class="p num"><small>#</small>'+esc(me.rank)+'</b><div class="tx"><b>Sua posição</b><span>'+esc(me.wins+'V '+me.losses+'D · '+pl(me.matches,'jogo','jogos'))+'</span></div><div class="v"><b class="num">'+num(me.rating,2)+'</b><span>Rating</span></div></a>';
-  else h+='<div class="card mypos wh"><div class="tx"><b>Você ainda não está neste ranking</b><span>Jogue uma partida ou um desafio de '+esc(sportN(sp))+' para entrar.</span></div><a class="btn lt sm" href="#/competir/desafios" data-act="cseg">Desafiar</a></div>';
+  if(me)h+='<a class="card mypos press wh" href="'+esc(athHref(me))+'"><b class="p num"><small>#</small>'+esc(me.rank)+'</b><div class="tx"><b>Sua posição</b><span>'+esc(rkSub(me))+'</span>'+(m==='nivel'?'<span class="rkbar" role="img" aria-label="Confiabilidade '+esc(me.reliability)+'%"><i style="width:'+esc(me.reliability)+'%"></i></span>':'')+'</div><div class="v"><b class="num">'+rkVal(me)+'</b><span>'+rkUnit()+'</span></div></a>';
+  else if(!team)h+='<div class="card mypos wh"><div class="tx"><b>Você ainda não está neste ranking</b><span>Jogue uma partida ou um desafio de '+esc(sportN(sp))+' para entrar.</span></div><a class="btn lt sm" href="#/competir/desafios" data-act="cseg">Desafiar</a></div>';
   h+='</div><div>';
   var rest=l.slice(3);
   if(rest.length)h+='<div class="card list" style="margin-top:10px;overflow:hidden">'+rest.map(function(r){
-    return '<a class="rk'+(r.userId===myId?' me':'')+'" href="'+esc(athHref(r))+'"><span class="pos num">'+esc(r.rank)+'</span>'+avatar(r.name||'Atleta',null,40)+'<div class="tx"><b>'+esc(r.name||'Atleta')+(r.userId===myId?' (você)':'')+'</b><span>'+esc([r.city,r.wins+'V '+r.losses+'D',pl(r.matches,'jogo','jogos')].filter(Boolean).join(' · '))+'</span></div><b class="v num">'+num(r.rating,2)+'</b></a>';
+    var hr=href(r),tag=hr?'a':'div';
+    return '<'+tag+' class="rk'+(r===me?' me':'')+'"'+(hr?' href="'+esc(hr)+'"':'')+'><span class="pos num">'+esc(r.rank)+'</span>'+avatar(r.name||'Atleta',r.avatarUrl||null,40)+'<div class="tx"><b>'+esc(r.name||'Atleta')+(r===me?' (você)':'')+'</b><span>'+esc(rkSub(r))+'</span></div><b class="v num">'+rkVal(r)+'</b></'+tag+'>';
   }).join('')+'</div>';
-  return h+'<p class="fine">Rating de 0 a 7. Vitórias sobem, derrotas descem.</p></div></div>';
+  return h+'<p class="fine">'+rkFine(d)+'</p></div></div>';
 }
 /* esportes de time: rating individual não se aplica — o ranking é a súmula (gols/assistências, só torneios públicos) */
 var TEAM_SP={FUTSAL:1,SOCCER:1,VOLLEY:1,BASKETBALL:1,HANDBALL:1};
@@ -2160,6 +2226,8 @@ function vProfile(){
   h+='<section class="sec"><div class="sec-h"><h2>Conta</h2></div><div class="card list">'+
     row('/atleta/'+encodeURIComponent(hd||S.me.id),I.id,'Card de atleta','Sua página pública para compartilhar',true)+
     row('#/competir/ranking',I.trophy,'Ranking e desafios',chalInbox()?esc(chalInbox())+' desafio'+(chalInbox()>1?'s':'')+' para responder':'Leaderboard por esporte e desafios 1x1')+
+    '<button class="lrow" data-act="clubs"><span class="lic">'+I.shield+'</span><div class="tx"><b>Meus clubes</b><span>Crie seu clube ou entre com o convite</span></div>'+I.chev+'</button>'+
+    '<button class="lrow" data-act="pushset"><span class="lic">'+I.bell+'</span><div class="tx"><b>Notificações no celular</b><span>Jogo em 30 min, resultado, convites e desafios</span></div>'+I.chev+'</button>'+
     row('#/avisos',I.bell,'Avisos',(S.notif&&S.notif.unread)?esc(S.notif.unread)+' não lido'+(S.notif.unread>1?'s':''):'Tudo em dia')+
     row('#/producao',I.chart,'Produção','Presença, gols, passes e avaliação')+
     (manages?row('/torneios.html',I.cog,'Painel de torneios','Organização, elenco e súmula completos',true):'')+
@@ -2327,6 +2395,106 @@ function respondInvite(id,tid,action,btn){
     if(action==='accept'){S.hist=null;S.histState='';loadCore(true);}
   }).catch(function(e){inv.splice(idx,0,item);redraw();if(e.status!==401)toast(e.message,true);});
 }
+/* ===================== PUSH NO CELULAR (F5) ===================== */
+var PUSH={reg:null,on:false,prefs:null,busy:false,err:''};
+function pushSupported(){if(MOCK)return QS.get('push')!=='0';return 'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;}
+function isIOS(){return /iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);}
+function isStandalone(){return (window.matchMedia&&matchMedia('(display-mode: standalone)').matches)||navigator.standalone===true;}
+function swRegister(){
+  if(MOCK||!('serviceWorker' in navigator))return Promise.resolve(null);
+  if(PUSH.reg)return Promise.resolve(PUSH.reg);
+  return navigator.serviceWorker.register('/club-sw.js',{scope:'/club'}).then(function(r){PUSH.reg=r;return r;}).catch(function(){return null;});
+}
+function b64u(s){var p='='.repeat((4-s.length%4)%4),b=atob((s+p).replace(/-/g,'+').replace(/_/g,'/')),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a;}
+function pushSubJson(sub){var j=sub.toJSON();return {endpoint:j.endpoint,keys:j.keys,userAgent:navigator.userAgent.slice(0,200)};}
+function pushCurrent(){
+  if(MOCK)return Promise.resolve(PUSH.on?{mock:1}:null);
+  return swRegister().then(function(r){return r&&r.pushManager?r.pushManager.getSubscription():null;}).catch(function(){return null;});
+}
+// mantém a inscrição deste aparelho ligada à conta logada (idempotente)
+function pushSync(){
+  if(MOCK||!token()||!pushSupported()||Notification.permission!=='granted')return;
+  pushCurrent().then(function(sub){if(sub)api('/club-push/subscribe',{method:'POST',body:pushSubJson(sub)}).catch(function(){});});
+}
+function pushEnable(btn){
+  if(PUSH.busy)return;PUSH.busy=true;PUSH.err='';if(btn)btn.disabled=true;
+  var done=function(){PUSH.busy=false;pushSheet();};
+  if(MOCK){PUSH.on=true;toast('Notificações ligadas neste aparelho');return done();}
+  Promise.resolve(Notification.requestPermission()).then(function(perm){
+    if(perm!=='granted')throw new Error(perm==='denied'?'As notificações estão bloqueadas nas configurações do navegador.':'Permissão não concedida.');
+    return Promise.all([swRegister(),api('/club-push/vapid-public-key')]);
+  }).then(function(x){
+    var reg=x[0],key=x[1]&&x[1].publicKey;if(!reg||!key)throw new Error('Push indisponível neste aparelho.');
+    return reg.pushManager.getSubscription().then(function(s){return s||reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64u(key)});});
+  }).then(function(sub){return api('/club-push/subscribe',{method:'POST',body:pushSubJson(sub)});})
+  .then(function(){PUSH.on=true;toast('Notificações ligadas neste aparelho');})
+  .catch(function(e){PUSH.err=e.message||'Não foi possível ligar.';}).then(done);
+}
+function pushDisable(btn){
+  if(btn)btn.disabled=true;
+  if(MOCK){PUSH.on=false;return pushSheet();}
+  pushCurrent().then(function(sub){if(!sub)return;var ep=sub.endpoint;return sub.unsubscribe().catch(function(){}).then(function(){return api('/club-push/subscribe',{method:'DELETE',body:{endpoint:ep}}).catch(function(){});});})
+  .then(function(){PUSH.on=false;toast('Notificações desligadas neste aparelho');pushSheet();});
+}
+function pushSheet(){
+  var h='<div class="eyebrow acc">Notificações no celular</div><h2 class="disp" style="margin-top:10px">Avisos do Club</h2>';
+  if(!pushSupported()){
+    h+='<p class="lead">'+(isIOS()&&!isStandalone()?'No iPhone, as notificações funcionam com o Club instalado: toque em Compartilhar e depois em “Adicionar à Tela de Início”. Abra o Club pelo ícone e volte aqui.':'Este navegador não recebe notificações. Use o Chrome, o Edge ou o Safari atualizado.')+'</p>';
+    return openSheet(h+'<div class="acts"><button class="btn ghost full" data-act="sheet-close">Fechar</button></div>');
+  }
+  if(!sheetEl.classList.contains('on'))openSheet(h+'<div class="sk" style="height:56px;border-radius:16px;margin-top:14px"></div><div class="sk" style="height:220px;border-radius:16px;margin-top:10px"></div>');
+  Promise.all([pushCurrent(),api('/club-push/preferences').catch(function(){return null;})]).then(function(x){
+    PUSH.on=!!x[0];PUSH.prefs=x[1];
+    var p=PUSH.prefs||{push:true,types:{},labels:{}},blocked=!MOCK&&window.Notification&&Notification.permission==='denied';
+    var b=h+'<p class="lead">Jogo começando em 30 minutos, resultado, convites, aprovação de inscrição e desafios — direto no celular.</p>';
+    b+='<div class="card wh pushst"><div class="tx"><b>'+(PUSH.on?'Ligadas neste aparelho':'Desligadas neste aparelho')+'</b><span>'+(blocked?'Bloqueadas nas configurações do navegador':PUSH.on?'Você recebe os avisos marcados abaixo':'Ligue para receber os avisos')+'</span></div>'+
+      (PUSH.on?'<button class="btn lt sm" data-act="pushoff">Desligar</button>':'<button class="btn pri sm" data-act="pushon"'+(blocked?' disabled':'')+'>Ligar</button>')+'</div>';
+    if(PUSH.err)b+='<div class="serr" role="alert" style="margin-top:8px">'+esc(PUSH.err)+'</div>';
+    var lb=p.labels||{},keys=Object.keys(lb);
+    if(keys.length){
+      b+='<div class="sfield" style="margin-top:14px"><span>Quero receber</span></div><div class="card wh tgls">'+
+        '<label class="tgl"><span><b>Todas as notificações do Club</b></span><input type="checkbox" data-act="pmaster"'+(p.push?' checked':'')+'></label>'+
+        keys.map(function(k){return '<label class="tgl'+(p.push?'':' off')+'"><span>'+esc(lb[k])+'</span><input type="checkbox" data-act="ptype" data-k="'+esc(k)+'"'+(p.types[k]!==false?' checked':'')+(p.push?'':' disabled')+'></label>';}).join('')+'</div>';
+    }
+    if(PUSH.on)b+='<div class="acts" style="margin-top:12px"><button class="btn ghost full" data-act="pushtest">Enviar notificação de teste</button></div>';
+    $('.body',sheetEl).innerHTML=b;
+  });
+}
+function pushPref(body){api('/club-push/preferences',{method:'PUT',body:body}).then(function(p){PUSH.prefs=p;pushSheet();}).catch(function(e){toast(e.message,true);});}
+
+/* ===================== CLUBES PERMANENTES (F5) ===================== */
+var NCL={sports:[]};
+var CLUB_SPORTS=['FUTSAL','BEACH_TENNIS','TENNIS','PADEL','VOLLEY','SOCCER','BASKETBALL','RUNNING','OTHER'];
+var CROLE={owner:'Dono',coach:'Técnico',athlete:'Atleta'};
+function clubsSheet(){
+  openSheet('<div class="eyebrow acc">Clubes</div><h2 class="disp" style="margin-top:10px">Meus clubes</h2><div id="cl-list"><div class="sk" style="height:64px;border-radius:16px;margin-top:14px"></div></div>');
+  api('/clubs/mine').then(function(r){
+    var l=(r&&r.clubs)||[],h='';
+    if(l.length)h+='<div class="card wh list" style="margin-top:14px">'+l.map(function(c){
+      return '<a class="lrow" href="/clube/'+encodeURIComponent(c.slug)+'">'+avatar(c.name,c.crestUrl,40)+'<div class="tx"><b>'+esc(c.name)+'</b><span>'+(c.status==='PENDING'?'Convite pendente — toque para responder':esc(CROLE[c.role]||'Atleta'))+'</span></div>'+I.chev+'</a>';
+    }).join('')+'</div>';
+    else h+='<p class="lead">Você ainda não está em nenhum clube. Crie o seu ou entre com o código do convite.</p>';
+    h+='<label class="sfield" style="margin-top:16px"><span>Tenho um código de convite</span><input class="search" id="cl-code" type="text" maxlength="12" placeholder="Ex.: K7MP2QXA" autocomplete="off" autocapitalize="characters" spellcheck="false"></label><div class="acts"><button class="btn lt full" data-act="clubjoin">Entrar no clube</button></div>';
+    h+='<div class="sfield" style="margin-top:18px"><span>Criar um clube</span></div><label class="sfield"><span>Nome do clube</span><input class="search" id="cl-name" type="text" maxlength="80" placeholder="Ex.: Cabo Branco Futsal" autocomplete="off"></label>'+
+      '<div class="sfield"><span>Esportes</span><div class="sheet-chips" id="cl-sports">'+CLUB_SPORTS.map(function(s){return '<button type="button" class="chip'+(NCL.sports.indexOf(s)>=0?' on':'')+'" data-act="clsport" data-s="'+s+'">'+esc(s==='RUNNING'?'Corrida':sportN(s))+'</button>';}).join('')+'</div></div>'+
+      '<div class="serr" id="cl-err" role="alert"></div><div class="acts" style="margin-top:8px"><button class="btn pri full" data-act="clubnew">Criar clube</button></div>';
+    var box=$('#cl-list');if(box)box.innerHTML=h;
+  }).catch(function(e){var box=$('#cl-list');if(box)box.innerHTML='<div class="serr" role="alert">'+esc(e.message)+'</div>';});
+}
+function clubCreate(btn){
+  var n=($('#cl-name').value||'').trim(),err=$('#cl-err');
+  if(n.length<2){err.textContent='Dê um nome ao clube.';$('#cl-name').focus();return;}
+  err.textContent='';btn.disabled=true;
+  if(MOCK){closeSheet();toast('Clube criado!');btn.disabled=false;return;}
+  api('/clubs',{method:'POST',body:{name:n,sports:NCL.sports}}).then(function(c){location.href='/clube/'+encodeURIComponent(c.slug);})
+  .catch(function(e){err.textContent=e.message;btn.disabled=false;});
+}
+function clubJoin(btn){
+  var c=($('#cl-code').value||'').trim().toUpperCase();if(!c){$('#cl-code').focus();return;}
+  btn.disabled=true;
+  api('/clubs/join',{method:'POST',body:{code:c}}).then(function(r){toast('Você entrou no clube!');if(!MOCK&&r&&r.club)location.href='/clube/'+encodeURIComponent(r.club.slug);else closeSheet();})
+  .catch(function(e){toast(e.message,true);btn.disabled=false;});
+}
 function logoutSheet(){
   openSheet('<h2 class="disp">Sair da conta?</h2><p class="lead">Você vai precisar entrar de novo para ver seus jogos e treinos.</p><div class="acts"><button class="btn pri full" data-act="logout-ok">Sair</button><button class="btn ghost full" data-act="sheet-close">Continuar no app</button></div>');
 }
@@ -2357,7 +2525,18 @@ document.addEventListener('click',function(e){
   else if(a==='legal'){e.preventDefault();legalSheet(d.k);}
   else if(a==='cseg'){e.preventDefault();var hr=el.getAttribute('href');if(location.hash!==hr){segNav=true;location.replace(hr);}}
   else if(a==='rksport'){S.rkSport=d.s;redraw(true);}
-  else if(a==='rkretry'){delete S.rank[S.rkSport];redraw();}
+  else if(a==='rkretry'){delete S.rank[rkKey(S.rkSport)];redraw();}
+  else if(a==='rkmode'){S.rkMode=d.v;redraw(true);}
+  else if(a==='rkfmt'){S.rkFmt=d.v;redraw(true);}
+  else if(a==='rkgender'){S.rkGender=d.v;redraw(true);}
+  else if(a==='pushset'){e.preventDefault();PUSH.err='';pushSheet();}
+  else if(a==='pushon')pushEnable(el);
+  else if(a==='pushoff')pushDisable(el);
+  else if(a==='pushtest'){api('/club-push/test',{method:'POST'}).then(function(r){toast(r&&r.sent?'Notificação enviada':'Nada enviado: '+((r&&r.skipped)||'confira a inscrição'),!(r&&r.sent));}).catch(function(err){toast(err.message,true);});}
+  else if(a==='clubs'){e.preventDefault();clubsSheet();}
+  else if(a==='clubnew')clubCreate(el);
+  else if(a==='clubjoin')clubJoin(el);
+  else if(a==='clsport'){var ix=NCL.sports.indexOf(d.s);if(ix>=0)NCL.sports.splice(ix,1);else NCL.sports.push(d.s);el.classList.toggle('on',ix<0);}
   else if(a==='rkview'){S.rkView=d.v;redraw(true);}
   else if(a==='scretry'){delete S.scor[S.rkSport];redraw();}
   else if(a==='staffretry'){resetStaff();redraw();}
@@ -2484,6 +2663,15 @@ var mockApi=(function(){
     ch('c6',meU,U('u28','Gustavo Trigueiro','gutrigueiro'),'FUTSAL','DECLINED',null,420)];
   function chById(id){var c=chals.filter(function(x){return x.id===id;})[0];if(!c)throw Object.assign(new Error('desafio não encontrado'),{status:404});return c;}
   var teamList=['ABC Master','Amigos CG','Brasil Sertão','Cabo Branco','Causos FC','EBN Futsal','Santa Cruz PB','Treze Master','Veteranos do Bessa'].map(function(n,i){return {entryId:'e'+i,name:n,logoUrl:null};});
+  var f5prefs={push:true,types:{game_soon:true,result:true,invite:true,entry:true,challenge:true,schedule:true,training:false,info:true},labels:{game_soon:'Jogo começando (30 min antes)',result:'Resultado publicado',invite:'Convites (time e clube)',entry:'Inscrição (pedido e aprovação)',challenge:'Desafios 1x1',schedule:'Jogo agendado / horário',training:'Treinos',info:'Outros avisos'}};
+  function f5rank(sp,kind,p){
+    var team=TEAM_SP[sp],base=team?['Cabo Branco','Amigos CG','Treze Master','Santa Cruz PB','EBN Futsal','Brasil Sertão']:['Marina Lopes','Rafa Nóbrega','Júlia Paiva','Bruno Leal','Carla Dantas','Pedro Melo','Lia Costa'];
+    if(QS.get('rkempty'))return {ranking:[],best:10,weeks:52};
+    var list=base.map(function(n,i){var me=!team&&n==='Rafa Nóbrega';var lvl=Math.max(0,5.2-i*0.45);return {rank:i+1,type:team?'TEAM':'USER',key:'k'+i,userId:team?undefined:(me?uid:'u'+i),username:team?undefined:n.toLowerCase().replace(/\W/g,''),name:n,city:'João Pessoa',
+      level:Math.round(lvl*100)/100,reliability:Math.max(12,92-i*13),provisional:i>2,wins:9-i,draws:i%2,losses:2+i,matches:11+i,
+      played:10-i,points:kind==='circuit'?3400-i*420:27-i*3,counted:Math.min(10,6-Math.floor(i/2)),events:7-Math.floor(i/2),titles:i<2?2-i:0};});
+    return {sport:sp,kind:kind,best:10,weeks:52,ranking:list};
+  }
   var R=[
     ['POST',/^\/auth\/send-code$/,function(m,b){if(String(b.phone)==='83900000000')throw bad('WhatsApp indisponível no momento',{whatsappDown:true});if(String(b.phone)==='83911111111')throw bad('Telefone já cadastrado');return {success:true,message:'Código enviado para seu WhatsApp'};}],
     ['POST',/^\/auth\/send-email-register-code$/,function(m,b){if(/^ja@/.test(String(b.email)))throw bad('E-mail já cadastrado');return {success:true,message:'Código enviado para seu e-mail'};}],
@@ -2491,6 +2679,13 @@ var mockApi=(function(){
     ['POST',/^\/auth\/register$/,function(m,b){if(!b.name||!b.password||!b.birthDate||!b.lgpdAccepted)throw bad('Dados incompletos');me.name=b.name;return {token:'mock',user:me};}],
     ['POST',/^\/auth\/forgot-send-code$/,function(m,b){if(b.method==='whatsapp'){if(String(b.phone)==='83900000000')throw bad('WhatsApp indisponível no momento',{whatsappDown:true,hasEmail:true});if(String(b.phone)==='83911111111')throw bad('Telefone não cadastrado');return {success:true,message:'Código enviado para seu WhatsApp'};}if(/^nao@/.test(String(b.email)))throw bad('E-mail não cadastrado');return {success:true,message:'Código enviado para seu e-mail'};}],
     ['POST',/^\/auth\/forgot-reset$/,function(m,b){if(!b.password||b.password.length<4)throw bad('Senha deve ter no mínimo 4 caracteres');return {success:true,message:'Senha alterada com sucesso'};}],
+    ['GET',/^\/club-ranking\/([A-Z_]+)\/categories/,function(){return {categories:[{name:'Masculino B',gender:'M'},{name:'Feminino C',gender:'F'},{name:'Mista',gender:'MIXED'}]};}],
+    ['GET',/^\/club-ranking\/([A-Z_]+)\/(rating|season|circuit)/,function(m,b,p){return f5rank(m[1],m[2],p);}],
+    ['GET',/^\/clubs\/mine$/,function(){return {clubs:[{id:'cl1',slug:'cabo-branco-futsal',name:'Cabo Branco Futsal',crestUrl:null,role:'owner',status:'ACTIVE'},{id:'cl2',slug:'arena-tambau-bt',name:'Arena Tambaú BT',crestUrl:null,role:'athlete',status:'PENDING'}]};}],
+    ['POST',/^\/clubs\/join$/,function(m,b){if(String(b.code)!=='K7MP2QXA')throw bad('convite inválido ou expirado');return {club:{slug:'arena-tambau-bt'}};}],
+    ['GET',/^\/club-push\/preferences$/,function(){return f5prefs;}],
+    ['PUT',/^\/club-push\/preferences$/,function(m,b){if(b.push!==undefined)f5prefs.push=!!b.push;Object.keys(b.types||{}).forEach(function(k){f5prefs.types[k]=!!b.types[k];});return f5prefs;}],
+    ['POST',/^\/club-push\/test$/,function(){return {sent:1,failed:0};}],
     ['GET',/^\/tournaments\/rankings\/([A-Z_]+)\/scorers/,function(m){if(QS.get('scfail'))throw Object.assign(new Error('falhou'),{status:500});return {sport:m[1],scorers:scorers[m[1]]||[]};}],
     ['GET',/^\/tournaments\/rankings\/([A-Z_]+)$/,function(m){return {sport:m[1],ranking:ranks[m[1]]||[]};}],
     ['GET',/^\/tournaments\/my-games/,function(m,b,p){if(QS.get('mygames')==='fail')throw Object.assign(new Error('falhou'),{status:500});var sc=(p.match(/scope=(\w+)/)||[])[1]||'all';return {games:sc==='upcoming'?[]:myGamesPast()};}],
@@ -2532,13 +2727,23 @@ var mockApi=(function(){
   };
 })();
 
+document.addEventListener('change',function(e){
+  var el=e.target,a=el.getAttribute&&el.getAttribute('data-act');
+  if(a==='rkcat'){S.rkCat=el.value;redraw(true);}
+  else if(a==='pmaster')pushPref({push:el.checked});
+  else if(a==='ptype'){var t={};t[el.getAttribute('data-k')]=el.checked;pushPref({types:t});}
+});
 /* ===================== boot ===================== */
 if(MOCK&&QS.get('tab')==='past')S.agendaTab='past';
 if(MOCK&&QS.get('rk'))S.rkSport=QS.get('rk');
 if(MOCK&&QS.get('rkv'))S.rkView=QS.get('rkv');
 if(MOCK&&QS.get('sel'))S.agSel=QS.get('sel');
 if(MOCK&&QS.get('still'))document.documentElement.classList.add('still');
+if(MOCK&&QS.get('rkm'))S.rkMode=QS.get('rkm');
+if(!MOCK&&token())swRegister().then(pushSync);
 route();
+if(MOCK&&QS.get('sheet')==='push')setTimeout(pushSheet,900);
+if(MOCK&&QS.get('sheet')==='clubs')setTimeout(clubsSheet,900);
 if(MOCK&&QS.get('sheet')==='join')setTimeout(joinOpen,900);
 if(MOCK&&QS.get('sheet')==='newchal')setTimeout(chalNewSheet,900);
 if(MOCK&&QS.get('sheet')==='result')setTimeout(function(){chalResultSheet('c2');},900);

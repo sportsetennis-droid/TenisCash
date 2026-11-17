@@ -3047,6 +3047,13 @@ model Club {
   // Vinculação opcional à loja Sports & Tennis (clubes patrocinados/eventos)
   storeId      String?
   createdAt    DateTime @default(now())
+  // Clube permanente (F5): página pública /clube/:slug, escudo, cores, esportes, convite
+  slug           String?  @unique
+  crestUrl       String? // escudo (URL https ou data URI png/jpeg/webp pequeno)
+  primaryColor   String? // #RRGGBB
+  secondaryColor String?
+  sports         String[] @default([])
+  inviteCode     String?  @unique // convite por link/código (/clube/:slug?convite=CODE)
 
   memberships ClubMembership[]
 
@@ -3061,10 +3068,67 @@ model ClubMembership {
   club     Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
   userId   String
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role     String   @default("member") // owner | admin | member
-  joinedAt DateTime @default(now())
+  role            String   @default("member") // owner (dono) | coach (técnico) | athlete (atleta); legado: admin | member
+  joinedAt        DateTime @default(now())
+  status          String   @default("ACTIVE") // ACTIVE | PENDING (convite direto aguardando aceite) | DECLINED
+  invitedByUserId String?
 
   @@unique([clubId, userId])
+}
+
+// Vínculo EXPLÍCITO (feito pelo dono do clube) entre o clube permanente e a
+// inscrição de um torneio — casamento pelo NOME EXATO da TournamentEntry.
+model ClubTournamentLink {
+  id              String   @id @default(cuid())
+  clubId          String
+  tournamentId    String
+  entryName       String
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+
+  @@unique([clubId, tournamentId, entryName])
+  @@index([tournamentId, entryName])
+}
+
+// Rating Glicko-2 (F5) — por atleta (USER) ou time (TEAM, nome do clube),
+// por esporte e formato (SINGLES | DOUBLES | TEAM). Recalculado do histórico.
+model GlickoRating {
+  id          String    @id @default(cuid())
+  sport       String
+  format      String // SINGLES | DOUBLES | TEAM
+  subjectType String // USER | TEAM
+  subjectKey  String // userId (USER) ou nome normalizado do clube (TEAM)
+  userId      String?
+  teamName    String?
+  rating      Float     @default(1500)
+  rd          Float     @default(350)
+  volatility  Float     @default(0.06)
+  matches     Int       @default(0)
+  wins        Int       @default(0)
+  draws       Int       @default(0)
+  losses      Int       @default(0)
+  lastPeriod  Int? // índice da semana (Fortaleza) do último período jogado
+  lastMatchAt DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([sport, format, subjectType, subjectKey])
+  @@index([sport, format, rating])
+  @@index([userId])
+}
+
+// Preferências de push do Club (liga/desliga geral e por tipo)
+model ClubNotifyPref {
+  userId    String   @id
+  push      Boolean  @default(true)
+  types     Json?
+  updatedAt DateTime @updatedAt
+}
+
+// Idempotência dos avisos automáticos (ex.: "game_soon:<matchId>")
+model ClubPushLog {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  createdAt DateTime @default(now())
 }
 
 model Challenge {
@@ -3559,6 +3623,7 @@ model PushSubscription {
   p256dh     String // chave pública pra criptografia
   authKey    String // chave de autenticação
   userAgent  String? // pra mostrar "Chrome iPhone" etc
+  app        String? // null = varejo/app.html · 'club' = Club Sports & Tennis
   createdAt  DateTime  @default(now())
   lastUsedAt DateTime?
 

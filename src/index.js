@@ -580,6 +580,10 @@ app.use('/api/activities', activitiesRoutes);
 app.use('/api/coach', coachRoutes);
 app.use('/api/tournaments', tournamentsRoutes);
 app.use(require('./routes/tournamentRegistration')); // Club F3: inscrição paga, lista de espera, check-in (/t/:slug/inscricao + /api/tournament-registration)
+app.use('/api/club-ranking', require('./routes/clubRanking')); // F5: Glicko-2 (nível 0-7), temporada/mês, circuito
+app.use('/api/club-push', require('./routes/clubPush')); // F5: Web Push do Club + preferências
+app.use('/api/clubs', require('./routes/clubs')); // F5: clube permanente (membros, convite, vínculo a torneio)
+app.use('/clube', require('./routes/clubPage')); // F5: página pública /clube/:slug
 app.use('/api/admin/rede', require('./routes/rede')); // Rede Neural de Agentes (painel/propostas/objetivos)
 app.use('/api/medals', require('./routes/medals')); // medalhas digitais (Open Badges 3.0)
 app.use('/api/search', require('./routes/search')); // busca tolerante a erro (pg_trgm) + catálogo offline do vendedor
@@ -1814,8 +1818,23 @@ app.get('/atleta/:username', async (req, res) => {
 
     const u = card.user;
     const s = card.stats;
-    const overall = card.ratings.length ? card.ratings[0].rating.toFixed(1) : '—';
-    const bestSport = card.ratings.length ? APEX_SPORT_LABEL[card.ratings[0].sport] || card.ratings[0].sport : '';
+    // Nível Glicko-2 (0-7 + confiabilidade + posição). Sem nível ainda → rating legado.
+    const levels = await require('./services/clubRating').athleteLevels(userId).catch(() => []);
+    const FMT_LABEL = { SINGLES: 'Simples', DOUBLES: 'Duplas', TEAM: 'Time' };
+    const top = levels[0];
+    const overall = top ? top.level.toFixed(1) : card.ratings.length ? card.ratings[0].rating.toFixed(1) : '—';
+    const overallLabel = top ? (top.provisional ? 'NÍVEL PROVISÓRIO' : 'NÍVEL') : 'RATING';
+    const bestSport = top ? APEX_SPORT_LABEL[top.sport] || top.sport : card.ratings.length ? APEX_SPORT_LABEL[card.ratings[0].sport] || card.ratings[0].sport : '';
+    const levelRows = levels
+      .map(
+        (l) =>
+          '<div class="lv"><div class="lv-v">' + l.level.toFixed(1) + '</div><div class="lv-t"><b>' +
+          apexEsc((APEX_SPORT_LABEL[l.sport] || l.sport) + ' · ' + (FMT_LABEL[l.format] || l.format)) + '</b><span>' +
+          apexEsc('#' + l.position + ' de ' + l.of + ' · ' + l.wins + 'V ' + (l.draws ? l.draws + 'E ' : '') + l.losses + 'D') +
+          '</span><div class="lv-bar" role="img" aria-label="Confiabilidade ' + l.reliability + '%"><i style="width:' + l.reliability + '%"></i></div><span>' +
+          (l.provisional ? 'Provisório · ' : '') + 'Confiabilidade ' + l.reliability + '%</span></div></div>'
+      )
+      .join('');
     const initials = (u.name || '?').split(' ').filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
     const place = [u.city, u.state].filter(Boolean).join('/');
 
@@ -1865,6 +1884,15 @@ app.get('/atleta/:username', async (req, res) => {
   .rt-v{font-size:24px;font-weight:900}
   .rt-s{font-size:11px;font-weight:700;margin-top:2px}
   .rt-w{font-size:10px;opacity:.85;margin-top:2px}
+  .lvs{margin-top:18px;position:relative;display:grid;gap:8px}
+  .lvs-h{font-size:10px;font-weight:800;letter-spacing:1.2px;color:#E5571E;text-transform:uppercase}
+  .lv{display:flex;gap:12px;align-items:center;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:13px;padding:10px 12px}
+  .lv-v{font-size:26px;font-weight:900;min-width:52px;text-align:center}
+  .lv-t{flex:1;min-width:0;display:grid;gap:3px}
+  .lv-t b{font-size:13px}
+  .lv-t span{font-size:11px;color:#b9b9c0}
+  .lv-bar{height:5px;border-radius:5px;background:rgba(255,255,255,.1);overflow:hidden}
+  .lv-bar i{display:block;height:100%;background:linear-gradient(90deg,#E5571E,#ffb27a)}
   .bdg{display:flex;flex-wrap:wrap;gap:6px;margin-top:16px;position:relative}
   .bdg span{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:5px 9px;font-size:11px;font-weight:700;color:#ffd479}
   .actions{display:flex;gap:10px;margin-top:18px}
@@ -1880,7 +1908,7 @@ app.get('/atleta/:username', async (req, res) => {
       <div class="top">
         <div class="ovr">
           <div class="ovr-v">${overall}</div>
-          <div class="ovr-l">RATING</div>
+          <div class="ovr-l">${overallLabel}</div>
           ${bestSport ? '<div class="ovr-s">' + apexEsc(bestSport) + '</div>' : ''}
         </div>
         ${u.avatarUrl ? '<img class="avatar" src="' + apexEsc(u.avatarUrl) + '" alt="">' : '<div class="avatar">' + apexEsc(initials) + '</div>'}
@@ -1898,7 +1926,8 @@ app.get('/atleta/:username', async (req, res) => {
         ${statCell(s.tournaments, 'Torneios')}
         ${statCell(s.xp, 'XP')}
       </div>
-      ${ratingChips ? '<div class="rts">' + ratingChips + '</div>' : ''}
+      ${levelRows ? '<div class="lvs"><div class="lvs-h">Nível por esporte (0 a 7)</div>' + levelRows + '</div>' : ''}
+      ${ratingChips && !levelRows ? '<div class="rts">' + ratingChips + '</div>' : ''}
       ${card.badges.length ? '<div class="bdg">' + card.badges.map((b) => '<span>🏅 ' + apexEsc(b.key) + '</span>').join('') + '</div>' : ''}
       <div class="actions">
         <button class="btn btn-p" id="shareBtn">Compartilhar</button>
@@ -2035,6 +2064,8 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   } catch (e) {
     console.error('[ensureApexSchema] falha ao iniciar:', e.message);
   }
+
+  try { require('./services/clubPush').startClubPushCron(); } catch (e) { console.error('[clubPush] cron:', e.message); } // aviso 30 min antes do jogo
 
   // Financeiro do varejo: SQL aditivo/idempotente (as rotas /api/fin também garantem antes de responder).
   try {
