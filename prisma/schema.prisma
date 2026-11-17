@@ -6699,3 +6699,155 @@ model RnaAjustePeso {
 
   @@index([alvo, criadoEm])
 }
+
+// =====================================================================
+// CLUB F3 — INSCRIÇÃO PAGA, CHECK-IN E LISTA DE ESPERA
+// Tabelas soltas (sem relação), padrão TournamentRole. SQL aditivo em
+// src/services/ensureApexSchema.js. Valores de dinheiro SEMPRE em centavos.
+// =====================================================================
+
+// Configuração da inscrição online de um torneio (1 linha por torneio).
+model TournamentRegistrationConfig {
+  tournamentId        String   @id
+  enabled             Boolean  @default(false)
+  categories          Json? // { [categoryId]: { feeCents, maxEntries } }
+  customFields        Json? // [{ key, label, type: text|number|boolean|select|shirt, required, options[] }]
+  termsText           String?  @db.Text
+  termsVersion        Int      @default(1)
+  holdMinutes         Int      @default(60) // quanto tempo a vaga fica segura esperando o PIX
+  waitlistHoldHours   Int      @default(24) // prazo pra pagar depois de promovido da fila
+  allowTenisCash      Boolean  @default(true)
+  allowOnsite         Boolean  @default(false) // atleta pode escolher "pagar no local"
+  cashbackPct         Int      @default(0) // % de cashback TenisCash sobre o valor pago em dinheiro (0 = desligado)
+  paymentStoreId      String? // loja cuja conta PagBank recebe o PIX
+  checkinToleranceMin Int      @default(15) // tolerância pra sugerir W.O.
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model TournamentRegistration {
+  id                String    @id @default(cuid())
+  tournamentId      String
+  categoryId        String
+  kind              String    @default("ATHLETE") // ATHLETE | DOUBLES | TEAM
+  displayName       String
+  status            String    @default("PENDING_PAYMENT") // PENDING_PAYMENT | CONFIRMED | WAITLIST | EXPIRED | CANCELED | REFUNDED
+  userId            String? // quem inscreveu, se estava logado
+  contactName       String
+  contactPhone      String
+  contactEmail      String?
+  athletes          Json? // [{ name, birthDate, phone, email, minor, guardian:{name,phone,relationship} }]
+  roster            Json? // time: [{ name, number, isGoalkeeper }]
+  answers           Json? // respostas dos campos customizados
+  termsVersion      Int?
+  termsHash         String?
+  termsAcceptedAt   DateTime?
+  termsIp           String?
+  termsUserAgent    String?
+  feeCents          Int       @default(0)
+  discountCents     Int       @default(0)
+  couponId          String?
+  couponCode        String?
+  tcCents           Int       @default(0) // parte paga em TenisCash
+  tcTxId            String?
+  tcRefundTxId      String?
+  paidCents         Int       @default(0) // parte paga em dinheiro (PIX/local)
+  paymentMethod     String? // PIX | TENISCASH | MIXED | ONSITE | FREE
+  paymentExpiresAt  DateTime?
+  paidAt            DateTime?
+  confirmedAt       DateTime?
+  entryId           String?
+  publicToken       String    @unique
+  checkinToken      String    @unique
+  cashbackCents     Int       @default(0)
+  cashbackUserId    String?
+  cashbackTxId      String?
+  cashbackAt        DateTime?
+  cashbackStatus    String? // CREDITED | NO_ACCOUNT | REVERSED | REVERSAL_PENDING
+  promotedAt        DateTime?
+  refundStatus      String? // REQUESTED | REFUNDED | DENIED
+  refundReason      String?
+  refundRequestedAt DateTime?
+  refundedAt        DateTime?
+  refundedBy        String?
+  refundNote        String?
+  refundCents       Int       @default(0)
+  canceledAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([tournamentId, status])
+  @@index([categoryId, status])
+  @@index([userId])
+}
+
+// Cobrança PIX de uma inscrição (PSP PagBank da loja configurada).
+model TournamentPaymentCharge {
+  id              String    @id @default(cuid())
+  registrationId  String
+  tournamentId    String
+  provider        String    @default("pagbank")
+  storeId         String?
+  providerOrderId String?   @unique
+  amountCents     Int
+  status          String    @default("PENDING") // PENDING | PAID | EXPIRED | CANCELED
+  qrText          String?   @db.Text
+  qrPngUrl        String?
+  expiresAt       DateTime?
+  paidAt          DateTime?
+  paidCents       Int?
+  e2e             String?
+  lastCheckedAt   DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([registrationId])
+  @@index([tournamentId, status])
+}
+
+model TournamentCoupon {
+  id           String    @id @default(cuid())
+  tournamentId String
+  code         String // sempre MAIÚSCULO
+  kind         String    @default("PERCENT") // PERCENT | FIXED
+  value        Int // PERCENT: 1..100 · FIXED: centavos
+  maxUses      Int?
+  usedCount    Int       @default(0)
+  active       Boolean   @default(true)
+  expiresAt    DateTime?
+  createdBy    String?
+  createdAt    DateTime  @default(now())
+
+  @@unique([tournamentId, code])
+}
+
+// Trilha de auditoria (pagamento manual, estorno, check-in manual, W.O. confirmado...).
+model TournamentRegistrationAudit {
+  id             String   @id @default(cuid())
+  tournamentId   String
+  registrationId String?
+  action         String
+  actorUserId    String?
+  note           String?
+  data           Json?
+  createdAt      DateTime @default(now())
+
+  @@index([tournamentId, createdAt])
+  @@index([registrationId])
+}
+
+// Presença por jogo/rodada. scopeKey = "match:<id>" | "round:<n>" | "event".
+model TournamentCheckin {
+  id             String   @id @default(cuid())
+  tournamentId   String
+  registrationId String
+  entryId        String?
+  scopeKey       String
+  matchId        String?
+  method         String   @default("QR") // QR | MANUAL
+  checkedBy      String?
+  createdAt      DateTime @default(now())
+
+  @@unique([registrationId, scopeKey])
+  @@index([tournamentId, scopeKey])
+}
