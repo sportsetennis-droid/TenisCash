@@ -235,6 +235,24 @@ const STATEMENTS = [
    )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "CrmContact_empresa_phone_key" ON "CrmContact" ("empresa", "phone")`,
   `CREATE INDEX IF NOT EXISTS "CrmContact_empresa_lastSeenAt_idx" ON "CrmContact" ("empresa", "lastSeenAt")`,
+  // REDE NEURAL DE AGENTES (RNA) — docs/REDE-NEURAL-DE-AGENTES.md
+  "CREATE TABLE IF NOT EXISTS \"RnaNeuronio\" (\n    \"id\" TEXT NOT NULL,\n    \"camada\" TEXT NOT NULL,\n    \"ativo\" BOOLEAN NOT NULL DEFAULT true,\n    \"limiar\" DOUBLE PRECISION NOT NULL DEFAULT 0.5,\n    \"acertos\" INTEGER NOT NULL DEFAULT 0,\n    \"erros\" INTEGER NOT NULL DEFAULT 0,\n    \"disparos\" INTEGER NOT NULL DEFAULT 0,\n    \"custoRS\" DOUBLE PRECISION NOT NULL DEFAULT 0,\n    \"ultimoUso\" TIMESTAMP(3),\n    \"atualizadoEm\" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,\n\n    CONSTRAINT \"RnaNeuronio_pkey\" PRIMARY KEY (\"id\")\n)",
+  "CREATE TABLE IF NOT EXISTS \"RnaSinapse\" (\n    \"id\" TEXT NOT NULL,\n    \"origem\" TEXT NOT NULL,\n    \"destino\" TEXT NOT NULL,\n    \"peso\" DOUBLE PRECISION NOT NULL DEFAULT 0.5,\n\n    CONSTRAINT \"RnaSinapse_pkey\" PRIMARY KEY (\"id\")\n)",
+  "CREATE TABLE IF NOT EXISTS \"RnaSinal\" (\n    \"id\" TEXT NOT NULL,\n    \"tipo\" TEXT NOT NULL,\n    \"origem\" TEXT NOT NULL,\n    \"forca\" DOUBLE PRECISION NOT NULL,\n    \"impactoRS\" DOUBLE PRECISION,\n    \"loja\" TEXT,\n    \"objetivoId\" TEXT,\n    \"traceId\" TEXT NOT NULL,\n    \"profundidade\" INTEGER NOT NULL DEFAULT 0,\n    \"externo\" BOOLEAN NOT NULL DEFAULT false,\n    \"dados\" JSONB NOT NULL,\n    \"criadoEm\" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,\n\n    CONSTRAINT \"RnaSinal_pkey\" PRIMARY KEY (\"id\")\n)",
+  "CREATE TABLE IF NOT EXISTS \"RnaAtivacao\" (\n    \"id\" TEXT NOT NULL,\n    \"neuronio\" TEXT NOT NULL,\n    \"sinalId\" TEXT NOT NULL,\n    \"traceId\" TEXT NOT NULL,\n    \"status\" TEXT NOT NULL,\n    \"custoRS\" DOUBLE PRECISION NOT NULL DEFAULT 0,\n    \"ms\" INTEGER NOT NULL DEFAULT 0,\n    \"ativacao\" DOUBLE PRECISION,\n    \"saida\" JSONB,\n    \"erro\" TEXT,\n    \"criadoEm\" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,\n\n    CONSTRAINT \"RnaAtivacao_pkey\" PRIMARY KEY (\"id\")\n)",
+  "CREATE TABLE IF NOT EXISTS \"RnaObjetivo\" (\n    \"id\" TEXT NOT NULL,\n    \"texto\" TEXT NOT NULL,\n    \"kpis\" JSONB NOT NULL,\n    \"regiao\" TEXT[] DEFAULT ARRAY[]::TEXT[],\n    \"restricoes\" TEXT[] DEFAULT ARRAY[]::TEXT[],\n    \"orcamento\" JSONB NOT NULL,\n    \"gastoRS\" DOUBLE PRECISION NOT NULL DEFAULT 0,\n    \"ativacoes\" INTEGER NOT NULL DEFAULT 0,\n    \"loja\" TEXT,\n    \"prazo\" TIMESTAMP(3),\n    \"status\" TEXT NOT NULL DEFAULT 'ativo',\n    \"resultado\" JSONB,\n    \"criadoPor\" TEXT NOT NULL,\n    \"criadoEm\" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,\n\n    CONSTRAINT \"RnaObjetivo_pkey\" PRIMARY KEY (\"id\")\n)",
+  "CREATE TABLE IF NOT EXISTS \"RnaQuadro\" (\n    \"id\" TEXT NOT NULL,\n    \"objetivoId\" TEXT NOT NULL,\n    \"chave\" TEXT NOT NULL,\n    \"valor\" JSONB NOT NULL,\n    \"autor\" TEXT NOT NULL,\n    \"criadoEm\" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,\n\n    CONSTRAINT \"RnaQuadro_pkey\" PRIMARY KEY (\"id\")\n)",
+  "CREATE TABLE IF NOT EXISTS \"RnaAjustePeso\" (\n    \"id\" TEXT NOT NULL,\n    \"alvo\" TEXT NOT NULL,\n    \"de\" DOUBLE PRECISION NOT NULL,\n    \"para\" DOUBLE PRECISION NOT NULL,\n    \"motivo\" TEXT NOT NULL,\n    \"traceId\" TEXT,\n    \"aprovacaoId\" TEXT,\n    \"criadoEm\" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,\n\n    CONSTRAINT \"RnaAjustePeso_pkey\" PRIMARY KEY (\"id\")\n)",
+  "CREATE UNIQUE INDEX IF NOT EXISTS \"RnaSinapse_origem_destino_key\" ON \"RnaSinapse\"(\"origem\", \"destino\")",
+  "CREATE INDEX IF NOT EXISTS \"RnaSinal_traceId_idx\" ON \"RnaSinal\"(\"traceId\")",
+  "CREATE INDEX IF NOT EXISTS \"RnaSinal_tipo_criadoEm_idx\" ON \"RnaSinal\"(\"tipo\", \"criadoEm\")",
+  "CREATE INDEX IF NOT EXISTS \"RnaSinal_objetivoId_idx\" ON \"RnaSinal\"(\"objetivoId\")",
+  "CREATE INDEX IF NOT EXISTS \"RnaAtivacao_traceId_idx\" ON \"RnaAtivacao\"(\"traceId\")",
+  "CREATE INDEX IF NOT EXISTS \"RnaAtivacao_neuronio_criadoEm_idx\" ON \"RnaAtivacao\"(\"neuronio\", \"criadoEm\")",
+  "CREATE UNIQUE INDEX IF NOT EXISTS \"RnaAtivacao_neuronio_sinalId_key\" ON \"RnaAtivacao\"(\"neuronio\", \"sinalId\")",
+  "CREATE INDEX IF NOT EXISTS \"RnaObjetivo_status_idx\" ON \"RnaObjetivo\"(\"status\")",
+  "CREATE INDEX IF NOT EXISTS \"RnaQuadro_objetivoId_chave_idx\" ON \"RnaQuadro\"(\"objetivoId\", \"chave\")",
+  "CREATE INDEX IF NOT EXISTS \"RnaAjustePeso_alvo_criadoEm_idx\" ON \"RnaAjustePeso\"(\"alvo\", \"criadoEm\")",
 ];
 
 async function ensureApexSchema(prisma) {
