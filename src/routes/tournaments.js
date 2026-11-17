@@ -23,6 +23,7 @@ const training = require('../services/trainingSession');
 const discipline = require('../services/tournamentDiscipline');
 const F = require('../services/tournamentFormats');
 const live = require('../services/tournamentLive');
+const ftz = require('../services/fortalezaTime');
 
 const router = express.Router();
 
@@ -1476,7 +1477,7 @@ router.post('/matches/:matchId/schedule', authMiddleware, async (req, res) => {
     }
     const b = req.body || {};
     const data = {};
-    if (b.scheduledAt !== undefined) data.scheduledAt = b.scheduledAt ? new Date(b.scheduledAt) : null;
+    if (b.scheduledAt !== undefined) data.scheduledAt = ftz.parseLocal(b.scheduledAt);
     if (b.location !== undefined) data.location = b.location ? String(b.location).slice(0, 120) : null;
     const updated = await prisma.tournamentMatch.update({ where: { id: match.id }, data });
 

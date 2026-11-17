@@ -124,7 +124,7 @@ jobs:
       - run: npx prisma generate
       - name: Bancos descartáveis (um por suíte)
         run: |
-          for d in t_db t_f2 t_f3 t_f4 t_f5 t_f6; do
+          for d in t_db t_f2 t_f3 t_f4 t_f5 t_f6 t_rem; do
             psql -c "create database $d" postgres
             DATABASE_URL=postgresql://postgres@localhost:55331/$d npx prisma db push --skip-generate
           done
@@ -142,6 +142,9 @@ jobs:
       - name: App de atividade (GPS, import, segmentos, conquistas, beacon)
         env: { DATABASE_URL: postgresql://postgres@localhost:55331/t_f4 }
         run: node scripts/test-apex-atividade.js
+      - name: Fuso de Fortaleza no agendamento + lembrete 3h antes (sem WhatsApp)
+        env: { DATABASE_URL: postgresql://postgres@localhost:55331/t_rem }
+        run: node scripts/test-activity-reminders.js
       - name: Ranking Glicko-2, push e clube permanente
         env: { DATABASE_URL: postgresql://postgres@localhost:55331/t_f5 }
         run: node scripts/test-club-ranking.js

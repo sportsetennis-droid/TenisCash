@@ -353,6 +353,9 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "TournamentSponsor_tournamentId_ordering_idx" ON "TournamentSponsor" ("tournamentId", "ordering")`,
   // Número de série sequencial e sem colisão (CST-2026-000123)
   `CREATE SEQUENCE IF NOT EXISTS "MedalSerialSeq" START 1`,
+  // Lembrete automático de treino/jogo (~3h antes): marca pra não lembrar 2x.
+  `ALTER TABLE "TrainingSession" ADD COLUMN IF NOT EXISTS "reminderSentAt" TIMESTAMP(3)`,
+  `ALTER TABLE "TournamentMatch" ADD COLUMN IF NOT EXISTS "reminderSentAt" TIMESTAMP(3)`,
   // Calendário da equipe (.ics por vendedor): guarda só a VERSÃO do link pessoal.
   // O token é HMAC(segredo, vendedor+versão) — não fica salvo; trocar a versão invalida o link antigo.
   `CREATE TABLE IF NOT EXISTS "TeamCalendarFeed" (

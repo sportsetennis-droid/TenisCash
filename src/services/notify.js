@@ -57,13 +57,13 @@ async function enqueueWhatsApp(userId, title, body) {
 
 // Dispara o mesmo aviso pra vários usuários (ex: os 2 da dupla).
 // Opcionalmente ignora um userId (ex: não notificar quem fez a ação).
-async function notifyMany(userIds, payload, exceptUserId) {
+async function notifyMany(userIds, payload, exceptUserId, opts = {}) {
   const seen = new Set();
   const out = [];
   for (const uid of userIds || []) {
     if (!uid || uid === exceptUserId || seen.has(uid)) continue;
     seen.add(uid);
-    out.push(await notify(uid, payload));
+    out.push(await notify(uid, payload, opts));
   }
   return out;
 }
