@@ -843,6 +843,7 @@ window.__MOCK=true;
 })();
 </script>
 
+<script src="/treg-admin.js?v=20261117-f3"></script>
 <script>
 "use strict";
 const QS=new URLSearchParams(location.search);
@@ -993,6 +994,7 @@ function route(){
   if(view==='avisos')return renderNotifications();
   if(view==='sumula'&&arg)return renderSumula(arg);
   if(view==='treino'&&arg)return renderTreino(arg);
+  if(view==='inscricoes'&&arg)return renderInscricoes(arg);
   if(view==='prontuario'&&arg){const p=h.split('/');return renderProntuario(p[1],p[2]);}
   return renderHome();
 }
@@ -1222,6 +1224,7 @@ async function renderTournament(id){
     html+='<div class="g2"><div class="col">';
     if(myRoles.length)html+=myRolePanel(t,MR);
     if(rset.has('REFEREE'))html+='<div class="card">'+cardH(I.whistle,'Minha arbitragem')+'<div id="my-matches"><div class="spin"></div></div></div>';
+    if(rset.has('REFEREE'))html+='<div class="card">'+cardH(I.target,'Check-in')+'<button class="btn full" data-act="nav" data-h="inscricoes/'+t.id+'">'+I.target+'Ler QR de check-in</button></div>';
     if(rset.has('TEAM_ADMIN')||rset.has('COACH'))html+='<div class="card">'+cardH(I.shield,'Meu time')+'<div id="my-team"><div class="spin"></div></div></div>';
     html+='</div><div class="col">';
     html+='<div class="card">'+cardH(I.ball,'Meu time no torneio')+'<div id="my-membership"><div class="spin"></div></div></div>';
@@ -1271,6 +1274,8 @@ async function renderTournament(id){
   });}
   main+='</div>';
   main+='<div id="cat-panel"></div>';
+  side='<div class="card wh">'+cardH(I.id,'Inscrição online')+'<p class="muted" style="margin:-4px 0 12px">Link de inscrição com PIX, TenisCash, cupom, lista de espera e check-in por QR.</p>'+
+    '<button class="btn full" data-act="nav" data-h="inscricoes/'+t.id+'">'+I.users+'Inscrições e check-in</button></div>'+side;
   html+='<div class="g2"><div class="col">'+main+'</div><div class="col">'+side;
   if(canAssign)html+=rolesCard(t.id);
   html+=muralCard(t.id,true,posts);

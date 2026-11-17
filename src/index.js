@@ -579,6 +579,7 @@ app.use('/api/admin/reels-agency', reelsAgencyRoutes);
 app.use('/api/activities', activitiesRoutes);
 app.use('/api/coach', coachRoutes);
 app.use('/api/tournaments', tournamentsRoutes);
+app.use(require('./routes/tournamentRegistration')); // Club F3: inscrição paga, lista de espera, check-in (/t/:slug/inscricao + /api/tournament-registration)
 app.use('/api/admin/rede', require('./routes/rede')); // Rede Neural de Agentes (painel/propostas/objetivos)
 app.use('/api/medals', require('./routes/medals')); // medalhas digitais (Open Badges 3.0)
 app.use('/api/search', require('./routes/search')); // busca tolerante a erro (pg_trgm) + catálogo offline do vendedor
@@ -1383,6 +1384,12 @@ app.get('/t/:slug', async (req, res) => {
       ? fmtDate(t.startDate) + (t.endDate ? ' a ' + fmtDate(t.endDate) : '')
       : '';
     const place = [t.city, t.state].filter(Boolean).join('/');
+    // Club F3: botão "Inscreva-se" só quando a inscrição online está ligada
+    let regOpen = false;
+    try {
+      const rc = await prisma.tournamentRegistrationConfig.findUnique({ where: { tournamentId: t.id }, select: { enabled: true } });
+      regOpen = !!(rc && rc.enabled && ['OPEN', 'ONGOING'].includes(t.status));
+    } catch (_) { regOpen = false; }
 
     const catData = t.categories.map((c) => ({
       id: c.id, name: c.name, entries: c._count.entries,
@@ -1513,6 +1520,7 @@ app.get('/t/:slug', async (req, res) => {
   .post-b{font-size:14px;white-space:pre-wrap;color:#c9d0dc}
   .post-d{font-size:11px;color:var(--mut);margin-top:7px}
   .footer{text-align:center;padding:26px 16px;color:var(--mut);font-size:11px;letter-spacing:.3px}
+  .regcta{display:inline-flex;align-items:center;justify-content:center;min-height:46px;margin-top:16px;padding:0 26px;border-radius:999px;background:#E5571E;color:#fff;font-weight:800;text-decoration:none;letter-spacing:.2px}
 </style>
 </head>
 <body>
@@ -1529,6 +1537,7 @@ app.get('/t/:slug', async (req, res) => {
         <span class="chip"><b>${t._count.entries}</b> inscritos</span>
       </div>
       ${t.prizeDescription ? '<div class="prize">🏆 ' + apexEsc(t.prizeDescription) + '</div>' : ''}
+      ${regOpen ? '<a class="regcta" href="/t/' + apexEsc(t.slug) + '/inscricao">Inscreva-se</a>' : ''}
     </div>
 
     ${muralHtml}
