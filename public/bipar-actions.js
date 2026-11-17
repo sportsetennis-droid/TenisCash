@@ -19,6 +19,12 @@
   const cameraOcrReads = new Map();
   const inflight = new Set(), drafts = new Map(), lookups = new Map();
   const syncJobs = new Map(), draftBases = new Map(), archivePrefix = 'tc_bipar_action_archive_v1:';
+  // Texto lido da etiqueta guardado em cada peça do lote. O texto inteiro continua na foto
+  // arquivada (IndexedDB); no lote basta o começo (onde estão referência e tamanho). Antes eram
+  // 12 mil caracteres por peça, em duas cópias, e isso enchia a memória do celular da loja.
+  const OCR_KEEP = 2500;
+  // Lotes que, com a memória do aparelho cheia, ficaram só na memória da página e vão direto pro servidor.
+  const memoryOnlyDrafts = new Set();
   let legacyRecoveryInventory = [];
   const recoveryConflicts = new Map();
   let historyMode = action === 'receipt' ? 'receipt' : 'transfer', historyPage = 1, historyRequest = 0, historyData = null, historyBusy = false, historyRefreshTimer = null;
@@ -247,9 +253,19 @@
         try { localStorage.setItem(checkpointKey, serialized); } catch (_) { /* active draft is already durable */ }
       }
       draftBases.set(draft.sessionId, new Map(draft.scans.map(item => [item.clientScanId, JSON.stringify(item)])));
-      storageFailed = false; queueSync(draft); return true;
+      storageFailed = false; if (memoryOnlyDrafts.delete(draft.sessionId)) message('Memória do aparelho liberada: o lote voltou a ser guardado no celular.', false); queueSync(draft); return true;
     }
     catch (error) {
+      // Memória cheia mesmo depois da faxina: NÃO para a bipagem. Com internet, a leitura segue
+      // na página e vai na hora pro servidor (que é a cópia oficial do lote). Só pausa se não
+      // houver como guardar em lugar nenhum (sem internet ou sem login).
+      if (isQuotaError(error) && navigator.onLine !== false && token && canSyncDraft(draft) && ['transfer', 'receipt'].includes(draft.context?.mode) && draft.status !== 'confirmed') {
+        memoryOnlyDrafts.add(draft.sessionId);
+        draftBases.set(draft.sessionId, new Map(draft.scans.map(item => [item.clientScanId, JSON.stringify(item)])));
+        storageFailed = false; storageReason = '';
+        message('Memória do celular cheia: os bipes estão indo direto para o sistema. Não feche esta página até aparecer "Bipes salvos no sistema".', true);
+        queueSync(draft, true); return true;
+      }
       storageFailed = true;
       storageReason = isQuotaError(error) ? 'memória do navegador cheia: ' + localStorageReport() : 'erro do navegador: ' + String(error?.name || '') + ' ' + String(error?.message || '').slice(0, 120);
       message('Não foi possível guardar o lote neste aparelho (' + storageReason + ').', true); return false;
@@ -373,6 +389,9 @@
       recovered.get(draft.sessionId).push(draft);
     }
     for (const [sessionId, copies] of recovered) {
+      // Lote que está só na memória da página (aparelho cheio): a versão da página é a mais nova;
+      // a cópia antiga do celular não pode substituí-la.
+      if (memoryOnlyDrafts.has(sessionId)) continue;
       const first = copies[0];
       const header = draft => stable({ context: draft.context, status: draft.status || 'open' });
       const evidence = new Map(); let conflicting = copies.some(copy => header(copy) !== header(first));
@@ -764,7 +783,7 @@
       if (!current()) return false;
       return resolveRead(draft, item, ocrText);
     }
-    if (String(ocrText).trim()) item.ocrText = String(ocrText).trim().slice(0, 12000);
+    if (String(ocrText).trim()) item.ocrText = String(ocrText).trim().slice(0, OCR_KEEP);
     inflight.add(item.clientScanId); item.error = ''; invalidate(); refresh();
     const job = { gen, selected, barcode, authToken };
     job.promise = (async () => { const release = await lookupSlot(); try {
@@ -809,7 +828,7 @@
     // Every intentional scan is one physical piece. The camera engine still
     // suppresses repeated frames; retryRead retains the existing scan identity.
     const duplicateConfirmed = true;
-    const item = { clientScanId: crypto.randomUUID(), barcode, confirmedSize: '', duplicateConfirmed, photoRequired: true, ocrText: String(ocrText || '').trim().slice(0, 12000), createdAt: new Date().toISOString() };
+    const item = { clientScanId: crypto.randomUUID(), barcode, confirmedSize: '', duplicateConfirmed, photoRequired: true, ocrText: String(ocrText || '').trim().slice(0, OCR_KEEP), createdAt: new Date().toISOString() };
     draft.scans.push(item); invalidate(); if (!persist(draft)) { renderReadings(); refresh(); return null; }
     renderReadings(); refresh();
     if (options.background === true) { void resolveRead(draft, item, ocrText); return item; }
@@ -1065,7 +1084,7 @@
         if (sameRead()) showCameraRead(item);
         else if (currentFrame()) { if (storageFailed) pauseCameraStorage(); else updateCameraSummary(); }
       } else {
-        item.ocrText = text;
+        item.ocrText = text.slice(0, OCR_KEEP);
         const br = text.match(/\bBR\s*0*(\d{2}(?:[.,]5)?)\b/i);
         if (br && normalizedSize(br[1]) === normalizedSize(item.product.size)) item.ocrSize = br[1];
         if (!persist(draft)) { pauseCameraStorage(); return; }
@@ -1251,6 +1270,11 @@
   });
   document.addEventListener('pointerdown', event => { interaction = !!event.target.closest('#action-setup,#action-workspace,#action-camera,#action-history'); });
   document.addEventListener('focusin', event => { if (event.target !== document.body) interaction = !!event.target.closest('#action-setup,#action-workspace,#action-camera,#action-history'); });
+  // Com bipes só na memória da página ainda não confirmados pelo servidor, avisa antes de sair.
+  window.addEventListener('beforeunload', event => {
+    const unsynced = [...memoryOnlyDrafts].some(id => { const job = syncJobs.get(id); return job && Number(job.draft.syncedRevision || 0) < Number(job.draft.revision || 1); });
+    if (unsynced) { event.preventDefault(); event.returnValue = ''; }
+  });
   document.addEventListener('visibilitychange', () => { if (document.hidden) closeCamera(); else { if (!actor && expiredActor) void resumeAuthentication(); refreshLegacyReads(); recoverDrafts(); } });
   window.addEventListener('online', () => { if (!actor && expiredActor) void resumeAuthentication(); else recoverDrafts(); });
   window.addEventListener('online', schedulePhotos);

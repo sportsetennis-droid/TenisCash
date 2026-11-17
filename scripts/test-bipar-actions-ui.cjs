@@ -101,7 +101,7 @@ function harness(shared, options = {}) {
   const exportCode = 'window.__test = { photoArchive, flushPhotos, showScanPhotos, localPending, authenticate, loadShipments, openCamera, closeCamera, capture, resolveRead, refreshIdentifications, activeReads, scansPayload, contextChanged, storeChanged, prepare, confirmAction, persist, signature, flushSync, queueSync, recoverDrafts, reconcileConflictsFromServer, startNewLot, loadHistory, showHistoryDetail, copyHistory, syncPayload, historyFilters, state:()=>({actor,currentDraft,preview,cameraRead,cameraRetry,busy,stream,scanner,generation,syncJobs,historyData,historyPage,historyMode}) };';
   assert.ok(source.endsWith('})();\n') || source.trimEnd().endsWith('})();'));
   vm.runInContext(source.replace(/\}\)\(\);\s*$/, exportCode + '\n})();'), context, { filename: 'public/bipar-actions.js' });
-  h.api = window.__test; h.window = window; h.boot = () => h.api.authenticate();
+  h.api = window.__test; h.window = window; h.context = context; h.boot = () => h.api.authenticate();
   h.scan = barcode => window.BiparActions.scan(barcode);
   h.archivePhotos = async () => { for (const item of h.api.activeReads().filter(s => s.photoRequired && !s.photoSaved)) await h.api.photoArchive.capture(h.api.state().currentDraft, item, testFrame()); await h.api.flushPhotos(); };
   h.cameraClick = command => h.get('action-camera').emit('click', { target: { closest: () => ({ dataset: { click: command } }) } });
@@ -821,6 +821,28 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
     assert.equal(h.api.state().cameraRead.storageError, true); assert.match(h.get('etiq-confirm-status').textContent, /Não foi possível guardar/);
     assert.equal(h.get('action-camera-notice').hidden, true); assert.equal(h.get('etiq-confirm-btn').disabled, true);
     await h.api.capture({ ean: product.barcode }); assert.equal(h.api.activeReads().length, 1); assert.equal(h.get('action-confirm').disabled, true); h.api.closeCamera();
+  });
+  await test('FULL device storage while online never pauses: the read stays in the page and goes straight to the server', async () => {
+    const h = harness(); await h.boot(); h.handler = () => response({ product: lupo, requiresSizeConfirmation: false });
+    await h.api.openCamera(); const originalSet = h.localStorage.setItem.bind(h.localStorage);
+    h.localStorage.setItem = (key, value) => { if (key.startsWith('tc_bipar_action_')) { const e = Error('full'); e.name = 'QuotaExceededError'; throw e; } originalSet(key, value); };
+    await h.api.capture({ ean: lupo.barcode }); for (let i = 0; i < 5; i++) await new Promise(r => setImmediate(r));
+    assert.equal(h.api.activeReads().length, 1, 'the reading is kept');
+    assert.notEqual(h.api.state().cameraRead?.storageError, true, 'camera is not paused');
+    assert.doesNotMatch(h.get('etiq-confirm-status').textContent || '', /Não foi possível guardar/);
+    const sync = h.historyRequests.filter(r => r.url.endsWith('/drafts/sync')).at(-1);
+    assert.ok(sync, 'the lot was sent to the server immediately'); assert.equal(sync.body.scans.length, 1); assert.equal(sync.body.scans[0].barcode, lupo.barcode);
+    let blocked = false; const ev = { preventDefault() { blocked = true; }, returnValue: undefined };
+    const draft = h.api.state().currentDraft; draft.syncedRevision = 0; (h.window.events.beforeunload || []).forEach(fn => fn(ev));
+    assert.equal(blocked, true, 'leaving the page warns while the server copy is behind');
+    h.api.closeCamera();
+  });
+  await test('FULL device storage while OFFLINE still pauses (nowhere safe to keep the read)', async () => {
+    const h = harness(); await h.boot(); h.handler = () => response({ product: lupo, requiresSizeConfirmation: false });
+    await h.api.openCamera(); h.context.navigator.onLine = false;
+    h.localStorage.setItem = () => { const e = Error('full'); e.name = 'QuotaExceededError'; throw e; };
+    await h.api.capture({ ean: lupo.barcode });
+    assert.equal(h.api.state().cameraRead.storageError, true); assert.match(h.get('etiq-confirm-det').textContent, /memória do navegador cheia/); h.api.closeCamera();
   });
   await test('a storage failure after pending lookup cannot silently resume the camera', async () => {
     const h = harness(); await h.boot(); await h.api.openCamera(); const originalSet = h.localStorage.setItem.bind(h.localStorage); let saves = 0;
