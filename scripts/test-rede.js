@@ -239,6 +239,16 @@ async function partB() {
     const b = await ferramentas.criarProposta({ neuronio: nn, sinal: sg, proposta: p, caminho: [], db: prisma });
     assert.ok(b.duplicada && b.recusada, JSON.stringify(b));
   });
+  await t('cota: mini agente não passa de RNA_PROPOSTAS_DIA_NEURONIO propostas novas por dia', async () => {
+    const ferramentas = require('../src/ai/rede/ferramentas');
+    process.env.RNA_PROPOSTAS_DIA_NEURONIO = '3';
+    const nn = { id: 't.cota' }; const sg = { id: 'sc', traceId: 'tc', objetivoId: null };
+    const r = [];
+    for (let i = 0; i < 5; i++) r.push(await ferramentas.criarProposta({ neuronio: nn, sinal: sg, proposta: { tipo: 'proposta.teste', dados: { titulo: 'Cota ' + i, evidencia: ['e'], chave: 'cota-' + i } }, caminho: [], db: prisma }));
+    delete process.env.RNA_PROPOSTAS_DIA_NEURONIO;
+    assert.strictEqual(r.filter((x) => x.id).length, 3);
+    assert.strictEqual(r.filter((x) => x.limitado).length, 2);
+  });
   await t('ação que recusa na revalidação não vira "executada"', async () => {
     const acoes = require('../src/ai/rede/acoes');
     acoes.registrar('teste.recusa', { executar: async () => ({ executado: false, motivo: 'já resolvido' }) });

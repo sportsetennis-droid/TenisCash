@@ -55,6 +55,18 @@ async function criarProposta({ neuronio, sinal, proposta, caminho, db = prisma }
     const recusada = await db.aIApproval.findFirst({ where: { type: tipo, status: 'rejected', decidedAt: { gte: new Date(Date.now() - dias * 86400000) }, payload: { path: ['rna', 'chave'], equals: chave } } }).catch(() => null);
     if (recusada) return { duplicada: true, recusada: true, id: recusada.id };
   }
+  // COTA: a fila do dono não pode ser enterrada (1º dia acha centenas de casos).
+  // O que passar volta no próximo pulso, quando a cota renovar.
+  const inicioDia = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Fortaleza' }));
+  inicioDia.setHours(0, 0, 0, 0);
+  const desdeHoje = new Date(Date.now() - (new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Fortaleza' })) - inicioDia));
+  const cotaNeuronio = Number(process.env.RNA_PROPOSTAS_DIA_NEURONIO || 20);
+  const cotaTotal = Number(process.env.RNA_PROPOSTAS_DIA || 100);
+  const [doNeuronio, total] = await Promise.all([
+    db.aIApproval.count({ where: { type: { startsWith: 'rna_' }, createdAt: { gte: desdeHoje }, payload: { path: ['rna', 'neuronio'], equals: neuronio.id } } }).catch(() => 0),
+    db.aIApproval.count({ where: { type: { startsWith: 'rna_' }, createdAt: { gte: desdeHoje } } }).catch(() => 0),
+  ]);
+  if (doNeuronio >= cotaNeuronio || total >= cotaTotal) return { duplicada: false, limitado: true, motivo: doNeuronio >= cotaNeuronio ? 'cota do mini agente' : 'cota diária da rede' };
   const ap = await db.aIApproval.create({
     data: {
       type: tipo,
