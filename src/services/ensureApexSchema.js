@@ -340,6 +340,98 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "MedalStatusEvent_medalId_createdAt_idx" ON "MedalStatusEvent" ("medalId", "createdAt")`,
   // Número de série sequencial e sem colisão (CST-2026-000123)
   `CREATE SEQUENCE IF NOT EXISTS "MedalSerialSeq" START 1`,
+  // ---------------------------------------------------------------
+  // F5 — Ranking Glicko-2, push do Club e clube permanente (aditivo)
+  // ---------------------------------------------------------------
+  // Club/ClubMembership já existem em prod (schema de 05/2026); o CREATE é
+  // só rede de segurança idêntica ao que o Prisma criaria.
+  `CREATE TABLE IF NOT EXISTS "Club" (
+     "id" TEXT NOT NULL,
+     "ownerId" TEXT NOT NULL,
+     "name" TEXT NOT NULL,
+     "description" TEXT,
+     "sportScope" TEXT,
+     "privacyLevel" TEXT NOT NULL DEFAULT 'public',
+     "city" TEXT,
+     "state" TEXT,
+     "country" TEXT NOT NULL DEFAULT 'BR',
+     "storeId" TEXT,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "Club_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE INDEX IF NOT EXISTS "Club_city_idx" ON "Club" ("city")`,
+  `CREATE INDEX IF NOT EXISTS "Club_sportScope_idx" ON "Club" ("sportScope")`,
+  `CREATE INDEX IF NOT EXISTS "Club_storeId_idx" ON "Club" ("storeId")`,
+  `CREATE TABLE IF NOT EXISTS "ClubMembership" (
+     "id" TEXT NOT NULL,
+     "clubId" TEXT NOT NULL,
+     "userId" TEXT NOT NULL,
+     "role" TEXT NOT NULL DEFAULT 'member',
+     "joinedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "ClubMembership_pkey" PRIMARY KEY ("id"),
+     CONSTRAINT "ClubMembership_clubId_fkey" FOREIGN KEY ("clubId") REFERENCES "Club"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+     CONSTRAINT "ClubMembership_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "ClubMembership_clubId_userId_key" ON "ClubMembership" ("clubId", "userId")`,
+  `ALTER TABLE "Club" ADD COLUMN IF NOT EXISTS "slug" TEXT`,
+  `ALTER TABLE "Club" ADD COLUMN IF NOT EXISTS "crestUrl" TEXT`,
+  `ALTER TABLE "Club" ADD COLUMN IF NOT EXISTS "primaryColor" TEXT`,
+  `ALTER TABLE "Club" ADD COLUMN IF NOT EXISTS "secondaryColor" TEXT`,
+  `ALTER TABLE "Club" ADD COLUMN IF NOT EXISTS "sports" TEXT[] DEFAULT ARRAY[]::TEXT[]`,
+  `ALTER TABLE "Club" ADD COLUMN IF NOT EXISTS "inviteCode" TEXT`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "Club_slug_key" ON "Club" ("slug")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "Club_inviteCode_key" ON "Club" ("inviteCode")`,
+  `ALTER TABLE "ClubMembership" ADD COLUMN IF NOT EXISTS "status" TEXT NOT NULL DEFAULT 'ACTIVE'`,
+  `ALTER TABLE "ClubMembership" ADD COLUMN IF NOT EXISTS "invitedByUserId" TEXT`,
+  `ALTER TABLE "PushSubscription" ADD COLUMN IF NOT EXISTS "app" TEXT`,
+  `CREATE TABLE IF NOT EXISTS "ClubTournamentLink" (
+     "id" TEXT NOT NULL,
+     "clubId" TEXT NOT NULL,
+     "tournamentId" TEXT NOT NULL,
+     "entryName" TEXT NOT NULL,
+     "createdByUserId" TEXT,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "ClubTournamentLink_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE INDEX IF NOT EXISTS "ClubTournamentLink_tournamentId_entryName_idx" ON "ClubTournamentLink" ("tournamentId", "entryName")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "ClubTournamentLink_clubId_tournamentId_entryName_key" ON "ClubTournamentLink" ("clubId", "tournamentId", "entryName")`,
+  `CREATE TABLE IF NOT EXISTS "GlickoRating" (
+     "id" TEXT NOT NULL,
+     "sport" TEXT NOT NULL,
+     "format" TEXT NOT NULL,
+     "subjectType" TEXT NOT NULL,
+     "subjectKey" TEXT NOT NULL,
+     "userId" TEXT,
+     "teamName" TEXT,
+     "rating" DOUBLE PRECISION NOT NULL DEFAULT 1500,
+     "rd" DOUBLE PRECISION NOT NULL DEFAULT 350,
+     "volatility" DOUBLE PRECISION NOT NULL DEFAULT 0.06,
+     "matches" INTEGER NOT NULL DEFAULT 0,
+     "wins" INTEGER NOT NULL DEFAULT 0,
+     "draws" INTEGER NOT NULL DEFAULT 0,
+     "losses" INTEGER NOT NULL DEFAULT 0,
+     "lastPeriod" INTEGER,
+     "lastMatchAt" TIMESTAMP(3),
+     "updatedAt" TIMESTAMP(3) NOT NULL,
+     CONSTRAINT "GlickoRating_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE INDEX IF NOT EXISTS "GlickoRating_sport_format_rating_idx" ON "GlickoRating" ("sport", "format", "rating")`,
+  `CREATE INDEX IF NOT EXISTS "GlickoRating_userId_idx" ON "GlickoRating" ("userId")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "GlickoRating_sport_format_subjectType_subjectKey_key" ON "GlickoRating" ("sport", "format", "subjectType", "subjectKey")`,
+  `CREATE TABLE IF NOT EXISTS "ClubNotifyPref" (
+     "userId" TEXT NOT NULL,
+     "push" BOOLEAN NOT NULL DEFAULT true,
+     "types" JSONB,
+     "updatedAt" TIMESTAMP(3) NOT NULL,
+     CONSTRAINT "ClubNotifyPref_pkey" PRIMARY KEY ("userId")
+   )`,
+  `CREATE TABLE IF NOT EXISTS "ClubPushLog" (
+     "id" TEXT NOT NULL,
+     "key" TEXT NOT NULL,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "ClubPushLog_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "ClubPushLog_key_key" ON "ClubPushLog" ("key")`,
 ];
 
 async function ensureApexSchema(prisma) {

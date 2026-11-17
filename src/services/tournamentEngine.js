@@ -498,6 +498,8 @@ async function applyMatchResult(matchId, result = {}) {
   if (winnerEntryId) {
     await updateRatingsForMatch(match, winnerEntryId);
   }
+  // Rating Glicko-2 (nível 0-7 + confiabilidade) — recalcula do histórico; o Elo acima segue como legado.
+  await require('./clubRating').onResult(match.tournament.sport);
 
   return { ok: true, matchId, winnerEntryId, homeScore: hs, awayScore: as };
 }
@@ -667,6 +669,7 @@ async function rateHeadToHead(winnerUserId, loserUserId, sport) {
   const delta = K * (1 - expectedW);
   await applyRatingDelta([wr], delta, true);
   await applyRatingDelta([lr], -delta, false);
+  await require('./clubRating').onResult(sport); // Glicko-2 (SINGLES)
 }
 
 // ---------------------------------------------------------------------
