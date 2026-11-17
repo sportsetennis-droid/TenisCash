@@ -20,6 +20,8 @@ const sheet = require('../services/matchSheet');
 const roles = require('../services/tournamentRoles');
 const membership = require('../services/teamMembership');
 const training = require('../services/trainingSession');
+const discipline = require('../services/tournamentDiscipline');
+const F = require('../services/tournamentFormats');
 
 const router = express.Router();
 
@@ -547,7 +549,54 @@ const SPORTS = new Set([
   'TENNIS', 'BEACH_TENNIS', 'PADEL', 'FUTSAL', 'SOCCER', 'VOLLEY',
   'BASKETBALL', 'HANDBALL', 'TABLE_TENNIS', 'OTHER',
 ]);
-const FORMATS = new Set(['KNOCKOUT', 'ROUND_ROBIN', 'GROUPS', 'GROUPS_KNOCKOUT']);
+const FORMATS = new Set([
+  'KNOCKOUT', 'ROUND_ROBIN', 'GROUPS', 'GROUPS_KNOCKOUT',
+  'DOUBLE_ELIM', // dupla eliminação (vencedores + perdedores + grande final c/ reset opcional)
+  'SWISS', // sistema suíço (N rodadas, pareamento por pontuação)
+  'AMERICANO', // Americano / Super 8 / Super 12 (parceiros rotativos, ranking por games)
+]);
+
+// Regras do motor por categoria (desempate, ida/volta, suspensão, config de formato).
+// Só copia o que veio no body; valida e normaliza. Retorna { data } ou { error }.
+function categoryRulesData(b = {}) {
+  const data = {};
+  if (b.tiebreakers !== undefined) {
+    data.tiebreakers = b.tiebreakers === null ? null : F.normalizeTiebreakers(b.tiebreakers);
+  }
+  if (b.doubleRound !== undefined) data.doubleRound = b.doubleRound === true || b.doubleRound === 'true';
+  if (b.suspensionRule !== undefined) {
+    data.suspensionRule = b.suspensionRule === null ? null : F.normalizeSuspensionRule(b.suspensionRule);
+  }
+  if (b.formatConfig !== undefined) {
+    if (b.formatConfig === null) data.formatConfig = null;
+    else if (typeof b.formatConfig === 'object') {
+      const fc = {};
+      const r = Number(b.formatConfig.rounds);
+      if (Number.isFinite(r) && r >= 1) fc.rounds = Math.min(30, Math.round(r));
+      if (b.formatConfig.reset !== undefined) fc.reset = !!b.formatConfig.reset;
+      if (['SUPER8', 'SUPER12', 'AMERICANO'].includes(b.formatConfig.variant)) fc.variant = b.formatConfig.variant;
+      data.formatConfig = fc;
+    } else return { error: 'formatConfig inválido' };
+  }
+  for (const f of ['pointsWin', 'pointsDraw', 'pointsLoss']) {
+    if (b[f] !== undefined) {
+      const x = Number(b[f]);
+      if (!Number.isFinite(x) || x < -10 || x > 10) return { error: f + ' inválido' };
+      data[f] = Math.round(x);
+    }
+  }
+  return { data };
+}
+
+// Série/temporada do torneio (liga edições). seriesSlug vem do nome se não vier.
+function seriesData(b = {}) {
+  const data = {};
+  if (b.seriesName !== undefined) data.seriesName = b.seriesName ? String(b.seriesName).slice(0, 120) : null;
+  if (b.seriesSlug !== undefined) data.seriesSlug = b.seriesSlug ? discipline.slugify(b.seriesSlug) || null : null;
+  else if (data.seriesName) data.seriesSlug = discipline.slugify(data.seriesName) || null;
+  if (b.edition !== undefined) data.edition = b.edition ? String(b.edition).slice(0, 40) : null;
+  return data;
+}
 const TOURNAMENT_STATUS = new Set(['DRAFT', 'OPEN', 'ONGOING', 'FINISHED', 'CANCELED']);
 
 // ---------------------------------------------------------------------
@@ -638,6 +687,7 @@ router.post('/', authMiddleware, async (req, res) => {
         prizeCash,
         prizeDescription: b.prizeDescription || null,
         visibility: b.visibility === 'private' ? 'private' : 'public',
+        ...seriesData(b),
       },
     });
     res.status(201).json(t);
@@ -672,6 +722,20 @@ router.get('/mine', authMiddleware, async (req, res) => {
       include: { _count: { select: { entries: true, categories: true } } },
     });
     res.json({ tournaments: list });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Histórico de campeões de uma SÉRIE (todas as edições) — público.
+// Campeão = vencedor da FINAL encerrada (dupla eliminação: o reset, se houve);
+// em pontos corridos/americano/suíço, o 1º da tabela final.
+router.get('/series/:slug/champions', async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    const r = await discipline.seriesChampions(req.params.slug);
+    if (!r) return res.status(400).json({ error: 'série inválida' });
+    res.json(r);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -732,6 +796,7 @@ router.patch('/:id', authMiddleware, async (req, res) => {
       if (b[f] !== undefined) data[f] = b[f] ? new Date(b[f]) : null;
     }
     if (b.visibility) data.visibility = b.visibility === 'private' ? 'private' : 'public';
+    Object.assign(data, seriesData(b));
 
     // Campos de TenisCash real: só admin/gerente altera (antifraude).
     const touchesCash =
@@ -804,6 +869,8 @@ router.post('/:id/categories', authMiddleware, async (req, res) => {
     if (!t) return;
     const b = req.body || {};
     if (!b.name) return res.status(400).json({ error: 'name obrigatório' });
+    const rules = categoryRulesData({ tiebreakers: b.tiebreakers, doubleRound: b.doubleRound, suspensionRule: b.suspensionRule, formatConfig: b.formatConfig });
+    if (rules.error) return res.status(400).json({ error: rules.error });
     const cat = await prisma.tournamentCategory.create({
       data: {
         tournamentId: t.id,
@@ -814,6 +881,7 @@ router.post('/:id/categories', authMiddleware, async (req, res) => {
         pointsWin: b.pointsWin !== undefined ? Number(b.pointsWin) : 3,
         pointsDraw: b.pointsDraw !== undefined ? Number(b.pointsDraw) : 1,
         pointsLoss: b.pointsLoss !== undefined ? Number(b.pointsLoss) : 0,
+        ...rules.data,
       },
     });
     res.status(201).json(cat);
@@ -830,6 +898,47 @@ router.get('/:id/categories', async (req, res) => {
       include: { _count: { select: { entries: true, matches: true } } },
     });
     res.json({ categories: list });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Edita regras/formato da categoria (só dono): formato, ida/volta, critérios de
+// desempate (ordem), regra de suspensão, config (rodadas do suíço, reset da
+// dupla eliminação). Mudar desempate recalcula a classificação na hora.
+router.patch('/:id/categories/:catId', authMiddleware, async (req, res) => {
+  try {
+    const t = await loadOwned(req, res, req.params.id);
+    if (!t) return;
+    const cat = await prisma.tournamentCategory.findFirst({ where: { id: req.params.catId, tournamentId: t.id } });
+    if (!cat) return res.status(404).json({ error: 'categoria não encontrada' });
+    const b = req.body || {};
+    const rules = categoryRulesData(b);
+    if (rules.error) return res.status(400).json({ error: rules.error });
+    const data = { ...rules.data };
+    if (b.name !== undefined && String(b.name).trim()) data.name = String(b.name).trim().slice(0, 80);
+    if (b.levelLabel !== undefined) data.levelLabel = b.levelLabel || null;
+    if (b.gender !== undefined && ['M', 'F', 'MIXED', 'OPEN'].includes(b.gender)) data.gender = b.gender;
+    const generated = await prisma.tournamentMatch.count({ where: { categoryId: cat.id } });
+    if (b.format !== undefined) {
+      if (b.format !== null && b.format !== '' && !FORMATS.has(b.format)) return res.status(400).json({ error: 'formato inválido' });
+      // Compara o formato EFETIVO (categoria sem formato herda o do torneio).
+      const effOld = cat.format || t.format;
+      const effNew = b.format || t.format;
+      if (effNew !== effOld) {
+        // formato só muda ANTES de gerar a chave (senão a tabela fica incoerente)
+        if (generated) return res.status(409).json({ error: 'a chave já foi gerada — gere de novo depois de trocar o formato' });
+        data.format = b.format || null;
+      }
+    }
+    if (data.doubleRound !== undefined && data.doubleRound !== cat.doubleRound && generated) {
+      return res.status(409).json({ error: 'a tabela já foi gerada — ida e volta vale ao gerar de novo' });
+    }
+    const updated = await prisma.tournamentCategory.update({ where: { id: cat.id }, data });
+    if (generated && (data.tiebreakers !== undefined || data.pointsWin !== undefined || data.pointsDraw !== undefined || data.pointsLoss !== undefined)) {
+      await engine.recomputeStandings(cat.id).catch((e) => console.error('[tournaments] recompute', e.message));
+    }
+    res.json(updated);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1178,6 +1287,22 @@ router.post('/:id/categories/:catId/knockout', authMiddleware, async (req, res) 
   }
 });
 
+// SUÍÇO — gera a próxima rodada (pareamento por pontuação, sem repetir confronto).
+router.post('/:id/categories/:catId/swiss-next', authMiddleware, async (req, res) => {
+  try {
+    const t = await loadOwned(req, res, req.params.id);
+    if (!t) return;
+    const cat = await prisma.tournamentCategory.findFirst({ where: { id: req.params.catId, tournamentId: t.id } });
+    if (!cat) return res.status(404).json({ error: 'categoria não encontrada' });
+    const r = await engine.generateSwissNextRound(cat.id);
+    if (!r.ok) return res.status(400).json(r);
+    res.json(r);
+  } catch (err) {
+    console.error('[tournaments] swiss-next', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Partidas da categoria (público) — agrupadas por rodada
 router.get('/:id/categories/:catId/matches', async (req, res) => {
   try {
@@ -1191,6 +1316,22 @@ router.get('/:id/categories/:catId/matches', async (req, res) => {
         games: { orderBy: { setNumber: 'asc' } },
       },
     });
+    // Americano: cada lado é uma DUPLA rotativa — junta o parceiro no nome exibido.
+    const partnerIds = [...new Set(matches.flatMap((m) => [m.homeEntry2Id, m.awayEntry2Id]).filter(Boolean))];
+    if (partnerIds.length) {
+      const ps = await prisma.tournamentEntry.findMany({ where: { id: { in: partnerIds } }, select: { id: true, name: true, logoUrl: true } });
+      const by = Object.fromEntries(ps.map((p) => [p.id, p]));
+      for (const m of matches) {
+        if (m.homeEntry2Id && m.homeEntry && by[m.homeEntry2Id]) {
+          m.homeEntry2 = by[m.homeEntry2Id];
+          m.homeEntry = { ...m.homeEntry, name: m.homeEntry.name + ' & ' + by[m.homeEntry2Id].name };
+        }
+        if (m.awayEntry2Id && m.awayEntry && by[m.awayEntry2Id]) {
+          m.awayEntry2 = by[m.awayEntry2Id];
+          m.awayEntry = { ...m.awayEntry, name: m.awayEntry.name + ' & ' + by[m.awayEntry2Id].name };
+        }
+      }
+    }
     res.json({ matches });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1202,6 +1343,19 @@ router.get('/:id/categories/:catId/standings', async (req, res) => {
   try {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
     const catId = req.params.catId;
+    // Critérios de desempate usados (pra exibir junto da tabela).
+    const catRow = await prisma.tournamentCategory.findUnique({
+      where: { id: catId },
+      include: { tournament: { select: { format: true } } },
+    });
+    const isAm = !!catRow && (catRow.format || (catRow.tournament && catRow.tournament.format)) === 'AMERICANO';
+    const criteria = engine.categoryTiebreakers(catRow, isAm);
+    const meta = {
+      criteria,
+      criteriaLabels: criteria.map((k) => F.TIEBREAK_LABELS[k] || k),
+      drawSeed: criteria.includes('DRAW') && catRow ? catRow.tiebreakSeed || null : null,
+      pointsLabel: isAm ? 'Games' : 'Pts',
+    };
     const standings = await prisma.tournamentStanding.findMany({
       where: { categoryId: catId },
       orderBy: [{ groupName: 'asc' }, { rank: 'asc' }, { points: 'desc' }],
@@ -1216,7 +1370,7 @@ router.get('/:id/categories/:catId/standings', async (req, res) => {
         },
       },
     });
-    if (standings.length) return res.json({ standings });
+    if (standings.length) return res.json({ standings, ...meta });
 
     // Nenhum jogo finalizado ainda → monta a tabela ZERADA com todos os inscritos
     // (pra classificação aparecer desde o início, como todo sistema de torneio).
@@ -1231,7 +1385,7 @@ router.get('/:id/categories/:catId/standings', async (req, res) => {
     }));
     zero.sort((a, b) => (a.groupName || '').localeCompare(b.groupName || '') || a.entry.name.localeCompare(b.entry.name));
     zero.forEach((r, i) => { r.rank = i + 1; });
-    res.json({ standings: zero, provisional: true });
+    res.json({ standings: zero, provisional: true, ...meta });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1526,9 +1680,28 @@ router.post('/matches/:matchId/events', authMiddleware, async (req, res) => {
     if (!(await roles.can(req.userId, req.userRole, m.tournamentId, 'REFEREE', { matchId: m.id }))) {
       return res.status(403).json({ error: 'sem permissão (arbitragem do jogo)' });
     }
-    const r = await sheet.addEvent(req.params.matchId, req.body || {});
-    if (!r.ok) return res.status(400).json(r);
+    // Quem lança evento já é arbitragem/coordenação → pode liberar suspenso (com motivo auditado).
+    const r = await sheet.addEvent(req.params.matchId, req.body || {}, { userId: req.userId, canOverride: true });
+    if (!r.ok) return res.status(r.code ? 409 : 400).json(r);
     res.status(201).json(r.event);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Escalação do jogo (por time). Treinador/admin do time OU arbitragem.
+// Atleta SUSPENSO é bloqueado; só árbitro/coordenador libera (motivo auditado).
+router.post('/matches/:matchId/lineup', authMiddleware, async (req, res) => {
+  try {
+    const m = await roles.matchContext(req.params.matchId);
+    if (!m) return res.status(404).json({ error: 'jogo não encontrado' });
+    const entryId = String((req.body || {}).entryId || '');
+    const isRef = await roles.can(req.userId, req.userRole, m.tournamentId, 'REFEREE', { matchId: m.id });
+    const isTeam = await roles.can(req.userId, req.userRole, m.tournamentId, 'SET_LINEUP', { entryId });
+    if (!isRef && !isTeam) return res.status(403).json({ error: 'sem permissão (treinador do time ou arbitragem)' });
+    const r = await sheet.setLineup(req.params.matchId, req.body || {}, { userId: req.userId, canOverride: isRef });
+    if (!r.ok) return res.status(r.code ? 409 : 400).json(r);
+    res.json(r);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1583,14 +1756,28 @@ router.post('/matches/:matchId/finalize', authMiddleware, async (req, res) => {
   }
 });
 
+// Suspensos (automático, dos jogos encerrados) — público. ?categoryId= opcional.
+// suspended: quem NÃO pode jogar (e em quais próximos jogos) · hanging: pendurados.
+router.get('/:id/suspensions', async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    const r = await discipline.tournamentSuspensions(req.params.id, req.query.categoryId || null);
+    res.json(r);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Ranking de jogadores (artilharia/assistências/cartões) — público
 // kind = scorers | assists | cards · ?categoryId= opcional
 router.get('/:id/stats/:kind', async (req, res) => {
   try {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
     const kind = ['scorers', 'assists', 'cards'].includes(req.params.kind) ? req.params.kind : 'scorers';
-    const rows = await sheet.playerStats(req.params.id, { kind, categoryId: req.query.categoryId || null });
-    res.json({ kind, ranking: rows });
+    // scope=official (padrão): só jogos ENCERRADOS. scope=live: inclui jogos em andamento (linhas marcadas partial).
+    const scope = req.query.scope === 'live' ? 'live' : 'official';
+    const rows = await sheet.playerStats(req.params.id, { kind, scope, categoryId: req.query.categoryId || null });
+    res.json({ kind, scope, ranking: rows });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

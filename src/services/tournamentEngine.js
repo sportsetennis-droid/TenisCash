@@ -11,6 +11,25 @@
 
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+const F = require('./tournamentFormats');
+
+// Fases "de tabela" (empate vale ponto; classificação recalculada).
+// Todo o resto (mata-mata, dupla eliminação, final) não pode empatar.
+const LEAGUE_STAGES = ['LEAGUE', 'GROUP', 'SWISS', 'AMERICANO'];
+const isLeagueStage = (stage) => LEAGUE_STAGES.includes(stage);
+
+// Config de formato por categoria (JSON livre): { rounds, reset, variant }
+function catConfig(category) {
+  let c = category && category.formatConfig;
+  if (typeof c === 'string') {
+    try {
+      c = JSON.parse(c);
+    } catch (_) {
+      c = null;
+    }
+  }
+  return c && typeof c === 'object' ? c : {};
+}
 
 // ---------------------------------------------------------------------
 // Utils de chaveamento
@@ -106,6 +125,9 @@ async function generateFixtures(categoryId, opts = {}) {
   if (format === 'ROUND_ROBIN') {
     return generateRoundRobin(category, entries, 'ROUND_ROBIN');
   }
+  if (format === 'DOUBLE_ELIM') return generateDoubleElim(category, entries);
+  if (format === 'SWISS') return generateSwissFirst(category, entries);
+  if (format === 'AMERICANO') return generateAmericano(category, entries);
   if (format === 'GROUPS' || format === 'GROUPS_KNOCKOUT') {
     // Grupos já definidos manualmente? (todos os inscritos com groupName) →
     // RESPEITA o sorteio existente. Senão, distribui em serpentina por seed.
@@ -158,7 +180,8 @@ async function generateRoundRobin(category, entries, format) {
   const matchesData = [];
   for (const [gName, gEntries] of Object.entries(groups)) {
     if (gEntries.length < 2) continue;
-    const rounds = roundRobinRounds(gEntries);
+    // Ida e volta (por categoria): o returno inverte o mando.
+    const rounds = category.doubleRound ? F.withReturnLeg(roundRobinRounds(gEntries)) : roundRobinRounds(gEntries);
     rounds.forEach((pairs, ri) => {
       pairs.forEach(([home, away], oi) => {
         matchesData.push({
@@ -179,7 +202,7 @@ async function generateRoundRobin(category, entries, format) {
   await prisma.tournamentMatch.createMany({ data: matchesData });
   await seedStandings(category, entries);
 
-  return { ok: true, format, matchesCreated: matchesData.length };
+  return { ok: true, format, matchesCreated: matchesData.length, doubleRound: !!category.doubleRound };
 }
 
 async function seedStandings(category, entries) {
@@ -381,6 +404,189 @@ async function generateKnockoutFromGroups(categoryId, qualifiersPerGroup = 2) {
 }
 
 // ---------------------------------------------------------------------
+// DUPLA ELIMINAÇÃO — chave dos vencedores (WB) + perdedores (LB) +
+// grande final (FINAL) com "reset" opcional (FINAL_RESET).
+// ---------------------------------------------------------------------
+async function generateDoubleElim(category, entries) {
+  const cfg = catConfig(category);
+  const plan = F.doubleElimPlan(entries.length, { reset: cfg.reset !== false });
+  const k = plan.wbRounds;
+  const L = plan.lbRounds;
+  const stageOf = (b) => ({ W: 'WB', L: 'LB', GF: 'FINAL', GF2: 'FINAL_RESET' }[b]);
+  const roundOf = (m) =>
+    m.bracket === 'W' ? m.round : m.bracket === 'L' ? k + m.round : m.bracket === 'GF' ? k + L + 1 : k + L + 2;
+  const human = (key) => {
+    if (key === 'GF') return 'Final';
+    const b = key[0];
+    const [r, o] = key.slice(1).split('-').map(Number);
+    return (b === 'W' ? 'Vencedores' : 'Perdedores') + ' R' + r + ' J' + (o + 1);
+  };
+  const label = (src) => {
+    if (!src || src.type === 'seed') return null;
+    if (src.type === 'GF') return src.slot === 'home' ? 'Campeão da chave dos vencedores' : 'Campeão da chave dos perdedores';
+    return (src.type === 'W' ? 'Vencedor ' : 'Perdedor ') + human(src.key);
+  };
+  const seedEntry = (src) => (src && src.type === 'seed' ? entries[src.seed - 1] : null);
+
+  const ids = {};
+  for (const m of plan.matches) {
+    const h = seedEntry(m.home);
+    const a = seedEntry(m.away);
+    const created = await prisma.tournamentMatch.create({
+      data: {
+        tournamentId: category.tournamentId,
+        categoryId: category.id,
+        stage: stageOf(m.bracket),
+        bracket: m.bracket,
+        round: roundOf(m),
+        ordering: m.ordering,
+        status: 'SCHEDULED',
+        homeEntryId: h ? h.id : null,
+        awayEntryId: a ? a.id : null,
+        homeSourceLabel: label(m.home),
+        awaySourceLabel: label(m.away),
+      },
+    });
+    ids[m.key] = created.id;
+  }
+  for (const m of plan.matches) {
+    const data = {};
+    if (m.winnerTo) {
+      data.nextMatchId = ids[m.winnerTo.key];
+      data.nextSlot = m.winnerTo.slot;
+    }
+    if (m.loserTo) {
+      data.loserNextMatchId = ids[m.loserTo.key];
+      data.loserNextSlot = m.loserTo.slot;
+    }
+    if (Object.keys(data).length) await prisma.tournamentMatch.update({ where: { id: ids[m.key] }, data });
+  }
+  return {
+    ok: true,
+    format: 'DOUBLE_ELIM',
+    bracketSize: plan.bracketSize,
+    winnersRounds: k,
+    losersRounds: L,
+    reset: cfg.reset !== false,
+    matchesCreated: plan.matches.length,
+  };
+}
+
+// ---------------------------------------------------------------------
+// SISTEMA SUÍÇO — N rodadas, pareamento por pontuação sem repetir
+// confronto; nº ímpar → bye (vitória) pro pior colocado que ainda não teve.
+// ---------------------------------------------------------------------
+function swissRoundsFor(category, n) {
+  const cfg = catConfig(category);
+  const r = Number(cfg.rounds);
+  return Number.isFinite(r) && r >= 1 ? Math.min(Math.round(r), Math.max(1, n - 1)) : F.suggestedSwissRounds(n);
+}
+
+async function createSwissRound(category, round, pairs, bye) {
+  const data = pairs.map(([h, a], i) => ({
+    tournamentId: category.tournamentId,
+    categoryId: category.id,
+    stage: 'SWISS',
+    round,
+    ordering: i,
+    homeEntryId: h,
+    awayEntryId: a,
+    status: 'SCHEDULED',
+  }));
+  if (bye) {
+    data.push({
+      tournamentId: category.tournamentId,
+      categoryId: category.id,
+      stage: 'SWISS',
+      round,
+      ordering: pairs.length,
+      homeEntryId: bye,
+      awayEntryId: null,
+      winnerEntryId: bye,
+      status: 'WALKOVER',
+      awaySourceLabel: 'Folga (bye)',
+    });
+  }
+  await prisma.tournamentMatch.createMany({ data });
+  return data.length;
+}
+
+async function generateSwissFirst(category, entries) {
+  const totalRounds = swissRoundsFor(category, entries.length);
+  const { pairs, bye } = F.swissFirstRound(entries.map((e) => e.id));
+  const created = await createSwissRound(category, 1, pairs, bye);
+  await seedStandings(category, entries);
+  await recomputeStandings(category.id);
+  return { ok: true, format: 'SWISS', round: 1, totalRounds, matchesCreated: created, bye: bye || null };
+}
+
+/** Próxima rodada do suíço (exige a rodada atual encerrada). */
+async function generateSwissNextRound(categoryId) {
+  const category = await prisma.tournamentCategory.findUnique({ where: { id: categoryId } });
+  if (!category) return { ok: false, error: 'categoria não encontrada' };
+  const matches = await prisma.tournamentMatch.findMany({ where: { categoryId, stage: 'SWISS' } });
+  if (!matches.length) return { ok: false, error: 'gere a 1ª rodada primeiro' };
+  const pending = matches.filter((m) => m.status !== 'FINISHED' && m.status !== 'WALKOVER');
+  if (pending.length) return { ok: false, error: `faltam ${pending.length} jogo(s) da rodada atual` };
+  const entries = await prisma.tournamentEntry.findMany({
+    where: { categoryId, status: 'CONFIRMED' },
+    orderBy: [{ seed: 'asc' }, { createdAt: 'asc' }],
+  });
+  const totalRounds = swissRoundsFor(category, entries.length);
+  const current = Math.max(...matches.map((m) => m.round));
+  if (current >= totalRounds) return { ok: false, error: `as ${totalRounds} rodadas já foram geradas` };
+
+  await recomputeStandings(categoryId);
+  const standings = await prisma.tournamentStanding.findMany({ where: { categoryId }, orderBy: { rank: 'asc' } });
+  const valid = new Set(entries.map((e) => e.id));
+  const ranked = standings.map((s) => s.entryId).filter((id) => valid.has(id));
+  for (const e of entries) if (!ranked.includes(e.id)) ranked.push(e.id);
+
+  const played = new Set();
+  const byes = new Set();
+  for (const m of matches) {
+    if (m.homeEntryId && m.awayEntryId) played.add(F.pairKey(m.homeEntryId, m.awayEntryId));
+    else if (m.winnerEntryId) byes.add(m.winnerEntryId);
+  }
+  const { pairs, bye, repeats } = F.swissPair(ranked, played, byes);
+  const created = await createSwissRound(category, current + 1, pairs, bye);
+  await recomputeStandings(categoryId);
+  return { ok: true, format: 'SWISS', round: current + 1, totalRounds, matchesCreated: created, bye: bye || null, repeats };
+}
+
+// ---------------------------------------------------------------------
+// AMERICANO / SUPER 8 / SUPER 12 — individual, parceiros rotativos,
+// ranking por games. Cada partida: (A & B) × (C & D).
+// ---------------------------------------------------------------------
+async function generateAmericano(category, entries) {
+  if (entries.length < 4 || entries.length % 4 !== 0) {
+    return { ok: false, error: 'Americano precisa de nº de atletas múltiplo de 4 (Super 8 = 8, Super 12 = 12)' };
+  }
+  const sched = F.americanoSchedule(entries.map((e) => e.id));
+  const data = [];
+  for (const r of sched) {
+    r.matches.forEach((m, i) => {
+      data.push({
+        tournamentId: category.tournamentId,
+        categoryId: category.id,
+        stage: 'AMERICANO',
+        round: r.round,
+        ordering: i,
+        homeEntryId: m.home[0],
+        homeEntry2Id: m.home[1],
+        awayEntryId: m.away[0],
+        awayEntry2Id: m.away[1],
+        status: 'SCHEDULED',
+      });
+    });
+  }
+  await prisma.tournamentMatch.createMany({ data });
+  await seedStandings(category, entries);
+  const variant = entries.length === 8 ? 'SUPER8' : entries.length === 12 ? 'SUPER12' : 'AMERICANO';
+  return { ok: true, format: 'AMERICANO', variant, rounds: sched.length, matchesCreated: data.length };
+}
+
+// ---------------------------------------------------------------------
 // Resultado de partida + avanço de chave
 // ---------------------------------------------------------------------
 
@@ -456,7 +662,7 @@ async function applyMatchResult(matchId, result = {}) {
   }
 
   // No mata-mata não pode haver empate: a chave trava sem vencedor definido.
-  const isKnockout = !['LEAGUE', 'GROUP'].includes(match.stage);
+  const isKnockout = !isLeagueStage(match.stage);
   if (isKnockout && !winnerEntryId) {
     return { ok: false, error: 'mata-mata não pode terminar empatado — defina o vencedor (ou use W.O.)' };
   }
@@ -474,10 +680,44 @@ async function applyMatchResult(matchId, result = {}) {
     });
   }
 
+  const loserId = winnerEntryId
+    ? winnerEntryId === match.homeEntryId
+      ? match.awayEntryId
+      : match.homeEntryId
+    : null;
+
+  // Dupla eliminação: o PERDEDOR da chave dos vencedores cai na chave dos perdedores.
+  if (match.loserNextMatchId && loserId) {
+    await prisma.tournamentMatch.update({
+      where: { id: match.loserNextMatchId },
+      data: match.loserNextSlot === 'away' ? { awayEntryId: loserId } : { homeEntryId: loserId },
+    });
+  }
+
+  // Grande final da dupla eliminação: se o campeão da chave dos PERDEDORES
+  // (visitante) vence, joga-se o "reset". Se o dos vencedores vence, acabou.
+  if (match.stage === 'FINAL' && match.bracket === 'GF' && winnerEntryId) {
+    const reset = await prisma.tournamentMatch.findFirst({
+      where: { categoryId: match.categoryId, stage: 'FINAL_RESET' },
+    });
+    if (reset && reset.status !== 'FINISHED') {
+      if (winnerEntryId === match.awayEntryId) {
+        await prisma.tournamentMatch.update({
+          where: { id: reset.id },
+          data: { homeEntryId: match.homeEntryId, awayEntryId: match.awayEntryId, status: 'SCHEDULED' },
+        });
+      } else {
+        await prisma.tournamentMatch.update({
+          where: { id: reset.id },
+          data: { homeEntryId: null, awayEntryId: null, winnerEntryId: null, status: 'CANCELED' },
+        });
+      }
+    }
+  }
+
   // Disputa de 3º lugar: o PERDEDOR da semifinal cai na partida THIRD.
   // Semi ordering 0 → slot "casa" da THIRD; ordering 1 → slot "visitante".
   if (match.stage === 'SEMI' && winnerEntryId) {
-    const loserId = winnerEntryId === match.homeEntryId ? match.awayEntryId : match.homeEntryId;
     const third = await prisma.tournamentMatch.findFirst({
       where: { categoryId: match.categoryId, stage: 'THIRD' },
     });
@@ -489,13 +729,13 @@ async function applyMatchResult(matchId, result = {}) {
     }
   }
 
-  // Classificação (liga/grupos)
-  if (match.stage === 'LEAGUE' || match.stage === 'GROUP') {
+  // Classificação (liga/grupos/suíço/americano)
+  if (isLeagueStage(match.stage)) {
     await recomputeStandings(match.categoryId);
   }
 
-  // Rating do atleta (escala 0-7)
-  if (winnerEntryId) {
+  // Rating do atleta (escala 0-7) — no Americano as duplas mudam a cada jogo: não entra no rating.
+  if (winnerEntryId && match.stage !== 'AMERICANO') {
     await updateRatingsForMatch(match, winnerEntryId);
   }
   // Rating Glicko-2 (nível 0-7 + confiabilidade) — recalcula do histórico; o Elo acima segue como legado.
@@ -505,98 +745,88 @@ async function applyMatchResult(matchId, result = {}) {
 }
 
 // ---------------------------------------------------------------------
-// Classificação (pontos corridos / grupos)
+// Classificação (pontos corridos / grupos / suíço / americano)
 // ---------------------------------------------------------------------
 
+// Critérios efetivos de uma categoria (padrão = pontos → saldo → marcados).
+function categoryTiebreakers(category, isAmericano) {
+  return F.normalizeTiebreakers(
+    category && category.tiebreakers,
+    isAmericano ? F.AMERICANO_TIEBREAKERS : F.DEFAULT_TIEBREAKERS
+  );
+}
+
 async function recomputeStandings(categoryId) {
-  const category = await prisma.tournamentCategory.findUnique({ where: { id: categoryId } });
+  const category = await prisma.tournamentCategory.findUnique({
+    where: { id: categoryId },
+    include: { tournament: { select: { format: true } } },
+  });
   if (!category) return [];
 
   const entries = await prisma.tournamentEntry.findMany({ where: { categoryId, status: 'CONFIRMED' } });
   const matches = await prisma.tournamentMatch.findMany({
-    where: { categoryId, status: 'FINISHED', stage: { in: ['LEAGUE', 'GROUP'] } },
+    where: {
+      categoryId,
+      OR: [
+        { status: 'FINISHED', stage: { in: LEAGUE_STAGES } },
+        { status: 'WALKOVER', stage: 'SWISS' }, // bye do suíço = vitória
+      ],
+    },
   });
 
-  const table = {};
-  for (const e of entries) {
-    table[e.id] = {
-      entryId: e.id,
-      groupName: e.groupName || null,
-      played: 0,
-      won: 0,
-      drawn: 0,
-      lost: 0,
-      scoreFor: 0,
-      scoreAgainst: 0,
-      points: 0,
-    };
+  const fmt = category.format || (category.tournament && category.tournament.format);
+  const isAmericano = fmt === 'AMERICANO' || matches.some((m) => m.stage === 'AMERICANO');
+  const criteria = categoryTiebreakers(category, isAmericano);
+  const points = { win: category.pointsWin, draw: category.pointsDraw, loss: category.pointsLoss };
+
+  // Fair play: só busca cartões quando o critério está na lista (não pesa no fluxo padrão).
+  let fairPlay = {};
+  if (criteria.includes('FAIR_PLAY') && matches.length) {
+    const cards = await prisma.matchEvent.findMany({
+      where: { matchId: { in: matches.map((m) => m.id) }, type: { in: ['YELLOW', 'RED'] } },
+      select: { entryId: true, type: true },
+    });
+    fairPlay = F.fairPlayByEntry(cards);
   }
 
-  for (const m of matches) {
-    const h = table[m.homeEntryId];
-    const a = table[m.awayEntryId];
-    if (!h || !a) continue;
-    const hs = m.homeScore ?? 0;
-    const as = m.awayScore ?? 0;
-    h.played++;
-    a.played++;
-    h.scoreFor += hs;
-    h.scoreAgainst += as;
-    a.scoreFor += as;
-    a.scoreAgainst += hs;
-    if (m.winnerEntryId === m.homeEntryId) {
-      h.won++;
-      a.lost++;
-      h.points += category.pointsWin;
-      a.points += category.pointsLoss;
-    } else if (m.winnerEntryId === m.awayEntryId) {
-      a.won++;
-      h.lost++;
-      a.points += category.pointsWin;
-      h.points += category.pointsLoss;
-    } else {
-      h.drawn++;
-      a.drawn++;
-      h.points += category.pointsDraw;
-      a.points += category.pointsDraw;
-    }
+  // Sorteio: a semente é gerada UMA vez e gravada (auditável e reproduzível).
+  let seed = category.tiebreakSeed || null;
+  if (criteria.includes('DRAW') && !seed) {
+    seed = F.newSeed();
+    await prisma.tournamentCategory.update({ where: { id: categoryId }, data: { tiebreakSeed: seed } });
   }
 
-  // ordena: pontos → saldo → marcados; rank dentro de cada grupo
+  const table = isAmericano ? F.tallyAmericano(entries, matches) : F.tallyTable(entries, matches, points, { fairPlay });
   const rows = Object.values(table);
   const byGroup = {};
-  for (const r of rows) (byGroup[r.groupName || '_'] ||= []).push(r);
+  for (const r of rows) (byGroup[isAmericano ? '_' : r.groupName || '_'] ||= []).push(r);
+  const ranked = [];
   for (const g of Object.values(byGroup)) {
-    g.sort(
-      (x, y) =>
-        y.points - x.points ||
-        y.scoreFor - y.scoreAgainst - (x.scoreFor - x.scoreAgainst) ||
-        y.scoreFor - x.scoreFor
-    );
-    g.forEach((r, i) => {
-      r.rank = i + 1;
-    });
+    ranked.push(...F.rankTable(g, { criteria, matches, points, seed }));
   }
 
-  for (const r of rows) {
+  for (const r of ranked) {
+    const data = {
+      groupName: r.groupName,
+      played: r.played,
+      won: r.won,
+      drawn: r.drawn,
+      lost: r.lost,
+      scoreFor: r.scoreFor,
+      scoreAgainst: r.scoreAgainst,
+      points: r.points,
+      rank: r.rank,
+      fairPlay: r.fairPlay || 0,
+      tiebreak: r.decidedBy || null,
+    };
     await prisma.tournamentStanding.upsert({
       where: { entryId: r.entryId },
-      create: { tournamentId: category.tournamentId, categoryId, ...r },
-      update: {
-        groupName: r.groupName,
-        played: r.played,
-        won: r.won,
-        drawn: r.drawn,
-        lost: r.lost,
-        scoreFor: r.scoreFor,
-        scoreAgainst: r.scoreAgainst,
-        points: r.points,
-        rank: r.rank,
-      },
+      create: { tournamentId: category.tournamentId, categoryId, entryId: r.entryId, ...data },
+      update: data,
     });
   }
 
-  return rows;
+  return ranked;
 }
 
 // ---------------------------------------------------------------------
@@ -807,6 +1037,11 @@ async function buildAthleteCard(userId) {
 module.exports = {
   generateFixtures,
   generateKnockoutFromGroups,
+  generateSwissNextRound,
+  categoryTiebreakers,
+  isLeagueStage,
+  LEAGUE_STAGES,
+  catConfig,
   applyMatchResult,
   recomputeStandings,
   updateRatingsForMatch,

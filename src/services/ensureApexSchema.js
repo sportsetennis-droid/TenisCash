@@ -585,6 +585,46 @@ const STATEMENTS = [
      CONSTRAINT "ClubPushLog_pkey" PRIMARY KEY ("id")
    )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "ClubPushLog_key_key" ON "ClubPushLog" ("key")`,
+  // MOTOR DE CAMPEONATO (F1) — tudo aditivo; null/false = comportamento antigo.
+  // Temporadas: série/edição ligando as edições do mesmo campeonato.
+  `ALTER TABLE "Tournament" ADD COLUMN IF NOT EXISTS "seriesSlug" TEXT`,
+  `ALTER TABLE "Tournament" ADD COLUMN IF NOT EXISTS "seriesName" TEXT`,
+  `ALTER TABLE "Tournament" ADD COLUMN IF NOT EXISTS "edition" TEXT`,
+  `CREATE INDEX IF NOT EXISTS "Tournament_seriesSlug_idx" ON "Tournament" ("seriesSlug")`,
+  // Categoria: desempate configurável, semente do sorteio, ida e volta, suspensão, formato.
+  `ALTER TABLE "TournamentCategory" ADD COLUMN IF NOT EXISTS "tiebreakers" JSONB`,
+  `ALTER TABLE "TournamentCategory" ADD COLUMN IF NOT EXISTS "tiebreakSeed" TEXT`,
+  `ALTER TABLE "TournamentCategory" ADD COLUMN IF NOT EXISTS "doubleRound" BOOLEAN NOT NULL DEFAULT false`,
+  `ALTER TABLE "TournamentCategory" ADD COLUMN IF NOT EXISTS "suspensionRule" JSONB`,
+  `ALTER TABLE "TournamentCategory" ADD COLUMN IF NOT EXISTS "formatConfig" JSONB`,
+  // Partida: dupla eliminação (chave + destino do perdedor), duplas do Americano, escalação.
+  `ALTER TABLE "TournamentMatch" ADD COLUMN IF NOT EXISTS "bracket" TEXT`,
+  `ALTER TABLE "TournamentMatch" ADD COLUMN IF NOT EXISTS "loserNextMatchId" TEXT`,
+  `ALTER TABLE "TournamentMatch" ADD COLUMN IF NOT EXISTS "loserNextSlot" TEXT`,
+  `ALTER TABLE "TournamentMatch" ADD COLUMN IF NOT EXISTS "homeEntry2Id" TEXT`,
+  `ALTER TABLE "TournamentMatch" ADD COLUMN IF NOT EXISTS "awayEntry2Id" TEXT`,
+  `ALTER TABLE "TournamentMatch" ADD COLUMN IF NOT EXISTS "lineup" JSONB`,
+  // Classificação: fair play + critério que decidiu a posição.
+  `ALTER TABLE "TournamentStanding" ADD COLUMN IF NOT EXISTS "fairPlay" INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE "TournamentStanding" ADD COLUMN IF NOT EXISTS "tiebreak" TEXT`,
+  // Auditoria: atleta suspenso liberado pelo árbitro/coordenador (com motivo).
+  `CREATE TABLE IF NOT EXISTS "SuspensionOverride" (
+     "id" TEXT NOT NULL,
+     "tournamentId" TEXT NOT NULL,
+     "categoryId" TEXT,
+     "matchId" TEXT NOT NULL,
+     "playerId" TEXT NOT NULL,
+     "entryId" TEXT NOT NULL,
+     "action" TEXT NOT NULL,
+     "eventType" TEXT,
+     "reason" TEXT NOT NULL,
+     "userId" TEXT,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "SuspensionOverride_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE INDEX IF NOT EXISTS "SuspensionOverride_tournamentId_idx" ON "SuspensionOverride" ("tournamentId")`,
+  `CREATE INDEX IF NOT EXISTS "SuspensionOverride_matchId_idx" ON "SuspensionOverride" ("matchId")`,
+  `CREATE INDEX IF NOT EXISTS "SuspensionOverride_playerId_idx" ON "SuspensionOverride" ("playerId")`,
 ];
 
 // Busca tolerante a erro (pg_trgm). Extensão + índices GIN de trigram em

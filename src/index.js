@@ -1561,7 +1561,9 @@ app.get('/t/:slug', async (req, res) => {
   var elBody = document.getElementById('catbody');
   var VIEW = 'jogos', DATA = null, CURID = null, STATS_TEAM = '';
   var VIEWS = [['jogos','Jogos'],['tabela','Classificação'],['mata','Mata-mata'],['stats','Estatísticas']];
-  var STAGE = {FINAL:'Final',THIRD:'Disputa de 3º lugar',SEMI:'Semifinais',QUARTER:'Quartas de final',RO16:'Oitavas de final',RO32:'16-avos',RO64:'32-avos'};
+  var STAGE = {FINAL:'Final',THIRD:'Disputa de 3º lugar',SEMI:'Semifinais',QUARTER:'Quartas de final',RO16:'Oitavas de final',RO32:'16-avos',RO64:'32-avos',FINAL_RESET:'Final — jogo extra (reset)'};
+  // Fases de TABELA (aba Jogos): grupos, pontos corridos, suíço e americano. O resto é mata-mata.
+  var REG={LEAGUE:1,GROUP:1,SWISS:1,AMERICANO:1};
   function esc(s){s=(s==null?'':''+s);return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
   function ini(s){s=(s==null?'':''+s).replace(/[^0-9A-Za-zÀ-ÿ ]/g,' ').trim();var p=s.split(/\\s+/);var a=(p[0]||'?').charAt(0);var b=(p[1]||'').charAt(0);return ((a+b).toUpperCase())||'?';}
   function hue(s){var h=0;s=(s==null?'':''+s);for(var i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))>>>0;return h%360;}
@@ -1609,10 +1611,13 @@ app.get('/t/:slug', async (req, res) => {
   }
   function renderRoundBlocks(matches){
     var groups={},order=[];
-    matches.forEach(function(m){var k=(m.stage==='LEAGUE'||m.stage==='GROUP')?('R'+m.round):m.stage;if(!groups[k]){groups[k]=[];order.push(k);}groups[k].push(m);});
+    matches.forEach(function(m){var k=REG[m.stage]?('R'+m.round):((m.stage==='WB'||m.stage==='LB')?(m.stage+m.round):m.stage);if(!groups[k]){groups[k]=[];order.push(k);}groups[k].push(m);});
     var html='';
+    var lbBase=null;
     order.forEach(function(k){
       var ms=groups[k];var label=STAGE[k]||('Rodada '+ms[0].round);
+      if(ms[0].stage==='WB')label='Chave dos vencedores — rodada '+ms[0].round;
+      if(ms[0].stage==='LB'){if(lbBase==null)lbBase=ms[0].round-1;label='Chave dos perdedores — rodada '+(ms[0].round-lbBase);}
       html+='<div class="rnd"><div class="rnd-h">'+esc(label)+'</div>';
       ms.forEach(function(m){html+=matchHtml(m);});
       html+='</div>';
@@ -1622,7 +1627,7 @@ app.get('/t/:slug', async (req, res) => {
   // Jogos = SÓ fase regular (grupos / pontos corridos). O mata-mata fica na aba Mata-mata (dono 2026-11-09).
   function renderMatches(matches){
     if(!matches.length) return '<div class="empty">Chave ainda não gerada.</div>';
-    var reg=matches.filter(function(m){return m.stage==='GROUP'||m.stage==='LEAGUE';});
+    var reg=matches.filter(function(m){return !!REG[m.stage];});
     if(!reg.length) return '<div class="empty" style="padding:16px">Os jogos da fase de grupos aparecem aqui. O mata-mata está na aba <b>Mata-mata</b>.</div>';
     var groupM=reg.filter(function(m){return m.stage==='GROUP';});
     var leagueM=reg.filter(function(m){return m.stage!=='GROUP';});
@@ -1706,12 +1711,13 @@ app.get('/t/:slug', async (req, res) => {
   // Mata-mata: MESMOS cards do Jogos (com data/ginásio/placar), isolados só no mata-mata,
   // ordenados por fase (…→Semifinais→3º lugar→Final) + card do Campeão quando a final encerra.
   function renderBracket(matches){
-    var ko=matches.filter(function(m){return m.stage!=='GROUP'&&m.stage!=='LEAGUE';});
+    var ko=matches.filter(function(m){return !REG[m.stage]&&!(m.stage==='FINAL_RESET'&&m.status==='CANCELED');});
     if(!ko.length) return ek('O mata-mata (semifinais e final) aparece aqui quando a fase de grupos terminar.');
-    var SO={RO128:1,RO64:2,RO32:3,RO16:4,QUARTER:5,SEMI:6,THIRD:7,FINAL:8};
+    var SO={WB:0.5,LB:0.6,RO128:1,RO64:2,RO32:3,RO16:4,QUARTER:5,SEMI:6,THIRD:7,FINAL:8,FINAL_RESET:8.5};
     var sorted=ko.slice().sort(function(a,b){return (SO[a.stage]||9)-(SO[b.stage]||9)||(a.round||0)-(b.round||0)||(a.ordering||0)-(b.ordering||0);});
     var html=renderRoundBlocks(sorted);
-    var finM=ko.filter(function(m){return m.stage==='FINAL';}).sort(function(a,b){return (a.ordering||0)-(b.ordering||0);})[0];
+    var finM=ko.filter(function(m){return m.stage==='FINAL_RESET'&&(m.status==='FINISHED'||m.status==='WALKOVER');})[0]||ko.filter(function(m){return m.stage==='FINAL';}).sort(function(a,b){return (a.ordering||0)-(b.ordering||0);})[0];
+    if(finM&&finM.stage==='FINAL'&&ko.some(function(m){return m.stage==='FINAL_RESET'&&m.status!=='CANCELED'&&m.status!=='FINISHED'&&m.homeEntry;}))finM=null;
     if(finM&&(finM.status==='FINISHED'||finM.status==='WALKOVER')&&finM.winnerEntryId){
       var champ=(finM.homeEntry&&finM.homeEntry.id===finM.winnerEntryId)?finM.homeEntry:((finM.awayEntry&&finM.awayEntry.id===finM.winnerEntryId)?finM.awayEntry:null);
       if(champ) html='<div class="bchamp">'+crest(champ)+'<div class="bchamp-t"><span class="bchamp-l">🏆 Campeão</span><span class="bchamp-n">'+esc(champ.name)+'</span></div></div>'+html;
@@ -1725,6 +1731,7 @@ app.get('/t/:slug', async (req, res) => {
     var html='';
     if(VIEW==='tabela'){
       html=renderStandings(DATA.stand)||ek('A classificação aparece quando os jogos começarem.');
+      if(DATA.stand.length&&DATA.crit&&DATA.crit.length)html+='<div style="font-size:12px;opacity:.75;margin:6px 2px 0">Critérios de desempate: '+DATA.crit.map(function(c,i){return (i+1)+'. '+esc(c);}).join(' · ')+'</div>';
     }else if(VIEW==='mata'){
       html=renderBracket(DATA.matches);
     }else if(VIEW==='stats'){
@@ -1773,7 +1780,7 @@ app.get('/t/:slug', async (req, res) => {
       J(S+'scorers'+cq), J(S+'assists'+cq), J(S+'cards'+cq)
     ]).then(function(res){
       if(CURID!==catId) return;
-      DATA={ matches:(res[0]&&res[0].matches)||[], stand:(res[1]&&res[1].standings)||[], scorers:(res[2]&&res[2].ranking)||[], assists:(res[3]&&res[3].ranking)||[], cards:(res[4]&&res[4].ranking)||[] };
+      DATA={ matches:(res[0]&&res[0].matches)||[], stand:(res[1]&&res[1].standings)||[], crit:(res[1]&&res[1].criteriaLabels)||[], scorers:(res[2]&&res[2].ranking)||[], assists:(res[3]&&res[3].ranking)||[], cards:(res[4]&&res[4].ranking)||[] };
       renderView();
       if(DATA.matches.some(function(m){return m.status==='LIVE';})){POLL=setTimeout(function(){load(catId,true);},20000);}
     }).catch(function(){if(!silent)elBody.innerHTML=ek('Erro ao carregar.');});
