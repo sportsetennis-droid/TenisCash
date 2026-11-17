@@ -1594,6 +1594,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       <span class="section-title">Gerenciar Vendedores e Gerentes</span>
       <button class="refresh-btn" onclick="loadSellers(); loadManagers()">↻</button>
     </div>
+    <button type="button" onclick="openSellerGoals()" style="width:100%;margin:0 0 12px;padding:12px;background:#FFF4EE;border:1px solid #F6C9B3;border-radius:12px;font-size:14px;font-weight:800;color:#C2410C;cursor:pointer">🎯 Metas do mês dos vendedores</button>
 
     <div style="background:rgba(0,0,0,0.02);border:1px solid rgba(0,0,0,0.06);border-radius:14px;padding:16px">
       <div style="font-size:12px;letter-spacing:2px;color:var(--text3);margin-bottom:10px">TORNAR VENDEDOR</div>
@@ -7687,6 +7688,36 @@ async function loadSellers() {
 
 // Contrato do vendedor (folha/contracheque) — grava em PayrollEmployeeProfile.
 const PAY_CONTRACTS = [['MENSALISTA','Mensalista (CLT)'],['HORISTA','Horista'],['ESCALA_12X36','Escala 12x36'],['APRENDIZ','Aprendiz'],['PARCIAL','Tempo parcial'],['SEM_REGISTRO','Sem registro']];
+// Metas do mês (dono 17/11/2026): base da "meta de hoje" que vai 1 hora antes do expediente.
+async function openSellerGoals(month) {
+  let ov = document.getElementById('seller-goals-ov');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'seller-goals-ov'; document.body.appendChild(ov); }
+  ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.innerHTML = '<div style="background:#fff;border-radius:14px;padding:20px;width:100%;max-width:520px;max-height:90vh;overflow:auto;color:#1d1d1f">Carregando…</div>';
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  const box = ov.firstChild;
+  const data = await api('/admin/schedule/goals' + (month ? '?month=' + encodeURIComponent(month) : ''));
+  if (data.error) { box.innerHTML = '<div style="color:#d70015">' + escapeHtml(data.error) + '</div>'; return; }
+  const money = (c) => c == null ? '' : (c / 100).toFixed(2).replace('.', ',');
+  const inp = 'width:130px;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;text-align:right';
+  box.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><div style="font-weight:800;font-size:16px">🎯 Metas do mês</div><input id="sg-month" type="month" value="' + escapeHtml(data.month) + '" style="height:36px;border:1px solid #ddd;border-radius:8px;padding:0 8px"></div>' +
+    '<div style="font-size:12px;color:#8e8e93;margin:6px 0 12px">A meta de hoje é calculada sozinha: o que falta da meta ÷ os dias que o vendedor ainda trabalha no mês (pela escala). Deixe vazio para não ter meta.</div>' +
+    data.sellers.map((s) => '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f2f2f2"><div style="min-width:0"><div style="font-weight:700;font-size:13px">' + escapeHtml(s.name) + '</div><div style="font-size:11px;color:#8e8e93">' + escapeHtml(s.store || 'sem loja') + (s.hasPhone ? '' : ' · <span style="color:#d70015">sem WhatsApp no cadastro</span>') + '</div></div><input class="sg-goal" data-id="' + s.id + '" inputmode="decimal" placeholder="R$" value="' + money(s.goalCents) + '" style="' + inp + '"></div>').join('') +
+    '<div id="sg-msg" style="margin-top:10px;font-size:13px"></div><div style="display:flex;gap:8px;margin-top:12px"><button type="button" id="sg-save" class="btn btn-primary" style="flex:1">Salvar metas</button><button type="button" class="btn" style="flex:1" onclick="document.getElementById(\'seller-goals-ov\').remove()">Fechar</button></div>';
+  document.getElementById('sg-month').onchange = (e) => openSellerGoals(e.target.value);
+  document.getElementById('sg-save').onclick = async () => {
+    const msg = document.getElementById('sg-msg'); const goals = [];
+    for (const el of document.querySelectorAll('.sg-goal')) {
+      const t = String(el.value || '').trim().replace(/\./g, '').replace(',', '.');
+      if (t !== '' && !(Number(t) >= 0)) { msg.innerHTML = '<span style="color:#d70015">Confira o valor de ' + escapeHtml(el.closest('div').parentElement.querySelector('div div').textContent) + '.</span>'; return; }
+      goals.push({ sellerId: el.dataset.id, goalCents: t === '' ? null : Math.round(Number(t) * 100) });
+    }
+    msg.textContent = 'Salvando…';
+    const r = await api('/admin/schedule/goals', 'PUT', { month: document.getElementById('sg-month').value, goals });
+    msg.innerHTML = r.error ? '<span style="color:#d70015">' + escapeHtml(r.error) + '</span>' : '<span style="color:#0a843d;font-weight:700">Metas salvas. Já valem na próxima mensagem antes do expediente.</span>';
+  };
+}
+
 async function openPayContract(userId, name) {
   let ov = document.getElementById('pay-contract-ov');
   if (!ov) { ov = document.createElement('div'); ov.id = 'pay-contract-ov'; document.body.appendChild(ov); }

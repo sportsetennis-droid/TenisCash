@@ -2310,6 +2310,21 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     console.error('[agenda] falha ao iniciar:', e.message);
   }
 
+  // Pulso do vendedor (dono 17/11/2026): mensagem 1 hora antes do expediente de cada vendedor.
+  // Roda a cada 5 min (Fortaleza); 1 envio por vendedor por dia. PULSE_WHATSAPP=off desliga.
+  try {
+    const { prisma: pulsePrisma } = require('./middleware');
+    const sellerPulse = require('./services/sellerPulse');
+    sellerPulse.ensurePulseSchema(pulsePrisma).then(() => {
+      console.log('[pulseSchema] ok');
+      require('node-cron').schedule('*/5 * * * *', () => sellerPulse.runPreShift(pulsePrisma)
+        .then((r) => { if (r && (r.sent || r.failed)) console.log('[pulso] pré-expediente', JSON.stringify(r)); })
+        .catch((e) => console.error('[pulso] pré-expediente:', e.message)), { timezone: 'America/Fortaleza' });
+    }).catch((e) => console.error('[pulseSchema] erro:', e.message));
+  } catch (e) {
+    console.error('[pulso] falha ao iniciar:', e.message);
+  }
+
   // Contracheque: SQL aditivo + sementes legais no boot; prévia semanal pelo WhatsApp
   // (dono, 16/11/2026) às segundas 09:07 de Fortaleza. PAYROLL_WHATSAPP=off desliga.
   try {

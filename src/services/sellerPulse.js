@@ -3,7 +3,7 @@
 // com um fechamento de ativação na linha do dono: "o dia vai passar de qualquer jeito; a energia é a
 // mesma; o que muda é o que você produz". Só números reais do banco; sem frase pronta de autoajuda.
 //
-// ENVIO PARA A EQUIPE SÓ DEPOIS QUE O DONO APROVAR O TEXTO. Por enquanto: prévia/teste pro dono.
+// Envio pra equipe autorizado pelo dono em 17/11/2026: 1 hora antes do expediente de cada vendedor (runPreShift).
 
 const TZ_OFFSET_MS = 3 * 3600 * 1000; // America/Fortaleza (UTC-3, sem horário de verão)
 const TIER_CENTS = Number(process.env.PULSE_TIER_CENTS || 2000000); // R$ 20 mil: comissão 1% → 2% (dono 16/11)
@@ -140,4 +140,171 @@ function formatPulse(p) {
   return L.join('\n');
 }
 
-module.exports = { buildPulse, formatPulse, CLOSINGS, localYmd };
+// =====================================================================
+// EXPEDIENTE (dono 17/11/2026): "Eles precisam receber uma mensagem 1 hora antes de iniciar seu
+// expediente: o início do expediente, a meta do dia, o resultado do dia anterior e a meta mensal,
+// engajamento, agradecimento e mensagem de autoestima. E a notificação dos pontos que bater."
+// =====================================================================
+let pulseSchema = null;
+function ensurePulseSchema(prisma) {
+  if (!pulseSchema) {
+    pulseSchema = (async () => {
+      await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "SellerMonthlyGoal" (
+        "sellerId" TEXT NOT NULL, "month" TEXT NOT NULL, "goalCents" INTEGER NOT NULL,
+        "updatedById" TEXT, "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT NOW(), PRIMARY KEY ("sellerId", "month"))`);
+      await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "SellerPulseSend" (
+        "day" TEXT NOT NULL, "sellerId" TEXT NOT NULL, "kind" TEXT NOT NULL,
+        "ok" BOOLEAN NOT NULL DEFAULT false, "error" TEXT, "sentAt" TIMESTAMP(3) NOT NULL DEFAULT NOW(), PRIMARY KEY ("day", "sellerId", "kind"))`);
+    })().catch((e) => { pulseSchema = null; throw e; });
+  }
+  return pulseSchema;
+}
+
+async function getGoals(prisma, month) {
+  await ensurePulseSchema(prisma);
+  return prisma.$queryRaw`SELECT "sellerId", "goalCents" FROM "SellerMonthlyGoal" WHERE "month" = ${month}`;
+}
+async function setGoal(prisma, sellerId, month, goalCents, updatedById) {
+  await ensurePulseSchema(prisma);
+  if (goalCents == null) { await prisma.$executeRaw`DELETE FROM "SellerMonthlyGoal" WHERE "sellerId" = ${sellerId} AND "month" = ${month}`; return; }
+  await prisma.$executeRaw`INSERT INTO "SellerMonthlyGoal" ("sellerId","month","goalCents","updatedById","updatedAt") VALUES (${sellerId}, ${month}, ${goalCents}, ${updatedById || null}, NOW())
+    ON CONFLICT ("sellerId","month") DO UPDATE SET "goalCents" = EXCLUDED."goalCents", "updatedById" = EXCLUDED."updatedById", "updatedAt" = NOW()`;
+}
+
+// Turnos do vendedor num intervalo (escala publicada do mês; senão a fixa), sem os dias de folga/férias.
+async function shiftsBetween(prisma, sellerId, fromYmd, toYmd) {
+  const days = [];
+  for (let d = fromYmd; d <= toYmd; d = addDays(d, 1)) days.push(d);
+  const from = new Date(fromYmd + 'T00:00:00Z'), to = new Date(toYmd + 'T23:59:59Z');
+  const months = [...new Set(days.map((d) => d.slice(0, 7)))];
+  const [published, monthly, recurring, offs] = await Promise.all([
+    prisma.sellerMonthlySchedule.findMany({ where: { month: { in: months }, status: 'PUBLISHED' }, select: { month: true } }),
+    prisma.sellerMonthlyShift.findMany({ where: { sellerId, workDate: { gte: from, lte: to }, schedule: { status: 'PUBLISHED' } }, include: { store: { select: { name: true } } } }),
+    prisma.sellerSchedule.findMany({ where: { sellerId, active: true }, include: { store: { select: { name: true } } } }),
+    prisma.agendaActivity.findMany({ where: { sellerId, type: { in: ['folga', 'ferias'] }, date: { lte: to }, OR: [{ endDate: { gte: from } }, { endDate: null, date: { gte: from } }] }, select: { date: true, endDate: true, type: true } }),
+  ]);
+  const pub = new Set(published.map((p) => p.month));
+  const ymdOf = (d) => new Date(d).toISOString().slice(0, 10);
+  return days.map((ymd) => {
+    const off = offs.find((o) => ymd >= ymdOf(o.date) && ymd <= ymdOf(o.endDate || o.date));
+    if (off) return { ymd, off: off.type };
+    const s = pub.has(ymd.slice(0, 7)) ? monthly.find((m) => ymdOf(m.workDate) === ymd) : recurring.find((r) => r.weekday === dow(ymd));
+    return s ? { ymd, store: s.store ? s.store.name : null, start: s.startTime, end: s.endTime } : { ymd };
+  });
+}
+
+const GRATITUDE = [
+  'Obrigado pelo seu trabalho. Cada cliente bem atendido leva o nome da Sports & Tennis pra casa.',
+  'Valeu por estar com a gente. A loja funciona porque você está lá.',
+  'Obrigado por vestir a camisa. O seu esforço é visto.',
+  'Gratidão por fazer parte do time. É o seu atendimento que faz o cliente voltar.',
+  'Obrigado pela dedicação. Resultado bom tem o seu nome.',
+];
+const ESTEEM = [
+  'Você sabe vender. Confia no seu atendimento.',
+  'Você é capaz de bater essa meta. Já mostrou isso antes.',
+  'Cliente compra de quem passa segurança, e isso você tem.',
+  'Conhecer o produto é o seu ponto forte. Usa ele hoje.',
+  'Você faz diferença no time. Dá pra sentir quando você está na loja.',
+];
+function pick(list, ymd, sellerId, salt = 0) {
+  let h = 0; const key = String(sellerId) + ymd + salt;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  return list[h % list.length];
+}
+
+// Mensagem de 1 hora antes do expediente.
+async function buildPreShift(prisma, sellerId, { nowMs = Date.now() } = {}) {
+  const p = await buildPulse(prisma, sellerId, { nowMs });
+  const monthEnd = addDays(p.today.slice(0, 7) + '-01', 40).slice(0, 7) + '-01';
+  const lastDay = addDays(monthEnd, -1);
+  const shifts = await shiftsBetween(prisma, sellerId, p.today, lastDay);
+  const today = shifts[0] || {};
+  const workDaysLeft = shifts.filter((s) => s.start).length;
+  const [goalRow] = (await getGoals(prisma, p.today.slice(0, 7))).filter((g) => g.sellerId === sellerId);
+  const goal = goalRow ? Number(goalRow.goalCents) / 100 : null;
+  const missing = goal != null ? Math.max(0, goal - p.month.total) : null;
+  const dayGoal = goal != null && missing > 0 ? missing / Math.max(1, workDaysLeft || p.month.daysLeft) : null;
+  return { ...p, shiftToday: today, workDaysLeft, goal, goalMissing: missing, dayGoal };
+}
+
+function formatPreShift(p, { nowMs = Date.now() } = {}) {
+  const hour = new Date(nowMs - TZ_OFFSET_MS).getUTCHours();
+  const hello = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
+  const L = [`${hello}, ${firstName(p.name)}! ${hour < 12 ? "☀️" : "👋"}`];
+  const s = p.shiftToday;
+  if (s && s.start) L.push(`⏰ *Seu expediente hoje:* ${s.store || 'loja'}, das ${s.start} às ${s.end}.`);
+  L.push('');
+  const yr = p.yesterdayResult;
+  if (yr.count) L.push(`📊 *Ontem (${WEEKDAYS[dow(p.yesterday)]}, ${br(p.yesterday)}):* ${yr.count} ${yr.count === 1 ? 'venda' : 'vendas'} · ${brl(yr.revenue)} · ticket ${brl(yr.ticket)}`);
+  else L.push(`📊 *Ontem (${WEEKDAYS[dow(p.yesterday)]}, ${br(p.yesterday)}):* ${yr.wasOff ? 'você não estava na loja.' : 'nenhuma venda registrada no seu nome.'}`);
+  if (p.goal != null) {
+    if (p.dayGoal) L.push(`🎯 *Meta de hoje:* ${brl0(p.dayGoal)}`);
+    const pct = p.goal > 0 ? Math.round((p.month.total / p.goal) * 100) : 0;
+    L.push(`📅 *Meta do mês:* ${brl0(p.goal)} · você está em ${brl0(p.month.total)} (${pct}%)${p.month.position ? ` · ${p.month.position}º lugar na rede` : ''}`);
+    if (p.goalMissing <= 0) L.push('🏆 Meta do mês batida! Agora é ir além.');
+  } else {
+    L.push(`📅 *No mês:* ${brl0(p.month.total)}${p.month.position ? ` · ${p.month.position}º lugar na rede` : ''}`);
+  }
+  if (p.month.tierMissing > 0) L.push(`Faltam ${brl0(p.month.tierMissing)} para ${brl0(p.month.tierValue)}, quando a comissão do mês inteiro sobe de 1% para 2%.`);
+  else L.push(`🔥 Você já passou de ${brl0(p.month.tierValue)}: comissão do mês inteiro em 2%.`);
+  L.push('');
+  L.push('🙏 ' + pick(GRATITUDE, p.today, p.sellerId, 1));
+  L.push('💪 ' + pick(ESTEEM, p.today, p.sellerId, 2));
+  L.push('');
+  L.push(pick(CLOSINGS, p.today, p.sellerId, 3));
+  return L.join('\n');
+}
+
+function enabled() { return String(process.env.PULSE_WHATSAPP || 'on').toLowerCase() !== 'off'; }
+function defaultSend() { const wa = require('../whatsapp'); return (phone, msg) => wa.sendCustomMessage(phone, msg); }
+function minutes(hhmm) { const [h, m] = String(hhmm || '').split(':').map(Number); return Number.isFinite(h) ? h * 60 + (m || 0) : null; }
+
+// Roda a cada 5 min: manda a mensagem pra quem começa o expediente daqui a até 60 min (1 vez por dia).
+async function runPreShift(prisma, { nowMs = Date.now(), send = defaultSend(), lead = 60 } = {}) {
+  if (!enabled()) return { skipped: 'PULSE_WHATSAPP=off' };
+  await ensurePulseSchema(prisma);
+  const today = localYmd(nowMs);
+  const local = new Date(nowMs - TZ_OFFSET_MS); const nowMin = local.getUTCHours() * 60 + local.getUTCMinutes();
+  const sellers = await prisma.user.findMany({ where: { role: 'seller', active: true }, select: { id: true, phone: true } });
+  let sent = 0, failed = 0;
+  const done = new Set((await prisma.$queryRaw`SELECT "sellerId" FROM "SellerPulseSend" WHERE "day" = ${today} AND "kind" = 'preshift'`).map((r) => r.sellerId));
+  for (const sl of sellers) {
+    if (done.has(sl.id)) continue;
+    if (!/^\+?\d{10,13}$/.test(String(sl.phone || '').replace(/\D/g, ''))) continue;
+    const [s] = await shiftsBetween(prisma, sl.id, today, today);
+    const start = s && s.start ? minutes(s.start) : null;
+    if (start == null || nowMin < start - lead || nowMin >= start) continue; // janela: de 1h antes até o início
+    const claimed = await prisma.$executeRaw`INSERT INTO "SellerPulseSend" ("day","sellerId","kind") VALUES (${today}, ${sl.id}, 'preshift') ON CONFLICT DO NOTHING`;
+    if (!claimed) continue;
+    try {
+      const msg = formatPreShift(await buildPreShift(prisma, sl.id, { nowMs }), { nowMs });
+      const r = await send(sl.phone, msg).catch((e) => ({ ok: false, error: e.message }));
+      await prisma.$executeRaw`UPDATE "SellerPulseSend" SET "ok" = ${!!(r && r.ok)}, "error" = ${r && r.ok ? null : String((r && r.error) || 'falhou')} WHERE "day" = ${today} AND "sellerId" = ${sl.id} AND "kind" = 'preshift'`;
+      if (r && r.ok) sent++; else failed++;
+    } catch (e) { failed++; console.error('[pulso] pré-expediente', sl.id, e.message); }
+  }
+  return { sent, failed, day: today };
+}
+
+// Aviso pessoal a cada batida de ponto.
+const CLOCK_LABEL = { entry: ['✅', 'Entrada'], break_start: ['☕', 'Saída para o intervalo'], break_end: ['✅', 'Volta do intervalo'], exit: ['🏁', 'Saída'] };
+async function notifyClock(prisma, { userId, storeName, type, at }, { send = defaultSend() } = {}) {
+  if (!enabled()) return { skipped: true };
+  const u = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, phone: true, role: true } });
+  if (!u || !u.phone || u.role !== 'seller') return { skipped: true };
+  const [emoji, label] = CLOCK_LABEL[type] || ['🕒', 'Ponto'];
+  const hhmm = new Date(new Date(at).getTime() - TZ_OFFSET_MS).toISOString().slice(11, 16);
+  let msg = `${emoji} *${label}* registrada às ${hhmm}${storeName ? ` — ${storeName}` : ''}.`;
+  if (type === 'entry') msg += ' Bom trabalho! 🧡';
+  if (type === 'exit') {
+    const start = dayBounds(localYmd(new Date(at).getTime())).start;
+    const agg = await prisma.sale.aggregate({ where: { sellerId: userId, createdAt: { gte: start }, status: { not: 'canceled' } }, _sum: { totalAmount: true }, _count: { _all: true } });
+    const n = agg._count._all;
+    msg += n ? `\nHoje: ${n} ${n === 1 ? 'venda' : 'vendas'} · ${brl(agg._sum.totalAmount)}.` : '';
+    msg += `\nObrigado pelo dia, ${firstName(u.name)}. Descansa! 🧡`;
+  }
+  return send(u.phone, msg).catch((e) => ({ ok: false, error: e.message }));
+}
+
+module.exports = { buildPulse, formatPulse, CLOSINGS, localYmd, ensurePulseSchema, getGoals, setGoal, shiftsBetween, buildPreShift, formatPreShift, runPreShift, notifyClock };

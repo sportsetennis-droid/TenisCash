@@ -389,6 +389,10 @@ router.post('/clockin-as', sellerOnly, async (req, res) => {
       type,
       at: created.timestamp,
     }).catch(() => {});
+    // Aviso pessoal no WhatsApp do vendedor (dono 17/11/2026)
+    prisma.store.findUnique({ where: { id: finalStoreId }, select: { name: true } }).catch(() => null)
+      .then((st) => require('../services/sellerPulse').notifyClock(prisma, { userId: vendor.id, storeName: st && st.name, type, at: created.timestamp }))
+      .catch(() => {});
 
     res.json({
       ok: true,
@@ -613,6 +617,8 @@ router.post('/clockin', authMiddleware, sellerOnly, async (req, res) => {
       type,
       at: clockIn.timestamp,
     }).catch(() => {});
+    // Aviso pessoal no WhatsApp do vendedor (dono 17/11/2026)
+    require('../services/sellerPulse').notifyClock(prisma, { userId: u.id, storeName: store?.name, type, at: clockIn.timestamp }).catch(() => {});
 
     res.json({ success: true, clockIn });
   } catch (err) {

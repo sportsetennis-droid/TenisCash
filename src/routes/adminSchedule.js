@@ -478,6 +478,36 @@ router.get('/week', async (req, res) => {
 // =====================================================================
 const agendaDaily = require('../services/agendaDaily');
 
+// METAS DO MÊS por vendedor (base da meta do dia e da mensagem de 1h antes do expediente).
+router.get('/goals', async (req, res) => {
+  try {
+    const sellerPulse = require('../services/sellerPulse');
+    const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(req.query.month || '')) ? String(req.query.month) : agendaDaily.todayYmd().slice(0, 7);
+    const [sellers, goals] = await Promise.all([
+      prisma.user.findMany({ where: { role: 'seller', active: true }, select: { id: true, name: true, phone: true, store: { select: { code: true, name: true } } }, orderBy: { name: 'asc' } }),
+      sellerPulse.getGoals(prisma, month),
+    ]);
+    const map = Object.fromEntries(goals.map((g) => [g.sellerId, Number(g.goalCents)]));
+    res.json({ month, sellers: sellers.map((s) => ({ id: s.id, name: s.name, store: s.store ? s.store.code + ' · ' + s.store.name : '', hasPhone: !!(s.phone && /\d{10,}/.test(String(s.phone).replace(/\D/g, ''))), goalCents: map[s.id] ?? null })) });
+  } catch (err) { console.error('[schedule/goals]', err); res.status(500).json({ error: err.message }); }
+});
+
+router.put('/goals', async (req, res) => {
+  try {
+    const sellerPulse = require('../services/sellerPulse');
+    const month = String((req.body || {}).month || '');
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return res.status(400).json({ error: 'Mês inválido.' });
+    const rows = Array.isArray(req.body.goals) ? req.body.goals : [];
+    let saved = 0;
+    for (const g of rows.slice(0, 200)) {
+      const cents = g.goalCents == null || g.goalCents === '' ? null : Math.round(Number(g.goalCents));
+      if (cents != null && !(cents >= 0 && cents <= 1e10)) return res.status(400).json({ error: 'Valor de meta inválido.' });
+      await sellerPulse.setGoal(prisma, String(g.sellerId), month, cents, req.userId); saved++;
+    }
+    res.json({ ok: true, saved, month });
+  } catch (err) { console.error('[schedule/goals:put]', err); res.status(500).json({ error: err.message }); }
+});
+
 router.get('/requests', async (req, res) => {
   try {
     const status = ['PENDENTE', 'APROVADO', 'RECUSADO', 'CANCELADO'].includes(req.query.status) ? req.query.status : 'PENDENTE';
