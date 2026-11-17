@@ -716,7 +716,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   <div class="actions" style="margin-top:16px" id="seller-actions">
     <div class="action-btn" onclick="showScreen('seller-agent')"><span>IA</span><span>Meu Assistente</span></div>
     <div class="action-btn" onclick="showScreen('seller-commission-cycles')"><span>%</span><span>Comissões</span></div>
-    <div class="action-btn" onclick="showScreen('seller-schedule')"><span>📅</span><span>Minha escala</span></div>
+    <div class="action-btn" onclick="showScreen('seller-schedule')"><span>📅</span><span>Escala e folgas</span></div>
     <div class="action-btn" onclick="showScreen('seller-production')"><span>✓</span><span>Produção diária</span></div>
     <div class="action-btn" onclick="showScreen('seller-clock')"><span>⏱</span><span>Ponto</span></div>
     <div class="action-btn" onclick="showScreen('seller-payment')"><span>💵</span><span>Meu pagamento</span></div>
@@ -741,7 +741,20 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 
 <!-- SELLER MONTHLY SCHEDULE -->
 <div id="seller-schedule" class="screen">
-  <div class="back-header"><span class="back-arrow" onclick="showScreen('seller-home')">←</span><p style="font-size:18px;font-weight:700">Minha escala</p></div>
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('seller-home')">←</span><p style="font-size:18px;font-weight:700">Escala e folgas</p></div>
+  <div style="margin-top:14px;padding:14px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);border-radius:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><strong style="font-size:14px">Minha agenda</strong><button type="button" class="btn-secondary" onclick="toggleSellerAgendaForm()" style="width:auto;padding:0 14px;min-height:44px">+ MARCAR</button></div>
+    <div id="sa-form" style="display:none;margin-top:12px">
+      <label class="input-label" style="margin-top:0">O QUE É</label>
+      <select id="sa-type" class="input-field"></select>
+      <div style="display:flex;gap:10px"><div style="flex:1"><label class="input-label">DIA</label><input id="sa-date" class="input-field" type="date"></div><div style="flex:1"><label class="input-label">ATÉ (opcional)</label><input id="sa-end" class="input-field" type="date"></div></div>
+      <div style="display:flex;gap:10px"><div style="flex:1"><label class="input-label">DAS (opcional)</label><input id="sa-start-time" class="input-field" type="time"></div><div style="flex:1"><label class="input-label">ATÉ AS</label><input id="sa-end-time" class="input-field" type="time"></div></div>
+      <label class="input-label">OBSERVAÇÃO</label><input id="sa-note" class="input-field" maxlength="300" placeholder="opcional">
+      <div id="sa-msg" style="font-size:12px;margin-top:8px"></div>
+      <button type="button" class="btn-primary" onclick="sendSellerAgenda()" style="margin-top:10px">ENVIAR PARA APROVAÇÃO</button>
+    </div>
+    <div id="sa-list" style="display:grid;gap:8px;margin-top:12px"><div class="loading">Carregando...</div></div>
+  </div>
   <div style="display:flex;gap:10px;align-items:flex-end;margin-top:15px">
     <label style="font-size:11px;color:rgba(255,255,255,.65);flex:1">MÊS<br><input id="seller-schedule-month" class="input-field" type="month" onchange="loadSellerSchedule()" style="margin-top:6px"></label>
     <button type="button" class="btn-secondary" onclick="loadSellerSchedule()" style="width:auto;padding:0 14px;min-height:48px">ATUALIZAR</button>
@@ -5449,6 +5462,37 @@ function initSellerSchedule(){
   if(!isSeller()){ showScreen('seller-home'); return; }
   const month=document.getElementById('seller-schedule-month'); if(month&&!month.value)month.value=sellerScheduleCurrentMonth();
   loadSellerSchedule();
+  loadSellerAgenda();
+}
+const SA_STATUS={PENDENTE:['Aguardando aprovação','#FFD180','rgba(255,193,7,.13)'],RECUSADO:['Recusado','#FF8A80','rgba(255,82,82,.13)'],CANCELADO:['Cancelado','rgba(255,255,255,.55)','rgba(255,255,255,.06)']};
+const SA_ACT={folga:'🌴 Folga',ferias:'🏖️ Férias',treinamento:'🎓 Treinamento',reuniao:'👥 Reunião',feriado:'🎉 Feriado',meta:'🎯 Meta',evento:'📣 Evento',outro:'📌'};
+function saDate(v){ const y=String(v||'').slice(0,10); return y?y.split('-').reverse().slice(0,2).join('/'):''; }
+function saPeriod(a,b){ const x=saDate(a), y=b?saDate(b):''; return y&&y!==x?x+' a '+y:x; }
+function toggleSellerAgendaForm(){ const f=document.getElementById('sa-form'); if(!f)return; f.style.display=f.style.display==='none'?'block':'none'; const d=document.getElementById('sa-date'); if(d&&!d.value)d.value=new Date(Date.now()-3*3600000).toISOString().slice(0,10); }
+async function loadSellerAgenda(){
+  const box=document.getElementById('sa-list'); if(!box)return;
+  try{
+    const r=await fetch(API+'/seller/schedule/agenda',{headers:token?{Authorization:'Bearer '+token}:{},cache:'no-store'}); const j=await r.json(); if(!r.ok)throw new Error(j.error||'Não foi possível carregar.');
+    const sel=document.getElementById('sa-type'); if(sel&&!sel.options.length) sel.innerHTML=(j.types||[]).map(t=>'<option value="'+srcEscape(t.value)+'">'+srcEscape(t.emoji+' '+t.label)+'</option>').join('');
+    const items=[];
+    (j.activities||[]).forEach(a=>items.push({ymd:String(a.date).slice(0,10),html:'<div style="padding:11px;background:rgba(76,175,80,.13);border:1px solid rgba(139,255,139,.28);border-radius:11px"><div style="display:flex;justify-content:space-between;gap:8px"><strong style="font-size:13px">'+srcEscape(a.type==='outro'?'📌 '+a.title:(SA_ACT[a.type]||a.type))+'</strong><span style="font-size:11px;color:#8BFF8B">✓ Confirmado</span></div><p style="font-size:12px;margin-top:4px">'+srcEscape(saPeriod(a.date,a.endDate))+(a.startTime?' · '+srcEscape(a.startTime)+(a.endTime?'–'+srcEscape(a.endTime):''):'')+'</p></div>'}));
+    (j.requests||[]).forEach(q=>{ const st=SA_STATUS[q.status]||[q.status,'#fff','rgba(255,255,255,.06)']; items.push({ymd:q.date,html:'<div style="padding:11px;background:'+st[2]+';border:1px solid rgba(255,255,255,.16);border-radius:11px"><div style="display:flex;justify-content:space-between;gap:8px"><strong style="font-size:13px">'+srcEscape(q.title)+'</strong><span style="font-size:11px;color:'+st[1]+'">'+st[0]+'</span></div><p style="font-size:12px;margin-top:4px">'+srcEscape(saPeriod(q.date,q.endDate))+(q.startTime?' · '+srcEscape(q.startTime)+(q.endTime?'–'+srcEscape(q.endTime):''):'')+'</p>'+(q.decisionNote?'<p style="font-size:11px;color:rgba(255,255,255,.7);margin-top:4px">'+srcEscape(q.decisionNote)+'</p>':'')+(q.status==='PENDENTE'?'<button type="button" onclick="cancelSellerAgenda(\''+srcEscape(q.id)+'\')" style="margin-top:8px;min-height:40px;background:transparent;border:1px solid rgba(255,255,255,.35);color:#fff;border-radius:9px;padding:0 12px;font-size:12px">Cancelar pedido</button>':'')+'</div>'}); });
+    items.sort((a,b)=>a.ymd.localeCompare(b.ymd));
+    box.innerHTML=items.length?items.map(i=>i.html).join(''):'<p style="font-size:12px;color:rgba(255,255,255,.6)">Nenhuma folga ou compromisso marcado. Toque em + MARCAR para pedir.</p>';
+  }catch(e){ box.innerHTML='<div class="error-msg">'+srcEscape(e.message)+'</div>'; }
+}
+async function sendSellerAgenda(){
+  const msg=document.getElementById('sa-msg'); const v=id=>(document.getElementById(id)||{}).value||'';
+  const body={type:v('sa-type'),date:v('sa-date'),endDate:v('sa-end'),startTime:v('sa-start-time'),endTime:v('sa-end-time'),note:v('sa-note')};
+  if(!body.date){ msg.innerHTML='<span style="color:#FF8A80">Escolha o dia.</span>'; return; }
+  msg.textContent='Enviando...';
+  try{ const r=await fetch(API+'/seller/schedule/agenda',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify(body)}); const j=await r.json(); if(!r.ok)throw new Error(j.error||'Não foi possível enviar.');
+    msg.innerHTML='<span style="color:#8BFF8B">Enviado. Vale depois que a empresa aprovar.</span>'; ['sa-end','sa-start-time','sa-end-time','sa-note'].forEach(id=>{const el=document.getElementById(id); if(el)el.value='';}); loadSellerAgenda();
+  }catch(e){ msg.innerHTML='<span style="color:#FF8A80">'+srcEscape(e.message)+'</span>'; }
+}
+async function cancelSellerAgenda(id){
+  if(!confirm('Cancelar este pedido?'))return;
+  try{ const r=await fetch(API+'/seller/schedule/agenda/'+encodeURIComponent(id),{method:'DELETE',headers:token?{Authorization:'Bearer '+token}:{}}); const j=await r.json(); if(!r.ok)throw new Error(j.error||'Não foi possível cancelar.'); loadSellerAgenda(); }catch(e){ alert(e.message); }
 }
 async function loadSellerSchedule(){
   const list=document.getElementById('seller-schedule-list'), status=document.getElementById('seller-schedule-status'); if(!list||!status)return;
