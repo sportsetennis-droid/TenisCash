@@ -16,6 +16,7 @@
 
 const crypto = require('crypto');
 const ical = require('ical-generator');
+const { paraParede } = require('./icsTz');
 
 const TZ = 'America/Fortaleza';
 const TZ_OFFSET_HOURS = 3; // UTC-3 fixo
@@ -197,8 +198,8 @@ function buildIcs(seller, collected, { now = new Date(), host = 'teniscash.com.b
   for (const e of collected.events) {
     cal.createEvent({
       id: `${e.id}@${host}`,
-      start: e.start,
-      end: e.end,
+      start: e.allDay ? e.start : paraParede(e.start),
+      end: e.allDay ? e.end : paraParede(e.end),
       allDay: e.allDay,
       timezone: e.allDay ? undefined : TZ,
       stamp: now,

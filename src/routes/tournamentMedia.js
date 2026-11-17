@@ -367,6 +367,7 @@ pageRouter.get('/:slug/calendario.ics', async (req, res) => {
     const t = await findTournament(req.params.slug);
     if (!t || t.visibility === 'private') return res.status(404).type('text').send('torneio não encontrado');
     const ical = require('ical-generator').default;
+    const { paraParede } = require('../services/icsTz');
     const cats = await prisma.tournamentCategory.findMany({ where: { tournamentId: t.id }, select: { id: true, name: true } });
     const catQ = req.query.categoria ? String(req.query.categoria) : '';
     const cat = catQ ? cats.find((c) => c.id === catQ || norm(c.name) === norm(catQ)) : null;
@@ -404,8 +405,8 @@ pageRouter.get('/:slug/calendario.ics', async (req, res) => {
       const done = (m.status === 'FINISHED' || m.status === 'WALKOVER') && m.homeScore != null;
       cal.createEvent({
         id: `${m.id}@clubsportsetennis`,
-        start: m.scheduledAt,
-        end: new Date(m.scheduledAt.getTime() + dur),
+        start: paraParede(m.scheduledAt),
+        end: paraParede(new Date(m.scheduledAt.getTime() + dur)),
         timezone: TZ,
         stamp: m.updatedAt,
         summary: done ? `${h} ${m.homeScore} × ${m.awayScore} ${a}` : `${h} × ${a}`,
