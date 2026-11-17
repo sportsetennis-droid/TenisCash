@@ -219,7 +219,11 @@
     draft.status ||= 'open';
     try {
       const saved = read(draftStorageKey(draft), null), base = draftBases.get(draft.sessionId) || new Map();
-      if (saved?.sessionId && saved.sessionId !== draft.sessionId && saved.scans?.length) {
+      if (saved?.sessionId && saved.sessionId !== draft.sessionId && saved.scans?.length && recoveryConflicts.has(saved.sessionId)) {
+        // Lote travado (cópias divergentes): a cópia desta chave vai inteira para uma chave própria
+        // antes do lote novo ocupar o lugar. Se não couber, o lote novo não grava (nada se perde).
+        setDraftSnapshot(archivePrefix + saved.sessionId + ':preservado:' + Date.now(), JSON.stringify(saved), [saved.sessionId, draft.sessionId]);
+      } else if (saved?.sessionId && saved.sessionId !== draft.sessionId && saved.scans?.length) {
         const checkpoint = read(archivePrefix + saved.sessionId, null);
         if (!checkpoint || Number(checkpoint.revision || 0) < Number(saved.revision || 0)) {
           const savedRevision = Number(saved.revision) || 1;
@@ -541,8 +545,22 @@
       }
     }
   }
+  // Dono 17/11/2026 ("isso não pode acontecer"): um lote com cópias divergentes ou que o servidor
+  // não confirmou travava a câmera para sempre — nem "começar outro lote" funcionava, porque precisava
+  // regravar o lote travado. Agora o lote travado fica guardado intacto para conferência e a bipagem
+  // continua num lote novo, sem perguntar.
+  function escapeBrokenLot(reason) {
+    const broken = currentDraft;
+    if (!broken || !actor || isInventory()) return false;
+    const key = contextKey(), next = newDraft(key);
+    currentDraft = next; drafts.set(key, next); storageFailed = false; storageReason = '';
+    invalidate(); renderReadings(); refresh();
+    message('O lote anterior ficou guardado para conferência (' + reason + '), com todas as leituras. Pode continuar bipando: este é um lote novo. Se a última peça não aparece na lista, bipe ela de novo.', true);
+    return true;
+  }
   function startNewLot(status = 'archived') {
     const previous = currentDraft, key = contextKey(), oldStatus = previous?.status;
+    if (previous?.scans.length && recoveryConflicts.has(previous.sessionId)) return escapeBrokenLot('cópias divergentes neste aparelho');
     if (previous?.scans.length) {
       previous.status = status;
       if (!persist(previous)) { previous.status = oldStatus; return false; }
@@ -820,7 +838,11 @@
     return job.promise;
   }
   async function scan(barcode, ocrText = '', options = {}) {
-    if (storageFailed || (currentDraft && recoveryConflicts.has(currentDraft.sessionId))) { message('O lote ainda está sendo recuperado. Aguarde a conferência antes de continuar bipando.', true); return null; }
+    // Nunca fica preso: lote travado vira lote novo; falha anterior de gravação é tentada de novo
+    // (a faxina pode ter liberado espaço) em vez de recusar todo bipe até recarregar a página.
+    if (currentDraft && recoveryConflicts.has(currentDraft.sessionId)) escapeBrokenLot('cópias divergentes neste aparelho');
+    if (storageFailed) { if (currentDraft?.scans?.length) persist(currentDraft); else storageFailed = false; }
+    if (storageFailed) { message('Não foi possível guardar o lote neste aparelho (' + (storageReason || 'motivo desconhecido') + ').', true); return null; }
     if (isInventory() || !validContext() || busy || read(pendingKey, null)) { message('Escolha a ação, entre na sua conta e confira as lojas antes de bipar.', true); return null; }
     barcode = String(barcode || '').trim(); if (!barcodePolicy.isScanCode(barcode)) { message('Leia o código de barras numérico da etiqueta. A referência do modelo não substitui o código.', true); return null; }
     const draft = currentDraft;
@@ -1094,9 +1116,13 @@
     }).catch(() => {});
   }
   function pauseCameraStorage() {
+    // Lote travado já foi trocado por um lote novo: só libera a câmera para reler a peça.
+    if (!storageFailed && currentDraft && !recoveryConflicts.has(currentDraft.sessionId)) {
+      cameraRead = null; $('etiq-confirm').style.display = 'none'; $('action-camera-size')?.remove(); $('action-camera-pending')?.remove(); scanner?.reset(); updateCameraSummary(); return;
+    }
     scanner?.stop(); cameraRead = { working: true, storageError: true };
     $('etiq-confirm').style.display = 'flex'; $('etiq-confirm-status').textContent = 'Não foi possível guardar o lote';
-    $('etiq-confirm-det').textContent = 'A leitura não foi salva. A câmera foi pausada para não perder peças. Motivo: ' + (storageReason || 'desconhecido') + '. Feche a câmera e tente de novo.';
+    $('etiq-confirm-det').textContent = 'A leitura não foi salva. A câmera foi pausada para não perder peças. Motivo: ' + (storageReason || 'desconhecido') + '. Toque em FECHAR e abra a câmera de novo.';
     $('etiq-confirm-btn').disabled = true; $('etiq-confirm-btn').textContent = 'LEITURA PAUSADA';
     $('action-camera-size')?.remove(); $('action-camera-pending')?.remove();
   }
@@ -1184,6 +1210,8 @@
     if (item.product && requiresSizeInput(item) && item.ocrSize) $('etiq-confirm-det').textContent += ' · OCR sugeriu BR ' + item.ocrSize + '; confira na caixa.';
   }
   async function openCamera(retryItem = null) {
+    // Lote travado (cópias divergentes / servidor não confirmou): fica guardado e a câmera abre num lote novo.
+    if (currentDraft && recoveryConflicts.has(currentDraft.sessionId) && !retryItem) escapeBrokenLot('cópias divergentes neste aparelho');
     if (currentDraft && recoveryConflicts.has(currentDraft.sessionId)) { message('O lote está sendo conferido no histórico sincronizado. Aguarde antes de continuar bipando.', true); return; }
     // Retry persistence on the next scan attempt. A transient full-storage
     // condition must not leave the scanner permanently disabled after the
