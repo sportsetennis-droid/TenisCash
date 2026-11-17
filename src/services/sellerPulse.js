@@ -23,13 +23,24 @@ function addDays(ymd, n) { return new Date(Date.parse(ymd + 'T12:00:00Z') + n * 
 function dow(ymd) { return new Date(ymd + 'T12:00:00Z').getUTCDay(); }
 function br(ymd) { return ymd.split('-').reverse().slice(0, 2).join('/'); }
 
-// Fechamentos (rodam pelo dia do ano — não repete o mesmo dois dias seguidos).
+// Frases em rodízio (dono 17/11/2026: "tem que alternar as frases"). Ver pick(): o mesmo vendedor
+// não repete frase em dias seguidos e, no mesmo dia, a frase varia entre os vendedores.
 const CLOSINGS = [
   'O dia de hoje vai passar de qualquer jeito. A energia que você vai gastar é a mesma, vendendo ou não. O que muda é o que fica no fim do dia. Faz valer. 🧡',
   'Hoje tem as mesmas horas para todo mundo. Quem decide se elas viram resultado é você. Bora pra cima. 🧡',
   'Você vai estar na loja de qualquer jeito. Então que cada cliente que entrar saia atendido de verdade. 🧡',
   'Dia parado e dia produtivo cansam igual. Só um deles paga. Escolhe o que paga. 🧡',
   'O relógio não para pra ninguém. Cada atendimento de hoje é uma chance que não volta amanhã. 🧡',
+  'Ninguém lembra do dia que passou devagar. Faz o de hoje valer a pena. 🧡',
+  'Cada cliente que entra é uma venda esperando o seu atendimento. Vai buscar. 🧡',
+  'O resultado do mês é feito de dias como o de hoje. Começa forte. 🧡',
+  'Quem aborda primeiro, vende primeiro. Hoje é dia de chegar junto. 🧡',
+  'Não espera o cliente pedir ajuda. Oferece, mostra, faz ele experimentar. 🧡',
+  'Hoje não tem dia fraco: tem cliente pra encantar. Vai com tudo. 🧡',
+  'Venda boa começa com um bom-dia sincero. O resto você sabe fazer. 🧡',
+  'A meta não se bate no fim do mês. Ela se bate hoje, atendimento por atendimento. 🧡',
+  'Mostra o segundo produto. Muita venda grande começou com "deixa eu te mostrar mais um". 🧡',
+  'O dia é seu. Faz ele contar no placar. 🧡',
 ];
 
 // Calcula o pulso de um vendedor. now = instante de referência (o envio cedo fala de ONTEM).
@@ -201,6 +212,16 @@ const GRATITUDE = [
   'Obrigado por vestir a camisa. O seu esforço é visto.',
   'Gratidão por fazer parte do time. É o seu atendimento que faz o cliente voltar.',
   'Obrigado pela dedicação. Resultado bom tem o seu nome.',
+  'Obrigado por cuidar da loja como se fosse sua.',
+  'Valeu pela entrega de sempre. Faz diferença pra todo o time.',
+  'Obrigado por representar bem a Sports & Tennis em cada atendimento.',
+  'A gente reconhece o seu trabalho. Obrigado por estar com a gente.',
+  'Obrigado pela sua energia. Ela contagia a equipe e o cliente.',
+  'Valeu por cada cliente que você atendeu com carinho. Isso volta.',
+  'Obrigado pela confiança e pelo compromisso com o time.',
+  'Seu trabalho é parte do crescimento da empresa. Obrigado!',
+  'Obrigado por ser exemplo de atendimento na loja.',
+  'Valeu por estar junto nessa caminhada. A gente cresce com você.',
 ];
 const ESTEEM = [
   'Você sabe vender. Confia no seu atendimento.',
@@ -208,11 +229,26 @@ const ESTEEM = [
   'Cliente compra de quem passa segurança, e isso você tem.',
   'Conhecer o produto é o seu ponto forte. Usa ele hoje.',
   'Você faz diferença no time. Dá pra sentir quando você está na loja.',
+  'Seu sorriso abre venda. Usa sem moderação.',
+  'Você evoluiu muito. Olha pra trás e vê o quanto já cresceu.',
+  'Você tem o que precisa pra fazer um grande dia.',
+  'Você é bom no que faz. Hoje é mais um dia de provar isso.',
+  'O cliente sente quando o vendedor acredita no produto. E você acredita.',
+  'Você não está aqui por acaso. Tem talento pra isso.',
+  'Cada "não" de ontem te deixou mais preparado pro "sim" de hoje.',
+  'Você é referência pra quem está começando. Isso tem valor.',
+  'Confia em você. Seu jeito de atender é único.',
+  'Você consegue. Uma venda de cada vez.',
 ];
-function pick(list, ymd, sellerId, salt = 0) {
-  let h = 0; const key = String(sellerId) + ymd + salt;
+// Rodízio: posição = (dia + deslocamento do vendedor) — muda todo dia e espalha a equipe.
+function dayNumber(ymd) { return Math.floor(Date.parse(String(ymd).slice(0, 10) + 'T12:00:00Z') / 86400000); }
+function sellerOffset(sellerId, salt) {
+  let h = 0; const key = String(sellerId) + ':' + salt;
   for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
-  return list[h % list.length];
+  return h;
+}
+function pick(list, ymd, sellerId, salt = 0) {
+  return list[(dayNumber(ymd) + sellerOffset(sellerId, salt)) % list.length];
 }
 
 // Mensagem de 1 hora antes do expediente.
@@ -278,8 +314,16 @@ async function runPreShift(prisma, { nowMs = Date.now(), send = defaultSend(), l
   const sellers = await prisma.user.findMany({ where: { role: 'seller', active: true }, select: { id: true, phone: true } });
   let sent = 0, failed = 0;
   const done = new Set((await prisma.$queryRaw`SELECT "sellerId" FROM "SellerPulseSend" WHERE "day" = ${today} AND "kind" = 'preshift'`).map((r) => r.sellerId));
+  // Trava (dono 17/11/2026: "não mandar para o vendedor que não está mais na empresa"): só recebe
+  // quem bateu ponto ou vendeu nos últimos 21 dias. Cadastro ativo sozinho não basta.
+  const since = new Date(nowMs - 21 * 86400000);
+  const [recentClock, recentSale] = await Promise.all([
+    prisma.clockIn.findMany({ where: { timestamp: { gte: since } }, distinct: ['userId'], select: { userId: true } }),
+    prisma.sale.findMany({ where: { createdAt: { gte: since } }, distinct: ['sellerId'], select: { sellerId: true } }),
+  ]);
+  const working = new Set([...recentClock.map((r) => r.userId), ...recentSale.map((r) => r.sellerId)]);
   for (const sl of sellers) {
-    if (done.has(sl.id)) continue;
+    if (done.has(sl.id) || !working.has(sl.id)) continue;
     if (!/^\+?\d{10,13}$/.test(String(sl.phone || '').replace(/\D/g, ''))) continue;
     const [s] = await shiftsBetween(prisma, sl.id, today, today);
     const start = s && s.start ? minutes(s.start) : null;
@@ -297,6 +341,9 @@ async function runPreShift(prisma, { nowMs = Date.now(), send = defaultSend(), l
 }
 
 // Aviso pessoal a cada batida de ponto.
+const ENTRY_LINES = ['Bom trabalho! 🧡', 'Bora fazer um grande dia! 🔥', 'Que hoje seja de muita venda! 🧡', 'Começou! Primeiro cliente é seu. 💪', 'Boa! Agora é atendimento de primeira. 🧡', 'Dia valendo! Vai com tudo. 🔥', 'Bem-vindo(a) de volta à loja! 🧡'];
+const BACK_LINES = ['Bora pra segunda parte do dia! 💪', 'Volta com tudo! 🔥', 'Recarregado(a)? Agora é vender. 🧡', 'Segundo tempo começando! ⚽'];
+const EXIT_LINES = ['Obrigado pelo dia, {nome}. Descansa! 🧡', 'Valeu pela entrega hoje, {nome}. Bom descanso! 🧡', 'Dia encerrado, {nome}. Obrigado por tudo hoje! 🙏', 'Missão cumprida, {nome}. Até a próxima! 🧡', 'Obrigado, {nome}! Recarrega a energia pra amanhã. 💪'];
 const CLOCK_LABEL = { entry: ['✅', 'Entrada'], break_start: ['☕', 'Saída para o intervalo'], break_end: ['✅', 'Volta do intervalo'], exit: ['🏁', 'Saída'] };
 async function notifyClock(prisma, { userId, storeName, type, at }, { send = defaultSend() } = {}) {
   if (!enabled()) return { skipped: true };
@@ -305,7 +352,9 @@ async function notifyClock(prisma, { userId, storeName, type, at }, { send = def
   const [emoji, label] = CLOCK_LABEL[type] || ['🕒', 'Ponto'];
   const hhmm = new Date(new Date(at).getTime() - TZ_OFFSET_MS).toISOString().slice(11, 16);
   let msg = `${emoji} *${label}* registrada às ${hhmm}${storeName ? ` — ${storeName}` : ''}.`;
-  if (type === 'entry') msg += ' Bom trabalho! 🧡';
+  const ymdAt = localYmd(new Date(at).getTime());
+  if (type === 'entry') msg += ' ' + pick(ENTRY_LINES, ymdAt, userId, 4);
+  if (type === 'break_end') msg += ' ' + pick(BACK_LINES, ymdAt, userId, 5);
   if (type === 'exit') {
     const start = dayBounds(localYmd(new Date(at).getTime())).start;
     const agg = await prisma.sale.aggregate({ where: { sellerId: userId, createdAt: { gte: start }, status: { not: 'canceled' } }, _sum: { totalAmount: true }, _count: { _all: true } });
@@ -313,7 +362,7 @@ async function notifyClock(prisma, { userId, storeName, type, at }, { send = def
     const total = Number(agg._sum.totalAmount || 0);
     msg += n ? `\nHoje: ${n} ${n === 1 ? 'venda' : 'vendas'} · ${brl(total)}.` : '\nHoje: nenhuma venda registrada no seu nome.';
     msg += total >= DAILY_GOAL ? ' ✅ Meta do dia batida!' : ` Faltaram ${brl0(DAILY_GOAL - total)} para a meta do dia (${brl0(DAILY_GOAL)}).`;
-    msg += `\nObrigado pelo dia, ${firstName(u.name)}. Descansa! 🧡`;
+    msg += '\n' + pick(EXIT_LINES, ymdAt, userId, 6).replace('{nome}', firstName(u.name));
   }
   return send(u.phone, msg).catch((e) => ({ ok: false, error: e.message }));
 }
