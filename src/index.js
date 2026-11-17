@@ -577,6 +577,9 @@ app.use('/api/admin/vitrine', adminVitrineRoutes);
 app.use('/api/admin/imagens-site', imagensSiteRoutes);
 app.use('/api/admin/reels-agency', reelsAgencyRoutes);
 app.use('/api/activities', activitiesRoutes);
+app.use('/api/segments', require('./routes/segments')); // APEX segmentos + ranking + Local Legend
+app.use('/api/activity-challenges', require('./routes/activityChallenges')); // APEX desafios (oficial + grupo)
+app.use('/api/beacon', require('./routes/beaconPublic')); // APEX Beacon: posição ao vivo pública por token
 app.use('/api/coach', coachRoutes);
 app.use('/api/tournaments', tournamentsRoutes);
 app.use(require('./routes/tournamentRegistration')); // Club F3: inscrição paga, lista de espera, check-in (/t/:slug/inscricao + /api/tournament-registration)
@@ -1963,6 +1966,8 @@ app.get('/atleta/:username', async (req, res) => {
     res.status(500).send('Erro ao carregar card');
   }
 });
+
+app.get('/ao-vivo/:token', (req, res) => { res.set('Cache-Control', 'no-store'); res.sendFile(path.join(__dirname, '../public/ao-vivo.html'), { cacheControl: false }); }); // APEX Beacon (sem conta)
 
 // Live commerce — vitrine ao vivo do cliente. /aovivo/LOJA01 (slug lido no front).
 app.get(['/aovivo', '/aovivo/:loja'], (req, res) => {

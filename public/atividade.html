@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#E5571E">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Atividade · Club Sports &amp; Tennis</title>
+<meta name="description" content="Grave corrida, caminhada, pedal e treino. Segmentos, desafios, conquistas e cashback TenisCash.">
+<link rel="manifest" href="/brand/club.webmanifest">
+<link rel="icon" href="/brand/sports-tennis-icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/brand/sports-tennis-icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<style>
+:root{
+  --o:#E5571E; --o2:#C9461A; --o3:#FFE9DF; --ink:#2a1206; --mut:#7a4c39; --dim:#a07d6d;
+  --bg:#FFF6F1; --card:#fff; --line:rgba(70,22,0,.10); --line2:rgba(70,22,0,.2);
+  --ok:#0B7A4B; --okbg:rgba(11,122,75,.1); --bad:#B3261E; --badbg:rgba(179,38,30,.1); --warn:#8a5a00; --warnbg:#FFF1C7;
+  --r:20px; --r2:14px; --sh:0 14px 30px -20px rgba(80,25,0,.55);
+  --sat:env(safe-area-inset-top,0px); --sab:env(safe-area-inset-bottom,0px);
+  --ff:'Archivo',system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{background:#B84115;color:var(--ink);font-family:var(--ff);font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+a{color:inherit}
+#app{position:relative;max-width:480px;margin:0 auto;min-height:100%;background:var(--bg);padding-top:var(--sat);padding-bottom:calc(84px + var(--sab));overflow-x:hidden}
+@media (min-width:900px){body{padding:28px 0}#app{min-height:calc(100vh - 56px);border-radius:34px;box-shadow:0 40px 80px -30px rgba(40,10,0,.6);overflow:hidden}}
+.top{background:linear-gradient(160deg,#EA5B22,#D6491A);color:#fff;padding:18px 18px 22px;border-radius:0 0 26px 26px}
+.top .row1{display:flex;align-items:center;gap:10px}
+.top h1{font-size:24px;font-weight:900;font-stretch:88%;letter-spacing:-.01em;line-height:1.1}
+.top .sub{opacity:.9;font-size:13.5px;margin-top:2px}
+.back{width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.18);color:#fff;display:grid;place-items:center;flex:none;cursor:pointer}
+.wrap{padding:16px}
+.card{background:var(--card);border-radius:var(--r);box-shadow:var(--sh);padding:16px;margin-bottom:14px}
+.card h2{font-size:16px;font-weight:800;margin-bottom:10px}
+.muted{color:var(--mut)} .dim{color:var(--dim);font-size:13px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;padding:0 18px;border-radius:999px;border:0;background:var(--o);color:#fff;font-weight:800;cursor:pointer;text-decoration:none}
+.btn:active{transform:scale(.98)}
+.btn.lt{background:var(--o3);color:var(--o2)} .btn.ghost{background:transparent;border:1.5px solid var(--line2);color:var(--ink)}
+.btn.bad{background:var(--bad)} .btn.ok{background:var(--ok)} .btn.full{width:100%} .btn.sm{min-height:38px;padding:0 14px;font-size:14px}
+.btn[disabled]{opacity:.5;pointer-events:none}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat{background:var(--o3);border-radius:var(--r2);padding:10px 12px}
+.stat b{display:block;font-size:20px;font-weight:900;font-stretch:90%;line-height:1.1}
+.stat span{font-size:12px;color:var(--mut)}
+.pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;background:var(--o3);color:var(--o2)}
+.pill.ok{background:var(--okbg);color:var(--ok)} .pill.warn{background:var(--warnbg);color:var(--warn)} .pill.bad{background:var(--badbg);color:var(--bad)}
+.list a.item,.list .item{display:flex;gap:12px;align-items:center;padding:12px 0;border-top:1px solid var(--line);text-decoration:none}
+.list .item:first-child{border-top:0}
+.mini{width:64px;height:64px;border-radius:14px;background:var(--o3);flex:none;display:grid;place-items:center;overflow:hidden}
+.mini svg{width:100%;height:100%}
+.item .tx{flex:1;min-width:0} .item .tx b{display:block;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .tx small{color:var(--mut);font-size:13px}
+.empty{text-align:center;color:var(--mut);padding:26px 10px}
+label.f{display:block;font-size:13px;font-weight:700;color:var(--mut);margin:12px 0 6px}
+input.in,select.in,textarea.in{width:100%;min-height:46px;border:1.5px solid var(--line2);border-radius:14px;padding:10px 12px;background:#fff;font-size:16px}
+.seg{display:flex;background:var(--o3);border-radius:999px;padding:4px;gap:4px}
+.seg button{flex:1;min-height:38px;border:0;border-radius:999px;background:transparent;font-weight:700;color:var(--o2);cursor:pointer;font-size:14px}
+.seg button.on{background:#fff;color:var(--ink);box-shadow:0 2px 8px -4px rgba(0,0,0,.3)}
+.bar{height:10px;border-radius:999px;background:var(--o3);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--o);border-radius:999px}
+.banner{border-radius:var(--r2);padding:12px 14px;margin-bottom:12px;font-size:14px;font-weight:600}
+.banner.warn{background:var(--warnbg);color:var(--warn)} .banner.ok{background:var(--okbg);color:var(--ok)} .banner.bad{background:var(--badbg);color:var(--bad)}
+/* nav */
+nav.bn{position:fixed;left:0;right:0;bottom:0;z-index:30;max-width:480px;margin:0 auto;background:#fff;border-top:1px solid var(--line);padding:6px 6px calc(6px + var(--sab));display:flex;justify-content:space-around;align-items:flex-end}
+@media (min-width:900px){nav.bn{bottom:28px;border-radius:0 0 34px 34px}}
+nav.bn a{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;font-weight:700;color:var(--dim);text-decoration:none;min-height:48px;justify-content:center}
+nav.bn a.on{color:var(--o)}
+nav.bn a svg{width:24px;height:24px}
+nav.bn a.rec{margin-top:-26px}
+nav.bn a.rec span.c{width:62px;height:62px;border-radius:50%;background:var(--o);display:grid;place-items:center;color:#fff;box-shadow:0 10px 20px -8px rgba(229,87,30,.8);border:4px solid #fff}
+/* sports */
+.sports{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sport{border:2px solid transparent;background:#fff;border-radius:var(--r);box-shadow:var(--sh);padding:16px 12px;text-align:left;cursor:pointer;min-height:96px}
+.sport.on{border-color:var(--o)}
+.sport .ic{font-size:26px;line-height:1} .sport b{display:block;margin-top:8px;font-weight:800} .sport small{color:var(--mut);font-size:12px}
+/* gravação */
+.recv{position:fixed;inset:0;z-index:40;max-width:480px;margin:0 auto;background:#1b0b04;display:flex;flex-direction:column;padding-top:var(--sat)}
+.recv #rmap{flex:1;min-height:200px;background:#2a1206}
+.recv .nomap{flex:1;display:grid;place-items:center;color:#ffd9c6;font-size:15px;text-align:center;padding:20px}
+.panel{background:#fff;border-radius:26px 26px 0 0;padding:16px 16px calc(16px + var(--sab));margin-top:-20px;position:relative;z-index:500}
+.big{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;text-align:center;margin-bottom:12px}
+.big b{display:block;font-size:30px;font-weight:900;font-stretch:85%;line-height:1;font-variant-numeric:tabular-nums}
+.big span{font-size:12px;color:var(--mut);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.big .main b{font-size:38px;color:var(--o)}
+.ctr{display:flex;gap:10px;justify-content:center}
+.ctr .btn{flex:1;min-height:56px;font-size:17px}
+.gps{position:absolute;top:calc(12px + var(--sat));left:12px;z-index:600;background:rgba(0,0,0,.6);color:#fff;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:700}
+.gps i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:#aaa}
+.gps.good i{background:#3ddc84}.gps.mid i{background:#ffc94d}.gps.bad i{background:#ff6b5a}
+.beacon{position:absolute;top:calc(12px + var(--sat));right:12px;z-index:600;background:rgba(229,87,30,.95);color:#fff;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:800;border:0}
+/* sheet */
+.sheet-bg{position:fixed;inset:0;background:rgba(20,6,0,.5);z-index:80;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:#fff;width:100%;max-width:480px;border-radius:26px 26px 0 0;padding:18px 18px calc(18px + var(--sab));max-height:88vh;overflow:auto;animation:up .22s ease-out}
+.sheet h3{font-size:19px;font-weight:900;margin-bottom:6px}
+.sheet .grab{width:44px;height:5px;border-radius:9px;background:var(--line2);margin:0 auto 12px}
+@keyframes up{from{transform:translateY(30px);opacity:.4}to{transform:none;opacity:1}}
+.toast{position:fixed;left:50%;bottom:calc(100px + var(--sab));transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:999px;font-weight:700;font-size:14px;z-index:120;max-width:90vw;text-align:center}
+.map{height:260px;border-radius:var(--r);overflow:hidden;margin-bottom:14px;background:var(--o3)}
+table.sp{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+table.sp th{text-align:left;color:var(--mut);font-size:12px;font-weight:700;padding:6px 4px}
+table.sp td{padding:8px 4px;border-top:1px solid var(--line)}
+.spb{height:8px;border-radius:9px;background:var(--o)}
+.chart{position:relative}
+.chart svg{width:100%;height:150px;display:block;touch-action:pan-y}
+.chart .tip{position:absolute;top:0;left:0;background:var(--ink);color:#fff;font-size:12px;padding:4px 8px;border-radius:8px;pointer-events:none;white-space:nowrap;display:none}
+.badges{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.bdg{background:#fff;border-radius:var(--r2);box-shadow:var(--sh);padding:12px 8px;text-align:center}
+.bdg .m{width:52px;height:52px;border-radius:50%;margin:0 auto 6px;display:grid;place-items:center;background:linear-gradient(145deg,#FF8A4C,var(--o));color:#fff;font-weight:900;font-size:16px}
+.bdg.off{opacity:.45;filter:grayscale(1)}
+.bdg b{display:block;font-size:12.5px;line-height:1.2} .bdg small{font-size:11px;color:var(--mut)}
+.rk{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.rk:first-child{border-top:0}
+.rk .n{width:28px;font-weight:900;color:var(--o);text-align:center}
+.rk .nm{flex:1;font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rk .v{font-weight:800;font-variant-numeric:tabular-nums}
+.rk.me{background:var(--o3);border-radius:12px;padding-left:6px;padding-right:6px}
+.range{width:100%;accent-color:var(--o);min-height:36px}
+.hide{display:none!important}
+.leaflet-container{font-family:var(--ff)}
+</style>
+</head>
+<body>
+<div id="app"><div id="view"></div></div>
+<nav class="bn" id="nav"></nav>
+<input type="file" id="file" accept=".gpx,.tcx,.fit,.gz,application/gpx+xml" class="hide">
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>
+'use strict';
+/* =====================================================================
+   APEX · Atividade (PWA) — Club Sports & Tennis
+   Gravar (GPS + Wake Lock + IndexedDB, funciona offline e sobe depois),
+   importar GPX/TCX/FIT, detalhe com mapa/parciais/gráfico, segmentos,
+   conquistas, desafios, Beacon (posição ao vivo) e privacidade.
+   Mapa: Leaflet 1.9.4 (CDN). Tiles vêm de /api/beacon/_config (env
+   APEX_TILE_URL) — o padrão OSM serve só pra volume baixo.
+   ===================================================================== */
+
+var SPORTS = [
+  {k:'RUN', n:'Corrida', ic:'🏃', gps:true, max:7},
+  {k:'WALK', n:'Caminhada', ic:'🚶', gps:true, max:3.5},
+  {k:'RIDE', n:'Bike', ic:'🚴', gps:true, max:25},
+  {k:'BEACH_TENNIS', n:'Beach tennis', ic:'🎾', gps:false},
+  {k:'FUNCTIONAL', n:'Treino', ic:'💪', gps:false}
+];
+var SPORT_N = {RUN:'Corrida',WALK:'Caminhada',RIDE:'Bike',HIKE:'Trilha',TRAIL_RUN:'Trilha (corrida)',BEACH_TENNIS:'Beach tennis',FUNCTIONAL:'Treino',TENNIS:'Tênis',PADEL:'Padel',SWIM:'Natação',TREADMILL:'Esteira',OTHER:'Atividade'};
+var SPORT_IC = {RUN:'🏃',WALK:'🚶',RIDE:'🚴',HIKE:'🥾',TRAIL_RUN:'🏃',BEACH_TENNIS:'🎾',FUNCTIONAL:'💪',TENNIS:'🎾',PADEL:'🎾',SWIM:'🏊',TREADMILL:'🏃',OTHER:'⭐'};
+var VIS_N = {public:'Público',followers:'Seguidores',private:'Só eu'};
+var MAX_ACC = 30; // m — ponto com precisão pior é descartado na gravação
+var TILES = {tileUrl:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',attribution:'&copy; OpenStreetMap',maxZoom:19};
+
+/* ------------------------------------------------------------ util */
+function $(s,el){return (el||document).querySelector(s);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function token(){try{return localStorage.getItem('tc_token')||'';}catch(e){return '';}}
+function lsGet(k,d){try{var v=localStorage.getItem(k);return v==null?d:JSON.parse(v);}catch(e){return d;}}
+function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
+function toast(msg,ms){var t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);setTimeout(function(){t.remove();},ms||2600);}
+function fmtKm(m){return m==null?'—':(m/1000).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function fmtDur(s){s=Math.max(0,Math.round(s||0));var h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return (h?h+':'+String(m).padStart(2,'0'):m)+':'+String(x).padStart(2,'0');}
+function fmtPace(sPerKm){if(!sPerKm||!isFinite(sPerKm)||sPerKm>3600)return '—';var m=Math.floor(sPerKm/60),s=Math.round(sPerKm%60);if(s===60){m++;s=0;}return m+':'+String(s).padStart(2,'0');}
+function fmtSpeed(sPerKm){return sPerKm?(3600/sPerKm).toLocaleString('pt-BR',{maximumFractionDigits:1}):'—';}
+function fmtMs(ms){return fmtDur(ms/1000);}
+function fmtDate(d){d=new Date(d);return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'})+' · '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
+function isRide(s){return s==='RIDE';}
+function hav(a,b,c,d){var R=6371008.8,r=Math.PI/180,x=Math.sin((c-a)*r/2),y=Math.sin((d-b)*r/2);var h=x*x+Math.cos(a*r)*Math.cos(c*r)*y*y;return 2*R*Math.asin(Math.min(1,Math.sqrt(h)));}
+function decodePoly(str){var out=[],i=0,lat=0,lng=0;while(str&&i<str.length){for(var k=0;k<2;k++){var sh=0,res=0,b;do{b=str.charCodeAt(i++)-63;res|=(b&31)<<sh;sh+=5;}while(b>=32);var d=res&1?~(res>>1):res>>1;if(k===0)lat+=d;else lng+=d;}out.push([lat/1e5,lng/1e5]);}return out;}
+function uid(){return Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10);}
+var I={
+  home:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>',
+  trophy:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 01-10 0V4z"/><path d="M17 5h3v2a3 3 0 01-3 3M7 5H4v2a3 3 0 003 3"/></svg>',
+  medal:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="15" r="6"/><path d="M8.5 9.5L6 3h4l2 4 2-4h4l-2.5 6.5"/></svg>',
+  gear:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>',
+  play:'<svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>',
+  back:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>'
+};
+
+/* ------------------------------------------------------------ API */
+function api(path,o){
+  o=o||{};
+  var h={Accept:'application/json'},tk=token();
+  if(tk)h.Authorization='Bearer '+tk;
+  var body=o.body;
+  if(body!==undefined&&!(body instanceof FormData)){h['Content-Type']='application/json';body=JSON.stringify(body);}
+  return fetch('/api'+path,{method:o.method||'GET',headers:h,body:body,cache:'no-store'})
+    .catch(function(){var e=new Error('Sem conexão.');e.offline=true;throw e;})
+    .then(function(r){return r.json().catch(function(){return null;}).then(function(j){
+      if(!r.ok){var e=new Error((j&&j.error)||('Erro '+r.status));e.status=r.status;e.data=j;throw e;}
+      return j;});});
+}
+
+/* ------------------------------------------------------ IndexedDB */
+var DBP=null;
+function db(){
+  if(DBP)return DBP;
+  DBP=new Promise(function(res,rej){
+    var rq=indexedDB.open('apex-atividade',1);
+    rq.onupgradeneeded=function(){var d=rq.result;
+      d.createObjectStore('rec',{keyPath:'id'});                // gravação em andamento
+      var c=d.createObjectStore('chunks',{keyPath:'k',autoIncrement:true}); c.createIndex('rec','rec');
+      d.createObjectStore('outbox',{keyPath:'clientId'});       // atividades prontas, esperando internet
+    };
+    rq.onsuccess=function(){res(rq.result);}; rq.onerror=function(){rej(rq.error);};
+  });
+  return DBP;
+}
+function idb(store,mode,fn){return db().then(function(d){return new Promise(function(res,rej){var tx=d.transaction(store,mode),st=tx.objectStore(store),out;var r=fn(st);if(r&&'onsuccess' in r)r.onsuccess=function(){out=r.result;};tx.oncomplete=function(){res(out);};tx.onerror=function(){rej(tx.error);};});});}
+function idbPut(store,v){return idb(store,'readwrite',function(s){return s.put(v);});}
+function idbGet(store,k){return idb(store,'readonly',function(s){return s.get(k);});}
+function idbAll(store){return idb(store,'readonly',function(s){return s.getAll();});}
+function idbDel(store,k){return idb(store,'readwrite',function(s){return s.delete(k);});}
+function chunksOf(recId){return db().then(function(d){return new Promise(function(res,rej){var out=[];var tx=d.transaction('chunks','readonly');var rq=tx.objectStore('chunks').index('rec').openCursor(IDBKeyRange.only(recId));rq.onsuccess=function(){var c=rq.result;if(c){out.push(c.value);c.continue();}};tx.oncomplete=function(){out.sort(function(a,b){return a.k-b.k;});res(out);};tx.onerror=function(){rej(tx.error);};});});}
+function delChunks(recId){return chunksOf(recId).then(function(cs){return idb('chunks','readwrite',function(s){cs.forEach(function(c){s.delete(c.k);});return null;});});}
+
+/* ------------------------------------------------------- router */
+var S={summary:null,list:null,me:null};
+function route(){return (location.hash||'#/').slice(1).split('/').filter(Boolean);}
+function go(h){if(location.hash===h)render();else location.hash=h;}
+window.addEventListener('hashchange',function(){render();});
+
+function navHtml(cur){
+  var items=[['','Início',I.home],['desafios','Desafios',I.trophy],['gravar','Gravar',I.play],['conquistas','Conquistas',I.medal],['ajustes','Ajustes',I.gear]];
+  return items.map(function(t){var on=t[0]===cur;
+    if(t[0]==='gravar')return '<a href="#/gravar" class="rec'+(on?' on':'')+'" aria-label="Gravar atividade"><span class="c">'+t[2]+'</span>'+t[1]+'</a>';
+    return '<a href="#/'+t[0]+'" class="'+(on?'on':'')+'"'+(on?' aria-current="page"':'')+'>'+t[2]+'<span>'+t[1]+'</span></a>';}).join('');
+}
+function hdr(title,sub,back){
+  return '<header class="top"><div class="row1">'+(back?'<button class="back" onclick="history.length>1?history.back():go(\'#/\')" aria-label="Voltar">'+I.back+'</button>':'')+
+    '<div><h1>'+esc(title)+'</h1>'+(sub?'<div class="sub">'+sub+'</div>':'')+'</div></div></header>';
+}
+function setView(html,navKey){
+  $('#view').innerHTML=html;
+  var nav=$('#nav');
+  if(navKey===null){nav.classList.add('hide');}else{nav.classList.remove('hide');nav.innerHTML=navHtml(navKey||'');}
+  window.scrollTo(0,0);
+}
+function needLogin(){
+  setView(hdr('Atividade','Club Sports &amp; Tennis')+'<div class="wrap"><div class="card"><h2>Entre no Club</h2><p class="muted">Para gravar atividades, ganhar conquistas e cashback TenisCash, entre com a sua conta do Club.</p><br><a class="btn full" href="/club.html">Entrar no Club</a></div></div>',null);
+}
+
+function render(){
+  if(REC&&REC.state!=='idle'&&route()[0]!=='gravar'){location.replace('#/gravar');return;}
+  if(!token()){
+    var r0=route();
+    if(r0[0]==='desafio'&&r0[1])lsSet('apex_pending_invite',r0[1]);
+    return needLogin();
+  }
+  var r=route();
+  var p=r[0]||'';
+  try{
+    if(p==='')return viewHome();
+    if(p==='gravar')return viewRecord();
+    if(p==='a')return viewActivity(r[1]);
+    if(p==='s')return viewSegment(r[1]);
+    if(p==='conquistas')return viewBadges();
+    if(p==='desafios')return viewChallenges();
+    if(p==='c')return viewChallenge(r[1]);
+    if(p==='desafio')return viewInvite(r[1]);
+    if(p==='ajustes')return viewSettings();
+    viewHome();
+  }catch(e){console.error(e);setView(hdr('Ops')+'<div class="wrap"><div class="banner bad">'+esc(e.message)+'</div></div>','');}
+}
+function loading(title,nav){setView(hdr(title||'Carregando…')+'<div class="wrap"><div class="empty">Carregando…</div></div>',nav);}
+function errView(e,title,nav){
+  if(e.status===401){try{localStorage.removeItem('tc_token');}catch(_){} return needLogin();}
+  setView(hdr(title||'Ops',null,true)+'<div class="wrap"><div class="banner '+(e.offline?'warn':'bad')+'">'+esc(e.offline?'Sem internet agora. Suas gravações ficam guardadas no celular e sobem sozinhas quando a conexão voltar.':e.message)+'</div></div>',nav);
+}
+
+/* ------------------------------------------------------- mini mapa SVG (sem tiles) */
+function miniSvg(poly,w,h){
+  var pts=decodePoly(poly||'');if(pts.length<2)return '';
+  w=w||64;h=h||64;var pad=6;
+  var la=pts.map(function(p){return p[0];}),ln=pts.map(function(p){return p[1];});
+  var mnA=Math.min.apply(0,la),mxA=Math.max.apply(0,la),mnN=Math.min.apply(0,ln),mxN=Math.max.apply(0,ln);
+  var k=Math.cos(((mnA+mxA)/2)*Math.PI/180);var sx=(mxN-mnN)*k||1e-6,sy=(mxA-mnA)||1e-6;
+  var s=Math.min((w-2*pad)/sx,(h-2*pad)/sy);var ox=(w-sx*s)/2,oy=(h-sy*s)/2;
+  var d=pts.map(function(p,i){return (i?'L':'M')+(ox+(p[1]-mnN)*k*s).toFixed(1)+' '+(oy+(mxA-p[0])*s).toFixed(1);}).join('');
+  return '<svg viewBox="0 0 '+w+' '+h+'"><path d="'+d+'" fill="none" stroke="#E5571E" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/></svg>';
+}
+function actItem(a){
+  var ride=isRide(a.sportType);
+  var line=[a.distanceM?fmtKm(a.distanceM)+' km':null, fmtDur(a.movingTimeS), a.distanceM&&a.avgPace?(ride?fmtSpeed(a.avgPace)+' km/h':fmtPace(a.avgPace)+' /km'):null].filter(Boolean).join(' · ');
+  return '<a class="item" href="#/a/'+esc(a.id)+'"><div class="mini">'+(miniSvg(a.summaryPolyline)||'<span style="font-size:28px">'+(SPORT_IC[a.sportType]||'⭐')+'</span>')+'</div>'+
+    '<div class="tx"><b>'+esc(a.title||SPORT_N[a.sportType]||'Atividade')+'</b><small>'+esc(fmtDate(a.startedAt))+'</small><br><small>'+esc(line)+'</small></div>'+
+    (a.visibility==='private'?'<span class="pill">Só eu</span>':'')+'</a>';
+}
+
+/* ------------------------------------------------------------ HOME */
+function viewHome(){
+  loading('Atividade','');
+  Promise.all([api('/activities/me/summary'),api('/activities?limit=30'),idbAll('outbox').catch(function(){return [];})]).then(function(res){
+    var sm=res[0],list=res[1].activities,ob=res[2];
+    S.summary=sm;
+    var pct=Math.min(100,Math.round(sm.xp/Math.max(1,sm.nextLevelXp)*100));
+    var h=hdr('Atividade','Nível '+sm.level+' · '+sm.xp+' XP');
+    h+='<div class="wrap">';
+    if(ob.length)h+='<div class="banner warn">'+ob.length+' atividade(s) guardada(s) no celular esperando internet. <button class="btn sm lt" style="margin-left:6px" onclick="flushOutbox(true)">Enviar agora</button></div>';
+    h+='<div class="card"><div class="grid3"><div class="stat"><b>'+fmtKm(sm.week.distanceM)+'</b><span>km em 7 dias</span></div><div class="stat"><b>'+sm.week.count+'</b><span>atividades</span></div><div class="stat"><b>'+fmtDur(sm.week.movingTimeS)+'</b><span>em movimento</span></div></div>'+
+      '<div style="margin-top:14px;display:flex;justify-content:space-between;font-size:13px;font-weight:700"><span>Nível '+sm.level+'</span><span class="muted">'+sm.xp+' / '+sm.nextLevelXp+' XP</span></div><div class="bar" style="margin-top:6px"><i style="width:'+pct+'%"></i></div>'+
+      (sm.cashbackTotal>0?'<p class="dim" style="margin-top:8px">Cashback TenisCash já ganho treinando: <b>T$ '+sm.cashbackTotal.toFixed(2).replace('.',',')+'</b></p>':'')+'</div>';
+    h+='<div class="grid2" style="margin-bottom:14px"><a class="btn full" href="#/gravar">Gravar</a><button class="btn lt full" onclick="pickFile()">Importar do relógio</button></div>';
+    h+='<div class="card"><h2>Minhas atividades</h2><div class="list">'+(list.length?list.map(actItem).join(''):'<div class="empty">Nenhuma atividade ainda.<br>Toque em <b>Gravar</b> pra começar ou importe um arquivo GPX/TCX/FIT do seu relógio.</div>')+'</div></div>';
+    h+='<p class="dim" style="text-align:center;margin:8px 0 18px"><a href="/club.html">← Voltar ao Club</a></p></div>';
+    setView(h,'');
+  }).catch(function(e){errView(e,'Atividade','');});
+}
+
+/* ------------------------------------------------------------ import */
+function pickFile(){var f=$('#file');f.value='';f.click();}
+$('#file').addEventListener('change',function(){
+  var f=this.files&&this.files[0];if(!f)return;
+  var fd=new FormData();fd.append('file',f,f.name);fd.append('visibility',lsGet('apex_vis','followers'));
+  toast('Importando '+f.name+'…');
+  var send=function(){return api('/activities/import',{method:'POST',body:fd});};
+  send().catch(function(e){
+    if(e.status===428)return askConsent().then(function(ok){if(!ok)throw new Error('Sem o consentimento de localização não dá pra importar a rota.');return send();});
+    throw e;
+  }).then(function(r){celebrate(r);go('#/a/'+r.activityId);})
+  .catch(function(e){toast(e.status===409?'Essa atividade já está no seu histórico.':e.message,4000);if(e.status===409&&e.data&&e.data.activityId)go('#/a/'+e.data.activityId);});
+});
+function celebrate(r){
+  if(r&&r.badges&&r.badges.length){
+    var b=r.badges.map(function(x){return x.title+(x.cashback>0?' (+T$ '+x.cashback.toFixed(2).replace('.',',')+')':'');});
+    toast('Conquista: '+b.join(' · '),5000);
+  }
+}
+
+/* ------------------------------------------------------------ consentimento */
+function consentGiven(){return lsGet('apex_consent_loc',false);}
+function askConsent(){
+  return new Promise(function(resolve){
+    sheet('<h3>Sua localização, suas regras</h3><p class="muted" style="margin-bottom:10px">Pra desenhar a rota, medir distância e ritmo, o app grava sua localização <b>só enquanto a atividade está rolando</b>. Você escolhe quem vê cada atividade (público, seguidores ou só você) e pode esconder a região de casa nos Ajustes. Dá pra revogar quando quiser.</p>'+
+      '<button class="btn full" id="cy">Concordo e quero gravar</button><button class="btn ghost full" style="margin-top:8px" id="cn">Agora não</button>',function(el,close){
+      $('#cy',el).onclick=function(){lsSet('apex_consent_loc',true);
+        api('/activities/consent',{method:'POST',body:{scope:'location_history',granted:true}}).catch(function(){lsSet('apex_consent_pending',true);});
+        close();resolve(true);};
+      $('#cn',el).onclick=function(){close();resolve(false);};
+    });
+  });
+}
+function sheet(html,bind){
+  var bg=document.createElement('div');bg.className='sheet-bg';bg.innerHTML='<div class="sheet" role="dialog" aria-modal="true"><div class="grab"></div>'+html+'</div>';
+  document.body.appendChild(bg);
+  var close=function(){bg.remove();};
+  bg.addEventListener('click',function(e){if(e.target===bg)close();});
+  if(bind)bind(bg,close);
+  return close;
+}
+
+/* ===================================================== GRAVAÇÃO ======= */
+var REC=null;          // estado da gravação (persistido no IndexedDB)
+var PTS=[];            // pontos em memória [t,lat,lng,alt,acc,seg]
+var BUF=[];            // pontos ainda não gravados no IndexedDB
+var WATCH=null,TICK=null,WAKE=null,RMAP=null,RLINE=null,RDOT=null,BEACON_T=null,LASTFIX=null;
+
+function newRec(sport){var sp=SPORTS.filter(function(s){return s.k===sport;})[0];
+  return {id:'current',recId:uid(),sport:sport,gps:sp.gps,state:'idle',startedAt:null,activeMs:0,runFrom:null,dist:0,nextSeg:false,beacon:null,savedAt:Date.now()};}
+function persist(){if(!REC)return Promise.resolve();REC.savedAt=Date.now();
+  var p=idbPut('rec',REC);
+  if(BUF.length){var c={rec:REC.recId,pts:BUF.slice()};BUF=[];p=p.then(function(){return idbPut('chunks',c);});}
+  return p.catch(function(e){console.warn('idb',e);});}
+function activeMs(){return REC.activeMs+(REC.state==='running'&&REC.runFrom?Date.now()-REC.runFrom:0);}
+
+function restoreRec(){
+  return idbGet('rec','current').then(function(r){
+    if(!r||r.state==='idle')return null;
+    return chunksOf(r.recId).then(function(cs){
+      PTS=[];cs.forEach(function(c){PTS=PTS.concat(c.pts);});
+      if(r.state==='running'){ // o app foi fechado gravando: conta até o último salvamento e pausa
+        r.activeMs+=Math.max(0,(r.savedAt||Date.now())-(r.runFrom||Date.now()));r.state='paused';r.runFrom=null;r.nextSeg=true;
+      }
+      REC=r;return r;
+    });
+  }).catch(function(){return null;});
+}
+
+function viewRecord(){
+  if(REC&&REC.state!=='idle')return recScreen();
+  var last=lsGet('apex_sport','RUN');
+  var h=hdr('Gravar','Escolha o esporte');
+  h+='<div class="wrap"><div class="sports">'+SPORTS.map(function(s){return '<button class="sport'+(s.k===last?' on':'')+'" data-k="'+s.k+'"><span class="ic">'+s.ic+'</span><b>'+s.n+'</b><small>'+(s.gps?'Com GPS e mapa':'Sem GPS · cronômetro')+'</small></button>';}).join('')+'</div>'+
+    '<div class="card" style="margin-top:14px"><label style="display:flex;gap:10px;align-items:center;font-weight:700"><input type="checkbox" id="bcn" style="width:22px;height:22px;accent-color:#E5571E"'+(lsGet('apex_beacon',false)?' checked':'')+'> Beacon: compartilhar minha posição ao vivo</label><p class="dim" style="margin-top:6px">Gera um link pros seus contatos de segurança acompanharem no mapa, sem precisar de conta. O link para de funcionar quando você termina.</p></div>'+
+    '<button class="btn full" id="go" style="min-height:58px;font-size:18px">Começar</button>'+
+    '<p class="dim" style="text-align:center;margin-top:12px">Dica: deixe a tela ligada durante a atividade — o app mantém o GPS ativo e guarda tudo no celular, mesmo sem internet.</p></div>';
+  setView(h,'gravar');
+  Array.prototype.forEach.call(document.querySelectorAll('.sport'),function(b){b.onclick=function(){document.querySelectorAll('.sport').forEach(function(x){x.classList.remove('on');});b.classList.add('on');lsSet('apex_sport',b.dataset.k);};});
+  $('#go').onclick=function(){
+    var k=(document.querySelector('.sport.on')||{}).dataset; var sport=k?k.k:'RUN';
+    var beaconOn=$('#bcn').checked;lsSet('apex_beacon',beaconOn);
+    var sp=SPORTS.filter(function(s){return s.k===sport;})[0];
+    var pre=sp.gps&&!consentGiven()?askConsent():Promise.resolve(true);
+    pre.then(function(ok){if(!ok)return;
+      REC=newRec(sport);PTS=[];BUF=[];
+      return persist().then(function(){recScreen();if(sp.gps&&beaconOn)startBeacon();startRec();});
+    });
+  };
+}
+
+function recScreen(){
+  var sp=SPORTS.filter(function(s){return s.k===REC.sport;})[0]||{n:REC.sport,gps:REC.gps};
+  var ride=isRide(REC.sport);
+  var h='<div class="recv">'+(REC.gps?'<div id="rmap"></div><div class="gps" id="gps"><i></i><span>Procurando GPS…</span></div>':'<div class="nomap"><div><div style="font-size:54px">'+(SPORT_IC[REC.sport]||'⭐')+'</div><b style="font-size:20px;color:#fff">'+esc(sp.n)+'</b><br>Cronômetro do treino</div></div>')+
+    (REC.beacon?'<button class="beacon" id="bshare">● AO VIVO · compartilhar</button>':'')+
+    '<div class="panel"><div class="big">'+
+    '<div><b id="vd">'+(REC.gps?'0,00':'—')+'</b><span>km</span></div>'+
+    '<div class="main"><b id="vt">0:00</b><span>tempo</span></div>'+
+    '<div><b id="vp">—</b><span>'+(ride?'km/h':'ritmo /km')+'</span></div></div>'+
+    '<div class="ctr" id="ctr"></div><p class="dim" id="rmsg" style="text-align:center;margin-top:8px"></p></div></div>';
+  setView(h,null);
+  if(REC.gps)initRecMap();
+  if(REC.beacon)$('#bshare').onclick=shareBeacon;
+  drawCtr();updateStats();
+  clearInterval(TICK);TICK=setInterval(function(){updateStats();if(REC&&REC.state==='running'&&Date.now()-REC.savedAt>10000)persist();},1000);
+}
+function drawCtr(){
+  var c=$('#ctr');if(!c)return;
+  if(REC.state==='running')c.innerHTML='<button class="btn lt" id="bp">Pausar</button>';
+  else if(REC.state==='paused')c.innerHTML='<button class="btn" id="br">Continuar</button><button class="btn ok" id="bf">Terminar</button>';
+  else c.innerHTML='<button class="btn" id="bs">Começar</button>';
+  var bp=$('#bp'),br=$('#br'),bf=$('#bf'),bs=$('#bs');
+  if(bp)bp.onclick=pauseRec; if(br)br.onclick=resumeRec; if(bf)bf.onclick=finishRec; if(bs)bs.onclick=startRec;
+  var m=$('#rmsg');if(m)m.textContent=REC.state==='paused'?'Pausado — a distância não conta enquanto pausado.':'';
+}
+function updateStats(){
+  if(!REC)return;var t=activeMs()/1000;
+  var vt=$('#vt');if(vt)vt.textContent=fmtDur(t);
+  if(!REC.gps)return;
+  var vd=$('#vd');if(vd)vd.textContent=fmtKm(REC.dist);
+  var vp=$('#vp');if(!vp)return;
+  // ritmo atual: últimos ~30 s de pontos
+  var n=PTS.length,cur=null;
+  if(n>2&&REC.state==='running'){var j=n-1,d=0;while(j>0&&PTS[n-1][0]-PTS[j][0]<30000&&!PTS[j][5]){d+=hav(PTS[j-1][1],PTS[j-1][2],PTS[j][1],PTS[j][2]);j--;}var dt=(PTS[n-1][0]-PTS[j][0])/1000;if(d>15&&dt>0)cur=dt/(d/1000);}
+  var avg=REC.dist>50?t/(REC.dist/1000):null;
+  var v=cur||avg;vp.textContent=isRide(REC.sport)?fmtSpeed(v):fmtPace(v);
+}
+function initRecMap(){
+  if(!window.L){$('#rmap').innerHTML='<div class="nomap">Mapa indisponível sem internet — a gravação continua normalmente.</div>';return;}
+  try{if(RMAP){RMAP.remove();RMAP=null;}}catch(e){}
+  RMAP=L.map('rmap',{zoomControl:false,attributionControl:true}).setView(PTS.length?[PTS[PTS.length-1][1],PTS[PTS.length-1][2]]:[-7.115,-34.86],16);
+  L.tileLayer(TILES.tileUrl,{maxZoom:TILES.maxZoom,attribution:TILES.attribution}).addTo(RMAP);
+  RLINE=L.polyline(PTS.map(function(p){return [p[1],p[2]];}),{color:'#E5571E',weight:5}).addTo(RMAP);
+  RDOT=L.circleMarker(PTS.length?[PTS[PTS.length-1][1],PTS[PTS.length-1][2]]:[-7.115,-34.86],{radius:8,color:'#fff',weight:3,fillColor:'#E5571E',fillOpacity:1}).addTo(RMAP);
+}
+function setGps(acc){
+  var g=$('#gps');if(!g)return;
+  g.className='gps '+(acc==null?'':acc<=12?'good':acc<=MAX_ACC?'mid':'bad');
+  g.querySelector('span').textContent=acc==null?'Procurando GPS…':acc<=MAX_ACC?'GPS ±'+Math.round(acc)+' m':'GPS fraco (±'+Math.round(acc)+' m)';
+}
+function onPos(pos){
+  var c=pos.coords,t=pos.timestamp||Date.now();LASTFIX=pos;
+  setGps(c.accuracy);
+  if(!REC||REC.state!=='running')return;
+  if(c.accuracy>MAX_ACC)return; // filtro de precisão
+  var sp=SPORTS.filter(function(s){return s.k===REC.sport;})[0]||{max:30};
+  var last=PTS[PTS.length-1],seg=REC.nextSeg?1:0;
+  if(last&&!seg){
+    var d=hav(last[1],last[2],c.latitude,c.longitude),dt=(t-last[0])/1000;
+    if(dt<=0)return;
+    if(d<Math.max(3,c.accuracy/3)&&dt<10)return;      // parado / ruído
+    if(d/dt>sp.max*1.6)return;                          // salto de GPS
+    REC.dist+=d;
+  }
+  var p=[t,+c.latitude.toFixed(6),+c.longitude.toFixed(6),c.altitude==null?null:Math.round(c.altitude*10)/10,Math.round(c.accuracy),seg];
+  PTS.push(p);BUF.push(p);REC.nextSeg=false;
+  if(BUF.length>=5)persist();
+  if(RLINE){RLINE.addLatLng([p[1],p[2]]);RDOT.setLatLng([p[1],p[2]]);RMAP.panTo([p[1],p[2]],{animate:true});}
+  updateStats();
+}
+function onPosErr(e){var m=$('#rmsg');if(m)m.textContent=e.code===1?'Permita o acesso à localização nas configurações do navegador.':'Sem sinal de GPS agora — continuando.';}
+function startGps(){
+  if(!REC.gps||WATCH!=null)return;
+  if(!('geolocation' in navigator)){toast('Este aparelho não tem GPS disponível.');return;}
+  WATCH=navigator.geolocation.watchPosition(onPos,onPosErr,{enableHighAccuracy:true,maximumAge:0,timeout:20000});
+}
+function stopGps(){if(WATCH!=null){navigator.geolocation.clearWatch(WATCH);WATCH=null;}}
+function wake(){if('wakeLock' in navigator&&!WAKE){navigator.wakeLock.request('screen').then(function(w){WAKE=w;w.addEventListener('release',function(){WAKE=null;});}).catch(function(){});}}
+document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible'&&REC&&REC.state==='running')wake();if(document.visibilityState==='hidden'&&REC)persist();});
+function startRec(){
+  REC.state='running';REC.startedAt=REC.startedAt||Date.now();REC.runFrom=Date.now();
+  startGps();wake();persist();drawCtr();
+}
+function pauseRec(){REC.activeMs=activeMs();REC.runFrom=null;REC.state='paused';REC.nextSeg=true;persist();drawCtr();updateStats();}
+function resumeRec(){REC.state='running';REC.runFrom=Date.now();startGps();wake();persist();drawCtr();}
+
+/* ---- Beacon */
+function startBeacon(){
+  api('/activities/beacon/start',{method:'POST',body:{sportType:REC.sport}}).then(function(b){
+    REC.beacon={sessionId:b.sessionId,token:b.token,activityId:b.activityId,sent:0,contacts:b.contacts||[]};persist();
+    recScreen();shareBeacon();
+    BEACON_T=setInterval(sendBeacon,15000);
+  }).catch(function(e){toast(e.offline?'Sem internet: Beacon não iniciou (a gravação segue).':'Beacon: '+e.message,4000);});
+}
+function beaconUrl(){return location.origin+'/ao-vivo/'+REC.beacon.token;}
+function shareBeacon(){
+  if(!REC||!REC.beacon)return;
+  var url=beaconUrl(),msg='Estou em atividade ('+(SPORT_N[REC.sport]||'treino')+') e compartilhando minha posição ao vivo: '+url;
+  var cs=REC.beacon.contacts||[];
+  sheet('<h3>Beacon ao vivo</h3><p class="muted">Envie o link pros seus contatos de segurança. Ele para de funcionar quando você terminar a atividade.</p>'+
+    '<input class="in" readonly value="'+esc(url)+'" style="margin:10px 0" onclick="this.select()">'+
+    (cs.length?cs.map(function(c){return '<a class="btn lt full" style="margin-bottom:8px" target="_blank" rel="noopener" href="https://wa.me/'+esc((String(c.phone).length<=11?'55':'')+c.phone)+'?text='+encodeURIComponent(msg)+'">WhatsApp · '+esc(c.name)+'</a>';}).join(''):'<p class="dim">Cadastre até 3 contatos de segurança em Ajustes para enviar com um toque.</p>')+
+    '<button class="btn full" id="shr" style="margin-top:6px">Compartilhar…</button><button class="btn ghost full" id="cpy" style="margin-top:8px">Copiar link</button>',function(el,close){
+      $('#shr',el).onclick=function(){if(navigator.share)navigator.share({title:'Minha posição ao vivo',text:msg,url:url}).catch(function(){});else{copy(url);}};
+      $('#cpy',el).onclick=function(){copy(url);close();};
+  });
+}
+function copy(t){(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(function(){toast('Link copiado');}).catch(function(){prompt('Copie o link:',t);});}
+function sendBeacon(){
+  if(!REC||!REC.beacon||!navigator.onLine)return;
+  var b=REC.beacon,news=PTS.slice(b.sent);
+  if(!news.length&&LASTFIX)news=[[Date.now(),LASTFIX.coords.latitude,LASTFIX.coords.longitude]];
+  if(!news.length)return;
+  var upto=PTS.length;
+  api('/activities/beacon/'+encodeURIComponent(b.sessionId)+'/position',{method:'POST',body:{points:news.slice(-500).map(function(p){return [p[1],p[2],p[0]];})}})
+    .then(function(){b.sent=upto;}).catch(function(e){if(e.status===410||e.status===404){clearInterval(BEACON_T);}});
+}
+
+/* ---- terminar */
+function finishRec(){
+  REC.activeMs=activeMs();REC.runFrom=null;REC.state='paused';
+  var t=REC.activeMs/1000;
+  if(t<10){sheet('<h3>Atividade muito curta</h3><p class="muted">Menos de 10 segundos. Quer descartar?</p><button class="btn bad full" id="dd">Descartar</button><button class="btn ghost full" style="margin-top:8px" id="kk">Continuar gravando</button>',function(el,close){$('#dd',el).onclick=function(){close();discardRec();};$('#kk',el).onclick=function(){close();resumeRec();};});return;}
+  if(REC.gps&&PTS.length<2){sheet('<h3>Sem pontos de GPS</h3><p class="muted">Não conseguimos sinal de GPS durante a atividade. Salvar só o tempo?</p><button class="btn full" id="st">Salvar só o tempo</button><button class="btn bad full" style="margin-top:8px" id="dd">Descartar</button>',function(el,close){$('#st',el).onclick=function(){close();REC.gps=false;saveSheet();};$('#dd',el).onclick=function(){close();discardRec();};});return;}
+  saveSheet();
+}
+function saveSheet(){
+  var vis=lsGet('apex_vis','followers');
+  sheet('<h3>Salvar atividade</h3><p class="muted">'+(REC.gps?fmtKm(REC.dist)+' km · ':'')+fmtDur(REC.activeMs/1000)+'</p>'+
+    '<label class="f" for="tt">Título</label><input class="in" id="tt" maxlength="120" placeholder="'+esc((SPORT_N[REC.sport]||'Atividade'))+'">'+
+    '<label class="f">Quem pode ver</label><div class="seg" id="vs">'+['public','followers','private'].map(function(v){return '<button data-v="'+v+'" class="'+(v===vis?'on':'')+'">'+VIS_N[v]+'</button>';}).join('')+'</div>'+
+    '<button class="btn full" style="margin-top:16px" id="sv">Salvar</button><button class="btn ghost full" style="margin-top:8px" id="cx">Voltar</button><button class="btn ghost full" style="margin-top:8px;color:var(--bad)" id="dd">Descartar atividade</button>',function(el,close){
+      el.querySelectorAll('#vs button').forEach(function(b){b.onclick=function(){el.querySelectorAll('#vs button').forEach(function(x){x.classList.remove('on');});b.classList.add('on');vis=b.dataset.v;};});
+      $('#cx',el).onclick=close;
+      $('#dd',el).onclick=function(){if(confirm('Descartar esta atividade? Não dá pra desfazer.')){close();discardRec();}};
+      $('#sv',el).onclick=function(){lsSet('apex_vis',vis);close();saveRec($('#tt',el).value.trim(),vis);};
+  });
+}
+function cleanupRec(){
+  clearInterval(TICK);clearInterval(BEACON_T);stopGps();
+  if(WAKE){WAKE.release().catch(function(){});WAKE=null;}
+  try{if(RMAP){RMAP.remove();}}catch(e){} RMAP=RLINE=RDOT=null;
+  var id=REC&&REC.recId;REC=null;PTS=[];BUF=[];
+  return Promise.all([idbDel('rec','current'),id?delChunks(id):null]).catch(function(){});
+}
+function discardRec(){
+  var b=REC&&REC.beacon;
+  if(b){api('/activities/beacon/'+encodeURIComponent(b.sessionId)+'/stop',{method:'POST'}).catch(function(){});api('/activities/'+encodeURIComponent(b.activityId),{method:'DELETE'}).catch(function(){});}
+  cleanupRec().then(function(){toast('Atividade descartada');go('#/');});
+}
+function saveRec(title,vis){
+  persist().then(function(){return chunksOf(REC.recId);}).then(function(cs){
+    var pts=[];cs.forEach(function(c){pts=pts.concat(c.pts);});if(pts.length<PTS.length)pts=PTS.slice();
+    var item={clientId:REC.recId,createdAt:Date.now(),payload:{clientId:REC.recId,sportType:REC.sport,title:title||null,visibility:vis,startedAt:new Date(REC.startedAt).toISOString(),
+      elapsedTimeS:Math.round((Date.now()-REC.startedAt)/1000),movingTimeS:Math.round(REC.activeMs/1000),deviceSource:'phone_pwa'}};
+    if(REC.gps&&pts.length>=2){item.payload.points=thin(pts);}
+    else{item.payload.elapsedTimeS=Math.round(REC.activeMs/1000);item.payload.movingTimeS=item.payload.elapsedTimeS;}
+    if(REC.beacon){item.payload.liveActivityId=REC.beacon.activityId;}
+    return idbPut('outbox',item);
+  }).then(function(){return cleanupRec();}).then(function(){return flushOutbox(false);}).then(function(r){
+    var mine=r&&r[0];
+    if(mine&&mine.activityId){celebrate(mine);go('#/a/'+mine.activityId);}
+    else{toast('Atividade guardada no celular. Sobe sozinha quando a internet voltar.',4500);go('#/');}
+  });
+}
+// o servidor aceita até ~1,5 MB: corridas longas a 1 Hz são afinadas pra 1 ponto a cada 2-3 s
+function thin(pts){if(pts.length<=25000)return pts;var step=Math.ceil(pts.length/25000),out=[];for(var i=0;i<pts.length;i++){if(i%step===0||pts[i][5]||i===pts.length-1)out.push(pts[i]);}return out;}
+
+/* ---- fila offline */
+var FLUSHING=false;
+function flushOutbox(manual){
+  if(FLUSHING)return Promise.resolve([]);
+  FLUSHING=true;
+  var results=[];
+  var pre=lsGet('apex_consent_pending',false)?api('/activities/consent',{method:'POST',body:{scope:'location_history',granted:true}}).then(function(){lsSet('apex_consent_pending',false);}):Promise.resolve();
+  return pre.then(function(){return idbAll('outbox');}).then(function(items){
+    items.sort(function(a,b){return a.createdAt-b.createdAt;});
+    return items.reduce(function(p,it){return p.then(function(){
+      return api('/activities',{method:'POST',body:it.payload}).then(function(r){results.push(r);return idbDel('outbox',it.clientId);})
+      .catch(function(e){
+        if(e.offline)throw e;
+        if(e.status===409){results.push({activityId:e.data&&e.data.activityId,duplicate:true});return idbDel('outbox',it.clientId);}
+        if(e.status===428){lsSet('apex_consent_loc',false);throw e;}
+        if(e.status===401)throw e;
+        if(e.status===404&&it.payload.liveActivityId){delete it.payload.liveActivityId;return idbPut('outbox',it);} // Beacon perdido: sobe como atividade normal na próxima
+        if(e.status>=400&&e.status<500){it.error=e.message;return idbPut('outbox',it).then(function(){if(manual)toast('Não foi possível enviar: '+e.message,4500);});}
+        throw e;
+      });});},Promise.resolve());
+  }).catch(function(e){if(manual)toast(e.offline?'Ainda sem internet.':e.message);}).then(function(){FLUSHING=false;
+    if(manual&&route()[0]===undefined)render();return results;});
+}
+window.addEventListener('online',function(){flushOutbox(false).then(function(r){if(r&&r.length){toast(r.length+' atividade(s) enviada(s)');if(!route()[0])render();}});});
+
+/* ===================================================== DETALHE ======= */
+var DMAP=null;
+function viewActivity(id){
+  loading('Atividade','');
+  api('/activities/'+encodeURIComponent(id)).then(function(a){
+    var ride=isRide(a.sportType);
+    var h=hdr(a.title||SPORT_N[a.sportType]||'Atividade',esc(fmtDate(a.startedAt))+' · '+esc(SPORT_N[a.sportType]||a.sportType)+(a.isOwner?' · '+VIS_N[a.visibility]:''),true);
+    h+='<div class="wrap">';
+    if(!a.isOwner&&a.athlete)h+='<div class="card" style="display:flex;align-items:center;gap:10px"><b style="flex:1">'+esc(a.athlete.name)+'</b><button class="btn sm '+(a.following?'ghost':'')+'" id="fw">'+(a.following?'Seguindo':'Seguir')+'</button></div>';
+    if(a.summaryPolyline)h+='<div class="map" id="dmap"></div>';
+    h+='<div class="card"><div class="grid3">'+
+      '<div class="stat"><b>'+(a.distanceM?fmtKm(a.distanceM):'—')+'</b><span>km</span></div>'+
+      '<div class="stat"><b>'+fmtDur(a.movingTimeS)+'</b><span>em movimento</span></div>'+
+      '<div class="stat"><b>'+(a.avgPace?(ride?fmtSpeed(a.avgPace):fmtPace(a.avgPace)):'—')+'</b><span>'+(ride?'km/h média':'ritmo médio /km')+'</span></div>'+
+      '<div class="stat"><b>'+(a.elevationGainM!=null?Math.round(a.elevationGainM)+' m':'—')+'</b><span>subida</span></div>'+
+      '<div class="stat"><b>'+(a.avgHeartRate||'—')+'</b><span>FC média</span></div>'+
+      '<div class="stat"><b>'+fmtDur(a.elapsedTimeS)+'</b><span>tempo total</span></div></div>'+
+      (a.description?'<p style="margin-top:12px">'+esc(a.description)+'</p>':'')+'</div>';
+    var ch=a.analysis&&a.analysis.chart||[];
+    if(ch.length>3)h+='<div class="card"><h2>Altimetria e '+(ride?'velocidade':'ritmo')+'</h2><div class="chart" id="chart"></div><p class="dim"><span style="color:#E5571E">■</span> altitude &nbsp; <span style="color:#2a1206">—</span> '+(ride?'velocidade':'ritmo')+'</p></div>';
+    var sp=a.analysis&&a.analysis.splits||[];
+    if(sp.length){
+      var paces=sp.map(function(s){return s.paceS||0;}),mx=Math.max.apply(0,paces)||1;
+      h+='<div class="card"><h2>Parciais por km</h2><table class="sp"><thead><tr><th>km</th><th>'+(ride?'km/h':'ritmo')+'</th><th style="width:40%"></th><th>elev.</th>'+(sp.some(function(s){return s.avgHr;})?'<th>FC</th>':'')+'</tr></thead><tbody>'+
+        sp.map(function(s){return '<tr><td>'+(s.partial?s.km.toLocaleString('pt-BR'):s.km)+'</td><td><b>'+(ride?fmtSpeed(s.paceS):fmtPace(s.paceS))+'</b></td><td><div class="spb" style="width:'+Math.max(8,Math.round((s.paceS||0)/mx*100))+'%"></div></td><td>'+(s.elevDiffM==null?'—':(s.elevDiffM>0?'+':'')+s.elevDiffM)+'</td>'+(sp.some(function(x){return x.avgHr;})?'<td>'+(s.avgHr||'—')+'</td>':'')+'</tr>';}).join('')+'</tbody></table></div>';
+    }
+    if(a.segmentEfforts&&a.segmentEfforts.length)h+='<div class="card"><h2>Segmentos</h2><div class="list">'+a.segmentEfforts.map(function(e){return '<a class="item" href="#/s/'+esc(e.segmentId)+'"><div class="tx"><b>'+esc(e.segmentName)+'</b><small>'+fmtKm(e.distanceM)+' km</small></div><b>'+fmtMs(e.elapsedMs)+'</b>'+(e.isPR?' <span class="pill ok">PR</span>':'')+'</a>';}).join('')+'</div></div>';
+    if(a.isOwner){
+      h+='<div class="card"><h2>Editar</h2><label class="f" for="et">Título</label><input class="in" id="et" maxlength="120" value="'+esc(a.title||'')+'">'+
+        '<label class="f" for="ed">Descrição</label><textarea class="in" id="ed" rows="2" maxlength="2000">'+esc(a.description||'')+'</textarea>'+
+        '<label class="f">Quem pode ver</label><div class="seg" id="ev">'+['public','followers','private'].map(function(v){return '<button data-v="'+v+'" class="'+(v===a.visibility?'on':'')+'">'+VIS_N[v]+'</button>';}).join('')+'</div>'+
+        '<button class="btn full" style="margin-top:14px" id="es">Salvar alterações</button></div>';
+      if(a.track&&a.track.length>5&&['RUN','TRAIL_RUN','WALK','HIKE','RIDE'].indexOf(a.sportType)>=0)h+='<div class="card"><h2>Criar segmento</h2><p class="dim">Escolha o trecho (mín. 200 m). Ele vira um ranking: toda atividade que passar por ali entra automaticamente.</p>'+
+        '<label class="f">Início</label><input type="range" class="range" id="sa" min="0" max="'+(a.track.length-1)+'" value="'+Math.round(a.track.length*0.2)+'">'+
+        '<label class="f">Fim</label><input type="range" class="range" id="sb" min="0" max="'+(a.track.length-1)+'" value="'+Math.round(a.track.length*0.6)+'">'+
+        '<p class="muted" id="sl" style="margin:6px 0"></p><input class="in" id="sn" maxlength="80" placeholder="Nome do segmento (ex: Subida do Cabo Branco)"><button class="btn lt full" style="margin-top:10px" id="sc">Criar segmento</button></div>';
+      h+='<button class="btn ghost full" style="color:var(--bad);margin-bottom:24px" id="del">Apagar atividade</button>';
+    }
+    h+='</div>';
+    setView(h,'');
+    if(a.summaryPolyline)drawDetailMap(a);
+    if(ch.length>3)drawChart($('#chart'),ch,ride);
+    if(a.isOwner)bindOwner(a);
+    var fw=$('#fw');if(fw)fw.onclick=function(){api('/activities/follow/'+encodeURIComponent(a.userId),{method:a.following?'DELETE':'POST'}).then(function(){viewActivity(id);}).catch(function(e){toast(e.message);});};
+  }).catch(function(e){errView(e,'Atividade','');});
+}
+function drawDetailMap(a){
+  if(!window.L){$('#dmap').innerHTML='<div style="padding:20px">'+miniSvg(a.summaryPolyline,400,240)+'</div>';return;}
+  try{if(DMAP)DMAP.remove();}catch(e){}
+  var pts=decodePoly(a.summaryPolyline);
+  DMAP=L.map('dmap',{zoomControl:false,scrollWheelZoom:false});
+  L.tileLayer(TILES.tileUrl,{maxZoom:TILES.maxZoom,attribution:TILES.attribution}).addTo(DMAP);
+  var line=L.polyline(pts,{color:'#E5571E',weight:5}).addTo(DMAP);
+  L.circleMarker(pts[0],{radius:6,color:'#fff',weight:2,fillColor:'#0B7A4B',fillOpacity:1}).addTo(DMAP);
+  L.circleMarker(pts[pts.length-1],{radius:6,color:'#fff',weight:2,fillColor:'#B3261E',fillOpacity:1}).addTo(DMAP);
+  DMAP.fitBounds(line.getBounds(),{padding:[20,20]});
+  DMAP._selLine=null;
+}
+function bindOwner(a){
+  var vis=a.visibility;
+  document.querySelectorAll('#ev button').forEach(function(b){b.onclick=function(){document.querySelectorAll('#ev button').forEach(function(x){x.classList.remove('on');});b.classList.add('on');vis=b.dataset.v;};});
+  $('#es').onclick=function(){api('/activities/'+encodeURIComponent(a.id),{method:'PATCH',body:{title:$('#et').value,description:$('#ed').value,visibility:vis}}).then(function(){toast('Salvo');viewActivity(a.id);}).catch(function(e){toast(e.message);});};
+  $('#del').onclick=function(){if(!confirm('Apagar esta atividade? Não dá pra desfazer.'))return;api('/activities/'+encodeURIComponent(a.id),{method:'DELETE'}).then(function(){toast('Atividade apagada');go('#/');}).catch(function(e){toast(e.message);});};
+  var sa=$('#sa'),sb=$('#sb');if(!sa)return;
+  var upd=function(){
+    var i=Math.min(+sa.value,+sb.value),j=Math.max(+sa.value,+sb.value);
+    var d=a.track[j][3]-a.track[i][3];
+    $('#sl').textContent='Trecho de '+(d/1000).toLocaleString('pt-BR',{maximumFractionDigits:2})+' km (do km '+(a.track[i][3]/1000).toFixed(2).replace('.',',')+' ao '+(a.track[j][3]/1000).toFixed(2).replace('.',',')+')';
+    if(DMAP&&window.L){if(DMAP._selLine)DMAP.removeLayer(DMAP._selLine);DMAP._selLine=L.polyline(a.track.slice(i,j+1).map(function(p){return [p[0],p[1]];}),{color:'#2a1206',weight:7,opacity:.85}).addTo(DMAP);}
+  };
+  sa.oninput=upd;sb.oninput=upd;upd();
+  $('#sc').onclick=function(){
+    var i=Math.min(+sa.value,+sb.value),j=Math.max(+sa.value,+sb.value);
+    api('/segments',{method:'POST',body:{activityId:a.id,startIdx:a.track[i][2],endIdx:a.track[j][2],name:$('#sn').value}}).then(function(r){toast('Segmento criado');go('#/s/'+r.segment.id);})
+      .catch(function(e){toast(e.message,4000);if(e.status===409&&e.data&&e.data.segmentId)go('#/s/'+e.data.segmentId);});
+  };
+}
+// gráfico SVG próprio: altitude (área) + ritmo/velocidade (linha); arrastar mostra valores
+function drawChart(el,data,ride){
+  var W=340,H=150,P=4;
+  var alts=data.map(function(d){return d.alt;}).filter(function(v){return v!=null;});
+  var vals=data.map(function(d){return d.pace?(ride?3600/d.pace:d.pace):null;});
+  var pv=vals.filter(function(v){return v!=null;}).sort(function(a,b){return a-b;});
+  var maxD=data[data.length-1].d||1;
+  var x=function(d){return P+(d/maxD)*(W-2*P);};
+  var aMin=alts.length?Math.min.apply(0,alts):0,aMax=alts.length?Math.max.apply(0,alts):1;if(aMax-aMin<10)aMax=aMin+10;
+  var ya=function(v){return H-P-((v-aMin)/(aMax-aMin))*(H*0.55);};
+  var lo=pv.length?pv[Math.floor(pv.length*0.05)]:0,hi=pv.length?pv[Math.floor(pv.length*0.95)]:1;if(hi-lo<1)hi=lo+1;
+  var yp=function(v){var t=(Math.min(hi,Math.max(lo,v))-lo)/(hi-lo);return ride?P+(1-t)*(H*0.6):P+t*(H*0.6);}; // ritmo: mais rápido em cima
+  var area='',line='';
+  data.forEach(function(d,i){if(d.alt!=null)area+=(area?'L':'M')+x(d.d).toFixed(1)+' '+ya(d.alt).toFixed(1);if(vals[i]!=null)line+=(line?'L':'M')+x(d.d).toFixed(1)+' '+yp(vals[i]).toFixed(1);});
+  var areaFill=area?area+'L'+x(maxD).toFixed(1)+' '+(H-P)+'L'+x(0)+' '+(H-P)+'Z':'';
+  el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" role="img" aria-label="Gráfico de altitude e ritmo">'+
+    (areaFill?'<path d="'+areaFill+'" fill="rgba(229,87,30,.22)" stroke="#E5571E" stroke-width="1.5"/>':'')+
+    (line?'<path d="'+line+'" fill="none" stroke="#2a1206" stroke-width="1.6"/>':'')+'<line id="cx" x1="0" x2="0" y1="0" y2="'+H+'" stroke="#2a1206" stroke-dasharray="3 3" opacity="0"/></svg><div class="tip"></div>';
+  var svg=el.querySelector('svg'),tip=el.querySelector('.tip'),cx=el.querySelector('#cx');
+  var show=function(clientX){var r=svg.getBoundingClientRect();var f=Math.min(1,Math.max(0,(clientX-r.left)/r.width));var dd=f*maxD;var k=0;for(var i=0;i<data.length;i++){if(data[i].d<=dd)k=i;}var d=data[k];
+    cx.setAttribute('x1',x(d.d));cx.setAttribute('x2',x(d.d));cx.setAttribute('opacity','1');
+    tip.style.display='block';tip.textContent='km '+d.d.toFixed(2).replace('.',',')+(d.alt!=null?' · '+Math.round(d.alt)+' m':'')+(d.pace?' · '+(ride?fmtSpeed(d.pace)+' km/h':fmtPace(d.pace)+'/km'):'')+(d.hr?' · '+d.hr+' bpm':'');
+    tip.style.left=Math.min(r.width-tip.offsetWidth,Math.max(0,f*r.width-tip.offsetWidth/2))+'px';};
+  svg.addEventListener('pointermove',function(e){show(e.clientX);});
+  svg.addEventListener('pointerdown',function(e){show(e.clientX);});
+  svg.addEventListener('pointerleave',function(){tip.style.display='none';cx.setAttribute('opacity','0');});
+}
+
+/* ===================================================== SEGMENTO ======= */
+function viewSegment(id,period,sex){
+  period=period||'all';
+  loading('Segmento','');
+  var q='?period='+period+(sex?'&sex='+sex:'');
+  api('/segments/'+encodeURIComponent(id)+q).then(function(r){
+    var s=r.segment;
+    var h=hdr(s.name,fmtKm(s.distanceM)+' km · '+Math.round(s.elevationGainM||0)+' m de subida · '+(SPORT_N[s.sportType]||s.sportType),true);
+    h+='<div class="wrap"><div class="map" id="smap"></div>';
+    if(r.localLegend)h+='<div class="card" style="display:flex;gap:12px;align-items:center"><div class="bdg" style="box-shadow:none;padding:0"><div class="m">👑</div></div><div><b>Local Legend</b><br><span class="muted">'+esc(r.localLegend.name||'Atleta')+' · '+r.localLegend.efforts+' passagens em '+r.localLegend.days+' dias</span></div></div>';
+    h+='<div class="card"><h2>Ranking</h2><div class="seg" id="tabs">'+[['all','','Geral'],['month','','Mês'],['all','F','Mulheres'],['all','M','Homens']].map(function(t){var on=t[0]===period&&(t[1]||null)===(sex||null);return '<button class="'+(on?'on':'')+'" data-p="'+t[0]+'" data-s="'+t[1]+'">'+t[2]+'</button>';}).join('')+'</div><div style="margin-top:8px">'+
+      (r.leaderboard.length?r.leaderboard.map(function(x){return '<div class="rk'+(x.athleteId===meId()?' me':'')+'"><span class="n">'+x.rank+'</span><span class="nm">'+esc(x.name)+'</span><span class="v">'+fmtMs(x.elapsedMs)+'</span></div>';}).join(''):'<div class="empty">Ninguém nesse filtro ainda.</div>')+'</div></div>';
+    if(r.myEfforts.length)h+='<div class="card"><h2>Minhas passagens</h2>'+r.myEfforts.map(function(e,i){return '<a class="rk" href="#/a/'+esc(e.activityId)+'" style="text-decoration:none"><span class="n">'+(i+1)+'</span><span class="nm">'+esc(fmtDate(e.startedAt))+'</span><span class="v">'+fmtMs(e.elapsedMs)+'</span></a>';}).join('')+'</div>';
+    if(s.isCreator)h+='<button class="btn ghost full" style="color:var(--bad);margin-bottom:24px" id="sdel">Apagar segmento</button>';
+    h+='</div>';
+    setView(h,'');
+    if(window.L){var pts=decodePoly(s.polyline);var m=L.map('smap',{zoomControl:false,scrollWheelZoom:false});L.tileLayer(TILES.tileUrl,{maxZoom:TILES.maxZoom,attribution:TILES.attribution}).addTo(m);var ln=L.polyline(pts,{color:'#E5571E',weight:6}).addTo(m);m.fitBounds(ln.getBounds(),{padding:[20,20]});}
+    else $('#smap').innerHTML='<div style="padding:20px">'+miniSvg(s.polyline,400,220)+'</div>';
+    document.querySelectorAll('#tabs button').forEach(function(b){b.onclick=function(){viewSegment(id,b.dataset.p,b.dataset.s||null);};});
+    var sd=$('#sdel');if(sd)sd.onclick=function(){if(confirm('Apagar o segmento e o ranking dele?'))api('/segments/'+encodeURIComponent(id),{method:'DELETE'}).then(function(){toast('Segmento apagado');history.back();});};
+  }).catch(function(e){errView(e,'Segmento','');});
+}
+function meId(){try{var u=JSON.parse(localStorage.getItem('tc_user')||'null');return u&&u.id;}catch(e){return null;}}
+
+/* ===================================================== CONQUISTAS ======= */
+function viewBadges(){
+  loading('Conquistas','conquistas');
+  api('/activities/me/badges').then(function(r){
+    var pct=Math.min(100,Math.round(r.xp/Math.max(1,r.nextLevelXp)*100));
+    var earnedBase={};r.badges.forEach(function(b){earnedBase[b.key.split(':')[0]]=(earnedBase[b.key.split(':')[0]]||0)+1;});
+    var h=hdr('Conquistas','Nível '+r.level+' · '+r.xp+' XP');
+    h+='<div class="wrap"><div class="card"><div style="display:flex;justify-content:space-between;font-weight:700"><span>Nível '+r.level+'</span><span class="muted">faltam '+Math.max(0,r.nextLevelXp-r.xp)+' XP</span></div><div class="bar" style="margin-top:8px"><i style="width:'+pct+'%"></i></div>'+
+      (r.cashbackTotal>0?'<p class="dim" style="margin-top:8px">Cashback ganho com conquistas: <b>T$ '+r.cashbackTotal.toFixed(2).replace('.',',')+'</b> — use nas lojas Sports &amp; Tennis.</p>':'')+'</div>';
+    h+='<div class="card"><h2>Ganhas ('+r.badges.length+')</h2>'+(r.badges.length?'<div class="badges">'+r.badges.map(function(b){return '<div class="bdg"><div class="m">'+esc(b.icon||'★')+'</div><b>'+esc(b.title)+'</b><small>+'+b.xpAwarded+' XP'+(b.cashbackAwarded>0?' · T$ '+b.cashbackAwarded.toFixed(2).replace('.',','):'')+'</small><br><small>'+esc(new Date(b.earnedAt).toLocaleDateString('pt-BR'))+'</small></div>';}).join('')+'</div>':'<div class="empty">Grave sua primeira atividade pra ganhar a primeira conquista.</div>')+'</div>';
+    h+='<div class="card"><h2>Pra conquistar</h2><div class="badges">'+r.catalog.map(function(c){var n=earnedBase[c.key]||0;return '<div class="bdg'+(n?'':' off')+'"><div class="m">'+esc(c.icon)+'</div><b>'+esc(c.title)+'</b><small>'+c.xp+' XP'+(n>1?' · '+n+'x':'')+'</small></div>';}).join('')+'</div></div></div>';
+    setView(h,'conquistas');
+  }).catch(function(e){errView(e,'Conquistas','conquistas');});
+}
+
+/* ===================================================== DESAFIOS ======= */
+var RULE_N={distance:'Distância',time:'Tempo em movimento',frequency:'Nº de atividades'};
+function fmtRule(type,v){return type==='distance'?fmtKm(v)+' km':type==='time'?fmtDur(v):Math.round(v)+'x';}
+function viewChallenges(){
+  loading('Desafios','desafios');
+  api('/activity-challenges').then(function(r){
+    var off=r.challenges.filter(function(c){return c.kind==='official';}),grp=r.challenges.filter(function(c){return c.kind==='group';});
+    var card=function(c){var tgt=c.ruleConfig&&c.ruleConfig.target||0;var pct=tgt?Math.min(100,Math.round(c.progressValue/tgt*100)):0;var ended=new Date(c.endsAt)<new Date();
+      return '<a class="item" href="#/c/'+esc(c.id)+'" style="display:block"><div style="display:flex;justify-content:space-between;gap:8px"><b>'+esc(c.name)+'</b>'+(c.completedAt?'<span class="pill ok">Concluído</span>':ended?'<span class="pill">Encerrado</span>':c.joined?'<span class="pill">'+pct+'%</span>':'<span class="pill warn">Participar</span>')+'</div>'+
+        '<small class="muted">'+RULE_N[c.ruleType]+': '+fmtRule(c.ruleType,tgt)+' · até '+new Date(c.endsAt).toLocaleDateString('pt-BR')+'</small>'+(c.joined?'<div class="bar" style="margin-top:8px"><i style="width:'+pct+'%"></i></div>':'')+'</a>';};
+    var h=hdr('Desafios','Do clube e com os amigos');
+    h+='<div class="wrap"><div class="card"><h2>Desafios do Club</h2><div class="list">'+(off.length?off.map(card).join(''):'<div class="empty">Nenhum desafio oficial no momento.</div>')+'</div></div>';
+    h+='<div class="card"><h2>Com os amigos</h2><div class="list">'+(grp.length?grp.map(card).join(''):'<div class="empty">Crie um desafio e mande o link pra galera.</div>')+'</div><button class="btn lt full" style="margin-top:10px" id="ng">Criar desafio de grupo</button></div></div>';
+    setView(h,'desafios');
+    $('#ng').onclick=newGroupSheet;
+  }).catch(function(e){errView(e,'Desafios','desafios');});
+}
+function newGroupSheet(){
+  sheet('<h3>Novo desafio de grupo</h3><label class="f" for="gn">Nome</label><input class="in" id="gn" maxlength="80" placeholder="Ex: Galera da orla — dezembro">'+
+    '<label class="f" for="gt">Tipo</label><select class="in" id="gt"><option value="distance">Distância (km)</option><option value="frequency">Nº de atividades</option><option value="time">Tempo em movimento (horas)</option></select>'+
+    '<label class="f" for="gv">Meta</label><input class="in" id="gv" type="number" inputmode="decimal" min="1" value="50">'+
+    '<label class="f" for="gd">Duração</label><select class="in" id="gd"><option value="7">1 semana</option><option value="14">2 semanas</option><option value="30" selected>30 dias</option><option value="90">90 dias</option></select>'+
+    '<button class="btn full" style="margin-top:16px" id="gs">Criar e pegar o link</button>',function(el,close){
+      $('#gs',el).onclick=function(){
+        var t=$('#gt',el).value,v=parseFloat(String($('#gv',el).value).replace(',','.'));
+        var target=t==='distance'?v*1000:t==='time'?v*3600:v;
+        var now=new Date(),end=new Date(now.getTime()+(+$('#gd',el).value)*86400e3);
+        api('/activity-challenges/group',{method:'POST',body:{name:$('#gn',el).value,ruleType:t,target:target,startsAt:now.toISOString(),endsAt:end.toISOString()}})
+          .then(function(r){close();go('#/c/'+r.challenge.id);}).catch(function(e){toast(e.message);});
+      };
+  });
+}
+function viewChallenge(id){
+  loading('Desafio','desafios');
+  api('/activity-challenges/'+encodeURIComponent(id)).then(function(r){
+    var c=r.challenge,tgt=c.ruleConfig&&c.ruleConfig.target||0;
+    var h=hdr(c.name,RULE_N[c.ruleType]+': '+fmtRule(c.ruleType,tgt)+' · '+new Date(c.startsAt).toLocaleDateString('pt-BR')+' a '+new Date(c.endsAt).toLocaleDateString('pt-BR'),true);
+    h+='<div class="wrap">';
+    if(c.description)h+='<div class="card"><p>'+esc(c.description)+'</p></div>';
+    if(r.me){var pct=tgt?Math.min(100,Math.round(r.me.progressValue/tgt*100)):0;h+='<div class="card"><h2>Meu progresso</h2><div style="display:flex;justify-content:space-between;font-weight:700"><span>'+fmtRule(c.ruleType,r.me.progressValue)+'</span><span class="muted">'+pct+'%</span></div><div class="bar" style="margin-top:8px"><i style="width:'+pct+'%"></i></div>'+(r.me.completedAt?'<p class="pill ok" style="margin-top:10px">Concluído! Conquista desbloqueada.</p>':'')+'</div>';}
+    else if(c.kind==='official')h+='<button class="btn full" style="margin-bottom:14px" id="jn">Participar</button>';
+    if(c.kind==='group'&&c.inviteCode){var url=location.origin+'/atividade.html#/desafio/'+c.inviteCode;h+='<div class="card"><h2>Convidar amigos</h2><input class="in" readonly value="'+esc(url)+'" onclick="this.select()"><div class="grid2" style="margin-top:10px"><a class="btn lt" target="_blank" rel="noopener" href="https://wa.me/?text='+encodeURIComponent('Bora no desafio "'+c.name+'" no Club Sports & Tennis? '+url)+'">WhatsApp</a><button class="btn ghost" id="cp">Copiar link</button></div></div>';}
+    h+='<div class="card"><h2>Ranking</h2>'+(r.ranking.length?r.ranking.map(function(x){return '<div class="rk'+(x.userId===meId()?' me':'')+'"><span class="n">'+x.rank+'</span><span class="nm">'+esc(x.name)+(x.completedAt?' ✓':'')+'</span><span class="v">'+fmtRule(c.ruleType,x.progressValue)+'</span></div>';}).join(''):'<div class="empty">Ninguém ainda.</div>')+'</div>';
+    if(r.me)h+='<button class="btn ghost full" style="margin-bottom:24px" id="lv">Sair do desafio</button>';
+    h+='</div>';
+    setView(h,'desafios');
+    var jn=$('#jn');if(jn)jn.onclick=function(){api('/activity-challenges/'+encodeURIComponent(id)+'/join',{method:'POST'}).then(function(){viewChallenge(id);}).catch(function(e){toast(e.message);});};
+    var cp=$('#cp');if(cp)cp.onclick=function(){copy(location.origin+'/atividade.html#/desafio/'+c.inviteCode);};
+    var lv=$('#lv');if(lv)lv.onclick=function(){if(confirm('Sair do desafio?'))api('/activity-challenges/'+encodeURIComponent(id)+'/leave',{method:'POST'}).then(function(){go('#/desafios');});};
+  }).catch(function(e){errView(e,'Desafio','desafios');});
+}
+function viewInvite(code){
+  loading('Convite','desafios');
+  api('/activity-challenges/invite/'+encodeURIComponent(code)).then(function(r){
+    var c=r.challenge,tgt=c.ruleConfig&&c.ruleConfig.target||0;
+    var h=hdr('Você foi convidado','Desafio de grupo',true)+'<div class="wrap"><div class="card"><h2>'+esc(c.name)+'</h2><p class="muted">'+RULE_N[c.ruleType]+': <b>'+fmtRule(c.ruleType,tgt)+'</b><br>'+new Date(c.startsAt).toLocaleDateString('pt-BR')+' a '+new Date(c.endsAt).toLocaleDateString('pt-BR')+' · '+r.participants+' participante(s)</p><button class="btn full" style="margin-top:14px" id="ji">Entrar no desafio</button></div></div>';
+    setView(h,'desafios');
+    $('#ji').onclick=function(){api('/activity-challenges/invite/'+encodeURIComponent(code)+'/join',{method:'POST'}).then(function(x){lsSet('apex_pending_invite',null);go('#/c/'+x.challengeId);}).catch(function(e){toast(e.message);});};
+  }).catch(function(e){errView(e,'Convite','desafios');});
+}
+
+/* ===================================================== AJUSTES ======= */
+function viewSettings(){
+  loading('Ajustes','ajustes');
+  Promise.all([api('/activities/privacy-zones'),api('/activities/safety-contacts'),api('/activities/consent')]).then(function(r){
+    var zones=r[0].zones,contacts=r[1].contacts,cons=r[2].consents;
+    var vis=lsGet('apex_vis','followers');
+    var h=hdr('Ajustes','Privacidade e segurança');
+    h+='<div class="wrap">';
+    h+='<div class="card"><h2>Visibilidade padrão</h2><div class="seg" id="dv">'+['public','followers','private'].map(function(v){return '<button data-v="'+v+'" class="'+(v===vis?'on':'')+'">'+VIS_N[v]+'</button>';}).join('')+'</div><p class="dim" style="margin-top:8px">Vale para as próximas atividades. Dá pra mudar uma a uma depois.</p></div>';
+    h+='<div class="card"><h2>Zona de privacidade</h2><p class="dim">Quem não é você não vê a rota dentro do raio em volta de casa (o começo e o fim ficam escondidos).</p><div class="list">'+
+      (zones.length?zones.map(function(z){return '<div class="item"><div class="tx"><b>'+esc(z.label||'Zona')+'</b><small>raio de '+z.radiusM+' m</small></div><button class="btn sm ghost" data-z="'+esc(z.id)+'">Remover</button></div>';}).join(''):'<div class="empty" style="padding:10px">Nenhuma zona.</div>')+'</div>'+
+      '<div class="grid2" style="margin-top:8px"><select class="in" id="zr"><option value="200">200 m</option><option value="300" selected>300 m</option><option value="500">500 m</option><option value="1000">1 km</option></select><button class="btn lt" id="za">Usar onde estou</button></div></div>';
+    h+='<div class="card"><h2>Contatos de segurança ('+contacts.length+'/3)</h2><p class="dim">Recebem o link do Beacon quando você compartilha a posição ao vivo. O envio é feito por você, pelo WhatsApp do seu celular.</p><div class="list">'+
+      contacts.map(function(c){return '<div class="item"><div class="tx"><b>'+esc(c.name)+'</b><small>'+esc(c.phone||'')+'</small></div><button class="btn sm ghost" data-c="'+esc(c.id)+'">Remover</button></div>';}).join('')+'</div>'+
+      (contacts.length<3?'<input class="in" id="cn" placeholder="Nome" maxlength="60" style="margin-top:8px"><input class="in" id="cf" placeholder="WhatsApp com DDD (ex: 83 99999-0000)" inputmode="tel" style="margin-top:8px"><button class="btn lt full" style="margin-top:8px" id="ca">Adicionar contato</button>':'')+'</div>';
+    h+='<div class="card"><h2>Consentimentos (LGPD)</h2><div class="item" style="border:0"><div class="tx"><b>Localização nas atividades</b><small>'+(cons.location_history?'Autorizado':'Não autorizado')+'</small></div>'+(cons.location_history?'<button class="btn sm ghost" id="rv">Revogar</button>':'<button class="btn sm lt" id="gv">Autorizar</button>')+'</div>'+
+      '<p class="dim">Revogar impede novas gravações com GPS. As atividades já salvas continuam com você e podem ser apagadas uma a uma.</p></div>';
+    h+='<div class="card"><h2>Mapas</h2><p class="dim">Mapas: '+TILES.attribution+'. Treinos sem internet são guardados no celular e sobem sozinhos depois.</p></div>';
+    h+='</div>';
+    setView(h,'ajustes');
+    document.querySelectorAll('#dv button').forEach(function(b){b.onclick=function(){document.querySelectorAll('#dv button').forEach(function(x){x.classList.remove('on');});b.classList.add('on');lsSet('apex_vis',b.dataset.v);toast('Padrão salvo');};});
+    document.querySelectorAll('[data-z]').forEach(function(b){b.onclick=function(){api('/activities/privacy-zones/'+encodeURIComponent(b.dataset.z),{method:'DELETE'}).then(viewSettings);};});
+    document.querySelectorAll('[data-c]').forEach(function(b){b.onclick=function(){api('/activities/safety-contacts/'+encodeURIComponent(b.dataset.c),{method:'DELETE'}).then(viewSettings);};});
+    $('#za').onclick=function(){
+      if(!navigator.geolocation)return toast('GPS indisponível');
+      toast('Pegando sua localização…');
+      navigator.geolocation.getCurrentPosition(function(p){api('/activities/privacy-zones',{method:'POST',body:{lat:p.coords.latitude,lng:p.coords.longitude,radiusM:+$('#zr').value,label:'Casa'}}).then(function(){toast('Zona criada');viewSettings();}).catch(function(e){toast(e.message);});},function(){toast('Não consegui sua localização');},{enableHighAccuracy:true,timeout:15000});
+    };
+    var ca=$('#ca');if(ca)ca.onclick=function(){api('/activities/safety-contacts',{method:'POST',body:{name:$('#cn').value,phone:$('#cf').value}}).then(function(){toast('Contato salvo');viewSettings();}).catch(function(e){toast(e.message);});};
+    var rv=$('#rv');if(rv)rv.onclick=function(){if(!confirm('Revogar o uso da localização?'))return;api('/activities/consent',{method:'POST',body:{scope:'location_history',granted:false}}).then(function(){lsSet('apex_consent_loc',false);viewSettings();});};
+    var gv=$('#gv');if(gv)gv.onclick=function(){askConsent().then(function(ok){if(ok)setTimeout(viewSettings,400);});};
+  }).catch(function(e){errView(e,'Ajustes','ajustes');});
+}
+
+/* ------------------------------------------------------------ boot */
+fetch('/api/beacon/_config').then(function(r){return r.json();}).then(function(c){if(c&&c.tileUrl)TILES=c;}).catch(function(){})
+  .then(restoreRec).then(function(r){
+    if(r){location.replace('#/gravar');}
+    var inv=lsGet('apex_pending_invite',null);if(inv&&token()&&!r){lsSet('apex_pending_invite',null);location.replace('#/desafio/'+inv);}
+    render();
+    if(token()&&navigator.onLine)flushOutbox(false).then(function(x){if(x&&x.length)toast(x.length+' atividade(s) enviada(s)');});
+  });
+window.addEventListener('beforeunload',function(e){if(REC&&REC.state==='running'){persist();e.preventDefault();e.returnValue='';}});
+</script>
+</body>
+</html>

@@ -12,7 +12,8 @@ const prisma = new PrismaClient();
 const whatsappCloud = require('./whatsappCloud');
 const clubPush = require('./clubPush');
 
-async function notify(userId, { type, title, body, link } = {}) {
+// opts.whatsapp=false → só o sininho (ex: conquistas do app de atividade).
+async function notify(userId, { type, title, body, link } = {}, opts = {}) {
   if (!userId) return null;
   try {
     const n = await prisma.appNotification.create({
@@ -26,7 +27,7 @@ async function notify(userId, { type, title, body, link } = {}) {
     });
     // WhatsApp: liga com a Cloud API oficial (WHATSAPP_TOKEN) OU a ponte (WA_BRIDGE_KEY).
     // Sem nenhuma das duas, não faz nada (só o sininho). Nunca derruba o fluxo.
-    if (whatsappCloud.enabled() || process.env.WA_BRIDGE_KEY) enqueueWhatsApp(userId, title, body).catch(() => {});
+    if (opts.whatsapp !== false && (whatsappCloud.enabled() || process.env.WA_BRIDGE_KEY)) enqueueWhatsApp(userId, title, body).catch(() => {});
     // Push no celular (Club): só pra quem tem inscrição e deixou o tipo ligado. Best-effort.
     clubPush.sendPush(userId, { type: n.type, title, body, link });
     return n;
