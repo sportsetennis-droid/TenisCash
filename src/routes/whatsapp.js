@@ -33,6 +33,37 @@ function alreadyHandled(id) {
 function isOwnerPhone(phone) {
   return waFunctions.phoneVariants(phone).includes(String(CEO.whatsapp).replace(/\D/g, ''));
 }
+// ---- Agentes dos vendedores: interruptor próprio (Config 'wa_agentes_vendedores'; padrão LIGADO) ----
+const agentManager = require('../services/agentManager');
+const sellerAgentRoute = require('./sellerAgent');
+let _agSwitch = null, _agAt = 0;
+async function agentesOn() {
+  if (Date.now() - _agAt > 60000) {
+    try { const row = await prisma.config.findUnique({ where: { key: 'wa_agentes_vendedores' } }); _agSwitch = row ? row.value === 'on' : null; _agAt = Date.now(); } catch (_) {}
+  }
+  return _agSwitch === null ? true : _agSwitch;
+}
+async function setAgentesSwitch(on) {
+  const value = on ? 'on' : 'off';
+  await prisma.config.upsert({ where: { key: 'wa_agentes_vendedores' }, update: { value }, create: { id: 'wa_agentes_vendedores', key: 'wa_agentes_vendedores', value } });
+  _agSwitch = !!on; _agAt = Date.now();
+}
+function parseAgentesCmd(text) {
+  const t = String(text || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[!.]+$/, '').trim();
+  if (/^agentes? ?(off|desligar|desliga)$/.test(t)) return 'off';
+  if (/^agentes? ?(on|ligar|liga)$/.test(t)) return 'on';
+  if (/^agentes? ?(status|\?)$|^perguntas$/.test(t)) return 'status';
+  return null;
+}
+const _sellerByPhone = new Map();
+async function findSellerByPhone(phone) {
+  const hit = _sellerByPhone.get(phone);
+  if (hit && Date.now() - hit.at < 5 * 60000) return hit.seller;
+  const variants = waFunctions.phoneVariants(phone);
+  const seller = variants.length ? await prisma.user.findFirst({ where: { role: 'seller', active: true, phone: { in: variants } }, select: { id: true, name: true, phone: true } }).catch(() => null) : null;
+  _sellerByPhone.set(phone, { seller, at: Date.now() });
+  return seller;
+}
 function parseRoboCmd(text) {
   const t = String(text || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[!.]+$/, '').trim();
   if (/^(ia|robo) ?(off|desligar|desliga|desligada)$|^(desligar|desliga) (a )?(ia|robo)$/.test(t)) return 'off';
@@ -278,6 +309,40 @@ router.post('/evolution', async (req, res) => {
         : '⏸️ *IA DESLIGADA* no WhatsApp da Sports & Tennis.\nNenhuma resposta automática: a equipe atende na mão.\n\nPra ligar de novo: *IA ON*').catch(() => {});
       return;
     }
+    // ===== AGENTES DOS VENDEDORES (dono 17/11/2026) — separados da IA de cliente =====
+    // Dono: "R12 resposta" responde a pergunta #12 que o agente gerente encaminhou; "AGENTES OFF/ON" liga/desliga.
+    if (!isGroup && text && isOwnerPhone(phone)) {
+      const ans = agentManager.parseOwnerAnswer(text);
+      if (ans) {
+        const r = await agentManager.ownerAnswer(prisma, ans.id, ans.answer).catch((e) => ({ error: e.message }));
+        await sendToClient(r.error ? '⚠️ ' + r.error : '✅ Resposta #' + ans.id + ' enviada pro ' + r.seller + (r.delivered ? '' : ' (não consegui entregar no WhatsApp dele)') + '. Ficou guardada: todos os agentes passam a saber.' + (r.alreadyAnswered ? ' (essa pergunta já tinha resposta; atualizei.)' : '')).catch(() => {});
+        return;
+      }
+      const ag = parseAgentesCmd(text);
+      if (ag) {
+        if (ag !== 'status') await setAgentesSwitch(ag === 'on');
+        const on = await agentesOn();
+        const pend = await agentManager.pending(prisma).catch(() => []);
+        await sendToClient((on ? '🤖 *AGENTES DOS VENDEDORES LIGADOS*' : '⏸️ *AGENTES DOS VENDEDORES DESLIGADOS*') + '\nPerguntas esperando sua resposta: ' + pend.length + (pend.length ? '\n' + pend.slice(0, 10).map((p) => '#' + p.id + ' ' + String(p.sellerName || '').split(' ')[0] + ': ' + String(p.question).slice(0, 80)).join('\n') : '')).catch(() => {});
+        return;
+      }
+    }
+    // Vendedor falando com o PRÓPRIO agente (reconhecido pelo telefone do cadastro).
+    if (!isGroup && !isOwnerPhone(phone)) {
+      const seller = await findSellerByPhone(phone);
+      if (seller && await agentesOn()) {
+        if (!text) { await sendToClient('Me manda por *texto*, ' + String(seller.name || '').split(' ')[0] + ', que eu te respondo. 🧡').catch(() => {}); return; }
+        try {
+          const out = await sellerAgentRoute.runSellerAgentChat({ userId: seller.id, userRole: 'seller', query: {}, body: {}, headers: {} }, text.slice(0, 1200), { channel: 'whatsapp' });
+          await sendToClient(String(out.reply || '').slice(0, 3500) || 'Não consegui responder agora. Tenta de novo em instantes.').catch(() => {});
+        } catch (e) {
+          console.error('[agente-vendedor]', e.message);
+          await sendToClient('Tive um problema pra responder agora. Tenta de novo em instantes. 🙏').catch(() => {});
+        }
+        return;
+      }
+    }
+
     const roboOn = await isMainRoboOn();
 
     if (!isGroup && roboOn) {
