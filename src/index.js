@@ -578,6 +578,7 @@ app.use('/api/admin/reels-agency', reelsAgencyRoutes);
 app.use('/api/activities', activitiesRoutes);
 app.use('/api/coach', coachRoutes);
 app.use('/api/tournaments', tournamentsRoutes);
+app.use('/api/medals', require('./routes/medals')); // medalhas digitais (Open Badges 3.0)
 app.use('/api/copa', copaRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/instagram', require('./routes/instagramWebhook')); // DM do Instagram -> CRM
@@ -800,6 +801,9 @@ app.get('/', (req, res, next) => {
 // Domínio clubsportsetennis.com.br = mesmo sistema com a marca Sports & Tennis.
 const siteBrand = require('./services/siteBrand');
 siteBrand.mount(app);
+
+// Medalhas digitais: verificação (/verificar, /v/:serial), estante (/estante/:handle), contexto JSON-LD.
+require('./services/medalPages').mount(app);
 
 app.get(['/transferencia','/transferencia/'], (_req,res)=>{res.set('Cache-Control','no-store');res.sendFile(path.join(__dirname,'../public/transferencia.html'),{cacheControl:false});});
 app.use(express.static(path.join(__dirname, '../public'), {

@@ -41,6 +41,8 @@ jobs:
       - run: npm run test:stock-replacement
       - name: Financeiro e maquininha Stone — rotas com Postgres (schema 2x, dono, auditoria, webhook Stone)
         run: npm run test:fin-http
+      - name: Medalhas digitais — assinatura OB 3.0, emissão pelo resultado oficial, revogação (Postgres descartável)
+        run: MEDAL_TEST_DATABASE_URL="$DATABASE_URL" npm run test:medals
       - name: Contracheque — ponta a ponta com Postgres (acesso, isolamento, fechar/reabrir, PDF, auditoria)
         run: npm run test:payroll-http
   boot-check:
