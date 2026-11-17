@@ -5,17 +5,16 @@
 // =====================================================================
 
 const express = require('express');
-const { authMiddleware } = require('../middleware');
+const { authMiddleware, prisma } = require('../middleware');
 const ingest = require('../services/activityIngest');
-const { PrismaClient } = require('@prisma/client');
 
-const prisma = new PrismaClient();
 const router = express.Router();
 
 // POST /api/activities — registra atividade do app (autenticado)
 router.post('/', authMiddleware, async (req, res) => {
   try {
-    const userId = req.user?.id || req.body?.userId;
+    // Dono da atividade = SEMPRE quem está logado. Nunca o body (senão grava em nome de outro).
+    const userId = req.userId;
     if (!userId) return res.status(401).json({ error: 'não autenticado' });
 
     const payload = { ...req.body, userId };
@@ -31,7 +30,7 @@ router.post('/', authMiddleware, async (req, res) => {
 // GET /api/activities — lista atividades do usuário autenticado
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    const userId = req.user?.id;
+    const userId = req.userId;
     if (!userId) return res.status(401).json({ error: 'não autenticado' });
 
     const limit = Math.min(Number(req.query.limit) || 30, 100);
@@ -55,7 +54,8 @@ router.get('/', authMiddleware, async (req, res) => {
 // GET /api/activities/:id — detalhe
 router.get('/:id', authMiddleware, async (req, res) => {
   try {
-    const userId = req.user?.id;
+    const userId = req.userId;
+    if (!userId) return res.status(401).json({ error: 'não autenticado' });
     const activity = await prisma.activity.findFirst({
       where: { id: req.params.id, userId },
       include: { laps: true, photos: true },
