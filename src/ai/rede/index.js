@@ -19,4 +19,4 @@ async function iniciar() {
   try { require('./relogio').agendar(); } catch (e) { console.error('[RNA] relógio:', e.message); }
 }
 
-module.exports = { iniciar, sensor, SENSORES, emitir: motor.emitir, motor, aprendizado, objetivos };
+module.exports = { iniciar, estaIniciada: () => iniciado, sensor, SENSORES, emitir: motor.emitir, motor, aprendizado, objetivos };

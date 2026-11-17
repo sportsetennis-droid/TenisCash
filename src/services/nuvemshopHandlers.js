@@ -399,6 +399,7 @@ async function upsertSaleFromOrder(nsOrder) {
           note: `Pedido Nuvemshop #${nsOrder.number || nsOrder.id}`,
         },
       });
+      require('../ai/rede/ganchos').vendaRegistrada(sale.id);
     } catch (err) {
       await logSync('order', 'error', `Falha criar Sale: ${err.message}`);
       return null;

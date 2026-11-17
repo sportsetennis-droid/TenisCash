@@ -1576,6 +1576,7 @@ router.post('/matches/:matchId/finalize', authMiddleware, async (req, res) => {
     }
     const r = await sheet.finalizeMatch(req.params.matchId, req.body || {});
     if (!r.ok) return res.status(400).json(r);
+    require('../ai/rede/ganchos').jogoFinalizado(req.params.matchId);
     res.json(r);
   } catch (err) {
     res.status(500).json({ error: err.message });

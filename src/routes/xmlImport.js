@@ -256,6 +256,7 @@ router.post('/nfe/import', upload.single('file'), async (req, res) => {
       where: { id: document.id },
       data: { status: matched === itemsToCreate.length ? 'matched' : 'partial' },
     });
+    require('../ai/rede/ganchos').nfeImportada(document.id);
 
     res.json({
       ok: true,
