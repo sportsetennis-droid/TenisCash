@@ -100,7 +100,7 @@ async function main() {
     const n1 = await ensureApexSchema(prisma);
     const n2 = await ensureApexSchema(prisma);
     assert.strictEqual(n1, n2);
-    const total = require('fs').readFileSync(require.resolve('../src/services/ensureApexSchema'), 'utf8').match(/^\s*(`|")(ALTER|CREATE)/gm).length;
+    const total = require('../src/services/ensureApexSchema').STATEMENTS_TOTAL();
     assert.strictEqual(n1, total, `${n1}/${total} aplicados`);
   });
   if (isLocal(URL_OLD)) {

@@ -919,4 +919,4 @@ async function ensureApexSchema(prisma) {
   return ok;
 }
 
-module.exports = { ensureApexSchema, ensureSearchIndexes };
+module.exports = { ensureApexSchema, ensureSearchIndexes, STATEMENTS_TOTAL: () => STATEMENTS.length };
