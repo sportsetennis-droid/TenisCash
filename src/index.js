@@ -107,6 +107,7 @@ const { startImageRepairCron } = require('./services/imageRepairCron');
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
+require('./services/observability').install(app); // log JSON com x-request-id (pino) + Sentry só com SENTRY_DSN
 
 // Compressão gzip — reduz payload da listagem de produtos em ~70%
 // Threshold 1KB pra não desperdiçar CPU em respostas pequenas
@@ -580,6 +581,10 @@ app.use('/api/coach', coachRoutes);
 app.use('/api/tournaments', tournamentsRoutes);
 app.use('/api/admin/rede', require('./routes/rede')); // Rede Neural de Agentes (painel/propostas/objetivos)
 app.use('/api/medals', require('./routes/medals')); // medalhas digitais (Open Badges 3.0)
+app.use('/api/search', require('./routes/search')); // busca tolerante a erro (pg_trgm) + catálogo offline do vendedor
+app.use('/api/google-wallet', require('./routes/googleWallet')); // cartão TenisCash na Carteira do Google (só com credencial)
+app.use('/api/team-calendar', require('./routes/teamCalendar')); // escala/folgas do vendedor em .ics
+app.use('/api/sales-dashboard', require('./routes/salesDashboard')); // painel de vendas (admin, só leitura)
 app.use('/api/copa', copaRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/instagram', require('./routes/instagramWebhook')); // DM do Instagram -> CRM
@@ -2004,6 +2009,8 @@ app.get('*', (req, res) => {
   }
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
+
+require('./services/observability').installErrorHandler(app); // Sentry: captura erro das rotas (no-op sem SENTRY_DSN)
 
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`TenisCash API rodando na porta ${PORT}`);

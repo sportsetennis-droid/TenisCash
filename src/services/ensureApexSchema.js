@@ -340,7 +340,46 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "MedalStatusEvent_medalId_createdAt_idx" ON "MedalStatusEvent" ("medalId", "createdAt")`,
   // Número de série sequencial e sem colisão (CST-2026-000123)
   `CREATE SEQUENCE IF NOT EXISTS "MedalSerialSeq" START 1`,
+  // Calendário da equipe (.ics por vendedor): guarda só a VERSÃO do link pessoal.
+  // O token é HMAC(segredo, vendedor+versão) — não fica salvo; trocar a versão invalida o link antigo.
+  `CREATE TABLE IF NOT EXISTS "TeamCalendarFeed" (
+     "sellerId" TEXT NOT NULL,
+     "version" INTEGER NOT NULL DEFAULT 1,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     "rotatedAt" TIMESTAMP(3),
+     CONSTRAINT "TeamCalendarFeed_pkey" PRIMARY KEY ("sellerId")
+   )`,
 ];
+
+// Busca tolerante a erro (pg_trgm). Extensão + índices GIN de trigram em
+// Product.name/brand/sku e ProductSize.barcode. Se o banco não deixar criar a
+// extensão (permissão), a busca cai no LIKE — o boot segue normal.
+// CONCURRENTLY: não trava gravação de produto/estoque enquanto o índice nasce.
+async function ensureSearchIndexes(prisma) {
+  const { SEARCH_INDEX_STATEMENTS, resetTrgmCache } = require('./productSearch');
+  try {
+    await prisma.$executeRawUnsafe('CREATE EXTENSION IF NOT EXISTS pg_trgm');
+  } catch (e) {
+    console.warn('[busca] pg_trgm indisponível — busca de produto usa LIKE simples:', e.message);
+    return { trgm: false, indexes: 0 };
+  }
+  resetTrgmCache();
+  let indexes = 0;
+  for (const sql of SEARCH_INDEX_STATEMENTS) {
+    const name = (sql.match(/"([A-Za-z]+_[A-Za-z]+_trgm_idx)"/) || [])[1];
+    try {
+      // Um build CONCURRENTLY que caiu no meio deixa índice INVALID; refaz.
+      const bad = await prisma.$queryRawUnsafe(
+        `SELECT 1 FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid WHERE c.relname = $1 AND NOT i.indisvalid`, name);
+      if (bad.length) await prisma.$executeRawUnsafe(`DROP INDEX CONCURRENTLY IF EXISTS "${name}"`);
+      await prisma.$executeRawUnsafe(sql.replace('CREATE INDEX IF NOT EXISTS', 'CREATE INDEX CONCURRENTLY IF NOT EXISTS'));
+      indexes += 1;
+    } catch (e) {
+      console.error('[busca] índice falhou:', name, e.message);
+    }
+  }
+  return { trgm: true, indexes };
+}
 
 async function ensureApexSchema(prisma) {
   let ok = 0;
@@ -353,7 +392,13 @@ async function ensureApexSchema(prisma) {
     }
   }
   console.log(`[ensureApexSchema] ok (${ok}/${STATEMENTS.length} aplicados/verificados)`);
+  try {
+    const r = await ensureSearchIndexes(prisma);
+    console.log(`[busca] pg_trgm=${r.trgm} índices=${r.indexes}`);
+  } catch (e) {
+    console.error('[busca] falha ao garantir índices:', e.message);
+  }
   return ok;
 }
 
-module.exports = { ensureApexSchema };
+module.exports = { ensureApexSchema, ensureSearchIndexes };
