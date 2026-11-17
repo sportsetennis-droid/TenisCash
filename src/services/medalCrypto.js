@@ -61,10 +61,16 @@ function publicKeyFromRaw(raw32) {
 }
 
 // ---------- cofre da chave privada ----------
-function vaultKey() {
-  const secret = process.env.MEDAL_KEY_SECRET || process.env.JWT_SECRET;
+function vaultKey(secret = process.env.MEDAL_KEY_SECRET || process.env.JWT_SECRET) {
   if (!secret) throw new Error('MEDAL_KEY_SECRET (ou JWT_SECRET) ausente — não dá pra guardar chave de emissor');
   return crypto.createHash('sha256').update('medal-vault:' + secret).digest();
+}
+// Abre com o segredo atual e, se falhar, com o reserva: configurar MEDAL_KEY_SECRET
+// depois NÃO tranca as chaves que foram guardadas com JWT_SECRET.
+function vaultKeys() {
+  const ks = [process.env.MEDAL_KEY_SECRET, process.env.JWT_SECRET].filter(Boolean);
+  if (!ks.length) throw new Error('MEDAL_KEY_SECRET (ou JWT_SECRET) ausente — não dá pra abrir chave de emissor');
+  return [...new Set(ks)].map((k) => vaultKey(k));
 }
 function sealSecret(plain) {
   const iv = crypto.randomBytes(12);
@@ -75,9 +81,15 @@ function sealSecret(plain) {
 function openSecret(sealed) {
   const [v, iv, tag, enc] = String(sealed).split('.');
   if (v !== 'v1') throw new Error('cofre: versão desconhecida');
-  const d = crypto.createDecipheriv('aes-256-gcm', vaultKey(), fromB64u(iv));
-  d.setAuthTag(fromB64u(tag));
-  return Buffer.concat([d.update(fromB64u(enc)), d.final()]).toString('utf8');
+  let ultimo;
+  for (const key of vaultKeys()) {
+    try {
+      const d = crypto.createDecipheriv('aes-256-gcm', key, fromB64u(iv));
+      d.setAuthTag(fromB64u(tag));
+      return Buffer.concat([d.update(fromB64u(enc)), d.final()]).toString('utf8');
+    } catch (e) { ultimo = e; }
+  }
+  throw new Error('cofre: não abriu com nenhum segredo configurado (' + (ultimo && ultimo.message) + ')');
 }
 
 // ---------- chaves do emissor ----------
