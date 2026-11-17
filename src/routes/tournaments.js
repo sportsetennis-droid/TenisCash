@@ -22,6 +22,7 @@ const membership = require('../services/teamMembership');
 const training = require('../services/trainingSession');
 const discipline = require('../services/tournamentDiscipline');
 const F = require('../services/tournamentFormats');
+const live = require('../services/tournamentLive');
 
 const router = express.Router();
 
@@ -1332,6 +1333,8 @@ router.get('/:id/categories/:catId/matches', async (req, res) => {
         }
       }
     }
+    // placar AO VIVO (gols da súmula) + lance a lance (gol/cartão com jogador e minuto)
+    try { await live.attachLive(matches); } catch (e) { console.error('[tournaments] attachLive', e.message); }
     res.json({ matches });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1409,6 +1412,7 @@ router.post('/matches/:matchId/result', authMiddleware, async (req, res) => {
     }
     const r = await engine.applyMatchResult(match.id, req.body || {});
     if (!r.ok) return res.status(400).json(r);
+    live.emitMatch(match.id, 'end');
 
     // avisa os atletas das duas entries (menos quem lançou o placar)
     try {
@@ -1451,6 +1455,7 @@ router.post('/matches/:matchId/live', authMiddleware, async (req, res) => {
       where: { id: match.id },
       data: { liveState: req.body?.liveState ?? null, status: req.body?.status || 'LIVE' },
     });
+    live.emitMatch(match.id, 'update');
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1683,6 +1688,7 @@ router.post('/matches/:matchId/events', authMiddleware, async (req, res) => {
     // Quem lança evento já é arbitragem/coordenação → pode liberar suspenso (com motivo auditado).
     const r = await sheet.addEvent(req.params.matchId, req.body || {}, { userId: req.userId, canOverride: true });
     if (!r.ok) return res.status(r.code ? 409 : 400).json(r);
+    live.emitMatch(req.params.matchId, r.wentLive ? 'start' : 'event', { eventId: r.event.id });
     res.status(201).json(r.event);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1716,6 +1722,7 @@ router.delete('/events/:eventId', authMiddleware, async (req, res) => {
       return res.status(403).json({ error: 'sem permissão (arbitragem do jogo)' });
     }
     await sheet.deleteEvent(req.params.eventId);
+    live.emitMatch(ctx.match.id, 'event_removed', { removedEventId: req.params.eventId });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1749,6 +1756,7 @@ router.post('/matches/:matchId/finalize', authMiddleware, async (req, res) => {
     }
     const r = await sheet.finalizeMatch(req.params.matchId, req.body || {});
     if (!r.ok) return res.status(400).json(r);
+    live.emitMatch(req.params.matchId, 'end');
     require('../ai/rede/ganchos').jogoFinalizado(req.params.matchId);
     res.json(r);
   } catch (err) {

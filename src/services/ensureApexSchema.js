@@ -338,6 +338,19 @@ const STATEMENTS = [
      CONSTRAINT "MedalStatusEvent_pkey" PRIMARY KEY ("id")
    )`,
   `CREATE INDEX IF NOT EXISTS "MedalStatusEvent_medalId_createdAt_idx" ON "MedalStatusEvent" ("medalId", "createdAt")`,
+  // F2 — Patrocinadores do torneio (faixa na página pública, telão e artes)
+  `CREATE TABLE IF NOT EXISTS "TournamentSponsor" (
+     "id" TEXT NOT NULL,
+     "tournamentId" TEXT NOT NULL,
+     "name" TEXT NOT NULL,
+     "logoUrl" TEXT,
+     "link" TEXT,
+     "ordering" INTEGER NOT NULL DEFAULT 0,
+     "active" BOOLEAN NOT NULL DEFAULT true,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "TournamentSponsor_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE INDEX IF NOT EXISTS "TournamentSponsor_tournamentId_ordering_idx" ON "TournamentSponsor" ("tournamentId", "ordering")`,
   // Número de série sequencial e sem colisão (CST-2026-000123)
   `CREATE SEQUENCE IF NOT EXISTS "MedalSerialSeq" START 1`,
   // Calendário da equipe (.ics por vendedor): guarda só a VERSÃO do link pessoal.

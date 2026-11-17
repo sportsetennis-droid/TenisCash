@@ -581,6 +581,11 @@ app.use('/api/segments', require('./routes/segments')); // APEX segmentos + rank
 app.use('/api/activity-challenges', require('./routes/activityChallenges')); // APEX desafios (oficial + grupo)
 app.use('/api/beacon', require('./routes/beaconPublic')); // APEX Beacon: posição ao vivo pública por token
 app.use('/api/coach', coachRoutes);
+// F2 — ao vivo (SSE), artes PNG, QR, patrocinadores (antes do router principal de torneios)
+const tournamentMedia = require('./routes/tournamentMedia');
+app.use('/api/tournaments', tournamentMedia.apiRouter);
+app.use('/api/public', tournamentMedia.publicRouter); // API pública JSON (CORS aberto, só leitura)
+app.use('/t', tournamentMedia.pageRouter); // /t/:slug/telao · /t/:slug/calendario.ics · /t/:slug/embed
 app.use('/api/tournaments', tournamentsRoutes);
 app.use(require('./routes/tournamentRegistration')); // Club F3: inscrição paga, lista de espera, check-in (/t/:slug/inscricao + /api/tournament-registration)
 app.use('/api/club-ranking', require('./routes/clubRanking')); // F5: Glicko-2 (nível 0-7), temporada/mês, circuito
@@ -1422,31 +1427,66 @@ app.get('/t/:slug', async (req, res) => {
         ).join('')
       : '';
 
+    // F2 — preview bonito no WhatsApp/Instagram (og:image = arte do torneio), patrocínio e deep link ?jogo=
+    const origin = req.protocol + '://' + req.get('host');
+    const pageUrl = origin + '/t/' + encodeURIComponent(t.slug);
+    const ogDesc = [APEX_SPORT_LABEL[t.sport] || t.sport, dateLine, place, t._count.entries + ' inscritos', st[0]].filter(Boolean).join(' · ');
+    const ogImg = origin + '/api/tournaments/' + encodeURIComponent(t.id) + '/arte/torneio.png?formato=og';
+    let sponsors = [];
+    try { sponsors = await require('./routes/tournamentMedia').listSponsors(t.id, origin, false); } catch (_) { sponsors = []; }
+    const sponsorsHtml = sponsors.length
+      ? '<div class="spons"><div class="sp-l">Patrocínio</div><div class="sp-row">' + sponsors.map((sp) => {
+          const inner = sp.logoUrl ? '<img src="' + apexEsc(sp.logoUrl) + '" alt="' + apexEsc(sp.name) + '" loading="lazy">' : '<b>' + apexEsc(sp.name) + '</b>';
+          return sp.link ? '<a href="' + apexEsc(sp.link) + '" target="_blank" rel="noopener sponsored">' + inner + '</a>' : '<span>' + inner + '</span>';
+        }).join('') + '</div></div>'
+      : '';
+    let initMatch = null;
+    if (req.query.jogo) {
+      const jm = await prisma.tournamentMatch.findFirst({ where: { id: String(req.query.jogo), tournamentId: t.id }, select: { id: true, categoryId: true } });
+      if (jm) initMatch = jm;
+    }
+    const jsStr = (v) => JSON.stringify(v).replace(/</g, '\\u003c');
+
     const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${apexEsc(t.name)} — Sports & Tennis</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>${apexEsc(t.name)} — Club Sports & Tennis</title>
+<meta name="description" content="${apexEsc(ogDesc)}">
+<link rel="canonical" href="${apexEsc(pageUrl)}">
+<meta property="og:site_name" content="Club Sports & Tennis">
 <meta property="og:title" content="${apexEsc(t.name)}">
-<meta property="og:description" content="${apexEsc((APEX_SPORT_LABEL[t.sport] || t.sport) + ' · ' + t._count.entries + ' inscritos · ' + st[0])}">
+<meta property="og:description" content="${apexEsc(ogDesc + ' · tabela, jogos e resultados ao vivo')}">
 <meta property="og:type" content="website">
+<meta property="og:url" content="${apexEsc(pageUrl)}">
+<meta property="og:image" content="${apexEsc(ogImg)}">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="${apexEsc(t.name)}">
+<meta property="og:locale" content="pt_BR">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${apexEsc(t.name)}">
+<meta name="twitter:description" content="${apexEsc(ogDesc)}">
+<meta name="twitter:image" content="${apexEsc(ogImg)}">
+<link rel="alternate" type="text/calendar" title="Calendário de jogos" href="${apexEsc(pageUrl + '/calendario.ics')}">
 <meta name="theme-color" content="#0b0e14">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
-  :root{--bg:#0a0d13;--card:#141924;--card2:#1b2130;--line:rgba(255,255,255,.08);--red:#ee2b2b;--red2:#ff4747;--gold:#f5c542;--txt:#eef1f6;--mut:#8b94a7;--green:#28c76f}
+  :root{--bg:#0a0d13;--card:#141924;--card2:#1b2130;--line:rgba(255,255,255,.08);--red:#E5571E;--red2:#F2763F;--gold:#f5c542;--txt:#eef1f6;--mut:#8b94a7;--green:#28c76f}
   html,body{background:var(--bg)}
   body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:var(--txt);line-height:1.5;padding-bottom:calc(env(safe-area-inset-bottom) + 20px);background:
-    radial-gradient(1200px 500px at 50% -120px,rgba(238,43,43,.22),transparent 60%),
+    radial-gradient(1200px 500px at 50% -120px,rgba(229,87,30,.22),transparent 60%),
     radial-gradient(900px 400px at 100% 10%,rgba(245,197,66,.08),transparent 55%),
     var(--bg)}
   .container{max-width:560px;margin:0 auto;padding:16px}
   /* HERO */
   .hero{position:relative;background:linear-gradient(180deg,#0e1420,#0a0d13);border:1px solid var(--line);border-radius:22px;padding:22px 18px 20px;text-align:center;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.5)}
-  .hero:before{content:"";position:absolute;inset:0;background:radial-gradient(400px 220px at 50% 0,rgba(238,43,43,.28),transparent 70%);pointer-events:none}
+  .hero:before{content:"";position:absolute;inset:0;background:radial-gradient(400px 220px at 50% 0,rgba(229,87,30,.28),transparent 70%);pointer-events:none}
   .hero .logo{width:62%;max-width:230px;height:auto;filter:drop-shadow(0 10px 26px rgba(0,0,0,.6));position:relative}
   .hero h1{font-family:'Oswald',sans-serif;font-weight:700;font-size:30px;line-height:1.02;letter-spacing:.5px;text-transform:uppercase;margin-top:14px;position:relative;text-shadow:0 2px 14px rgba(0,0,0,.5)}
   .badge{position:relative;display:inline-flex;align-items:center;gap:6px;background:${st[1]};color:#fff;font-size:11px;font-weight:800;padding:5px 12px;border-radius:999px;text-transform:uppercase;letter-spacing:1px;box-shadow:0 4px 14px rgba(0,0,0,.35)}
@@ -1460,15 +1500,15 @@ app.get('/t/:slug', async (req, res) => {
   .cats{display:flex;flex-wrap:wrap;gap:9px;padding:18px 2px 6px}
   .cats::-webkit-scrollbar{display:none}
   .cat{flex-shrink:0;border:1px solid var(--line);background:var(--card);color:var(--txt);font-family:'Oswald',sans-serif;font-size:15px;font-weight:600;letter-spacing:.5px;padding:9px 16px;border-radius:12px;cursor:pointer;-webkit-tap-highlight-color:transparent;display:flex;align-items:center;gap:7px;transition:.15s}
-  .cat.active{border-color:transparent;color:#fff;background:linear-gradient(135deg,var(--red),#c81e1e);box-shadow:0 8px 20px rgba(238,43,43,.35)}
+  .cat.active{border-color:transparent;color:#fff;background:linear-gradient(135deg,var(--red),#B8410F);box-shadow:0 8px 20px rgba(229,87,30,.35)}
   .cat .cnt{background:rgba(255,255,255,.08);color:var(--mut);font-size:11px;font-weight:700;padding:1px 8px;border-radius:7px}
   .cat.active .cnt{background:rgba(0,0,0,.25);color:#fff}
   .views{display:flex;gap:5px;margin:14px 2px 4px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:4px;overflow-x:auto;-webkit-overflow-scrolling:touch}
   .views::-webkit-scrollbar{display:none}
   .vtab{flex:1 1 auto;white-space:nowrap;border:none;background:transparent;color:var(--mut);font-family:'Oswald',sans-serif;font-size:12px;font-weight:600;letter-spacing:.3px;text-transform:uppercase;padding:9px 9px;border-radius:9px;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:.15s}
-  .vtab.active{background:linear-gradient(135deg,var(--red),#c81e1e);color:#fff;box-shadow:0 4px 12px rgba(238,43,43,.3)}
+  .vtab.active{background:linear-gradient(135deg,var(--red),#B8410F);color:#fff;box-shadow:0 4px 12px rgba(229,87,30,.3)}
   /* card do campeão (mata-mata) */
-  .bchamp{margin:6px 0 4px;background:linear-gradient(135deg,rgba(247,181,0,.16),rgba(238,43,43,.1));border:1px solid var(--gold);border-radius:12px;padding:12px;display:flex;align-items:center;gap:12px}
+  .bchamp{margin:6px 0 4px;background:linear-gradient(135deg,rgba(247,181,0,.16),rgba(229,87,30,.1));border:1px solid var(--gold);border-radius:12px;padding:12px;display:flex;align-items:center;gap:12px}
   .bchamp .tb.big{width:38px;height:38px}
   .bchamp-t{display:flex;flex-direction:column;line-height:1.2}
   .bchamp-l{font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:.5px;font-weight:700}
@@ -1483,7 +1523,7 @@ app.get('/t/:slug', async (req, res) => {
   .rnd-h{font-size:11px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:1.5px;margin:0 2px 9px}
   /* MATCH CARD */
   .mt{background:linear-gradient(180deg,var(--card),#10141d);border:1px solid var(--line);border-radius:16px;padding:0;margin-bottom:11px;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.3)}
-  .mt.is-live{border-color:rgba(238,43,43,.5);box-shadow:0 0 0 1px rgba(238,43,43,.3),0 6px 20px rgba(238,43,43,.18)}
+  .mt.is-live{border-color:rgba(229,87,30,.5);box-shadow:0 0 0 1px rgba(229,87,30,.3),0 6px 20px rgba(229,87,30,.18)}
   .sched{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--mut);font-weight:600;padding:10px 14px;background:rgba(255,255,255,.02);border-bottom:1px solid var(--line);letter-spacing:.2px}
   .tb{flex-shrink:0;width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-family:'Oswald',sans-serif;font-weight:700;font-size:13px;color:#fff;letter-spacing:.3px;background:linear-gradient(135deg,hsl(var(--h,220),55%,44%),hsl(var(--h,220),60%,26%));box-shadow:inset 0 0 0 1px rgba(255,255,255,.14)}
   /* confronto HORIZONTAL: time × placar × time */
@@ -1501,9 +1541,9 @@ app.get('/t/:slug', async (req, res) => {
   .score .sc.w{color:var(--gold)}
   .score .x{color:var(--mut);font-size:15px;font-weight:600}
   .score .vs{font-family:'Oswald',sans-serif;font-weight:600;font-size:15px;color:var(--mut);letter-spacing:1.5px;border:1px solid var(--line);padding:7px 11px;border-radius:9px}
-  .score .vs.lv{color:var(--red2);border-color:rgba(238,43,43,.45)}
-  .liverow{display:flex;align-items:center;gap:8px;padding:9px 14px;background:rgba(238,43,43,.08);border-top:1px solid var(--line)}
-  .livebadge{display:inline-flex;align-items:center;gap:6px;background:var(--red);color:#fff;font-size:10px;font-weight:900;padding:4px 9px;border-radius:7px;text-transform:uppercase;letter-spacing:.7px}
+  .score .vs.lv{color:var(--red2);border-color:rgba(229,87,30,.45)}
+  .liverow{display:flex;align-items:center;gap:8px;padding:9px 14px;background:rgba(229,87,30,.08);border-top:1px solid var(--line)}
+  .livebadge{display:inline-flex;align-items:center;gap:6px;background:#DC2626;color:#fff;font-size:10px;font-weight:900;padding:4px 9px;border-radius:7px;text-transform:uppercase;letter-spacing:.7px}
   .livebadge .dot{width:7px;height:7px;border-radius:50%;background:#fff;animation:lp 1.1s infinite}
   @keyframes lp{0%,100%{opacity:1}50%{opacity:.2}}
   .livesets{font-family:'Oswald',sans-serif;font-size:15px;font-weight:700;color:#fff;letter-spacing:.5px}
@@ -1528,6 +1568,34 @@ app.get('/t/:slug', async (req, res) => {
   .post-d{font-size:11px;color:var(--mut);margin-top:7px}
   .footer{text-align:center;padding:26px 16px;color:var(--mut);font-size:11px;letter-spacing:.3px}
   .regcta{display:inline-flex;align-items:center;justify-content:center;min-height:46px;margin-top:16px;padding:0 26px;border-radius:999px;background:#E5571E;color:#fff;font-weight:800;text-decoration:none;letter-spacing:.2px}
+  /* F2 — barra de mídia, ao vivo lance a lance, patrocínio */
+  .acts{display:flex;gap:8px;overflow-x:auto;padding:14px 2px 2px;-webkit-overflow-scrolling:touch}
+  .acts::-webkit-scrollbar{display:none}
+  .act{flex-shrink:0;display:inline-flex;align-items:center;gap:7px;min-height:44px;padding:0 15px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:#fff;font-family:'Oswald',sans-serif;font-size:13.5px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;cursor:pointer;text-decoration:none;-webkit-tap-highlight-color:transparent}
+  .act.pri{background:linear-gradient(135deg,var(--red),#B8410F);border-color:transparent;box-shadow:0 6px 16px rgba(229,87,30,.3)}
+  .act svg{width:17px;height:17px}
+  .tlv{padding:9px 14px 11px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:5px;background:rgba(255,255,255,.015)}
+  .tle{display:flex;align-items:center;gap:8px;font-size:12.5px;color:#cfd6e2;font-weight:600}
+  .tle.a{flex-direction:row-reverse;text-align:right}
+  .tle b{color:var(--gold);font-weight:800;min-width:26px}
+  .tle .gi{width:9px;height:9px;border-radius:50%;background:var(--red);flex-shrink:0}
+  .tle .ki{width:8px;height:11px;border-radius:2px;background:#FACC15;flex-shrink:0}
+  .tle .ki.r{background:#DC2626}
+  .mt-acts{display:flex;justify-content:flex-end;gap:6px;padding:8px 10px;border-top:1px solid var(--line)}
+  .mini{min-height:36px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--mut);font-family:'Oswald',sans-serif;font-size:12px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+  .mini:active{background:rgba(255,255,255,.06)}
+  .view-art{display:flex;justify-content:flex-end;margin:12px 2px -4px}
+  .mt.hl{animation:hl 2.4s ease}
+  @keyframes hl{0%,60%{box-shadow:0 0 0 3px var(--red)}100%{box-shadow:0 6px 18px rgba(0,0,0,.3)}}
+  .flash{animation:fl 1.2s ease}
+  @keyframes fl{0%{color:var(--gold);transform:scale(1.25)}100%{transform:none}}
+  .spons{margin-top:26px;text-align:center}
+  .sp-l{font-family:'Oswald',sans-serif;color:var(--mut);font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px}
+  .sp-row{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
+  .sp-row a,.sp-row span{background:#fff;border-radius:12px;height:58px;min-width:96px;padding:6px 14px;display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
+  .sp-row img{max-height:44px;max-width:130px;object-fit:contain}
+  .sp-row b{color:#0b0e14;font-family:'Oswald',sans-serif;font-size:15px;text-transform:uppercase}
+  .livedot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#28c76f;margin-right:6px;vertical-align:middle}
 </style>
 </head>
 <body>
@@ -1547,17 +1615,32 @@ app.get('/t/:slug', async (req, res) => {
       ${regOpen ? '<a class="regcta" href="/t/' + apexEsc(t.slug) + '/inscricao">Inscreva-se</a>' : ''}
     </div>
 
+    <div class="acts" id="acts">
+      <button class="act pri" type="button" data-m="share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>Compartilhar</button>
+      <button class="act" type="button" data-m="artes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></svg>Artes</button>
+      <button class="act" type="button" data-m="cal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>Calendário</button>
+      <button class="act" type="button" data-m="qr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/></svg>QR code</button>
+      <a class="act" href="/t/${apexEsc(t.slug)}/telao" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="13" rx="2"/><path d="M8 21h8M12 18v3"/></svg>Telão</a>
+      <button class="act" type="button" data-m="embed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>Incorporar</button>
+    </div>
+
     ${muralHtml}
 
     <div class="cats" id="cats"></div>
     <div class="views" id="views"></div>
     <div id="catbody"></div>
 
-    <div class="footer">${PUBLIC_DOMAIN} · Sports &amp; Tennis</div>
+    ${sponsorsHtml}
+
+    <div class="footer"><span class="livedot" id="livedot" style="display:none" title="ao vivo conectado"></span>${PUBLIC_DOMAIN} · Club Sports &amp; Tennis</div>
   </div>
+<script src="/club/torneio-midia.js"></script>
 <script>
 (function(){
   var TID = ${JSON.stringify(t.id)};
+  var SLUG = ${jsStr(t.slug)};
+  var TNAME = ${jsStr(t.name)};
+  var INIT = ${jsStr(initMatch)};
   var CATS = ${catJson};
   var elTabs = document.getElementById('cats');
   var elViews = document.getElementById('views');
@@ -1589,6 +1672,7 @@ app.get('/t/:slug', async (req, res) => {
     var live=(m.status==='LIVE');
     var hs=done&&m.homeScore!=null?m.homeScore:'';
     var as=done&&m.awayScore!=null?m.awayScore:'';
+    var liveSc=live&&m.liveScore&&!(m.liveState&&m.liveState.sets&&m.liveState.sets.length);
     var hw=m.winnerEntryId&&m.homeEntry&&m.winnerEntryId===m.homeEntry.id;
     var aw=m.winnerEntryId&&m.awayEntry&&m.winnerEntryId===m.awayEntry.id;
     var setsStr='';
@@ -1599,8 +1683,21 @@ app.get('/t/:slug', async (req, res) => {
     var pen=(done&&m.decidedByPenalties&&m.homePenalties!=null&&m.awayPenalties!=null)?'<div class="sumula">🥅 Pênaltis '+esc(m.homePenalties)+'–'+esc(m.awayPenalties)+'</div>':'';
     var ctr = done
       ? '<span class="sc'+(hw?' w':'')+'">'+esc(hs)+'</span><span class="x">×</span><span class="sc'+(aw?' w':'')+'">'+esc(as)+'</span>'
-      : '<span class="vs'+(live?' lv':'')+'">VS</span>';
-    return '<div class="mt'+(live?' is-live':'')+'">'
+      : (liveSc
+        ? '<span class="sc" data-sc="h">'+esc(m.liveScore.home)+'</span><span class="x">×</span><span class="sc" data-sc="a">'+esc(m.liveScore.away)+'</span>'
+        : '<span class="vs'+(live?' lv':'')+'">VS</span>');
+    var tl=(m.timeline||[]);
+    var tlHtml='';
+    if((live||done)&&tl.length){
+      tlHtml='<div class="tlv">'+tl.slice().reverse().slice(0,live?8:12).map(function(e){
+        var ic=e.type==='GOAL'?'<span class="gi"></span>':'<span class="ki'+(e.type==='RED'?' r':'')+'"></span>';
+        var who=(e.number!=null?e.number+' ':'')+(e.player||(e.type==='GOAL'?'Gol':'Cartão'));
+        return '<div class="tle'+(e.side==='away'?' a':'')+'">'+ic+'<b>'+(e.minute!=null?esc(e.minute)+"'":'')+'</b><span>'+esc(who)+'</span></div>';
+      }).join('')+'</div>';
+    }
+    var canArt=(done||live)?(m.homeEntry&&m.awayEntry):(m.homeEntry||m.awayEntry);
+    var acts='<div class="mt-acts">'+(canArt?'<button class="mini" type="button" data-art="'+((done||live)?'resultado':'proximo')+'" data-mid="'+esc(m.id)+'">Arte</button>':'')+'<button class="mini" type="button" data-qrm="'+esc(m.id)+'">QR</button></div>';
+    return '<div class="mt'+(live?' is-live':'')+'" id="m-'+esc(m.id)+'">'
       +schedLine
       +'<div class="confront">'
       +sideEl(m.homeEntry, m.homeSourceLabel, hw)
@@ -1610,6 +1707,8 @@ app.get('/t/:slug', async (req, res) => {
       +pen
       +(sumula?'<div class="sumula">📋 '+esc(sumula)+'</div>':(m.status==='WALKOVER'?'<div class="sumula">W.O.</div>':''))
       +(live?'<div class="liverow"><span class="livebadge"><span class="dot"></span>Ao vivo</span><span class="livesets">'+esc(setsStr)+'</span></div>':'')
+      +tlHtml
+      +acts
       +'</div>';
   }
   function renderRoundBlocks(matches){
@@ -1732,12 +1831,17 @@ app.get('/t/:slug', async (req, res) => {
   function renderView(){
     if(!DATA){elBody.innerHTML=ek('Carregando…');return;}
     var html='';
+    var artBtn=function(tipo,label){return '<div class="view-art"><button class="mini" type="button" data-vart="'+tipo+'">'+label+'</button></div>';};
     if(VIEW==='tabela'){
-      html=renderStandings(DATA.stand)||ek('A classificação aparece quando os jogos começarem.');
+      var stH=renderStandings(DATA.stand);
+      html=stH?artBtn('classificacao','Arte da classificação')+stH:ek('A classificação aparece quando os jogos começarem.');
       if(DATA.stand.length&&DATA.crit&&DATA.crit.length)html+='<div style="font-size:12px;opacity:.75;margin:6px 2px 0">Critérios de desempate: '+DATA.crit.map(function(c,i){return (i+1)+'. '+esc(c);}).join(' · ')+'</div>';
     }else if(VIEW==='mata'){
-      html=renderBracket(DATA.matches);
+      var bH=renderBracket(DATA.matches);
+      var fin=DATA.matches.filter(function(m){return m.stage==='FINAL'&&(m.status==='FINISHED'||m.status==='WALKOVER')&&m.winnerEntryId;})[0];
+      html=(fin?artBtn('campeao','Arte do campeão'):'')+bH;
     }else if(VIEW==='stats'){
+      if(DATA.scorers&&DATA.scorers.length) html+=artBtn('artilharia','Arte da artilharia');
       var tf=teamFilterHtml();
       if(tf) html+='<div class="stbar">'+tf+'</div>';
       var nt=STATS_TEAM?' deste time':'';
@@ -1784,13 +1888,86 @@ app.get('/t/:slug', async (req, res) => {
     ]).then(function(res){
       if(CURID!==catId) return;
       DATA={ matches:(res[0]&&res[0].matches)||[], stand:(res[1]&&res[1].standings)||[], crit:(res[1]&&res[1].criteriaLabels)||[], scorers:(res[2]&&res[2].ranking)||[], assists:(res[3]&&res[3].ranking)||[], cards:(res[4]&&res[4].ranking)||[] };
+      if(INIT&&INIT.categoryId===catId){
+        var im=DATA.matches.filter(function(m){return m.id===INIT.id;})[0];
+        if(im&&im.stage!=='GROUP'&&im.stage!=='LEAGUE'){VIEW='mata';renderViews();}
+      }
       renderView();
-      if(DATA.matches.some(function(m){return m.status==='LIVE';})){POLL=setTimeout(function(){load(catId,true);},20000);}
+      if(INIT&&INIT.categoryId===catId){
+        var el=document.getElementById('m-'+INIT.id);
+        if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.classList.add('hl');}
+        INIT=null;
+      }
+      // ao vivo: com SSE conectado não precisa de polling; sem SSE, volta pro polling de 20s
+      if(!SSE_ON&&DATA.matches.some(function(m){return m.status==='LIVE';})){POLL=setTimeout(function(){load(catId,true);},20000);}
     }).catch(function(){if(!silent)elBody.innerHTML=ek('Erro ao carregar.');});
   }
+  // ---------- AO VIVO por SSE ----------
+  var SSE_ON=false, RELOAD_T=null;
+  function softReload(){ clearTimeout(RELOAD_T); RELOAD_T=setTimeout(function(){ if(CURID) load(CURID,true); },600); }
+  function patchMatch(snap){
+    if(!DATA||!snap) return false;
+    var m=DATA.matches.filter(function(x){return x.id===snap.id;})[0];
+    if(!m) return false;
+    ['status','homeScore','awayScore','winnerEntryId','homePenalties','awayPenalties','decidedByPenalties','liveState','liveScore','cards','timeline','scheduledAt','location'].forEach(function(k){ if(k in snap) m[k]=snap[k]; });
+    return true;
+  }
+  function onLive(msg){
+    if(!msg) return;
+    if(msg.type==='hello'){ (msg.live||[]).forEach(function(sn){ if(sn.categoryId===CURID) patchMatch(sn); }); if(VIEW==='jogos'||VIEW==='mata') renderView(); return; }
+    var sn=msg.match; if(!sn||sn.categoryId!==CURID) return;
+    if(msg.type==='end'){ patchMatch(sn); softReload(); return; } // fim: classificação/chave mudam
+    if(VIEW==='jogos'||VIEW==='mata'){
+      if(patchMatch(sn)){
+        renderView();
+        if(msg.last&&msg.last.type==='GOAL'){ var c=document.getElementById('m-'+sn.id); if(c){ var sc=c.querySelector(msg.last.side==='home'?'[data-sc="h"]':'[data-sc="a"]'); if(sc) sc.classList.add('flash'); } }
+      } else softReload();
+    } else softReload(); // tabela/estatísticas: recarrega quieto (artilharia muda com o gol)
+  }
+  if(window.ClubMidia){
+    ClubMidia.connectLive(TID,onLive,function(ok){
+      SSE_ON=ok;
+      var dot=document.getElementById('livedot'); if(dot) dot.style.display=ok?'inline-block':'none';
+      if(ok){ if(POLL){clearTimeout(POLL);POLL=null;} }
+      else if(!POLL&&DATA&&DATA.matches.some(function(m){return m.status==='LIVE';})){ POLL=setTimeout(function(){load(CURID,true);},20000); }
+    });
+  }
+  // ---------- mídia: artes, QR, calendário, embed ----------
+  function curCat(){ for(var i=0;i<CATS.length;i++) if(CATS[i].id===CURID) return CATS[i]; return CATS[0]||{}; }
+  function teamsOf(){ var seen={},out=[]; ((DATA&&DATA.stand)||[]).forEach(function(s){ var n=s.entry&&s.entry.name; if(n&&!seen[n]){seen[n]=1;out.push({id:s.entry.id,name:n});} }); out.sort(function(a,b){return a.name.localeCompare(b.name);}); return out; }
+  var ART_LABEL={classificacao:'Classificação',artilharia:'Artilharia',campeao:'Campeão',resultado:'Resultado',proximo:'Próximo jogo'};
+  document.addEventListener('click',function(ev){
+    var t=ev.target.closest?ev.target.closest('[data-m],[data-art],[data-vart],[data-qrm]'):null;
+    if(!t||!window.ClubMidia) return;
+    var c=curCat();
+    if(t.getAttribute('data-art')){
+      ClubMidia.openArtSheet({tid:TID,slug:SLUG,title:'Arte · '+ART_LABEL[t.getAttribute('data-art')],tipo:t.getAttribute('data-art'),matchId:t.getAttribute('data-mid'),shareTitle:TNAME});
+      return;
+    }
+    if(t.getAttribute('data-vart')){
+      var tp=t.getAttribute('data-vart');
+      ClubMidia.openArtSheet({tid:TID,slug:SLUG,title:'Arte · '+ART_LABEL[tp]+' · '+(c.name||''),tipo:tp,categoryId:CURID,shareTitle:TNAME});
+      return;
+    }
+    if(t.getAttribute('data-qrm')){ ClubMidia.openQr({tid:TID,slug:SLUG,name:TNAME,matchId:t.getAttribute('data-qrm')}); return; }
+    var a=t.getAttribute('data-m');
+    if(a==='share') ClubMidia.sharePage({slug:SLUG,name:TNAME});
+    else if(a==='artes') ClubMidia.openArtSheet({tid:TID,slug:SLUG,title:'Artes do torneio',shareTitle:TNAME,types:[
+      ['classificacao','Classificação · '+(c.name||''),{categoryId:CURID}],
+      ['artilharia','Artilharia · '+(c.name||''),{categoryId:CURID}],
+      ['agenda','Jogos de hoje',{}],
+      ['agenda','Próximos jogos',{data:'proximos'}],
+      ['campeao','Campeão · '+(c.name||''),{categoryId:CURID}],
+      ['torneio','Capa do torneio',{}]
+    ]});
+    else if(a==='cal') ClubMidia.openCalendar({slug:SLUG,name:TNAME,categories:CATS,teams:teamsOf()});
+    else if(a==='qr') ClubMidia.openQr({tid:TID,slug:SLUG,name:TNAME});
+    else if(a==='embed') ClubMidia.openEmbed({slug:SLUG,name:TNAME});
+  });
+  var FIRST=(INIT&&CATS.some(function(c){return c.id===INIT.categoryId;}))?INIT.categoryId:(CATS[0]&&CATS[0].id);
   function renderTabs(){
     elTabs.innerHTML=CATS.map(function(c,i){
-      return '<button class="cat'+(i===0?' active':'')+'" data-id="'+c.id+'">'+esc(c.name)+' <span class="cnt">'+c.entries+'</span></button>';
+      return '<button class="cat'+(c.id===FIRST?' active':'')+'" data-id="'+c.id+'">'+esc(c.name)+' <span class="cnt">'+c.entries+'</span></button>';
     }).join('');
     Array.prototype.forEach.call(elTabs.querySelectorAll('.cat'),function(b){
       b.addEventListener('click',function(){
@@ -1799,7 +1976,7 @@ app.get('/t/:slug', async (req, res) => {
       });
     });
   }
-  if(CATS.length){renderTabs();renderViews();load(CATS[0].id);}else{elBody.innerHTML='<div class="empty">Nenhuma categoria criada ainda.</div>';}
+  if(CATS.length){renderTabs();renderViews();load(FIRST);}else{elBody.innerHTML='<div class="empty">Nenhuma categoria criada ainda.</div>';}
   // Safari restaura a página do bfcache (voltar pra aba) com dado velho → recarrega os dados.
   window.addEventListener('pageshow',function(e){ if(e.persisted && CURID){ load(CURID); } });
 })();
@@ -1858,6 +2035,9 @@ app.get('/atleta/:username', async (req, res) => {
 
     const statCell = (val, label) =>
       '<div class="sc"><div class="sc-v">' + val + '</div><div class="sc-l">' + label + '</div></div>';
+    // F2 — preview no WhatsApp: og:image = arte do card do atleta (PNG gerado no servidor)
+    const athOrigin = req.protocol + '://' + req.get('host');
+    const athOgImg = athOrigin + '/api/tournaments/club/arte/atleta.png?formato=og&handle=' + encodeURIComponent(u.username || userId);
 
     const html = `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -1868,6 +2048,15 @@ app.get('/atleta/:username', async (req, res) => {
 <meta property="og:title" content="${apexEsc(u.name)} — Card do Atleta">
 <meta property="og:description" content="${apexEsc('Rating ' + overall + ' · ' + s.matchesPlayed + ' jogos · ' + s.wins + ' vitórias · ' + s.trainings + ' treinos · Sports & Tennis')}">
 <meta property="og:type" content="profile">
+<meta property="og:site_name" content="Club Sports & Tennis">
+<meta property="og:url" content="${apexEsc(athOrigin + '/atleta/' + encodeURIComponent(req.params.username))}">
+<meta property="og:image" content="${apexEsc(athOgImg)}">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="pt_BR">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="${apexEsc(athOgImg)}">
 <style>
   *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
   body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0b0b0d;color:#fff;line-height:1.5;min-height:100vh;padding:18px 14px env(safe-area-inset-bottom)}
@@ -1941,14 +2130,20 @@ app.get('/atleta/:username', async (req, res) => {
       ${card.badges.length ? '<div class="bdg">' + card.badges.map((b) => '<span>🏅 ' + apexEsc(b.key) + '</span>').join('') + '</div>' : ''}
       <div class="actions">
         <button class="btn btn-p" id="shareBtn">Compartilhar</button>
-        <a class="btn btn-s" href="/" style="text-decoration:none;text-align:center">Abrir o app</a>
+        <button class="btn btn-s" id="artBtn">Arte pro story</button>
       </div>
+      <a class="btn btn-s" href="/" style="display:block;margin-top:10px;text-decoration:none;text-align:center">Abrir o app</a>
     </div>
-    <div class="foot">${PUBLIC_DOMAIN} · Sports &amp; Tennis</div>
+    <div class="foot">${PUBLIC_DOMAIN} · Club Sports &amp; Tennis</div>
   </div>
+<script src="/club/torneio-midia.js"></script>
 <script>
 (function(){
-  var NAME=${JSON.stringify(u.name)};
+  var NAME=${JSON.stringify(u.name).replace(/</g, '\\u003c')};
+  var HANDLE=${JSON.stringify(u.username || userId).replace(/</g, '\\u003c')};
+  document.getElementById('artBtn').addEventListener('click',function(){
+    if(window.ClubMidia) ClubMidia.openArtSheet({tid:'club',slug:'atleta-'+HANDLE,title:'Arte do atleta',types:[['atleta','Card do atleta',{handle:HANDLE}]],shareTitle:NAME});
+  });
   function share(){
     var url=location.href;
     var txt='Confira o card de '+NAME+' no Sports & Tennis: '+url;

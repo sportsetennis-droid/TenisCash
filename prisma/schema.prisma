@@ -4113,6 +4113,21 @@ model AppNotification {
 // Súmula digital de futsal — elenco por time + eventos do jogo.
 // RosterPlayer: jogador de uma equipe (TournamentEntry). Por ora nome+número
 // (não exige conta); userId liga à conta do atleta quando houver.
+// Patrocinadores do torneio (faixa na página pública, telão e rodapé das artes).
+// Sem FK (padrão RosterPlayer): a tabela nasce aditiva no ensureApexSchema.
+model TournamentSponsor {
+  id           String   @id @default(cuid())
+  tournamentId String
+  name         String
+  logoUrl      String?  @db.Text // URL https OU data URI pequeno (logo)
+  link         String? // site/Instagram do patrocinador
+  ordering     Int      @default(0)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@index([tournamentId, ordering])
+}
+
 model RosterPlayer {
   id           String   @id @default(cuid())
   entryId      String // time (TournamentEntry)

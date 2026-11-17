@@ -1243,7 +1243,11 @@ async function renderTournament(id){
   if(t.prizeDescription)hero+='<div class="prize">'+I.trophy+'<span>'+esc(t.prizeDescription)+'</span></div>';
   if(t.cashEnabled&&(t.entryFeeCash>0||t.prizeCash>0))hero+='<div class="prize" style="font-weight:600">'+I.bolt+'<span><b class="eyebrow" style="display:block;color:#0B7A4B;margin-bottom:3px">Cashback T$ real'+(t.prizePaidAt?' · pago':'')+'</b>Inscrição '+(t.entryFeeCash||0)+' T$ · prêmio '+(t.prizeCash||0)+' T$</span></div>';
   hero+='<div class="brow"><a class="btn sm plain" href="/t/'+esc(t.slug)+'">'+I.ext+'Página pública</a>'+
-    '<button class="btn sm sec" data-act="share-t" data-slug="'+esc(t.slug)+'" data-name="'+esc(t.name)+'">'+I.share+'Compartilhar</button></div>';
+    '<button class="btn sm sec" data-act="share-t" data-slug="'+esc(t.slug)+'" data-name="'+esc(t.name)+'">'+I.share+'Compartilhar</button></div>'+
+    '<div class="brow"><button class="btn sm gho" data-act="m-artes" data-tid="'+t.id+'" data-slug="'+esc(t.slug)+'" data-name="'+esc(t.name)+'">'+I.upload+'Artes</button>'+
+    '<button class="btn sm gho" data-act="m-qr" data-tid="'+t.id+'" data-slug="'+esc(t.slug)+'" data-name="'+esc(t.name)+'">'+I.grid+'QR code</button>'+
+    '<a class="btn sm gho plain" href="/t/'+esc(t.slug)+'/telao" target="_blank" rel="noopener">'+I.ext+'Telão</a>'+
+    '<button class="btn sm gho" data-act="m-embed" data-slug="'+esc(t.slug)+'" data-name="'+esc(t.name)+'">'+I.link+'Incorporar</button></div>';
   hero+='</div>';
   html+=hero;
 
@@ -1308,12 +1312,15 @@ async function renderTournament(id){
   side+=seriesCard(t);
   html+='<div class="g2"><div class="col">'+main+'</div><div class="col">'+side;
   if(canAssign)html+=rolesCard(t.id);
+  html+='<div class="card" id="sp-card">'+cardH(I.star,'Patrocinadores','<button class="btn sm" data-act="sp-add" data-tid="'+t.id+'">'+I.plus+'Patrocinador</button>')+
+    '<p class="muted" style="margin:-4px 0 10px;font-size:12.5px">Aparecem na página pública, no telão e no rodapé das artes.</p><div id="sp-list"><div class="spin"></div></div></div>';
   html+=muralCard(t.id,true,posts);
   html+='</div></div></div>';
   app.innerHTML=html;
   if(canAssign)loadRoles(t.id);
   if(t.seriesSlug)loadSeries(t.seriesSlug);
   CATS_CACHE={};cats.forEach(c=>{CATS_CACHE[c.id]=c;});CUR_SPORT=t.sport;CUR_TFMT=t.format;
+  loadSponsors(t.id);
 }
 // ---------- Série / temporadas: histórico de campeões ----------
 var CATS_CACHE={},CUR_SPORT=null,CUR_TFMT=null;
@@ -1347,6 +1354,33 @@ function sheetSeries(tid,sn,ed){
 async function saveSeries(tid){
   const sn=document.getElementById('se-name').value.trim(),ed=document.getElementById('se-ed').value.trim();
   try{await api('/'+tid,{method:'PATCH',body:{seriesName:sn||null,seriesSlug:sn||null,edition:ed||null}});closeSheet();toast('Série salva');renderTournament(tid);}catch(e){toast(e.message);}
+}
+
+// ---------- Patrocinadores (F2) ----------
+async function loadSponsors(tid){
+  const el=document.getElementById('sp-list');if(!el)return;
+  let list=[];try{list=(await api('/'+tid+'/sponsors?all=1')).sponsors||[];}catch(e){el.innerHTML=emptyB('',esc(e.message),'sm');return;}
+  if(!list.length){el.innerHTML=emptyB('','Nenhum patrocinador ainda.','sm');return;}
+  el.innerHTML=list.map((sp,i)=>'<div class="listitem">'+(sp.logoUrl?'<img src="'+esc(sp.logoUrl)+'" alt="" style="width:44px;height:44px;object-fit:contain;background:#fff;border-radius:10px;padding:3px">':'<span class="pill">'+esc(initials(sp.name))+'</span>')+
+    '<div class="grow"><div class="nm">'+esc(sp.name)+'</div><div class="sub">'+esc(sp.link||'sem link')+'</div></div>'+
+    (i>0?'<button class="btn icon gho" aria-label="Subir" data-act="sp-up" data-tid="'+tid+'" data-id="'+sp.id+'" data-o="'+(list[i-1].ordering-1)+'">↑</button>':'')+
+    '<button class="btn icon gho" aria-label="Remover" data-act="sp-del" data-tid="'+tid+'" data-id="'+sp.id+'">'+I.x+'</button></div>').join('');
+}
+function sheetSponsor(tid){
+  openSheet('<h3>Novo patrocinador</h3>'+
+    '<label for="sp-name">Nome</label><input id="sp-name" placeholder="Ex: Academia Força Total">'+
+    '<label for="sp-link">Site ou @Instagram (opcional)</label><input id="sp-link" placeholder="https://... ou @perfil">'+
+    '<label for="sp-logo">Logo (imagem)</label><input id="sp-logo" type="file" accept="image/*">'+
+    '<div class="sp16"></div><button class="btn" data-act="sp-save" data-tid="'+tid+'">'+I.check+'Salvar</button>');
+}
+function readLogo(file){
+  return new Promise((ok,ko)=>{if(!file)return ok(null);const r=new FileReader();r.onload=()=>{const img=new Image();img.onload=()=>{const max=400,k=Math.min(1,max/Math.max(img.width,img.height));const cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(img.width*k));cv.height=Math.max(1,Math.round(img.height*k));cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);ok(cv.toDataURL('image/png'));};img.onerror=()=>ko(new Error('Imagem inválida'));img.src=r.result;};r.readAsDataURL(file);});
+}
+async function saveSponsor(tid){
+  const name=document.getElementById('sp-name').value.trim();if(!name)return toast('Nome do patrocinador');
+  try{const logo=await readLogo(document.getElementById('sp-logo').files[0]);
+    await api('/'+tid+'/sponsors',{method:'POST',body:{name,link:document.getElementById('sp-link').value.trim()||null,logoUrl:logo}});
+    closeSheet();toast('Patrocinador salvo');loadSponsors(tid);}catch(e){toast(e.message);}
 }
 
 // ---------- Contas & Papéis ----------
@@ -2547,6 +2581,9 @@ function drawSumula(){
   let fin='';
   if(!done)fin='<div class="actbar"><button class="btn big" data-act="sum-finalize" data-mid="'+mid+'">'+I.flag+'Fechar súmula ('+s.liveScore.home+'×'+s.liveScore.away+')</button></div>';
   else fin='<div class="card">'+emptyB(I.check,'Súmula encerrada. Placar oficial <b>'+(s.match.homeScore!=null?s.match.homeScore:'-')+'×'+(s.match.awayScore!=null?s.match.awayScore:'-')+'</b>.','sm')+'</div>';
+  if(h.entry&&a.entry)fin+='<div class="card">'+cardH(I.upload,'Arte do jogo')+'<p class="muted" style="margin:-4px 0 12px;font-size:12.5px">'+(done?'Resultado final':'Placar ao vivo')+' pronto pro Instagram/WhatsApp — o público acompanha lance a lance na página.</p>'+
+    '<div class="brow"><button class="btn sm" data-act="m-artm" data-tid="'+esc(mt.tournamentId)+'" data-mid="'+mid+'">'+I.share+'Arte '+(done?'do resultado':'ao vivo')+'</button>'+
+    '<button class="btn sm gho" data-act="m-qrm" data-tid="'+esc(mt.tournamentId)+'" data-mid="'+mid+'">'+I.grid+'QR do jogo</button></div></div>';
   html+='<div class="g2 sum"><div class="col">'+score+ctrl+ros+'</div><div class="col">'+evh+off+fin+'</div></div>';
   html+='</div>';app.innerHTML=html;
 }
@@ -2739,6 +2776,15 @@ document.addEventListener('click',async(ev)=>{
   if(a==='ch-resp'){try{await api('/challenges/'+el.dataset.id+'/respond',{method:'POST',body:{action:el.dataset.a}});toast('Feito');renderChallenges();}catch(e){toast(e.message);}return;}
   if(a==='ch-result'){sheetChallengeResult(el.dataset.id,el.dataset.h,el.dataset.a);return;}
   if(a==='save-ch-result'){saveChallengeResult(el.dataset.id,el.dataset.w);return;}
+  if(a==='m-artes'&&window.ClubMidia){ClubMidia.openArtSheet({tid:el.dataset.tid,slug:el.dataset.slug,title:'Artes do torneio',shareTitle:el.dataset.name,types:[['agenda','Jogos de hoje',{}],['agenda','Próximos jogos',{data:'proximos'}],['artilharia','Artilharia geral',{}],['torneio','Capa do torneio',{}]]});return;}
+  if(a==='m-qr'&&window.ClubMidia){ClubMidia.openQr({tid:el.dataset.tid,slug:el.dataset.slug,name:el.dataset.name});return;}
+  if(a==='m-embed'&&window.ClubMidia){ClubMidia.openEmbed({slug:el.dataset.slug,name:el.dataset.name});return;}
+  if(a==='m-artm'&&window.ClubMidia){ClubMidia.openArtSheet({tid:el.dataset.tid,slug:'jogo',title:'Arte do jogo',tipo:'resultado',matchId:el.dataset.mid});return;}
+  if(a==='m-qrm'&&window.ClubMidia){ClubMidia.openQr({tid:el.dataset.tid,matchId:el.dataset.mid});return;}
+  if(a==='sp-add'){sheetSponsor(el.dataset.tid);return;}
+  if(a==='sp-save'){saveSponsor(el.dataset.tid);return;}
+  if(a==='sp-del'){if(!confirm('Remover este patrocinador?'))return;try{await api('/'+el.dataset.tid+'/sponsors/'+el.dataset.id,{method:'DELETE'});toast('Removido');loadSponsors(el.dataset.tid);}catch(e){toast(e.message);}return;}
+  if(a==='sp-up'){try{await api('/'+el.dataset.tid+'/sponsors/'+el.dataset.id,{method:'PATCH',body:{ordering:Number(el.dataset.o)}});loadSponsors(el.dataset.tid);}catch(e){toast(e.message);}return;}
   if(a==='share-t'){const url=location.origin+'/t/'+el.dataset.slug;const txt=el.dataset.name+' — acompanhe no Club Sports & Tennis';if(navigator.share){navigator.share({title:el.dataset.name,text:txt,url}).catch(()=>{});}else{try{navigator.clipboard.writeText(url);}catch(e){}toast('Link copiado');}return;}
   if(a==='team-roster'){toggleRoster(el.dataset.eid,el.dataset.cat);return;}
   if(a==='team-addplayer'){teamAddPlayerSheet(el.dataset.eid,el.dataset.cat);return;}
@@ -2791,5 +2837,6 @@ document.addEventListener('keydown',(e)=>{if(e.key==='Escape')closeSheet();});
 
 boot();
 </script>
+<script src="/club/torneio-midia.js"></script>
 </body>
 </html>
