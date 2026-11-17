@@ -228,7 +228,7 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
     assert.equal(h.historyRequests.filter(request => request.url.endsWith('/drafts/recover')).length, 1, 'administrator recovery uses the audited recovery endpoint');
     const primary = JSON.parse(shared.getItem('tc_bipar_action_draft_v1:' + older.key)); assert.equal(primary.revision, 103, 'the primary key now holds the merged lot'); assert.equal(primary.syncedRevision, 103, 'the server acknowledged the merged lot'); assert.equal(shared.getItem('tc_bipar_action_archive_v1:' + older.sessionId), null, 'the redundant archive shadow is removed after acknowledgement');
   });
-  await test('server mismatch keeps every divergent original and leaves the scanner locked', async () => {
+  await test('server mismatch keeps every divergent original and moves scanning to a NEW lot (dono 17/11: bipagem não pode travar)', async () => {
     const first = legacyActionDraft(person.id, 'receipt', 2); first.revision = 6; first.status = 'open';
     const second = JSON.parse(JSON.stringify(first)); second.revision = 6; second.syncedRevision = 6; second.scans[0].barcode = '7900373303889'; second.scans[0].createdAt = new Date(Date.parse(second.scans[0].createdAt) + 1000).toISOString(); second.scans[1].barcode = '7900373303889';
     const draftKey = 'tc_bipar_action_draft_v1:' + first.key, archiveKey = 'tc_bipar_action_archive_v1:' + first.sessionId;
@@ -237,7 +237,15 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
     await h.boot(); await flush();
     assert.ok(shared.getItem(draftKey)); assert.ok(shared.getItem(archiveKey));
     assert.match(h.get('action-sync-status').textContent, /cópias divergentes/);
-    await h.api.openCamera(); assert.equal(h.get('action-camera'), undefined);
+    assert.equal(h.api.state().currentDraft.sessionId, first.sessionId, 'the divergent reads stay visible until the operator scans again');
+    h.handler = () => response({ product: lupo, requiresSizeConfirmation: false });
+    await h.api.openCamera(); assert.ok(h.get('action-camera'), 'the scanner is available'); h.api.closeCamera();
+    assert.notEqual(h.api.state().currentDraft.sessionId, first.sessionId, 'opening the camera moved scanning to a new lot');
+    await h.scan(lupo.barcode); assert.equal(h.api.state().currentDraft.scans.length, 1);
+    const preserved = [...shared.data.keys()].filter(k => k.startsWith(archiveKey + ':preservado:'));
+    assert.equal(preserved.length, 1, 'the divergent copy that lived at the shared key was preserved before the new lot took it');
+    assert.deepEqual(JSON.parse(shared.getItem(preserved[0])).scans.map(x => x.barcode), first.scans.map(x => x.barcode));
+    assert.equal(JSON.parse(shared.getItem(archiveKey)).revision, 6, 'the other divergent copy is untouched');
   });
   await test('camera without an EAN keeps reading and neither adds a piece nor sends a lookup', async () => {
     const h = harness(); await h.boot(); await h.api.openCamera(); const before = h.requests.length;
@@ -843,6 +851,17 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
     h.localStorage.setItem = () => { const e = Error('full'); e.name = 'QuotaExceededError'; throw e; };
     await h.api.capture({ ean: lupo.barcode });
     assert.equal(h.api.state().cameraRead.storageError, true); assert.match(h.get('etiq-confirm-det').textContent, /memória do navegador cheia/); h.api.closeCamera();
+  });
+  await test('after a failed save, the next scan retries and works again without reloading the page', async () => {
+    const h = harness(); await h.boot(); h.handler = () => response({ product: lupo, requiresSizeConfirmation: false });
+    await h.api.openCamera(); const originalSet = h.localStorage.setItem;
+    h.localStorage.setItem = () => { throw Error('Disk error'); };
+    await h.api.capture({ ean: lupo.barcode }); assert.equal(h.api.state().cameraRead.storageError, true);
+    h.localStorage.setItem = originalSet; h.api.closeCamera();
+    await h.api.openCamera(); assert.ok(h.get('action-camera'), 'camera reopens once storage works');
+    await h.api.capture({ ean: product.barcode }); for (let i = 0; i < 5; i++) await new Promise(r => setImmediate(r));
+    assert.notEqual(h.api.state().cameraRead?.storageError, true); assert.ok(h.api.activeReads().some(x => x.barcode === product.barcode), 'the new piece was saved');
+    h.api.closeCamera();
   });
   await test('a storage failure after pending lookup cannot silently resume the camera', async () => {
     const h = harness(); await h.boot(); await h.api.openCamera(); const originalSet = h.localStorage.setItem.bind(h.localStorage); let saves = 0;
