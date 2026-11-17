@@ -2931,15 +2931,22 @@ model Activity {
   startPrivacyRadiusM Int @default(250)
   endPrivacyRadiusM   Int @default(250)
 
-  processingState String   @default("pending") // pending | processing | done | failed
+  processingState String   @default("pending") // pending | processing | done | failed | recording (Beacon ao vivo)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+
+  // F4 — app de atividade (aditivo; SQL em ensureApexSchema.js)
+  title       String?
+  description String? @db.Text
+  clientId    String? // id gerado no celular (upload offline idempotente)
+  streams     Json? // { t:[s], lat:[], lng:[], alt:[], hr:[], seg:[] } — pontos completos (só o dono vê crus)
 
   laps                 ActivityLap[]
   photos               ActivityPhoto[]
   segmentEfforts       SegmentEffort[]
   liveTrackingSessions LiveTrackingSession[]
 
+  @@unique([userId, clientId])
   @@index([userId, startedAt(sort: Desc)])
   @@index([sportType, startedAt])
 }
@@ -3008,9 +3015,17 @@ model Segment {
   verificationState String   @default("auto") // auto | community | reviewed | rejected
   geomHash          String? // hash da geometria pra dedup
   createdAt         DateTime @default(now())
+  // F4 — criador + pontas (pré-filtro do matching)
+  creatorId         String?
+  sourceActivityId  String?
+  startLat          Float?
+  startLng          Float?
+  endLat            Float?
+  endLng            Float?
 
   efforts SegmentEffort[]
 
+  @@index([startLat, startLng])
   @@index([sportType])
   @@index([geomHash])
 }
@@ -3030,6 +3045,7 @@ model SegmentEffort {
   rankType     String   @default("user") // user | club | local | global
   flaggedFraud Boolean  @default(false)
 
+  @@unique([segmentId, activityId, startedAt])
   @@index([segmentId, elapsedMs])
   @@index([athleteId])
 }
@@ -3080,6 +3096,11 @@ model Challenge {
   sponsorId   String? // ID de marca / fornecedor patrocinador
   visibility  String   @default("public")
   createdAt   DateTime @default(now())
+  // F4 — desafio oficial do clube x desafio de grupo privado (convite por link)
+  kind        String   @default("official") // official | group
+  ownerId     String?
+  inviteCode  String?  @unique
+  badgeKey    String?
 
   participations ChallengeParticipation[]
 }
@@ -3174,8 +3195,37 @@ model LiveTrackingSession {
   expiresAt      DateTime
   revokedAt      DateTime?
   viewerCount    Int       @default(0)
+  // F4 — última posição + rastro (página pública /ao-vivo/:token)
+  lastLat        Float?
+  lastLng        Float?
+  lastAt         DateTime?
+  trail          Json? // [[lat,lng,tMs], ...] (limitado)
 
   @@index([expiresAt])
+}
+
+// F4 — zona de privacidade (esconde pontos perto de casa pra quem não é o dono)
+model ActivityPrivacyZone {
+  id        String   @id @default(cuid())
+  userId    String
+  lat       Float
+  lng       Float
+  radiusM   Int      @default(300)
+  label     String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// F4 — seguir atleta (visibilidade "seguidores")
+model AthleteFollow {
+  id         String   @id @default(cuid())
+  followerId String
+  followeeId String
+  createdAt  DateTime @default(now())
+
+  @@unique([followerId, followeeId])
+  @@index([followeeId])
 }
 
 model BadgeEarned {
