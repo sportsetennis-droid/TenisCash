@@ -463,38 +463,6 @@ app.post('/api/_falgen', async (req, res) => {
     return res.json({ ok: false, error: String(e.message).slice(0, 200), ...keys });
   }
 });
-// TEMPORÁRIO (dono 17/11/2026: "faça um teste no meu número, manda cada uma das mensagens").
-// Manda SÓ pro WhatsApp do dono: mensagem de 1h antes do expediente + os 4 avisos de ponto, com
-// os dados reais de um vendedor. Remover depois do teste.
-app.post('/api/_pulse-test2', async (req, res) => {
-  if (req.query.g !== '074b6e57852e445347d3ad32') return res.status(404).json({ error: 'not found' });
-  try {
-    const { prisma } = require('./middleware');
-    const pulse = require('./services/sellerPulse');
-    const { CEO } = require('./config/lojasContato');
-    const { sendCustomMessage } = require('./whatsapp');
-    const toOwner = (_phone, msg) => sendCustomMessage(CEO.whatsapp, msg);
-    const monthStart = new Date(pulse.localYmd(Date.now()).slice(0, 7) + '-01T03:00:00.000Z');
-    const top = await prisma.sale.groupBy({ by: ['sellerId'], _sum: { totalAmount: true }, where: { createdAt: { gte: monthStart }, status: { not: 'canceled' } }, orderBy: { _sum: { totalAmount: 'desc' } }, take: 10 });
-    const sellers = await prisma.user.findMany({ where: { id: { in: top.map((t) => t.sellerId) }, role: 'seller', active: true }, select: { id: true, name: true, store: { select: { name: true } } } });
-    const seller = top.map((t) => sellers.find((x) => x.id === t.sellerId)).find(Boolean);
-    if (!seller) return res.status(404).json({ error: 'sem vendedor com venda no mês' });
-    const first = String(seller.name || '').split(/\s+/)[0];
-    const results = [];
-    const head = (n, title) => '🧪 *TESTE ' + n + '/5 — ' + title + '* (como o ' + first + ' receberia)\n\n';
-    const pre = pulse.formatPreShift(await pulse.buildPreShift(prisma, seller.id));
-    results.push(await sendCustomMessage(CEO.whatsapp, head(1, '1 hora antes do expediente') + pre).catch((e) => ({ ok: false, error: e.message })));
-    const storeName = seller.store ? seller.store.name : null;
-    const steps = [['entry', 'ponto de entrada'], ['break_start', 'saída pro intervalo'], ['break_end', 'volta do intervalo'], ['exit', 'ponto de saída']];
-    let n = 2;
-    for (const [type, title] of steps) {
-      const label = head(n++, title);
-      results.push(await pulse.notifyClock(prisma, { userId: seller.id, storeName, type, at: new Date() }, { send: (p, m) => toOwner(p, label + m) }).catch((e) => ({ ok: false, error: e.message })));
-    }
-    res.json({ sent: results.filter((r) => r && r.ok).length, total: results.length, errors: results.filter((r) => !(r && r.ok)).map((r) => (r && (r.error || r.skipped)) || 'falhou') });
-  } catch (e) { console.error('[pulse-test2]', e); res.status(500).json({ error: e.message }); }
-});
-
 app.use('/api/auth', authRoutes);
 app.use('/api/webauthn', webauthnRoutes);
 app.use('/api/face', faceRoutes);
