@@ -32,7 +32,7 @@ function carregar(dir = path.join(__dirname, 'neuronios')) {
   for (const dominio of fs.readdirSync(dir)) {
     const d = path.join(dir, dominio);
     if (!fs.statSync(d).isDirectory()) continue;
-    for (const f of fs.readdirSync(d).filter((x) => x.endsWith('.js'))) {
+    for (const f of fs.readdirSync(d).filter((x) => x.endsWith('.js') && !x.startsWith('_'))) {
       const arq = path.join(d, f);
       let n;
       try { n = require(arq); } catch (e) { erros.push(`${dominio}/${f}: falhou ao carregar: ${e.message}`); continue; }

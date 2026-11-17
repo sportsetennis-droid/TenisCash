@@ -66,6 +66,8 @@ async function pulsar(db = prisma) {
   const ativos = await db.rnaObjetivo.findMany({ where: { status: 'ativo' } });
   for (const o of ativos) {
     if (o.prazo && o.prazo.getTime() < Date.now()) {
+      const recente = await db.rnaSinal.count({ where: { tipo: 'objetivo.prazo-final', objetivoId: o.id, criadoEm: { gte: new Date(Date.now() - 7 * 86400000) } } }).catch(() => 0);
+      if (recente) continue;
       await motor.emitir({ tipo: 'objetivo.prazo-final', origem: 's.relogio', forca: 1, objetivoId: o.id, loja: o.loja, dados: { objetivoId: o.id, kpis: o.kpis } });
       continue;
     }

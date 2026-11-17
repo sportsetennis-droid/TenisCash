@@ -188,19 +188,24 @@ async function processar(sinal) {
   // ONDAS por custo: regra → ia-barata → ia-forte
   candidatos.sort((a, b) => ORDEM[a.n.custo.tipo] - ORDEM[b.n.custo.tipo]);
   const ondas = [0, 1, 2].map((o) => candidatos.filter((c) => ORDEM[c.n.custo.tipo] === o));
-  let resolvido = false;
+  // "resolve" só cala a IA do MESMO domínio de quem resolveu (outro domínio segue o seu caminho)
+  const resolvidos = new Set();
+  const dominio = (id) => id.split('.')[0];
   for (const [o, onda] of ondas.entries()) {
-    if (!onda.length) continue;
-    if (o >= 1 && resolvido) break;                                              // regra resolveu: IA não acende
-    const elegiveis = o === 2 ? onda.filter(() => precisaForte(sinal)) : onda;
+    let elegiveis = o >= 1 ? onda.filter((c) => !resolvidos.has(dominio(c.n.id))) : onda;
+    if (o === 2) elegiveis = elegiveis.filter((c) => precisaForte(sinal, c.n, obj));
+    if (!elegiveis.length) continue;
     const saidas = await Promise.all(elegiveis.map((c) => executar(c.n, sinal, c.ativacao, obj)));
-    if (saidas.some((r) => r && r.resolve)) resolvido = true;
+    saidas.forEach((r, i) => { if (r && r.resolve) resolvidos.add(dominio(elegiveis[i].n.id)); });
   }
 }
 
-function precisaForte(sinal) {
+// IA forte só quando vale: impacto alto, caso incerto, pedido do dono, ou objetivo ATIVO
+// do dono cuja região inclui este neurônio (o objetivo tem orçamento próprio que limita o gasto).
+function precisaForte(sinal, n, obj) {
   const min = Number(process.env.RNA_IMPACTO_FORTE_RS || 500);
-  return (sinal.impactoRS || 0) >= min || sinal.incerto || /^s\.dono|^dono\./.test(sinal.origem) || !!(sinal.dados && sinal.dados.pedidoDono);
+  if ((sinal.impactoRS || 0) >= min || sinal.incerto || /^s\.dono|^dono\./.test(sinal.origem) || (sinal.dados && sinal.dados.pedidoDono)) return true;
+  return !!(n && obj && obj.status === 'ativo' && obj.orcamento && casaRegiao(obj.regiao, n.id));
 }
 
 function slot(tipo) {
@@ -218,7 +223,8 @@ async function executar(n, sinal, ativacao, obj) {
   // idempotência: o mesmo neurônio nunca processa o mesmo sinal duas vezes
   const ja = await estado.db.rnaAtivacao.findUnique({ where: { neuronio_sinalId: { neuronio: n.id, sinalId: sinal.id } } }).catch(() => null);
   if (ja) return null;
-  const orc = await cabeNoOrcamento(n, obj);
+  // ia-forte é barrada antes; ia-barata só quando de fato chamar a IA (resolver por regra é de graça)
+  const orc = tipoCusto === 'ia-forte' ? await cabeNoOrcamento(n, obj) : { ok: true };
   if (!orc.ok) {
     await registrar(n, sinal, { status: 'sem-orcamento', ativacao, erro: orc.motivo });
     return null;
@@ -226,6 +232,7 @@ async function executar(n, sinal, ativacao, obj) {
   const liberar = await slot(tipoCusto);
   const t0 = agoraMs();
   let custoRS = 0;
+  let semOrcamento = null;
   try {
     const ctx = {
       sinal: Object.freeze({ ...sinal, dados: sinal.dados }),
@@ -234,6 +241,8 @@ async function executar(n, sinal, ativacao, obj) {
       objetivo: obj,
       agora: new Date(),
       pensar: tipoCusto === 'regra' ? null : async (args) => {
+        const cabe = await cabeNoOrcamento(n, obj);
+        if (!cabe.ok) { semOrcamento = cabe.motivo; return { ok: false, semOrcamento: true, motivo: cabe.motivo, custoRS: 0 }; }
         const r = await ia.pensar(Object.assign({ nivel: tipoCusto === 'ia-forte' ? 'forte' : 'barata', missao: n.missao }, args));
         custoRS += r.custoRS || 0;
         return r;
@@ -245,7 +254,7 @@ async function executar(n, sinal, ativacao, obj) {
     ]);
     const lista = Array.isArray(saida) ? saida.filter(Boolean) : saida ? [saida] : [];
     const pol = seg.politica(n, lista);
-    const resultado = { status: lista.length ? (pol.bloqueios.length && !pol.sinais.length ? 'bloqueado' : 'ok') : 'sem-saida', ativacao, custoRS, ms: agoraMs() - t0, saida: { sinais: pol.sinais.map((s) => ({ tipo: s.tipo, forca: s.forca })), bloqueios: pol.bloqueios } };
+    const resultado = { status: lista.length ? (pol.bloqueios.length && !pol.sinais.length ? 'bloqueado' : 'ok') : (semOrcamento ? 'sem-orcamento' : 'sem-saida'), erro: semOrcamento || undefined, ativacao, custoRS, ms: agoraMs() - t0, saida: { sinais: pol.sinais.map((s) => ({ tipo: s.tipo, forca: s.forca })), bloqueios: pol.bloqueios } };
     await registrar(n, sinal, resultado);
     let resolve = false;
     for (const s of pol.sinais) {
@@ -276,8 +285,8 @@ async function registrar(n, sinal, r) {
     if (r.status !== 'sem-orcamento') {
       await estado.db.rnaNeuronio.update({ where: { id: n.id }, data: { disparos: { increment: 1 }, custoRS: { increment: r.custoRS || 0 }, ultimoUso: new Date() } }).catch(() => {});
     }
-    if (sinal.objetivoId && (r.custoRS || n.custo.tipo !== 'regra')) {
-      await estado.db.rnaObjetivo.update({ where: { id: sinal.objetivoId }, data: { gastoRS: { increment: r.custoRS || 0 }, ativacoes: { increment: n.custo.tipo === 'regra' ? 0 : 1 } } }).catch(() => {});
+    if (sinal.objetivoId && r.custoRS > 0) {
+      await estado.db.rnaObjetivo.update({ where: { id: sinal.objetivoId }, data: { gastoRS: { increment: r.custoRS || 0 }, ativacoes: { increment: 1 } } }).catch(() => {});
       estado.cacheObjetivo.delete(sinal.objetivoId);
     }
     notificar({ evento: 'ativacao', neuronio: n.id, sinal, status: r.status });

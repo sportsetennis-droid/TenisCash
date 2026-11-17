@@ -92,6 +92,11 @@ Regras do contrato (inquebráveis):
 - **Entrada e saída tipadas.** O neurônio só conversa por sinais; nunca chama outro neurônio direto.
 - **Sem estado próprio.** O que precisa lembrar vai pro **quadro** do objetivo ou pra memória da empresa.
 - **Idempotente.** O mesmo sinal processado duas vezes não duplica nada (chave = `neuronio + sinal.id`).
+- **`dados.chave` obrigatória quando o neurônio emite vários sinais do mesmo tipo.** O anti-ciclo junta sinais iguais (neurônio + tipo + chave) dentro do mesmo rastro; sem chave, só o primeiro passa. A mesma chave deduplica a proposta pendente e segura a proposta **recusada** por `RNA_ESPERA_REJEITADA_DIAS` (padrão 14).
+- **Helpers** dentro de `neuronios/<dominio>/` começam com `_` (não são carregados como neurônio). Regras compartilhadas ficam em `src/ai/rede/regras/`.
+- **Orçamento:** `ia-forte` é barrada antes de rodar; `ia-barata` roda e só tem a IA recusada (`pensar` devolve `{ok:false, semOrcamento:true}`) quando o teto acabou — o neurônio deve cair para a regra.
+- **Desconto > 15%** em `proposta.preco*`, `proposta.desconto*` ou `proposta.campanha*` (campo `descontoPct`, inclusive em `itens[]`) é barrado pela política se não vier `validacaoMargem: { agente: 'pricing-margin', ok: true }`.
+- **Ação executada** que recusa na revalidação devolve `{ executado: false, motivo }` — a proposta fica `approved`, não vira `executed`.
 - **Nunca inventa dado.** Faltou dado na fonte → emite `dado-faltante` e para (regra global da casa).
 
 ---

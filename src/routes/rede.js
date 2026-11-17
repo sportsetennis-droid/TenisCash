@@ -143,14 +143,14 @@ router.post('/sinais', wrap(async (req, res) => {
 
 // Ao vivo: a rede pensando (Server-Sent Events)
 router.get('/ao-vivo', (req, res) => {
-  res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
+  res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
   res.flushHeaders && res.flushHeaders();
   const enviar = (ev) => {
     const s = ev.sinal || {};
-    res.write('data: ' + JSON.stringify({ evento: ev.evento, neuronio: ev.neuronio || null, status: ev.status || null, tipo: s.tipo || null, origem: s.origem || null, traceId: s.traceId || null, em: Date.now() }) + '\n\n');
+    res.write('data: ' + JSON.stringify({ evento: ev.evento, neuronio: ev.neuronio || null, status: ev.status || null, tipo: s.tipo || null, origem: s.origem || null, traceId: s.traceId || null, em: Date.now() }) + '\n\n'); if (res.flush) res.flush();
   };
   const parar = rede.motor.ouvir((ev) => { if (ev.evento !== 'ocioso?') enviar(ev); });
-  const ping = setInterval(() => res.write(': ping\n\n'), 25000);
+  const ping = setInterval(() => { res.write(': ping\n\n'); if (res.flush) res.flush(); }, 25000);
   req.on('close', () => { parar(); clearInterval(ping); });
 });
 

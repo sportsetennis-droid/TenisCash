@@ -254,7 +254,8 @@ router.post('/nfe/import', upload.single('file'), async (req, res) => {
 
     await prisma.xmlFiscalDocument.update({
       where: { id: document.id },
-      data: { status: matched === itemsToCreate.length ? 'matched' : 'partial' },
+      // Regra do CLAUDE.md: entrada × transferência (CNPJ raiz igual ou CFOP 5152/6152) gravada na importação.
+      data: { status: matched === itemsToCreate.length ? 'matched' : 'partial', ...(document.docType ? {} : (() => { const c = require('../ai/rede/neuronios/_comum-estoque').classificarNfe(document, parsed.items || []); return c.docType ? { docType: c.docType } : {}; })()) },
     });
     require('../ai/rede/ganchos').nfeImportada(document.id);
 

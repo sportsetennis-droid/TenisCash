@@ -14,7 +14,8 @@ function soLeitura(client) {
     get(target, prop) {
       if (prop === '$queryRaw' || prop === '$queryRawUnsafe') {
         return (sql, ...args) => {
-          const texto = typeof sql === 'string' ? sql : (sql && sql.strings ? sql.strings.join('?') : String(sql));
+          // string, Prisma.sql (tem .strings) ou template literal (TemplateStringsArray = array)
+          const texto = typeof sql === 'string' ? sql : Array.isArray(sql) ? sql.join('?') : (sql && sql.strings ? sql.strings.join('?') : String(sql));
           if (!/^\s*(select|with)\b/i.test(texto) || /;\s*\S/.test(texto) || /\b(insert|update|delete|drop|alter|create|truncate|grant)\b/i.test(texto.replace(/'[^']*'/g, ''))) {
             throw new Error('RNA: só consulta SELECT é permitida aos neurônios');
           }
@@ -49,6 +50,10 @@ async function criarProposta({ neuronio, sinal, proposta, caminho, db = prisma }
   if (chave) {
     const ja = await db.aIApproval.findFirst({ where: { type: tipo, status: 'pending', payload: { path: ['rna', 'chave'], equals: chave } } }).catch(() => null);
     if (ja) return { duplicada: true, id: ja.id };
+    // o dono já recusou essa mesma proposta há pouco: não insiste
+    const dias = Number(process.env.RNA_ESPERA_REJEITADA_DIAS || 14);
+    const recusada = await db.aIApproval.findFirst({ where: { type: tipo, status: 'rejected', decidedAt: { gte: new Date(Date.now() - dias * 86400000) }, payload: { path: ['rna', 'chave'], equals: chave } } }).catch(() => null);
+    if (recusada) return { duplicada: true, recusada: true, id: recusada.id };
   }
   const ap = await db.aIApproval.create({
     data: {

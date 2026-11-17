@@ -76,6 +76,14 @@ jobs:
         run: node scripts/test-rede.js
       - name: Ganchos — eventos reais viram sinais (sem vazar telefone)
         run: node scripts/test-rede-ganchos.js
+      - name: Mini agentes de NF-e, estoque, bipe e compras
+        run: node scripts/test-rede-estoque.js
+      - name: Mini agentes de Nuvemshop, conteúdo e preço
+        run: node scripts/test-rede-nuvem.js
+      - name: Mini agentes de vendas, CRM, marketing, financeiro e Club
+        run: node scripts/test-rede-comercial.js
+      - name: Mini agentes de meta e segurança
+        run: node scripts/test-rede-meta.js
   boot-check:
     name: deps + sintaxe + requires resolvem
     runs-on: ubuntu-latest

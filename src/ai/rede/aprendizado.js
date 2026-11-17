@@ -58,7 +58,7 @@ async function aoDecidir(aprovacao, db = prisma) {
 async function aoResultado(objetivoId, recompensa, db = prisma) {
   const r = Math.max(-1, Math.min(1, Number(recompensa) || 0));
   if (!r) return { ajustes: [] };
-  const aprovadas = await db.aIApproval.findMany({ where: { status: { in: ['approved', 'executed'] }, payload: { path: ['rna', 'objetivoId'], equals: objetivoId } }, take: 500 });
+  const aprovadas = await db.aIApproval.findMany({ where: { status: { in: ['approved', 'executed'] }, type: { not: 'rna_aprendizado_kpi' }, payload: { path: ['rna', 'objetivoId'], equals: objetivoId } }, take: 500 });
   const ajustes = [];
   for (const ap of aprovadas) {
     const c = ap.payload.rna.caminho || [];

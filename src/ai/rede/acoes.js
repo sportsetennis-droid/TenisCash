@@ -44,6 +44,10 @@ async function executar(aprovacaoId, { executadoPor } = {}, db = prisma) {
     await db.aIApproval.update({ where: { id: ap.id }, data: { decisionNote: ((ap.decisionNote || '') + ' | falha ao executar: ' + e.message).slice(0, 1000) } });
     throw Object.assign(new Error('Falha ao executar: ' + e.message), { status: 500 });
   }
+  if (resultado && resultado.executado === false) {
+    await db.aIApproval.update({ where: { id: ap.id }, data: { decisionNote: ((ap.decisionNote || '') + ' | não executada: ' + (resultado.motivo || 'condição mudou')).slice(0, 1000), payload: Object.assign({}, ap.payload, { tentativa: { em: new Date().toISOString(), por: executadoPor || null, resultado } }) } });
+    return { ok: false, acao: nome, resultado };
+  }
   await db.aIApproval.update({ where: { id: ap.id }, data: { status: 'executed', payload: Object.assign({}, ap.payload, { execucao: { em: new Date().toISOString(), por: executadoPor || null, resultado } }) } });
   return { ok: true, acao: nome, resultado };
 }
