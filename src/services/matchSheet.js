@@ -60,7 +60,7 @@ async function buildSheet(matchId) {
 async function addEvent(matchId, body = {}) {
   const match = await prisma.tournamentMatch.findUnique({
     where: { id: matchId },
-    select: { id: true, homeEntryId: true, awayEntryId: true },
+    select: { id: true, homeEntryId: true, awayEntryId: true, status: true },
   });
   if (!match) return { ok: false, error: 'partida não encontrada' };
   const type = String(body.type || '').toUpperCase();
@@ -84,7 +84,14 @@ async function addEvent(matchId, body = {}) {
       note: body.note ? String(body.note).slice(0, 200) : null,
     },
   });
-  return { ok: true, event };
+  // AO VIVO: o 1º lance da súmula põe o jogo no ar (SCHEDULED → LIVE).
+  // Jogo encerrado/W.O./cancelado NÃO volta pra ao vivo.
+  let wentLive = false;
+  if (match.status === 'SCHEDULED') {
+    const r = await prisma.tournamentMatch.updateMany({ where: { id: matchId, status: 'SCHEDULED' }, data: { status: 'LIVE' } });
+    wentLive = r.count > 0;
+  }
+  return { ok: true, event, wentLive };
 }
 
 async function deleteEvent(eventId) {
