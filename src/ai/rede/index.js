@@ -1,7 +1,7 @@
 // =====================================================================
 // REDE NEURAL DE AGENTES — ponto de entrada (docs/REDE-NEURAL-DE-AGENTES.md)
-//   const rede = require('./ai/rede');
-//   rede.sensor('nfe.importada', { documentId });   // borda da rede
+//   uso (de src/): importe a pasta ai/rede e chame
+//   rede.sensor('nfe.importada', { documentId })   // borda da rede
 // Liga/desliga: RNA_ATIVA=0 desliga tudo. Teto de IA: RNA_ORCAMENTO_DIA_RS.
 // =====================================================================
 const motor = require('./motor');
