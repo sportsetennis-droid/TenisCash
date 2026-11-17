@@ -462,6 +462,31 @@ app.post('/api/_falgen', async (req, res) => {
     return res.json({ ok: false, error: String(e.message).slice(0, 200), ...keys });
   }
 });
+// TEMPORÁRIO (dono 17/11/2026): teste do pulso diário do vendedor — manda SÓ pro WhatsApp do dono
+// o exemplo de como os vendedores do topo do mês receberiam. Remover depois do teste.
+app.post('/api/_pulse-test', async (req, res) => {
+  if (req.query.g !== '8ad32bac9b1da2583ef112ab') return res.status(404).json({ error: 'not found' });
+  try {
+    const { prisma } = require('./middleware');
+    const pulse = require('./services/sellerPulse');
+    const { CEO } = require('./config/lojasContato');
+    const { sendCustomMessage } = require('./whatsapp');
+    const n = Math.min(3, Math.max(1, Number(req.query.n) || 1));
+    const monthStart = new Date(pulse.localYmd(Date.now()).slice(0, 7) + '-01T03:00:00.000Z');
+    const top = await prisma.sale.groupBy({ by: ['sellerId'], _sum: { totalAmount: true }, where: { createdAt: { gte: monthStart }, status: { not: 'canceled' } }, orderBy: { _sum: { totalAmount: 'desc' } }, take: 10 });
+    const sellers = await prisma.user.findMany({ where: { id: { in: top.map((t) => t.sellerId) }, role: 'seller', active: true }, select: { id: true } });
+    const ids = top.map((t) => t.sellerId).filter((id) => sellers.some((s) => s.id === id)).slice(0, n);
+    const out = [];
+    for (const id of ids) {
+      const p = await pulse.buildPulse(prisma, id);
+      const msg = '🧪 *TESTE* — assim o(a) ' + String(p.name || '').split(/\s+/)[0] + ' receberia hoje cedo:\n\n' + pulse.formatPulse(p);
+      const r = await sendCustomMessage(CEO.whatsapp, msg).catch((e) => ({ ok: false, error: e.message }));
+      out.push({ ok: !!(r && r.ok), error: r && !r.ok ? r.error : null });
+    }
+    res.json({ sent: out.filter((o) => o.ok).length, results: out });
+  } catch (e) { console.error('[pulse-test]', e); res.status(500).json({ error: e.message }); }
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/webauthn', webauthnRoutes);
 app.use('/api/face', faceRoutes);
