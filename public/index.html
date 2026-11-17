@@ -798,7 +798,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 
 <!-- SELLER CLOCK-IN -->
 <div id="seller-payment" class="screen" style="padding:0">
-  <div class="back-header" style="padding-left:20px;padding-right:20px"><span class="back-arrow" onclick="showScreen('seller-home')">←</span><p style="font-size:18px;font-weight:700">Meu pagamento</p></div>
+  <div class="back-header" style="padding-left:20px;padding-right:20px"><span class="back-arrow" onclick="showScreen(isSeller() ? 'seller-home' : 'home')">←</span><p style="font-size:18px;font-weight:700">Meu pagamento</p></div>
   <iframe id="seller-payment-frame" title="Meu pagamento" style="display:block;width:100%;height:calc(100vh - 64px);height:calc(100dvh - 64px);border:0;background:#fff"></iframe>
 </div>
 
@@ -3728,6 +3728,16 @@ function showAdminButton() {
       btn.style.background = 'rgba(255,255,255,0.2)';
       btn.style.border = '2px solid rgba(255,255,255,0.4)';
       actions.appendChild(btn);
+    }
+    if (!document.getElementById('pay-btn')) {
+      const pb = document.createElement('div');
+      pb.id = 'pay-btn';
+      pb.className = 'action-btn';
+      pb.onclick = () => showScreen('seller-payment');
+      pb.innerHTML = '<span>💵</span><span>Meu pagamento</span>';
+      pb.style.background = 'rgba(255,255,255,0.2)';
+      pb.style.border = '2px solid rgba(255,255,255,0.4)';
+      actions.appendChild(pb);
     }
   }
 }
