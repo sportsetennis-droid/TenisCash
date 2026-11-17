@@ -93,6 +93,61 @@ jobs:
         run: node scripts/test-rede-mcp.js
       - name: Painel da rede — sintaxe, mobile-first e rotas
         run: node scripts/test-rede-painel.cjs
+  club:
+    name: club — campeonato, ao vivo, inscrição, atividade, ranking e varejo
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_DB: club_ci
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 55331:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d club_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      JWT_SECRET: ci-somente-teste
+      RNA_RELOGIO: '0'
+      PGHOST: localhost
+      PGPORT: '55331'
+      PGUSER: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx prisma generate
+      - name: Bancos descartáveis (um por suíte)
+        run: |
+          for d in t_db t_f2 t_f3 t_f4 t_f5 t_f6; do
+            psql -c "create database $d" postgres
+            DATABASE_URL=postgresql://postgres@localhost:55331/$d npx prisma db push --skip-generate
+          done
+      - name: Motor de campeonato — formatos, desempate, suspensão
+        run: node scripts/test-tournament-engine.js && node scripts/test-tournament-formats.js
+      - name: Campeonato no banco — fluxos, HTTP e schema aditivo
+        env: { DATABASE_URL: postgresql://postgres@localhost:55331/t_db }
+        run: node scripts/test-tournament-db.js
+      - name: Ao vivo, artes, QR, telão, calendário, patrocinadores
+        env: { DATABASE_URL: postgresql://postgres@localhost:55331/t_f2 }
+        run: node scripts/test-tournament-media.js
+      - name: Inscrição paga, lista de espera e check-in
+        env: { DATABASE_URL: postgresql://postgres@localhost:55331/t_f3, TREG_TEST_DATABASE_URL: postgresql://postgres@localhost:55331/t_f3 }
+        run: node scripts/test-tournament-registration.js
+      - name: App de atividade (GPS, import, segmentos, conquistas, beacon)
+        env: { DATABASE_URL: postgresql://postgres@localhost:55331/t_f4 }
+        run: node scripts/test-apex-atividade.js
+      - name: Ranking Glicko-2, push e clube permanente
+        env: { DATABASE_URL: postgresql://postgres@localhost:55331/t_f5 }
+        run: node scripts/test-club-ranking.js
+      - name: Varejo — busca, catálogo offline, logs, carteira, calendário, painel
+        env: { DATABASE_URL: postgresql://postgres@localhost:55331/t_f6, VAREJO_TEST_DATABASE_URL: postgresql://postgres@localhost:55331/t_f6 }
+        run: node scripts/test-varejo-tech.js
   boot-check:
     name: deps + sintaxe + requires resolvem
     runs-on: ubuntu-latest

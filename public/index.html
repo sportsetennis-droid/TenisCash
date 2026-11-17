@@ -277,6 +277,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 .pt-chart .pt-bar-lbl{font-size:9px;letter-spacing:.5px;color:rgba(255,255,255,0.5);text-transform:uppercase}
 </style>
 <script src="/stock-verification.js?v=1"></script>
+<script src="/catalog-offline.js?v=1"></script>
 </head>
 <body>
 
@@ -604,6 +605,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
     </div>
     <p class="balance-equiv" id="home-equiv"></p>
   </div>
+  <button type="button" id="gwallet-btn" onclick="addToGoogleWallet()" style="display:none;width:100%;margin-top:10px;min-height:48px;border:0;border-radius:24px;background:#000;color:#fff;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;align-items:center;justify-content:center;gap:8px"><span aria-hidden="true" style="font-size:18px">▣</span><span>Adicionar à Carteira do Google</span></button>
   <div class="actions" id="home-actions">
     <div class="action-btn" onclick="showScreen('transfer')"><span>↑</span><span>Transferir</span></div>
     <div class="action-btn" onclick="showScreen('qr')"><span>⬡</span><span>QR Code</span></div>
@@ -754,6 +756,11 @@ input::placeholder{color:rgba(255,255,255,0.35)}
       <button type="button" class="btn-primary" onclick="sendSellerAgenda()" style="margin-top:10px">ENVIAR PARA APROVAÇÃO</button>
     </div>
     <div id="sa-list" style="display:grid;gap:8px;margin-top:12px"><div class="loading">Carregando...</div></div>
+  </div>
+  <div style="margin-top:12px;padding:14px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);border-radius:14px">
+    <strong style="font-size:14px">📆 Escala no meu calendário</strong>
+    <p style="font-size:12px;color:rgba(255,255,255,.7);margin-top:4px;line-height:1.4">Seus turnos e folgas aprovadas aparecem sozinhos no Google Agenda ou no calendário do iPhone. O link é pessoal: não compartilhe.</p>
+    <div id="tcal-box" style="margin-top:10px"><button type="button" class="btn-secondary" onclick="loadTeamCalendarLink(false)" style="min-height:44px">MOSTRAR MEU LINK</button></div>
   </div>
   <div style="display:flex;gap:10px;align-items:flex-end;margin-top:15px">
     <label style="font-size:11px;color:rgba(255,255,255,.65);flex:1">MÊS<br><input id="seller-schedule-month" class="input-field" type="month" onchange="loadSellerSchedule()" style="margin-top:6px"></label>
@@ -1828,6 +1835,7 @@ function setupSellerStoreStock() {
   if (more) more.addEventListener('click', function () { loadSellerStoreStock(false); });
   if (open) open.addEventListener('click', function () { showScreen('seller-catalog-search'); });
   loadSellerStoreOptions();
+  sellerOfflineCatalogPrepare();
   updateSellerStoreStockControls();
 }
 
@@ -1938,6 +1946,49 @@ function renderSellerStoreStockCard(p) {
   return row;
 }
 
+// ---- Busca tolerante a erro + catálogo offline (consulta de estoque do vendedor) ----
+function sellerStockScopeStoreId() {
+  if (sellerStoreStockState.scope === 'store') return sellerStoreStockState.selectedStoreId || '';
+  if (sellerStoreStockState.scope === 'mine') return (sellerStoreStockState.store && sellerStoreStockState.store.id) || '';
+  return '';
+}
+function sellerStockScoped(p) {
+  const storeId = sellerStockScopeStoreId();
+  if (!storeId) return p;
+  return Object.assign({}, p, { sizes: (p.sizes || []).map(function (s) {
+    return Object.assign({}, s, { storeStocks: (s.storeStocks || []).filter(function (ss) { return ss.storeId === storeId; }) });
+  }) });
+}
+function sellerStockRenderOffline(list, meta, more, query) {
+  const found = CatalogOffline.search(query, 30).map(sellerStockScoped);
+  const when = CatalogOffline.savedAt() ? new Date(CatalogOffline.savedAt()).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+  list.innerHTML = '<div class="seller-store-stock-sub" style="color:#FFD180">Sem internet — catálogo salvo neste aparelho' + (when ? ' em ' + when : '') + '. Estoque pode ter mudado.</div>';
+  if (!found.length) list.insertAdjacentHTML('beforeend', '<div class="seller-store-stock-sub">Nada encontrado no catálogo salvo.</div>');
+  found.forEach(function (p) { list.appendChild(renderSellerStoreStockCard(p)); });
+  meta.textContent = found.length + ' produto(s) no catálogo offline para "' + query + '".';
+  if (more) more.style.display = 'none';
+}
+function sellerStockFuzzySuggest(list, query) {
+  api('/search/products?q=' + encodeURIComponent(query) + '&limit=12').then(function (data) {
+    if (!data || data.error || !(data.products || []).length) return;
+    if (sellerStoreStockState.query !== query) return; // usuário já digitou outra coisa
+    list.insertAdjacentHTML('beforeend', '<div class="seller-store-stock-sub" style="margin-top:8px;font-weight:800">Você quis dizer?</div>');
+    data.products.map(sellerStockScoped).forEach(function (p) { list.appendChild(renderSellerStoreStockCard(p)); });
+  }).catch(function () {});
+}
+function sellerOfflineCatalogPrepare() {
+  if (!window.CatalogOffline || !isSeller()) return;
+  const go = function () { CatalogOffline.sync(token).catch(function () {}); };
+  if (window.MiniSearch) { CatalogOffline.restore().then(go); return; }
+  const sc = document.createElement('script');
+  sc.src = 'https://cdn.jsdelivr.net/npm/minisearch@7.2.0/dist/umd/index.js';
+  sc.async = true;
+  sc.onload = function () { CatalogOffline.restore().then(go); };
+  sc.onerror = function () { CatalogOffline.restore().then(go); }; // sem MiniSearch: busca simples
+  document.head.appendChild(sc);
+  window.addEventListener('online', go);
+}
+
 function loadSellerStoreStock(reset) {
   if (!isSeller() || sellerStoreStockState.loading) return;
   const list = document.getElementById('seller-store-stock-list');
@@ -1959,11 +2010,21 @@ function loadSellerStoreStock(reset) {
     sellerStoreStockState.totalPages = 1;
     list.innerHTML = '<div class="loading">Carregando estoque...</div>';
   }
-  sellerStoreStockState.loading = true;
   const query = (qEl && qEl.value ? qEl.value.trim() : '');
   sellerStoreStockState.query = query;
+  if (navigator.onLine === false && query && window.CatalogOffline && CatalogOffline.ready()) {
+    sellerStockRenderOffline(list, meta, more, query);
+    return;
+  }
+  sellerStoreStockState.loading = true;
   const params = buildSellerStoreStockParams(sellerStoreStockState.page);
-  api('/catalog/products?' + params.join('&')).then(function (data) {
+  api('/catalog/products?' + params.join('&')).catch(function () {
+    // sem rede: busca no catálogo salvo no aparelho
+    sellerStoreStockState.loading = false;
+    if (query && window.CatalogOffline && CatalogOffline.ready()) { sellerStockRenderOffline(list, meta, more, query); return { _handled: true }; }
+    return { error: 'Sem conexão. ' + (window.CatalogOffline && CatalogOffline.ready() ? 'Digite o produto para buscar no catálogo salvo.' : 'O catálogo offline ainda não foi baixado neste aparelho.') };
+  }).then(function (data) {
+    if (data && data._handled) return;
     sellerStoreStockState.loading = false;
     if (data.error) {
       list.innerHTML = '<div class="error-msg">' + escapeHtmlSellerMsg(data.error) + '</div>';
@@ -1977,6 +2038,7 @@ function loadSellerStoreStock(reset) {
     if (reset) list.innerHTML = '';
     if (!products.length && sellerStoreStockState.page === 1) {
       list.innerHTML = '<div class="seller-store-stock-sub">Nenhum produto com estoque para esse filtro.</div>';
+      if (query) sellerStockFuzzySuggest(list, query);
     } else {
       products.forEach(function (p) { list.appendChild(renderSellerStoreStockCard(p)); });
     }
@@ -3085,6 +3147,7 @@ async function loadHome() {
   document.getElementById('home-name').textContent = user.name.split(' ')[0];
   document.getElementById('home-initial').textContent = user.name[0];
   updateBalance();
+  setupGoogleWalletButton();
   // Profile banner
   document.getElementById('profile-banner').style.display = user.profileComplete ? 'none' : 'block';
   // Admin button
@@ -3108,6 +3171,52 @@ async function loadHome() {
     const bdc = tx.type.includes('out')||tx.type==='used'||tx.type==='admin_debit' ? 'rgba(255,82,82,0.25)' : 'rgba(255,255,255,0.15)';
     return '<div class="tx-item"><div class="tx-icon" style="background:'+bgc+';border:1px solid '+bdc+';color:'+c+'">'+(icons[tx.type]||'•')+'</div><div class="tx-info"><p>'+tx.description+'</p><p>'+date+' · '+time+'</p></div><span class="tx-amount" style="color:'+c+'">'+(signs[tx.type]||'')+' '+tx.amount+'</span></div>';
   }).join('');
+}
+
+// Escala no calendário do celular (.ics pessoal)
+async function loadTeamCalendarLink(rotate) {
+  const box = document.getElementById('tcal-box');
+  if (!box) return;
+  if (rotate && !confirm('Gerar um link novo? O link antigo para de funcionar no calendário onde você assinou.')) return;
+  box.innerHTML = '<div class="loading">Carregando...</div>';
+  const data = rotate ? await api('/team-calendar/my-link/rotate', 'POST') : await api('/team-calendar/my-link');
+  if (data.error || !data.url) { box.innerHTML = '<p style="font-size:12px;color:#FF8A80">' + escapeHtmlSellerMsg(data.error || 'Não foi possível gerar o link.') + '</p>'; return; }
+  const safe = escapeHtmlSellerMsg(data.url);
+  const gcal = 'https://calendar.google.com/calendar/r?cid=' + encodeURIComponent(data.webcal);
+  box.innerHTML = '<input class="input-field" readonly value="' + safe + '" onclick="this.select()" style="margin-top:0;font-size:12px">' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">' +
+    '<a class="btn-secondary" href="' + escapeHtmlSellerMsg(data.webcal) + '" style="min-height:44px;display:flex;align-items:center;justify-content:center;text-decoration:none">iPhone / Outlook</a>' +
+    '<a class="btn-secondary" href="' + escapeHtmlSellerMsg(gcal) + '" target="_blank" rel="noopener" style="min-height:44px;display:flex;align-items:center;justify-content:center;text-decoration:none">Google Agenda</a></div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">' +
+    '<button type="button" class="btn-secondary" id="tcal-copy" style="min-height:44px">COPIAR LINK</button>' +
+    '<button type="button" class="btn-secondary" onclick="loadTeamCalendarLink(true)" style="min-height:44px">GERAR NOVO</button></div>';
+  document.getElementById('tcal-copy').onclick = function () {
+    (navigator.clipboard ? navigator.clipboard.writeText(data.url) : Promise.reject()).then(function () { this.textContent = 'COPIADO ✓'; }.bind(this)).catch(function () { alert(data.url); });
+  };
+}
+
+// Cartão TenisCash na Carteira do Google — o botão só aparece se o servidor tiver a credencial.
+let gwalletEnabled = null;
+async function setupGoogleWalletButton() {
+  const btn = document.getElementById('gwallet-btn');
+  if (!btn) return;
+  if (gwalletEnabled === null) {
+    try { const r = await fetch(API + '/google-wallet/status', { cache: 'no-store' }); gwalletEnabled = r.ok && !!(await r.json()).enabled; } catch (_) { gwalletEnabled = false; }
+  }
+  btn.style.display = gwalletEnabled ? 'flex' : 'none';
+}
+async function addToGoogleWallet() {
+  const btn = document.getElementById('gwallet-btn');
+  if (btn) btn.disabled = true;
+  try {
+    const data = await api('/google-wallet/save-link');
+    if (data.error || !data.url) throw new Error(data.error || 'Não foi possível gerar o cartão.');
+    window.location.href = data.url;
+  } catch (e) {
+    alert(e.message || 'Não foi possível gerar o cartão.');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 // SELLER HOME

@@ -2931,15 +2931,22 @@ model Activity {
   startPrivacyRadiusM Int @default(250)
   endPrivacyRadiusM   Int @default(250)
 
-  processingState String   @default("pending") // pending | processing | done | failed
+  processingState String   @default("pending") // pending | processing | done | failed | recording (Beacon ao vivo)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+
+  // F4 — app de atividade (aditivo; SQL em ensureApexSchema.js)
+  title       String?
+  description String? @db.Text
+  clientId    String? // id gerado no celular (upload offline idempotente)
+  streams     Json? // { t:[s], lat:[], lng:[], alt:[], hr:[], seg:[] } — pontos completos (só o dono vê crus)
 
   laps                 ActivityLap[]
   photos               ActivityPhoto[]
   segmentEfforts       SegmentEffort[]
   liveTrackingSessions LiveTrackingSession[]
 
+  @@unique([userId, clientId])
   @@index([userId, startedAt(sort: Desc)])
   @@index([sportType, startedAt])
 }
@@ -3008,9 +3015,17 @@ model Segment {
   verificationState String   @default("auto") // auto | community | reviewed | rejected
   geomHash          String? // hash da geometria pra dedup
   createdAt         DateTime @default(now())
+  // F4 — criador + pontas (pré-filtro do matching)
+  creatorId         String?
+  sourceActivityId  String?
+  startLat          Float?
+  startLng          Float?
+  endLat            Float?
+  endLng            Float?
 
   efforts SegmentEffort[]
 
+  @@index([startLat, startLng])
   @@index([sportType])
   @@index([geomHash])
 }
@@ -3030,6 +3045,7 @@ model SegmentEffort {
   rankType     String   @default("user") // user | club | local | global
   flaggedFraud Boolean  @default(false)
 
+  @@unique([segmentId, activityId, startedAt])
   @@index([segmentId, elapsedMs])
   @@index([athleteId])
 }
@@ -3047,6 +3063,13 @@ model Club {
   // Vinculação opcional à loja Sports & Tennis (clubes patrocinados/eventos)
   storeId      String?
   createdAt    DateTime @default(now())
+  // Clube permanente (F5): página pública /clube/:slug, escudo, cores, esportes, convite
+  slug           String?  @unique
+  crestUrl       String? // escudo (URL https ou data URI png/jpeg/webp pequeno)
+  primaryColor   String? // #RRGGBB
+  secondaryColor String?
+  sports         String[] @default([])
+  inviteCode     String?  @unique // convite por link/código (/clube/:slug?convite=CODE)
 
   memberships ClubMembership[]
 
@@ -3061,10 +3084,67 @@ model ClubMembership {
   club     Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
   userId   String
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role     String   @default("member") // owner | admin | member
-  joinedAt DateTime @default(now())
+  role            String   @default("member") // owner (dono) | coach (técnico) | athlete (atleta); legado: admin | member
+  joinedAt        DateTime @default(now())
+  status          String   @default("ACTIVE") // ACTIVE | PENDING (convite direto aguardando aceite) | DECLINED
+  invitedByUserId String?
 
   @@unique([clubId, userId])
+}
+
+// Vínculo EXPLÍCITO (feito pelo dono do clube) entre o clube permanente e a
+// inscrição de um torneio — casamento pelo NOME EXATO da TournamentEntry.
+model ClubTournamentLink {
+  id              String   @id @default(cuid())
+  clubId          String
+  tournamentId    String
+  entryName       String
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+
+  @@unique([clubId, tournamentId, entryName])
+  @@index([tournamentId, entryName])
+}
+
+// Rating Glicko-2 (F5) — por atleta (USER) ou time (TEAM, nome do clube),
+// por esporte e formato (SINGLES | DOUBLES | TEAM). Recalculado do histórico.
+model GlickoRating {
+  id          String    @id @default(cuid())
+  sport       String
+  format      String // SINGLES | DOUBLES | TEAM
+  subjectType String // USER | TEAM
+  subjectKey  String // userId (USER) ou nome normalizado do clube (TEAM)
+  userId      String?
+  teamName    String?
+  rating      Float     @default(1500)
+  rd          Float     @default(350)
+  volatility  Float     @default(0.06)
+  matches     Int       @default(0)
+  wins        Int       @default(0)
+  draws       Int       @default(0)
+  losses      Int       @default(0)
+  lastPeriod  Int? // índice da semana (Fortaleza) do último período jogado
+  lastMatchAt DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([sport, format, subjectType, subjectKey])
+  @@index([sport, format, rating])
+  @@index([userId])
+}
+
+// Preferências de push do Club (liga/desliga geral e por tipo)
+model ClubNotifyPref {
+  userId    String   @id
+  push      Boolean  @default(true)
+  types     Json?
+  updatedAt DateTime @updatedAt
+}
+
+// Idempotência dos avisos automáticos (ex.: "game_soon:<matchId>")
+model ClubPushLog {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  createdAt DateTime @default(now())
 }
 
 model Challenge {
@@ -3080,6 +3160,11 @@ model Challenge {
   sponsorId   String? // ID de marca / fornecedor patrocinador
   visibility  String   @default("public")
   createdAt   DateTime @default(now())
+  // F4 — desafio oficial do clube x desafio de grupo privado (convite por link)
+  kind        String   @default("official") // official | group
+  ownerId     String?
+  inviteCode  String?  @unique
+  badgeKey    String?
 
   participations ChallengeParticipation[]
 }
@@ -3174,8 +3259,37 @@ model LiveTrackingSession {
   expiresAt      DateTime
   revokedAt      DateTime?
   viewerCount    Int       @default(0)
+  // F4 — última posição + rastro (página pública /ao-vivo/:token)
+  lastLat        Float?
+  lastLng        Float?
+  lastAt         DateTime?
+  trail          Json? // [[lat,lng,tMs], ...] (limitado)
 
   @@index([expiresAt])
+}
+
+// F4 — zona de privacidade (esconde pontos perto de casa pra quem não é o dono)
+model ActivityPrivacyZone {
+  id        String   @id @default(cuid())
+  userId    String
+  lat       Float
+  lng       Float
+  radiusM   Int      @default(300)
+  label     String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// F4 — seguir atleta (visibilidade "seguidores")
+model AthleteFollow {
+  id         String   @id @default(cuid())
+  followerId String
+  followeeId String
+  createdAt  DateTime @default(now())
+
+  @@unique([followerId, followeeId])
+  @@index([followeeId])
 }
 
 model BadgeEarned {
@@ -3559,6 +3673,7 @@ model PushSubscription {
   p256dh     String // chave pública pra criptografia
   authKey    String // chave de autenticação
   userAgent  String? // pra mostrar "Chrome iPhone" etc
+  app        String? // null = varejo/app.html · 'club' = Club Sports & Tennis
   createdAt  DateTime  @default(now())
   lastUsedAt DateTime?
 
@@ -3734,6 +3849,11 @@ model Tournament {
   prizeDescription String?
   prizePaidAt      DateTime? // quando o prêmio foi pago ao campeão (idempotência: paga 1x)
 
+  // Temporadas / série: liga as edições do mesmo campeonato ("Futsal Master Cup" 2025, 2026...)
+  seriesSlug String? // ex: "futsal-master-cup" (chave da série, sem ano)
+  seriesName String? // ex: "Futsal Master Cup"
+  edition    String? // ex: "2026" | "II"
+
   visibility String   @default("public")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -3747,6 +3867,7 @@ model Tournament {
   @@index([status])
   @@index([sport])
   @@index([storeId])
+  @@index([seriesSlug])
 }
 
 model TournamentCategory {
@@ -3760,6 +3881,13 @@ model TournamentCategory {
   pointsWin    Int        @default(3) // pontuação na liga/pontos corridos
   pointsDraw   Int        @default(1)
   pointsLoss   Int        @default(0)
+
+  // Motor de campeonato (F1) — tudo opcional; null = comportamento padrão
+  tiebreakers    Json? // critérios de desempate em ordem: ["POINTS","WINS","HEAD_TO_HEAD",...]
+  tiebreakSeed   String? // semente do SORTEIO (gravada na 1ª vez; auditável)
+  doubleRound    Boolean @default(false) // ida e volta (pontos corridos / grupos)
+  suspensionRule Json? // { enabled, yellowLimit, yellowBan, redBan, doubleYellowIsRed }
+  formatConfig   Json? // { rounds (suíço), reset (dupla eliminação), variant (americano) }
 
   entries   TournamentEntry[]
   matches   TournamentMatch[]
@@ -3838,6 +3966,15 @@ model TournamentMatch {
   decidedByPenalties Boolean @default(false)
   homeSourceLabel    String? // vaga do mandante no mata-mata ("Vencedor Semifinal 1", "1º Grupo A")
   awaySourceLabel    String? // vaga do visitante
+  // Dupla eliminação: W (vencedores) | L (perdedores) | GF (final) | GF2 (reset)
+  bracket            String?
+  loserNextMatchId   String? // perdedor cai neste jogo (chave dos perdedores)
+  loserNextSlot      String? // "home" | "away"
+  // Americano/Super 8: parceiro de cada lado (dupla rotativa)
+  homeEntry2Id       String?
+  awayEntry2Id       String?
+  // Escalação do jogo: { "<entryId>": ["<rosterPlayerId>", ...] }
+  lineup             Json?
   winnerEntryId String?
   winnerEntry   TournamentEntry? @relation("winnerEntry", fields: [winnerEntryId], references: [id])
 
@@ -3891,6 +4028,8 @@ model TournamentStanding {
   scoreAgainst Int  @default(0)
   points       Int  @default(0)
   rank         Int? // posição calculada
+  fairPlay     Int  @default(0) // pontos de cartão (amarelo=1, vermelho=3) — só quando o critério está ativo
+  tiebreak     String? // critério que separou esta linha (ex: HEAD_TO_HEAD)
 
   updatedAt DateTime @updatedAt
 
@@ -3974,6 +4113,21 @@ model AppNotification {
 // Súmula digital de futsal — elenco por time + eventos do jogo.
 // RosterPlayer: jogador de uma equipe (TournamentEntry). Por ora nome+número
 // (não exige conta); userId liga à conta do atleta quando houver.
+// Patrocinadores do torneio (faixa na página pública, telão e rodapé das artes).
+// Sem FK (padrão RosterPlayer): a tabela nasce aditiva no ensureApexSchema.
+model TournamentSponsor {
+  id           String   @id @default(cuid())
+  tournamentId String
+  name         String
+  logoUrl      String?  @db.Text // URL https OU data URI pequeno (logo)
+  link         String? // site/Instagram do patrocinador
+  ordering     Int      @default(0)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@index([tournamentId, ordering])
+}
+
 model RosterPlayer {
   id           String   @id @default(cuid())
   entryId      String // time (TournamentEntry)
@@ -4002,6 +4156,26 @@ model MatchEvent {
   note      String?
   createdAt DateTime @default(now())
 
+  @@index([matchId])
+  @@index([playerId])
+}
+
+// Liberação de atleta SUSPENSO pelo árbitro/coordenador (auditoria).
+// action: EVENT (lançou evento) | LINEUP (escalou no jogo)
+model SuspensionOverride {
+  id           String   @id @default(cuid())
+  tournamentId String
+  categoryId   String?
+  matchId      String
+  playerId     String
+  entryId      String
+  action       String
+  eventType    String?
+  reason       String
+  userId       String?
+  createdAt    DateTime @default(now())
+
+  @@index([tournamentId])
   @@index([matchId])
   @@index([playerId])
 }
@@ -6698,4 +6872,156 @@ model RnaAjustePeso {
   criadoEm    DateTime @default(now())
 
   @@index([alvo, criadoEm])
+}
+
+// =====================================================================
+// CLUB F3 — INSCRIÇÃO PAGA, CHECK-IN E LISTA DE ESPERA
+// Tabelas soltas (sem relação), padrão TournamentRole. SQL aditivo em
+// src/services/ensureApexSchema.js. Valores de dinheiro SEMPRE em centavos.
+// =====================================================================
+
+// Configuração da inscrição online de um torneio (1 linha por torneio).
+model TournamentRegistrationConfig {
+  tournamentId        String   @id
+  enabled             Boolean  @default(false)
+  categories          Json? // { [categoryId]: { feeCents, maxEntries } }
+  customFields        Json? // [{ key, label, type: text|number|boolean|select|shirt, required, options[] }]
+  termsText           String?  @db.Text
+  termsVersion        Int      @default(1)
+  holdMinutes         Int      @default(60) // quanto tempo a vaga fica segura esperando o PIX
+  waitlistHoldHours   Int      @default(24) // prazo pra pagar depois de promovido da fila
+  allowTenisCash      Boolean  @default(true)
+  allowOnsite         Boolean  @default(false) // atleta pode escolher "pagar no local"
+  cashbackPct         Int      @default(0) // % de cashback TenisCash sobre o valor pago em dinheiro (0 = desligado)
+  paymentStoreId      String? // loja cuja conta PagBank recebe o PIX
+  checkinToleranceMin Int      @default(15) // tolerância pra sugerir W.O.
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model TournamentRegistration {
+  id                String    @id @default(cuid())
+  tournamentId      String
+  categoryId        String
+  kind              String    @default("ATHLETE") // ATHLETE | DOUBLES | TEAM
+  displayName       String
+  status            String    @default("PENDING_PAYMENT") // PENDING_PAYMENT | CONFIRMED | WAITLIST | EXPIRED | CANCELED | REFUNDED
+  userId            String? // quem inscreveu, se estava logado
+  contactName       String
+  contactPhone      String
+  contactEmail      String?
+  athletes          Json? // [{ name, birthDate, phone, email, minor, guardian:{name,phone,relationship} }]
+  roster            Json? // time: [{ name, number, isGoalkeeper }]
+  answers           Json? // respostas dos campos customizados
+  termsVersion      Int?
+  termsHash         String?
+  termsAcceptedAt   DateTime?
+  termsIp           String?
+  termsUserAgent    String?
+  feeCents          Int       @default(0)
+  discountCents     Int       @default(0)
+  couponId          String?
+  couponCode        String?
+  tcCents           Int       @default(0) // parte paga em TenisCash
+  tcTxId            String?
+  tcRefundTxId      String?
+  paidCents         Int       @default(0) // parte paga em dinheiro (PIX/local)
+  paymentMethod     String? // PIX | TENISCASH | MIXED | ONSITE | FREE
+  paymentExpiresAt  DateTime?
+  paidAt            DateTime?
+  confirmedAt       DateTime?
+  entryId           String?
+  publicToken       String    @unique
+  checkinToken      String    @unique
+  cashbackCents     Int       @default(0)
+  cashbackUserId    String?
+  cashbackTxId      String?
+  cashbackAt        DateTime?
+  cashbackStatus    String? // CREDITED | NO_ACCOUNT | REVERSED | REVERSAL_PENDING
+  promotedAt        DateTime?
+  refundStatus      String? // REQUESTED | REFUNDED | DENIED
+  refundReason      String?
+  refundRequestedAt DateTime?
+  refundedAt        DateTime?
+  refundedBy        String?
+  refundNote        String?
+  refundCents       Int       @default(0)
+  canceledAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([tournamentId, status])
+  @@index([categoryId, status])
+  @@index([userId])
+}
+
+// Cobrança PIX de uma inscrição (PSP PagBank da loja configurada).
+model TournamentPaymentCharge {
+  id              String    @id @default(cuid())
+  registrationId  String
+  tournamentId    String
+  provider        String    @default("pagbank")
+  storeId         String?
+  providerOrderId String?   @unique
+  amountCents     Int
+  status          String    @default("PENDING") // PENDING | PAID | EXPIRED | CANCELED
+  qrText          String?   @db.Text
+  qrPngUrl        String?
+  expiresAt       DateTime?
+  paidAt          DateTime?
+  paidCents       Int?
+  e2e             String?
+  lastCheckedAt   DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([registrationId])
+  @@index([tournamentId, status])
+}
+
+model TournamentCoupon {
+  id           String    @id @default(cuid())
+  tournamentId String
+  code         String // sempre MAIÚSCULO
+  kind         String    @default("PERCENT") // PERCENT | FIXED
+  value        Int // PERCENT: 1..100 · FIXED: centavos
+  maxUses      Int?
+  usedCount    Int       @default(0)
+  active       Boolean   @default(true)
+  expiresAt    DateTime?
+  createdBy    String?
+  createdAt    DateTime  @default(now())
+
+  @@unique([tournamentId, code])
+}
+
+// Trilha de auditoria (pagamento manual, estorno, check-in manual, W.O. confirmado...).
+model TournamentRegistrationAudit {
+  id             String   @id @default(cuid())
+  tournamentId   String
+  registrationId String?
+  action         String
+  actorUserId    String?
+  note           String?
+  data           Json?
+  createdAt      DateTime @default(now())
+
+  @@index([tournamentId, createdAt])
+  @@index([registrationId])
+}
+
+// Presença por jogo/rodada. scopeKey = "match:<id>" | "round:<n>" | "event".
+model TournamentCheckin {
+  id             String   @id @default(cuid())
+  tournamentId   String
+  registrationId String
+  entryId        String?
+  scopeKey       String
+  matchId        String?
+  method         String   @default("QR") // QR | MANUAL
+  checkedBy      String?
+  createdAt      DateTime @default(now())
+
+  @@unique([registrationId, scopeKey])
+  @@index([tournamentId, scopeKey])
 }
