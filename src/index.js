@@ -2273,6 +2273,8 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   }
 
   try { require('./services/clubPush').startClubPushCron(); } catch (e) { console.error('[clubPush] cron:', e.message); } // aviso 30 min antes do jogo
+  // Lembrete de treino/jogo ~3h antes (sininho + push; nunca WhatsApp). Desliga com DISABLE_ACTIVITY_REMINDERS=1.
+  try { require('./services/activityReminders').startActivityReminders(); } catch (e) { console.error('[activityReminders] falha ao iniciar:', e.message); }
 
   // Financeiro do varejo: SQL aditivo/idempotente (as rotas /api/fin também garantem antes de responder).
   try {
