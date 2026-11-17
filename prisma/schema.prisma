@@ -6246,6 +6246,104 @@ model FinSettlement {
   @@index([paidAt])
 }
 
+// ============================================================
+// MEDALHAS DIGITAIS (Club Sports & Tennis) — Open Badges 3.0
+// Medalha = credencial assinada (VC-JWT EdDSA) pelo EMISSOR (organizador,
+// escola, federação). Única, intransferível, presa ao CPF (hash + sal
+// secreto), permanente; só revogável pelo emissor, com histórico.
+// Tabelas garantidas também em src/services/ensureApexSchema.js (deploy
+// não roda db push). Sem relações Prisma (padrão Club): só ids.
+// ============================================================
+
+// Quem ASSINA. Cada emissor tem o próprio par Ed25519 (did:key).
+model MedalIssuer {
+  id               String   @id @default(cuid())
+  slug             String   @unique
+  name             String
+  kind             String   @default("ORGANIZER") // ORGANIZER | SCHOOL | FEDERATION | CLUB
+  ownerUserId      String // dono da conta emissora (responde pelas assinaturas)
+  signatoryName    String? // nome de quem assina no verso ("Organizador: ...")
+  url              String?
+  logoUrl          String?
+  did              String   @unique // did:key:z6Mk… (chave pública embutida)
+  publicJwk        Json
+  privateKeySealed String // chave privada cifrada (AES-256-GCM, MEDAL_KEY_SECRET)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([ownerUserId])
+}
+
+// Identidade visual POR EVENTO (escudo, cores, tipografia, padrão).
+model MedalTemplate {
+  id           String   @id @default(cuid())
+  issuerId     String
+  tournamentId String? // evento do sistema (opcional: corrida/escolar externos não têm)
+  name         String // nome do evento como sai na carta
+  sport        String // BEACH_TENNIS | TENNIS | FUTSAL | RUNNING | ...
+  circuit      String? // série/circuito que agrupa etapas na estante ("Circuito BT S&T 2026")
+  design       Json // { palette, font, pattern, crest, finishOverrides } — gerado pelo gerador
+  version      Int      @default(1)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([issuerId])
+  @@index([tournamentId])
+}
+
+// A MEDALHA. 1 linha = 1 credencial assinada de 1 atleta.
+model Medal {
+  id               String    @id @default(cuid())
+  serial           String    @unique // "CST-2026-000123" (número de série impresso)
+  credentialId     String    @unique // urn:uuid:… (id da OpenBadgeCredential)
+  userId           String // atleta (dono). NÃO existe transferência.
+  issuerId         String
+  templateId       String
+  tournamentId     String?
+  categoryId       String?
+  entryId          String? // inscrição/time/dupla premiado (torneio do sistema)
+  sport            String
+  series           String // chave da série na estante (circuito ou evento+categoria)
+  eventName        String
+  categoryName     String?
+  achievement      String    @default("PLACEMENT") // PLACEMENT | TOP_SCORER | MVP | RECORD
+  tier             String // GOLD | SILVER | BRONZE | FINISHER | SPECIAL
+  placement        Int? // 1, 2, 3, 47…
+  distinctions     String[]  @default([]) // UNBEATEN | STATE_CHAMPION | NATIONAL_CHAMPION | RECORD
+  editionNumber    Int // "1" de "1" · "47" de "312"
+  editionTotal     Int
+  recipientName    String
+  identitySalt     String // SECRETO: só o atleta vê (código de titularidade)
+  identityHash     String // público na credencial: sha256(cpf+sal)
+  result           Json? // { date, location, score, opponent, time, note }
+  eventDate        DateTime?
+  credentialJwt    String    @db.Text // a medalha assinada (fonte da verdade)
+  verificationCode String // XXXX-XXXX-XXXX (derivado da credencial)
+  status           String    @default("ACTIVE") // ACTIVE | REVOKED
+  issuedByUserId   String // quem confirmou a emissão
+  issuedAt         DateTime  @default(now())
+  revokedAt        DateTime?
+
+  @@unique([tournamentId, categoryId, userId, achievement])
+  @@index([userId, status])
+  @@index([issuerId])
+  @@index([series])
+}
+
+// Histórico VISÍVEL de cada medalha (emissão, revogação, reativação).
+model MedalStatusEvent {
+  id          String   @id @default(cuid())
+  medalId     String
+  action      String // ISSUED | REVOKED | REINSTATED
+  reason      String? // APPEAL (recurso) | DOPING | RESULT_ERROR | OTHER
+  note        String?
+  actorUserId String
+  createdAt   DateTime @default(now())
+
+  @@index([medalId, createdAt])
+}
+
+
 // ───────────────────────── CONTRACHEQUE DIGITAL (folha do varejo) ─────────────────────────
 // SQL em prisma/migrations/20261116_payroll (aplicado no boot por src/services/payroll/schema.js).
 // Valores em centavos. Fechado = congelado; correção vira versão nova. Ver docs/contracheque.md.
