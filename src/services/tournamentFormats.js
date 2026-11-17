@@ -817,6 +817,9 @@ function normalizeSuspensionRule(rule) {
     }
   }
   const out = { ...DEFAULT_SUSPENSION_RULE };
+  // Categoria SEM regra salva (ex.: torneios que já estavam rodando) = suspensão DESLIGADA.
+  // Só vale quando o organizador ligar nas regras da categoria — nunca bloqueia súmula de surpresa.
+  if (!r || typeof r !== "object") out.enabled = false;
   if (r && typeof r === 'object') {
     if (r.enabled !== undefined) out.enabled = !!r.enabled;
     const int = (v, min, max, def) => {

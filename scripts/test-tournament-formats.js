@@ -414,7 +414,7 @@ const players = [{ id: 'p1', name: 'Zé', number: 10, entryId: 'T' }];
 ok('3 amarelos acumulados = suspenso no PRÓXIMO jogo; cumpriu → liberado e zerado', () => {
   const matches = [G('m1', 1), G('m2', 2), G('m3', 3), G('m4', 4, 'SCHEDULED'), G('m5', 5, 'SCHEDULED')];
   const events = ['m1', 'm2', 'm3'].map((m) => ({ matchId: m, playerId: 'p1', entryId: 'T', type: 'YELLOW' }));
-  const r = F.computeSuspensions({ matches, events, players });
+  const r = F.computeSuspensions({ matches, events, players, rule: { enabled: true } });
   assert.strictEqual(r.suspended.length, 1);
   assert.deepStrictEqual(r.suspended[0].matchIds, ['m4']);
   assert.strictEqual(r.suspended[0].yellowCount, 0, 'acúmulo zera ao gerar a suspensão');
@@ -423,7 +423,7 @@ ok('3 amarelos acumulados = suspenso no PRÓXIMO jogo; cumpriu → liberado e ze
   assert.match(F.suspensionReasonText(r.suspended[0]), /3 amarelos/);
   // m4 encerrado = cumpriu
   matches[3].status = 'FINISHED';
-  const r2 = F.computeSuspensions({ matches, events, players });
+  const r2 = F.computeSuspensions({ matches, events, players, rule: { enabled: true } });
   assert.strictEqual(r2.suspended.length, 0);
 });
 ok('vermelho = 1 jogo; 2 amarelos no mesmo jogo = expulsão e NÃO somam no acúmulo', () => {
@@ -432,7 +432,7 @@ ok('vermelho = 1 jogo; 2 amarelos no mesmo jogo = expulsão e NÃO somam no acú
     { matchId: 'm1', playerId: 'p1', entryId: 'T', type: 'YELLOW' },
     { matchId: 'm1', playerId: 'p1', entryId: 'T', type: 'YELLOW' },
   ];
-  const r = F.computeSuspensions({ matches, events: ev, players });
+  const r = F.computeSuspensions({ matches, events: ev, players, rule: { enabled: true } });
   assert.deepStrictEqual(r.suspended[0].matchIds, ['m2']);
   assert.strictEqual(r.suspended[0].reasons[0].type, 'RED');
   assert.strictEqual(r.suspended[0].yellowCount, 0);
@@ -441,7 +441,7 @@ ok('vermelho = 1 jogo; 2 amarelos no mesmo jogo = expulsão e NÃO somam no acú
     { matchId: 'm1', playerId: 'p1', entryId: 'T', type: 'YELLOW' },
     { matchId: 'm1', playerId: 'p1', entryId: 'T', type: 'RED' },
   ];
-  const r2 = F.computeSuspensions({ matches, events: ev2, players });
+  const r2 = F.computeSuspensions({ matches, events: ev2, players, rule: { enabled: true } });
   assert.strictEqual(r2.suspended[0].gamesRemaining, 1);
   assert.strictEqual(r2.suspended[0].yellowCount, 1);
 });
@@ -460,14 +460,16 @@ ok('regra configurável: 2 amarelos = 2 jogos; vermelho = 3 jogos', () => {
 ok('cartão de jogo NÃO encerrado (ao vivo) não conta; regra desligada = ninguém suspenso', () => {
   const matches = [G('m1', 1, 'LIVE'), G('m2', 2, 'SCHEDULED')];
   const ev = [{ matchId: 'm1', playerId: 'p1', entryId: 'T', type: 'RED' }];
-  assert.strictEqual(F.computeSuspensions({ matches, events: ev, players }).suspended.length, 0);
+  assert.strictEqual(F.computeSuspensions({ matches, events: ev, players, rule: { enabled: true } }).suspended.length, 0);
   const m2 = [G('m1', 1), G('m2', 2, 'SCHEDULED')];
   assert.strictEqual(F.computeSuspensions({ matches: m2, events: ev, players, rule: { enabled: false } }).suspended.length, 0);
+  // categoria SEM regra salva (torneio que já rodava) = desligada: ninguém é suspenso de surpresa
+  assert.strictEqual(F.computeSuspensions({ matches: m2, events: ev, players }).suspended.length, 0);
 });
 ok('pendurado: 2 amarelos com limite 3', () => {
   const matches = [G('m1', 1), G('m2', 2), G('m3', 3, 'SCHEDULED')];
   const ev = ['m1', 'm2'].map((m) => ({ matchId: m, playerId: 'p1', entryId: 'T', type: 'YELLOW' }));
-  const r = F.computeSuspensions({ matches, events: ev, players });
+  const r = F.computeSuspensions({ matches, events: ev, players, rule: { enabled: true } });
   assert.strictEqual(r.suspended.length, 0);
   assert.strictEqual(r.hanging.length, 1);
 });
@@ -480,7 +482,7 @@ ok('ordem cronológica: jogo de rodada posterior encerrado ANTES conta na ordem 
   ];
   const ev = [{ matchId: 'm1', playerId: 'p1', entryId: 'T', type: 'RED' }];
   // vermelho no m1 → cumpre no m3 (próximo jogo REAL), m2 liberado
-  const r = F.computeSuspensions({ matches, events: ev, players });
+  const r = F.computeSuspensions({ matches, events: ev, players, rule: { enabled: true } });
   assert.strictEqual(r.suspended.length, 0);
 });
 

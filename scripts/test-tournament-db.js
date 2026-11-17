@@ -229,7 +229,7 @@ async function main() {
   // ===================================================================
   console.log('súmula — fair play, suspensão automática e bloqueio');
   const tS = await mkTournament(owner, { name: 'Copa Disciplina' });
-  const catS = await mkCat(tS, { format: 'ROUND_ROBIN', doubleRound: true, tiebreakers: ['POINTS', 'GOAL_DIFF', 'FAIR_PLAY'] });
+  const catS = await mkCat(tS, { format: 'ROUND_ROBIN', doubleRound: true, tiebreakers: ['POINTS', 'GOAL_DIFF', 'FAIR_PLAY'], suspensionRule: { enabled: true } });
   const ES = await mkEntries(tS, catS, ['Leões', 'Tigres', 'Falcões', 'Lobos']);
   await engine.generateFixtures(catS.id);
   const NS = nameOf(ES);
