@@ -3734,6 +3734,11 @@ model Tournament {
   prizeDescription String?
   prizePaidAt      DateTime? // quando o prêmio foi pago ao campeão (idempotência: paga 1x)
 
+  // Temporadas / série: liga as edições do mesmo campeonato ("Futsal Master Cup" 2025, 2026...)
+  seriesSlug String? // ex: "futsal-master-cup" (chave da série, sem ano)
+  seriesName String? // ex: "Futsal Master Cup"
+  edition    String? // ex: "2026" | "II"
+
   visibility String   @default("public")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -3747,6 +3752,7 @@ model Tournament {
   @@index([status])
   @@index([sport])
   @@index([storeId])
+  @@index([seriesSlug])
 }
 
 model TournamentCategory {
@@ -3760,6 +3766,13 @@ model TournamentCategory {
   pointsWin    Int        @default(3) // pontuação na liga/pontos corridos
   pointsDraw   Int        @default(1)
   pointsLoss   Int        @default(0)
+
+  // Motor de campeonato (F1) — tudo opcional; null = comportamento padrão
+  tiebreakers    Json? // critérios de desempate em ordem: ["POINTS","WINS","HEAD_TO_HEAD",...]
+  tiebreakSeed   String? // semente do SORTEIO (gravada na 1ª vez; auditável)
+  doubleRound    Boolean @default(false) // ida e volta (pontos corridos / grupos)
+  suspensionRule Json? // { enabled, yellowLimit, yellowBan, redBan, doubleYellowIsRed }
+  formatConfig   Json? // { rounds (suíço), reset (dupla eliminação), variant (americano) }
 
   entries   TournamentEntry[]
   matches   TournamentMatch[]
@@ -3838,6 +3851,15 @@ model TournamentMatch {
   decidedByPenalties Boolean @default(false)
   homeSourceLabel    String? // vaga do mandante no mata-mata ("Vencedor Semifinal 1", "1º Grupo A")
   awaySourceLabel    String? // vaga do visitante
+  // Dupla eliminação: W (vencedores) | L (perdedores) | GF (final) | GF2 (reset)
+  bracket            String?
+  loserNextMatchId   String? // perdedor cai neste jogo (chave dos perdedores)
+  loserNextSlot      String? // "home" | "away"
+  // Americano/Super 8: parceiro de cada lado (dupla rotativa)
+  homeEntry2Id       String?
+  awayEntry2Id       String?
+  // Escalação do jogo: { "<entryId>": ["<rosterPlayerId>", ...] }
+  lineup             Json?
   winnerEntryId String?
   winnerEntry   TournamentEntry? @relation("winnerEntry", fields: [winnerEntryId], references: [id])
 
@@ -3891,6 +3913,8 @@ model TournamentStanding {
   scoreAgainst Int  @default(0)
   points       Int  @default(0)
   rank         Int? // posição calculada
+  fairPlay     Int  @default(0) // pontos de cartão (amarelo=1, vermelho=3) — só quando o critério está ativo
+  tiebreak     String? // critério que separou esta linha (ex: HEAD_TO_HEAD)
 
   updatedAt DateTime @updatedAt
 
@@ -4002,6 +4026,26 @@ model MatchEvent {
   note      String?
   createdAt DateTime @default(now())
 
+  @@index([matchId])
+  @@index([playerId])
+}
+
+// Liberação de atleta SUSPENSO pelo árbitro/coordenador (auditoria).
+// action: EVENT (lançou evento) | LINEUP (escalou no jogo)
+model SuspensionOverride {
+  id           String   @id @default(cuid())
+  tournamentId String
+  categoryId   String?
+  matchId      String
+  playerId     String
+  entryId      String
+  action       String
+  eventType    String?
+  reason       String
+  userId       String?
+  createdAt    DateTime @default(now())
+
+  @@index([tournamentId])
   @@index([matchId])
   @@index([playerId])
 }

@@ -86,10 +86,14 @@ async function categoryResult(cat) {
   const standings = await prisma.tournamentStanding.findMany({ where: { categoryId: cat.id } });
   const byId = Object.fromEntries(entries.map((e) => [e.id, e]));
   const out = { confirmed: false, reason: null, places: [] }; // places: [{entryId, placement, tier, edition:{n,total}}]
-  const final = matches.find((m) => m.stage === 'FINAL');
+  // Dupla eliminação: se houve "reset" da grande final, ele é que decide o campeão.
+  const reset = matches.find((m) => m.stage === 'FINAL_RESET' && DONE.includes(m.status) && m.winnerEntryId);
+  const final = reset || matches.find((m) => m.stage === 'FINAL');
   const knockout = matches.filter((m) => !['LEAGUE', 'GROUP'].includes(m.stage));
   const N = entries.length;
   if (!N) { out.reason = 'Categoria sem inscritos confirmados.'; return out; }
+  const resetPending = matches.find((m) => m.stage === 'FINAL_RESET' && !DONE.includes(m.status) && m.status !== 'CANCELED' && m.homeEntryId);
+  if (resetPending) { out.reason = 'O reset da grande final (dupla eliminação) ainda não foi jogado.'; return out; }
 
   let podium = [];
   if (final) {
