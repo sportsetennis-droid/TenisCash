@@ -578,6 +578,7 @@ app.use('/api/admin/reels-agency', reelsAgencyRoutes);
 app.use('/api/activities', activitiesRoutes);
 app.use('/api/coach', coachRoutes);
 app.use('/api/tournaments', tournamentsRoutes);
+app.use('/api/admin/rede', require('./routes/rede')); // Rede Neural de Agentes (painel/propostas/objetivos)
 app.use('/api/medals', require('./routes/medals')); // medalhas digitais (Open Badges 3.0)
 app.use('/api/copa', copaRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
@@ -804,6 +805,7 @@ siteBrand.mount(app);
 
 // Medalhas digitais: verificação (/verificar, /v/:serial), estante (/estante/:handle), contexto JSON-LD.
 require('./services/medalPages').mount(app);
+require('./ai/rede/mcp/servidor').mount(app); // MCP da rede (/mcp) — só admin/dono via Bearer JWT
 
 app.get(['/transferencia','/transferencia/'], (_req,res)=>{res.set('Cache-Control','no-store');res.sendFile(path.join(__dirname,'../public/transferencia.html'),{cacheControl:false});});
 app.use(express.static(path.join(__dirname, '../public'), {
@@ -2011,7 +2013,9 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   try {
     const { prisma } = require('./middleware');
     const { ensureApexSchema } = require('./services/ensureApexSchema');
-    ensureApexSchema(prisma).catch((e) => console.error('[ensureApexSchema] erro:', e.message));
+    ensureApexSchema(prisma)
+      .catch((e) => console.error('[ensureApexSchema] erro:', e.message))
+      .finally(() => require('./ai/rede').iniciar().catch((e) => console.error('[RNA] iniciar:', e.message)));
   } catch (e) {
     console.error('[ensureApexSchema] falha ao iniciar:', e.message);
   }

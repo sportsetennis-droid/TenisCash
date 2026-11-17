@@ -224,6 +224,7 @@ router.post('/webhooks/nuvemshop', express.json({ limit: '5mb' }), async (req, r
 
     // Processamento simplificado em background (fire-and-forget)
     setImmediate(() => processWebhook(stored.id).catch((e) => console.error('[webhook process] erro:', e)));
+    require('../ai/rede/ganchos').nuvemWebhook(event, resourceId);
   } catch (err) {
     console.error('[webhook] erro:', err);
     res.status(200).json({ ok: false, error: err.message });

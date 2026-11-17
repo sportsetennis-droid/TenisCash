@@ -135,6 +135,8 @@ router.post('/webhook', async (req, res) => {
           const text = msg.text?.body || msg.button?.text || msg.interactive?.button_reply?.title || '(mídia/outro tipo)';
           console.log(`[whatsapp/webhook] mensagem recebida | from=${from} (${profileName}) | type=${msg.type} | text="${text.slice(0, 120)}"`);
 
+          if (msg.text && msg.text.body) require('../ai/rede/ganchos').whatsappMensagem({ empresa: 'meta-cloud', telefone: from, texto: msg.text.body });
+
           // Auto-resposta inicial
           try {
             const reply = `Olá ${profileName}! 👋\n\nRecebemos sua mensagem na Sports & Tennis. Em instantes um atendente vai te responder.\n\nEnquanto isso, dá uma olhada na nossa loja: https://www.sportsetennis.com.br`;
@@ -188,6 +190,7 @@ router.post('/evolution', async (req, res) => {
     // MONITOR: grava toda mensagem (todas as instancias) pro dono acompanhar no admin.
     // Fire-and-forget + try/catch interno: NUNCA atrapalha o atendente de IA.
     captureEvolutionMessages(body).catch(() => {});
+    require('../ai/rede/ganchos').whatsappEvolution(instance, body);
 
     // NÚMEROS DAS LOJAS S&T (Bessa, Tambiá, Rainha, Manaíra...): a equipe atende pelo
     // celular. O sistema só cadastra quem chega no CRM da S&T e pergunta o nome.

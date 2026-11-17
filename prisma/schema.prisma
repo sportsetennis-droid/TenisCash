@@ -6592,3 +6592,110 @@ model PayrollAuditLog {
   @@index([entity, entityId])
   @@index([subjectUserId, at])
 }
+
+// ============================================================
+// REDE NEURAL DE AGENTES (RNA) — docs/REDE-NEURAL-DE-AGENTES.md
+// Mini agentes (neurônios) de responsabilidade única, ligados por sinais.
+// Tabelas garantidas também em src/services/ensureApexSchema.js (aditivo).
+// ============================================================
+model RnaNeuronio {
+  id           String    @id // 'nuvem.sem-foto'
+  camada       String
+  ativo        Boolean   @default(true)
+  limiar       Float     @default(0.5)
+  acertos      Int       @default(0)
+  erros        Int       @default(0)
+  disparos     Int       @default(0)
+  custoRS      Float     @default(0)
+  ultimoUso    DateTime?
+  atualizadoEm DateTime  @default(now()) @updatedAt
+}
+
+model RnaSinapse {
+  id      String @id @default(cuid())
+  origem  String
+  destino String
+  peso    Float  @default(0.5)
+
+  @@unique([origem, destino])
+}
+
+model RnaSinal {
+  id           String   @id @default(cuid())
+  tipo         String
+  origem       String
+  forca        Float
+  impactoRS    Float?
+  loja         String?
+  objetivoId   String?
+  traceId      String
+  profundidade Int      @default(0)
+  externo      Boolean  @default(false)
+  dados        Json
+  criadoEm     DateTime @default(now())
+
+  @@index([traceId])
+  @@index([tipo, criadoEm])
+  @@index([objetivoId])
+}
+
+model RnaAtivacao {
+  id       String   @id @default(cuid())
+  neuronio String
+  sinalId  String
+  traceId  String
+  status   String // ok | sem-saida | erro | bloqueado | sem-orcamento | abaixo-limiar
+  custoRS  Float    @default(0)
+  ms       Int      @default(0)
+  ativacao Float?
+  saida    Json?
+  erro     String?
+  criadoEm DateTime @default(now())
+
+  @@unique([neuronio, sinalId])
+  @@index([traceId])
+  @@index([neuronio, criadoEm])
+}
+
+model RnaObjetivo {
+  id         String    @id @default(cuid())
+  texto      String
+  kpis       Json
+  regiao     String[]  @default([])
+  restricoes String[]  @default([])
+  orcamento  Json
+  gastoRS    Float     @default(0)
+  ativacoes  Int       @default(0)
+  loja       String?
+  prazo      DateTime?
+  status     String    @default("ativo") // ativo | pausado | concluido | cancelado
+  resultado  Json?
+  criadoPor  String
+  criadoEm   DateTime  @default(now())
+
+  @@index([status])
+}
+
+model RnaQuadro {
+  id         String   @id @default(cuid())
+  objetivoId String
+  chave      String
+  valor      Json
+  autor      String
+  criadoEm   DateTime @default(now())
+
+  @@index([objetivoId, chave])
+}
+
+model RnaAjustePeso {
+  id          String   @id @default(cuid())
+  alvo        String // 'sinapse:a->b' | 'limiar:neuronio'
+  de          Float
+  para        Float
+  motivo      String // aprovado | rejeitado | editado | kpi | poda
+  traceId     String?
+  aprovacaoId String?
+  criadoEm    DateTime @default(now())
+
+  @@index([alvo, criadoEm])
+}

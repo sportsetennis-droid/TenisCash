@@ -45,6 +45,54 @@ jobs:
         run: MEDAL_TEST_DATABASE_URL="$DATABASE_URL" npm run test:medals
       - name: Contracheque — ponta a ponta com Postgres (acesso, isolamento, fechar/reabrir, PDF, auditoria)
         run: npm run test:payroll-http
+  rede-neural:
+    name: rede neural de agentes — motor, neurônios e ganchos
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: rnatest
+          POSTGRES_DB: rede_ci
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 55330:5432
+        options: >-
+          --health-cmd "pg_isready -U rnatest -d rede_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://rnatest@127.0.0.1:55330/rede_ci
+      RNA_TEST_DATABASE_URL: postgresql://rnatest@127.0.0.1:55330/rede_ci
+      JWT_SECRET: ci-somente-teste
+      RNA_RELOGIO: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx prisma generate
+      - run: npx prisma db push --skip-generate
+      - name: Motor — contrato, ondas, orçamento, política, aprendizado
+        run: node scripts/test-rede.js
+      - name: Ganchos — eventos reais viram sinais (sem vazar telefone)
+        run: node scripts/test-rede-ganchos.js
+      - name: Mini agentes de NF-e, estoque, bipe e compras
+        run: node scripts/test-rede-estoque.js
+      - name: Mini agentes de Nuvemshop, conteúdo e preço
+        run: node scripts/test-rede-nuvem.js
+      - name: Mini agentes de vendas, CRM, marketing, financeiro e Club
+        run: node scripts/test-rede-comercial.js
+      - name: Mini agentes de meta e segurança
+        run: node scripts/test-rede-meta.js
+      - name: Servidor MCP — acesso só do dono, ferramentas, confirmação e sem vazar PII
+        env:
+          PSQL: psql
+          MCP_TEST_DATABASE_URL: postgresql://rnatest@127.0.0.1:55330/rede_mcp
+        run: node scripts/test-rede-mcp.js
+      - name: Painel da rede — sintaxe, mobile-first e rotas
+        run: node scripts/test-rede-painel.cjs
   boot-check:
     name: deps + sintaxe + requires resolvem
     runs-on: ubuntu-latest

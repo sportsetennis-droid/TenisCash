@@ -37,7 +37,8 @@
     "test:nuvemshop-stock": "node scripts/test-nuvemshop-stock-safety.js",
     "test:stock-reconstruction-http": "node scripts/test-stocktake-reconstruction-http.js",
     "test:stock-replacement": "node scripts/test-stock-replacement.cjs && node scripts/test-stock-replacement-http.cjs && node scripts/test-stock-replacement-images.cjs && node scripts/test-scanner-replacement-round.cjs && node scripts/test-scanner-original-photo.cjs && node scripts/test-stock-replacement-reference.cjs && node scripts/test-stock-replacement-capture-recovery.cjs && node scripts/test-stock-replacement-capture-locks.cjs && node scripts/test-stock-replacement-repeat.cjs && node scripts/test-stock-replacement-diagnostics.cjs && node scripts/test-stock-replacement-queue.cjs && node scripts/test-stock-replacement-pending.cjs && node scripts/test-stock-replacement-exclusion-races.cjs && node scripts/test-stock-replacement-scheduling.cjs && node scripts/test-scanner-manufacturer-reference.cjs && node scripts/test-scanner-ous-fiscal-reference.cjs && node scripts/test-stocktake-footwear-classification.cjs && node scripts/test-stock-replacement-throughput.cjs && node scripts/test-image-repair-replacement.cjs && node scripts/test-stock-replacement-owner-hook.cjs && node scripts/test-finite-owner-confirmation.cjs && node scripts/test-three-owner-confirmation.cjs && node scripts/test-stock-replacement-confirmed-code.cjs && node scripts/test-stock-replacement-fiscal-size.cjs",
-    "test:medals": "node scripts/test-medals.js"
+    "test:medals": "node scripts/test-medals.js",
+    "test:rede-mcp": "node scripts/test-rede-mcp.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.0",
@@ -45,6 +46,7 @@
     "@expo-google-fonts/roboto": "^0.4.3",
     "@fal-ai/client": "^1.6.4",
     "@fontsource/inter": "^5.2.8",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@prisma/client": "^5.20.0",
     "@simplewebauthn/server": "^13.3.1",
     "bcryptjs": "^2.4.3",
@@ -74,6 +76,7 @@
     "web-push": "^3.6.7",
     "ws": "^8.21.1",
     "xml2js": "^0.6.2",
+    "zod": "^4.6.7",
     "zxing-wasm": "3.1.6"
   }
 }

@@ -1189,6 +1189,8 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
       throw e;
     }
 
+    require('../ai/rede/ganchos').vendaRegistrada(result.sale.id);
+
     // Registra a chave de idempotência (bloqueia duplicação no re-clique do mesmo carrinho)
     if (idemKey) {
       _recentSaleKeys.set(idemKey, { saleId: result.sale.id, at: Date.now() });
