@@ -2029,6 +2029,23 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     console.error('[finSchema] falha ao iniciar:', e.message);
   }
 
+  // Agenda da equipe (dono 16/11/2026): pedidos de folga do app + agenda do dia no grupo de WhatsApp
+  // às 07:00 de Fortaleza (07:20 tenta de novo se a 1ª falhou). AGENDA_WHATSAPP=off desliga.
+  try {
+    const { prisma: agPrisma } = require('./middleware');
+    const agendaDaily = require('./services/agendaDaily');
+    agendaDaily.ensureAgendaSchema(agPrisma).then(() => {
+      console.log('[agendaSchema] ok');
+      const run = () => agendaDaily.sendDaily(agPrisma)
+        .then((r) => console.log('[agenda] envio do dia', JSON.stringify(r)))
+        .catch((e) => console.error('[agenda] envio do dia:', e.message));
+      require('node-cron').schedule('0 7 * * *', run, { timezone: 'America/Fortaleza' });
+      require('node-cron').schedule('20 7 * * *', run, { timezone: 'America/Fortaleza' });
+    }).catch((e) => console.error('[agendaSchema] erro:', e.message));
+  } catch (e) {
+    console.error('[agenda] falha ao iniciar:', e.message);
+  }
+
   // Contracheque: SQL aditivo + sementes legais no boot; prévia semanal pelo WhatsApp
   // (dono, 16/11/2026) às segundas 09:07 de Fortaleza. PAYROLL_WHATSAPP=off desliga.
   try {

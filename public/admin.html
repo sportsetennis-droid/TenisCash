@@ -3234,6 +3234,22 @@ tr:hover td{background:rgba(0,0,0,0.02)}
   <h2 style="margin:0 0 2px;">📅 Agenda da equipe</h2>
   <p style="color:#666;margin:0 0 14px;font-size:12px;">Monte o mês em rascunho, confira datas, lojas e horários e publique. Cada vendedor recebe a escala completa no cadastro pessoal. O mês publicado também orienta o robô das atividades diárias.</p>
 
+  <!-- pedidos dos vendedores + agenda do dia no grupo -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-bottom:18px;">
+    <div style="background:#fff;border:1px solid #fed7aa;border-radius:14px;padding:14px;">
+      <h3 style="margin:0 0 3px;">🙋 Pedidos dos vendedores</h3>
+      <p style="font-size:11px;color:#777;margin:0 0 10px;">Folga e compromisso que o vendedor marcou no app. Só entra na agenda (e no grupo) depois de aprovar.</p>
+      <div id="ag-req-list"><div style="color:#999;">Carregando…</div></div>
+    </div>
+    <div style="background:#fff;border:1px solid #d1fae5;border-radius:14px;padding:14px;">
+      <h3 style="margin:0 0 3px;">💬 Agenda do dia no grupo</h3>
+      <p style="font-size:11px;color:#777;margin:0 0 10px;">Vai sozinha todo dia às 7h para o grupo de WhatsApp da equipe. Prévia de hoje:</p>
+      <pre id="ag-daily-preview" style="white-space:pre-wrap;font-family:inherit;font-size:12px;background:#f7f7f9;border:1px solid #eee;border-radius:10px;padding:10px;margin:0;max-height:300px;overflow:auto;">Carregando…</pre>
+      <div id="ag-daily-last" style="font-size:11px;color:#777;margin-top:8px;"></div>
+      <button id="ag-daily-send" onclick="agDailySend()" style="margin-top:10px;height:40px;background:#0a7d3b;color:#fff;border:0;border-radius:8px;padding:0 16px;font-weight:800;cursor:pointer;">Enviar agora para o grupo</button>
+    </div>
+  </div>
+
   <!-- escala mensal oficial -->
   <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:14px;padding:14px;margin-bottom:18px;">
     <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
@@ -15892,7 +15908,7 @@ async function loadAgenda(){
   const aEl=document.getElementById('ag-ac-date'); if(aEl && !aEl.value) aEl.value=agTodayYmd();
   const mEl=document.getElementById('ag-month'); if(mEl && !mEl.value) mEl.value=agTodayYmd().slice(0,7);
   const msDate=document.getElementById('ag-ms-date'); if(msDate && !msDate.value) msDate.value=agTodayYmd();
-  await Promise.all([agLoadMonth(), agLoadWeek(), agLoadShifts(), agLoadActivities()]);
+  await Promise.all([agLoadMonth(), agLoadWeek(), agLoadShifts(), agLoadActivities(), agLoadRequests(), agLoadDaily()]);
 }
 
 function agMonthValue(){ return (document.getElementById('ag-month')||{}).value||agTodayYmd().slice(0,7); }
@@ -16001,6 +16017,33 @@ async function agLoadShifts(){
     html+='</tbody></table></div>';
     box.innerHTML=html;
   }catch(e){ box.innerHTML='<div style="color:#d70015;padding:10px;">Erro: '+agEsc(e.message)+'</div>'; }
+}
+function agReqPeriod(r){ const f=v=>String(v||'').split('-').reverse().join('/'); return f(r.date)+(r.endDate?' a '+f(r.endDate):'')+(r.startTime?' · '+r.startTime+(r.endTime?'–'+r.endTime:''):''); }
+async function agLoadRequests(){
+  const box=document.getElementById('ag-req-list'); if(!box) return;
+  try{
+    const r=await fetch('/api/admin/schedule/requests?status=PENDENTE',{headers:agH()}); const j=await r.json(); if(!r.ok) throw new Error(j.error||'erro');
+    const rows=j.requests||[];
+    if(!rows.length){ box.innerHTML='<div style="color:#999;padding:10px;background:#fafafa;border:1px dashed #ddd;border-radius:10px;">Nenhum pedido pendente.</div>'; return; }
+    box.innerHTML=rows.map(q=>'<div style="border:1px solid #eee;border-radius:10px;padding:10px;margin-bottom:8px;"><div style="display:flex;justify-content:space-between;gap:8px;"><b>'+agEsc(q.sellerName)+'</b><span style="font-size:11px;color:#b45309;">'+agEsc(q.typeLabel)+'</span></div><div style="font-size:13px;margin-top:3px;">'+agEsc(q.title)+' — '+agEsc(agReqPeriod(q))+'</div>'+(q.note?'<div style="font-size:12px;color:#777;margin-top:3px;">'+agEsc(q.note)+'</div>':'')+'<div style="display:flex;gap:8px;margin-top:8px;"><button class="ag-actbtn" onclick="agDecide(\''+q.id+'\',\'approve\')" style="flex:1;height:38px;background:#0a7d3b;color:#fff;border:0;border-radius:8px;font-weight:800;cursor:pointer;">Aprovar</button><button class="ag-actbtn" onclick="agDecide(\''+q.id+'\',\'reject\')" style="flex:1;height:38px;background:#fff;color:#c0271f;border:1px solid #c0271f;border-radius:8px;font-weight:800;cursor:pointer;">Recusar</button></div></div>').join('');
+  }catch(e){ box.innerHTML='<div style="color:#d70015;">Erro: '+agEsc(e.message)+'</div>'; }
+}
+async function agDecide(id, decision){
+  let note=null; if(decision==='reject'){ note=prompt('Motivo (o vendedor vê):',''); if(note===null) return; }
+  try{ const r=await fetch('/api/admin/schedule/requests/'+encodeURIComponent(id)+'/'+decision,{method:'POST',headers:agH(),body:JSON.stringify({note})}); const j=await r.json(); if(!r.ok){ alert('Erro: '+(j.error||'')); } await Promise.all([agLoadRequests(),agLoadActivities(),agLoadWeek(),agLoadDaily()]); }catch(e){ alert('Erro: '+e.message); }
+}
+async function agLoadDaily(){
+  const pre=document.getElementById('ag-daily-preview'), last=document.getElementById('ag-daily-last'); if(!pre) return;
+  try{ const r=await fetch('/api/admin/schedule/daily-preview',{headers:agH()}); const j=await r.json(); if(!r.ok) throw new Error(j.error||'erro');
+    pre.textContent=j.hasContent?j.message:'Nada para hoje: nenhuma escala nem marcação. Nesse caso o grupo não recebe mensagem.';
+    const l=j.last; last.innerHTML=l?('Último envio: '+agEsc(String(l.day).split('-').reverse().join('/'))+' — '+(l.ok?'<span style="color:#0a7d3b;font-weight:700;">enviado</span>':'<span style="color:#c0271f;font-weight:700;">falhou'+(l.error?' ('+agEsc(l.error)+')':'')+'</span>')):'Ainda não enviou nenhuma vez.';
+  }catch(e){ pre.textContent='Erro: '+e.message; }
+}
+async function agDailySend(){
+  if(!confirm('Enviar a agenda de hoje agora para o grupo de WhatsApp?')) return;
+  const b=document.getElementById('ag-daily-send'); if(b){ b.disabled=true; b.textContent='Enviando…'; }
+  try{ const r=await fetch('/api/admin/schedule/daily-send',{method:'POST',headers:agH(),body:'{}'}); const j=await r.json(); alert(r.ok?'Enviado para o grupo.':('Não enviou: '+(j.error||''))); }catch(e){ alert('Erro: '+e.message); }
+  if(b){ b.disabled=false; b.textContent='Enviar agora para o grupo'; } agLoadDaily();
 }
 async function agAddShift(){
   const sellerId=(document.getElementById('ag-sh-seller')||{}).value, storeId=(document.getElementById('ag-sh-store')||{}).value, weekday=(document.getElementById('ag-sh-weekday')||{}).value, startTime=(document.getElementById('ag-sh-start')||{}).value, endTime=(document.getElementById('ag-sh-end')||{}).value;

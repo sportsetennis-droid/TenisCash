@@ -473,4 +473,47 @@ router.get('/week', async (req, res) => {
   } catch (err) { console.error('[schedule/week]', err); res.status(500).json({ error: err.message }); }
 });
 
+// =====================================================================
+// PEDIDOS DOS VENDEDORES (folga/compromisso pelo app) + AGENDA DO DIA NO GRUPO
+// =====================================================================
+const agendaDaily = require('../services/agendaDaily');
+
+router.get('/requests', async (req, res) => {
+  try {
+    const status = ['PENDENTE', 'APROVADO', 'RECUSADO', 'CANCELADO'].includes(req.query.status) ? req.query.status : 'PENDENTE';
+    const rows = await agendaDaily.listRequests(prisma, { status, fromYmd: status === 'PENDENTE' ? null : agendaDaily.todayYmd() });
+    const ids = [...new Set(rows.map((r) => r.sellerId))];
+    const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }) : [];
+    const names = Object.fromEntries(users.map((u) => [u.id, u.name]));
+    res.json({ requests: rows.map((r) => ({ ...r, sellerName: names[r.sellerId] || '?', typeLabel: (agendaDaily.REQUEST_TYPES[r.type] || {}).label || r.type })) });
+  } catch (err) { console.error('[schedule/requests]', err); res.status(500).json({ error: err.message }); }
+});
+
+router.post('/requests/:id/:decision', async (req, res) => {
+  try {
+    const decision = req.params.decision;
+    if (!['approve', 'reject'].includes(decision)) return res.status(400).json({ error: 'decisão inválida' });
+    const r = await agendaDaily.decideRequest(prisma, String(req.params.id), decision === 'approve', req.userId, (req.body || {}).note);
+    if (r.error) return res.status(r.status || 400).json({ error: r.error });
+    res.json(r);
+  } catch (err) { console.error('[schedule/requests:decide]', err); res.status(500).json({ error: err.message }); }
+});
+
+router.get('/daily-preview', async (req, res) => {
+  try {
+    const ymd = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date || '')) ? String(req.query.date) : agendaDaily.todayYmd();
+    const day = await agendaDaily.buildDay(prisma, ymd);
+    res.json({ ymd, message: agendaDaily.formatMessage(day), hasContent: agendaDaily.hasContent(day), source: day.source, last: await agendaDaily.lastSend(prisma) });
+  } catch (err) { console.error('[schedule/daily-preview]', err); res.status(500).json({ error: err.message }); }
+});
+
+router.post('/daily-send', async (req, res) => {
+  try {
+    const r = await agendaDaily.sendDaily(prisma, { force: true });
+    if (r.skipped) return res.status(409).json({ error: 'Não enviado: ' + r.skipped });
+    if (!r.ok) return res.status(502).json({ error: 'WhatsApp não enviou: ' + (r.error || 'erro') });
+    res.json(r);
+  } catch (err) { console.error('[schedule/daily-send]', err); res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;
