@@ -10,7 +10,7 @@
 //   GET  /api/ig/img/:id          PÚBLICO — serve a imagem enviada (a Meta baixa daqui)
 //   GET  /api/ig/accounts         [admin] contas que o token enxerga (username → id)
 //   POST /api/ig/upload           [admin] multipart files[] → URLs públicas (vale 6h)
-//   POST /api/ig/publish          [admin] { account, type: carousel|photo|story,
+//   POST /api/ig/publish          [admin] { account, type: carousel|photo|story|reel,
 //                                           imageUrls[], caption, collaborators[] } → { jobId }
 //   GET  /api/ig/jobs/:id         [admin] status do job (publicação demora ~1 min)
 //
@@ -26,7 +26,7 @@ const ig = require('../services/instagramPublisher');
 const { igToken } = require('../services/igAccount');
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024, files: 10 } });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 40 * 1024 * 1024, files: 10 } }); // 40MB: cabe vídeo de Reel
 
 const GRAPH = `https://graph.facebook.com/${process.env.META_GRAPH_API_VERSION || process.env.META_GRAPH_VERSION || 'v22.0'}`;
 const BUSINESS_ID = process.env.META_BUSINESS_ID || '31915792481369241';
@@ -60,7 +60,7 @@ async function graphGet(path, params = {}) {
 
 // ---------- PÚBLICO: a Meta baixa a imagem daqui ----------
 router.get('/img/:id', (req, res) => {
-  const id = String(req.params.id).replace(/\.(jpe?g|png)$/i, '');
+  const id = String(req.params.id).replace(/\.(jpe?g|png|mp4|mov)$/i, '');
   const it = images.get(id);
   if (!it) return res.status(404).json({ error: 'imagem expirada ou inexistente' });
   res.set('Content-Type', it.type || 'image/jpeg');
@@ -144,7 +144,8 @@ router.post('/upload', upload.array('files', 10), (req, res) => {
   const urls = (req.files || []).map((f) => {
     const id = crypto.randomBytes(12).toString('hex');
     images.set(id, { buf: f.buffer, type: f.mimetype || 'image/jpeg', at: Date.now() });
-    return { name: f.originalname, url: `${base}/api/ig/img/${id}.jpg`, bytes: f.size };
+    const ext = /^video\//.test(f.mimetype || '') ? 'mp4' : 'jpg';
+    return { name: f.originalname, url: `${base}/api/ig/img/${id}.${ext}`, bytes: f.size };
   });
   if (!urls.length) return res.status(400).json({ error: 'nenhum arquivo (campo files)' });
   res.json({ urls });
@@ -153,10 +154,10 @@ router.post('/upload', upload.array('files', 10), (req, res) => {
 router.post('/publish', async (req, res) => {
   try {
     sweep();
-    const { account, type = 'carousel', imageUrls = [], caption = '', collaborators = [] } = req.body || {};
+    const { account, type = 'carousel', imageUrls = [], caption = '', collaborators = [], thumbOffset } = req.body || {};
     const acc = await resolveAccount(account);
     if (!Array.isArray(imageUrls) || !imageUrls.length) return res.status(400).json({ error: 'imageUrls vazio' });
-    if (!['carousel', 'photo', 'story'].includes(type)) return res.status(400).json({ error: 'type inválido' });
+    if (!['carousel', 'photo', 'story', 'reel'].includes(type)) return res.status(400).json({ error: 'type inválido' });
 
     const jobId = crypto.randomBytes(8).toString('hex');
     const job = { status: 'running', account: acc.username || acc.id, type, at: Date.now() };
@@ -169,6 +170,8 @@ router.post('/publish', async (req, res) => {
         let r;
         if (type === 'carousel') r = await ig.publishCarousel({ imageUrls, caption, collaborators: collab, igUserId: acc.id });
         else if (type === 'photo') r = await ig.publishPhoto({ imageUrl: imageUrls[0], caption, collaborators: collab, igUserId: acc.id });
+        // reel: imageUrls[0] = URL do MP4 enviado em /upload (trilha própria no arquivo)
+        else if (type === 'reel') r = await ig.publishReel({ videoUrl: imageUrls[0], caption, collaborators: collab, igUserId: acc.id, ...(thumbOffset != null ? { thumbOffset: Number(thumbOffset) } : {}) });
         else r = await ig.publishStory({ imageUrl: imageUrls[0], igUserId: acc.id });
         Object.assign(job, { status: 'done', result: r });
       } catch (e) {
