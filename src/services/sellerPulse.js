@@ -197,10 +197,16 @@ async function shiftsBetween(prisma, sellerId, fromYmd, toYmd) {
     prisma.agendaActivity.findMany({ where: { sellerId, type: { in: ['folga', 'ferias'] }, date: { lte: to }, OR: [{ endDate: { gte: from } }, { endDate: null, date: { gte: from } }] }, select: { date: true, endDate: true, type: true } }),
   ]);
   const pub = new Set(published.map((p) => p.month));
+  const self = ((await require('./selfSchedule').shiftsMap(prisma, fromYmd, toYmd, sellerId).catch(() => ({})))[sellerId]) || {};
+  const storeName = Object.keys(self).length ? ((await prisma.user.findUnique({ where: { id: sellerId }, select: { store: { select: { name: true } } } }).catch(() => null)) || {}).store : null;
   const ymdOf = (d) => new Date(d).toISOString().slice(0, 10);
   return days.map((ymd) => {
     const off = offs.find((o) => ymd >= ymdOf(o.date) && ymd <= ymdOf(o.endDate || o.date));
     if (off) return { ymd, off: off.type };
+    if (!pub.has(ymd.slice(0, 7)) && self[ymd]) {
+      const x = self[ymd];
+      return { ymd, store: storeName ? storeName.name : null, start: x.start, end: x.end, breakStart: x.breakStart, breakEnd: x.breakEnd, informed: true };
+    }
     const s = pub.has(ymd.slice(0, 7)) ? monthly.find((m) => ymdOf(m.workDate) === ymd) : recurring.find((r) => r.weekday === dow(ymd));
     return s ? { ymd, store: s.store ? s.store.name : null, start: s.startTime, end: s.endTime } : { ymd };
   });
@@ -252,12 +258,12 @@ function pick(list, ymd, sellerId, salt = 0) {
 }
 
 // Mensagem de 1 hora antes do expediente.
-async function buildPreShift(prisma, sellerId, { nowMs = Date.now() } = {}) {
+async function buildPreShift(prisma, sellerId, { nowMs = Date.now(), hint = null } = {}) {
   const p = await buildPulse(prisma, sellerId, { nowMs });
   const monthEnd = addDays(p.today.slice(0, 7) + '-01', 40).slice(0, 7) + '-01';
   const lastDay = addDays(monthEnd, -1);
   const shifts = await shiftsBetween(prisma, sellerId, p.today, lastDay);
-  const today = shifts[0] || {};
+  const today = (shifts[0] && shifts[0].start) ? shifts[0] : (hint || shifts[0] || {});
   const workDaysLeft = shifts.filter((s) => s.start).length;
   // Meta do mês: a cadastrada no admin; senão R$ 1.000 × dias de escala do vendedor no mês.
   const [goalRow] = (await getGoals(prisma, p.today.slice(0, 7))).filter((g) => g.sellerId === sellerId);
@@ -277,7 +283,8 @@ function formatPreShift(p, { nowMs = Date.now() } = {}) {
   const hello = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
   const L = [`${hello}, ${firstName(p.name)}! ${hour < 12 ? "☀️" : "👋"}`];
   const s = p.shiftToday;
-  if (s && s.start) L.push(`⏰ *Seu expediente hoje:* ${s.store || 'loja'}, das ${s.start} às ${s.end}.`);
+  if (s && s.start && s.approx) L.push(`⏰ *Seu expediente hoje* começa por volta das ${s.start}${s.store ? ` — ${s.store}` : ''}.`);
+  else if (s && s.start) L.push(`⏰ *Seu expediente hoje:* ${s.store || 'loja'}, das ${s.start} às ${s.end}${s.breakStart ? ` (intervalo ${s.breakStart}–${s.breakEnd})` : ''}.`);
   L.push('');
   const yr = p.yesterdayResult;
   if (yr.count) L.push(`📊 *Ontem (${WEEKDAYS[dow(p.yesterday)]}, ${br(p.yesterday)}):* ${yr.count} ${yr.count === 1 ? 'venda' : 'vendas'} · ${brl(yr.revenue)} · ticket ${brl(yr.ticket)}`);
@@ -305,6 +312,33 @@ function enabled() { return String(process.env.PULSE_WHATSAPP || 'on').toLowerCa
 function defaultSend() { const wa = require('../whatsapp'); return (phone, msg) => wa.sendCustomMessage(phone, msg); }
 function minutes(hhmm) { const [h, m] = String(hhmm || '').split(':').map(Number); return Number.isFinite(h) ? h * 60 + (m || 0) : null; }
 
+// Sem escala lançada (18/11/2026: ninguém tinha escala e ninguém recebeu): usa o horário em que a pessoa
+// costuma bater a ENTRADA neste mesmo dia da semana (últimas 4 semanas, mínimo 2 dias). Assim folga
+// habitual (dia da semana em que ela não costuma vir) não recebe mensagem.
+async function typicalStart(prisma, sellerId, ymd, nowMs = Date.now()) {
+  const since = new Date(nowMs - 28 * 86400000);
+  const rows = await prisma.clockIn.findMany({ where: { userId: sellerId, type: 'entry', timestamp: { gte: since, lt: dayBounds(ymd).start } }, orderBy: { timestamp: 'asc' }, select: { timestamp: true, store: { select: { name: true } } } });
+  const firstByDay = new Map();
+  for (const r of rows) {
+    const t = new Date(r.timestamp.getTime() - TZ_OFFSET_MS), d = t.toISOString().slice(0, 10);
+    if (dow(d) !== dow(ymd) || firstByDay.has(d)) continue;
+    firstByDay.set(d, { min: t.getUTCHours() * 60 + t.getUTCMinutes(), store: r.store ? r.store.name : null });
+  }
+  const days = [...firstByDay.values()];
+  if (days.length < 2) return null;
+  const mins = days.map((x) => x.min).sort((a, b) => a - b);
+  const med = mins[Math.floor(mins.length / 2)];
+  const rounded = Math.round(med / 15) * 15; // "por volta das" — arredonda em 15 min
+  const hh = String(Math.floor(rounded / 60)).padStart(2, '0') + ':' + String(rounded % 60).padStart(2, '0');
+  return { min: med, start: hh, store: days[days.length - 1].store, approx: true };
+}
+function validPhone(raw) {
+  const t = String(raw || '');
+  if (/[a-z@_]/i.test(t)) return false; // ex.: "email_1789..." não é telefone
+  const d = t.replace(/\D/g, '');
+  return d.length >= 10 && d.length <= 13;
+}
+
 // Roda a cada 5 min: manda a mensagem pra quem começa o expediente daqui a até 60 min (1 vez por dia).
 async function runPreShift(prisma, { nowMs = Date.now(), send = defaultSend(), lead = 60 } = {}) {
   if (!enabled()) return { skipped: 'PULSE_WHATSAPP=off' };
@@ -326,14 +360,16 @@ async function runPreShift(prisma, { nowMs = Date.now(), send = defaultSend(), l
   const titles = await require('./jobTitle').all(prisma).catch(() => ({}));
   for (const sl of sellers) {
     if (done.has(sl.id) || !working.has(sl.id) || (titles[sl.id] && titles[sl.id] !== 'VENDEDOR')) continue;
-    if (!/^\+?\d{10,13}$/.test(String(sl.phone || '').replace(/\D/g, ''))) continue;
+    if (!validPhone(sl.phone)) continue;
     const [s] = await shiftsBetween(prisma, sl.id, today, today);
-    const start = s && s.start ? minutes(s.start) : null;
+    if (s && s.off) continue; // folga/férias lançada
+    let start = s && s.start ? minutes(s.start) : null, hint = null;
+    if (start == null) { hint = await typicalStart(prisma, sl.id, today, nowMs); start = hint ? hint.min : null; }
     if (start == null || nowMin < start - lead || nowMin >= start) continue; // janela: de 1h antes até o início
     const claimed = await prisma.$executeRaw`INSERT INTO "SellerPulseSend" ("day","sellerId","kind") VALUES (${today}, ${sl.id}, 'preshift') ON CONFLICT DO NOTHING`;
     if (!claimed) continue;
     try {
-      const msg = formatPreShift(await buildPreShift(prisma, sl.id, { nowMs }), { nowMs });
+      const msg = formatPreShift(await buildPreShift(prisma, sl.id, { nowMs, hint }), { nowMs });
       const r = await send(sl.phone, msg).catch((e) => ({ ok: false, error: e.message }));
       await prisma.$executeRaw`UPDATE "SellerPulseSend" SET "ok" = ${!!(r && r.ok)}, "error" = ${r && r.ok ? null : String((r && r.error) || 'falhou')} WHERE "day" = ${today} AND "sellerId" = ${sl.id} AND "kind" = 'preshift'`;
       if (r && r.ok) sent++; else failed++;
@@ -350,7 +386,7 @@ const CLOCK_LABEL = { entry: ['✅', 'Entrada'], break_start: ['☕', 'Saída pa
 async function notifyClock(prisma, { userId, storeName, type, at }, { send = defaultSend() } = {}) {
   if (!enabled()) return { skipped: true };
   const u = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, phone: true, role: true } });
-  if (!u || !u.phone || u.role !== 'seller') return { skipped: true };
+  if (!u || !validPhone(u.phone) || u.role !== 'seller') return { skipped: true };
   const [emoji, label] = CLOCK_LABEL[type] || ['🕒', 'Ponto'];
   const hhmm = new Date(new Date(at).getTime() - TZ_OFFSET_MS).toISOString().slice(11, 16);
   let msg = `${emoji} *${label}* registrada às ${hhmm}${storeName ? ` — ${storeName}` : ''}.`;
@@ -369,4 +405,4 @@ async function notifyClock(prisma, { userId, storeName, type, at }, { send = def
   return send(u.phone, msg).catch((e) => ({ ok: false, error: e.message }));
 }
 
-module.exports = { buildPulse, formatPulse, CLOSINGS, localYmd, ensurePulseSchema, getGoals, setGoal, shiftsBetween, buildPreShift, formatPreShift, runPreShift, notifyClock };
+module.exports = { typicalStart, validPhone, buildPulse, formatPulse, CLOSINGS, localYmd, ensurePulseSchema, getGoals, setGoal, shiftsBetween, buildPreShift, formatPreShift, runPreShift, notifyClock };

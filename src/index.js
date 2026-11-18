@@ -516,6 +516,8 @@ app.use('/api/seller/portfolio', sellerPortfolioRoutes);
 app.use('/api/seller/agent', sellerAgentRoutes);
 app.use('/api/seller/production', sellerProductionRoutes);
 app.use('/api/seller/schedule', sellerScheduleRoutes);
+// Escala informada pelo vendedor (link pessoal do WhatsApp ou login do app) — dono 18/11/2026.
+app.use('/api/minha-escala', require('./routes/selfSchedule'));
 app.use('/api/seller/interview', weeklyInterviewRoutes);
 app.use('/api/admin/xml', xmlImportRoutes);
 app.use('/api/admin/recommendations', recommendationsRoutes);
