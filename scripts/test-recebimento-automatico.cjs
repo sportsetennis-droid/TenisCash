@@ -20,6 +20,7 @@ async function t(nome, fn) {
 }
 const P = 'rcb-' + Date.now() + '-';
 const T0 = new Date(Date.now() - 6 * 3600e3); // início da contagem nova
+process.env.RECEBIMENTO_AUTOMATICO_DESDE = new Date(T0.getTime() + 5 * 60e3).toISOString(); // "a partir de hoje" (5 min depois do início da contagem)
 const min = (n) => new Date(T0.getTime() + n * 60e3);
 
 async function main() {
@@ -60,6 +61,11 @@ async function main() {
     await leitura(l, ps40, new Date(T0.getTime() - 60e3));
     await aplicar(l);
     assert.equal(await estoque(ps40), 0);
+  });
+  await t('recebimento depois da contagem nova mas ANTES do ponto de partida pedido pelo dono ("hoje") não entra', async () => {
+    const ps = await tam('38');
+    const l = await lote(); await leitura(l, ps, min(2));
+    await aplicar(l); assert.equal(await estoque(ps), 0);
   });
   await t('Adidas sem tamanho confirmado não entra; confirmado na caixa, entra', async () => {
     const l = await lote();

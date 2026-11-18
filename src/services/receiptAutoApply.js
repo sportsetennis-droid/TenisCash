@@ -9,8 +9,9 @@
 // histórico), sem esperar alguém ligar a remessa e confirmar.
 //
 // Regras:
-// - Só vale a partir do início da contagem nova (substituição) da loja: o que
-//   foi recebido antes já entra pela própria contagem ("só vale bipe novo").
+// - Só vale a partir de 18/11/2026 00:00 (horário de João Pessoa) — o dono pediu
+//   "hoje" — e nunca antes do início da contagem nova da loja. O que foi recebido
+//   antes fica como está.
 // - Só peça reconhecida, com variante e tamanho resolvidos (Adidas: tamanho
 //   confirmado na caixa). Leitura removida, trocada ou lote arquivado = desfaz.
 // - Uma leitura soma uma vez só (idempotente pelo clientScanId).
@@ -28,6 +29,12 @@ const SOURCE_REVERSE = 'camera-receipt-auto-reverse';
 const SOURCE_PAIR = 'receipt-count-pairing';
 const SOURCE_UNPAIR = 'receipt-count-unpairing';
 const ROUND_OPEN = ['counting', 'review'];
+
+// Ponto de partida pedido pelo dono ("eu falei de hoje", 18/11/2026). Ajustável sem deploy.
+function desde() {
+  const v = Date.parse(process.env.RECEBIMENTO_AUTOMATICO_DESDE || '2026-11-18T00:00:00-03:00');
+  return Number.isFinite(v) ? v : Date.parse('2026-11-18T00:00:00-03:00');
+}
 
 function ctxOf(v) { return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; }
 
@@ -50,7 +57,8 @@ function deveEntrar(read, lot, round) {
   if (!lot || lot.mode !== 'receipt' || lot.status === 'archived' || !round) return false;
   if (read.removed || !read.recognized || !read.productSizeId) return false;
   if (read.requiresSizeConfirmation && !String(read.confirmedSize || '').trim()) return false;
-  return new Date(read.scannedAt).getTime() >= new Date(round.startedAt).getTime();
+  const t = new Date(read.scannedAt).getTime();
+  return t >= new Date(round.startedAt).getTime() && t >= desde();
 }
 
 // Situação atual de cada leitura do lote no histórico: { clientScanId: { productSizeId, net } }
@@ -213,4 +221,4 @@ function iniciarRecebimentoAutomatico(db) {
 }
 function estadoRecebimentoAutomatico() { return JSON.parse(JSON.stringify(state)); }
 
-module.exports = { SOURCE, SOURCE_REVERSE, SOURCE_PAIR, SOURCE_UNPAIR, aplicarLote, parear, antesDeExcluirBipe, jaEntrouPorTamanho, jaEntrouPorLeituras, aplicarTodos, iniciarRecebimentoAutomatico, estadoRecebimentoAutomatico, deveEntrar, replacementRound };
+module.exports = { desde, SOURCE, SOURCE_REVERSE, SOURCE_PAIR, SOURCE_UNPAIR, aplicarLote, parear, antesDeExcluirBipe, jaEntrouPorTamanho, jaEntrouPorLeituras, aplicarTodos, iniciarRecebimentoAutomatico, estadoRecebimentoAutomatico, deveEntrar, replacementRound };
