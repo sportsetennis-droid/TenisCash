@@ -15,6 +15,8 @@ const { passoDe } = require('../../regras/conserto-nuvemshop');
 const { assessProductForNuvemshop, nuvemshopStockStoreIds, nuvemshopStoreStocksQuery } = require('../../../../services/nuvemshopEligibility');
 
 const DIA = 86400000;
+// "bipado" = estoque novo: contagens de substituição abertas a partir desta data (dono: 09/11/2026)
+const ESTOQUE_NOVO_DESDE = () => new Date(process.env.RNA_ESTOQUE_NOVO_DESDE || '2026-11-09T00:00:00-03:00');
 const n0 = (v) => (v == null ? 0 : Number(v));
 const r2 = (v) => Math.round(v * 100) / 100;
 const TOP = 8;
@@ -54,9 +56,11 @@ async function calcular(ler, { agora = new Date(), soMarca = null, diasParado = 
   const prods = await ler.$queryRawUnsafe(
     'SELECT p.id, p.brand, p.name, p.sku, p.category, p.price, p."costPrice", p."createdAt", ' +
     "  (p.\"aiContext\"->>'color') AS cor, " +
-    "  (CASE WHEN coalesce(p.\"imageUrl\",'') <> '' THEN 1 ELSE 0 END) AS tem_principal, " +
-    "  (CASE WHEN jsonb_typeof(p.\"imageUrls\"::jsonb) = 'array' THEN jsonb_array_length(p.\"imageUrls\"::jsonb) ELSE 0 END) AS n_galeria, " +
-    '  EXISTS (SELECT 1 FROM "NuvemshopProductMapping" m WHERE m."localProductId" = p.id AND m."syncStatus" <> \'hidden-invalid\') AS publicado ' +
+    // fotos = mesma conta do portão (usableImageCount): principal + galeria, válidas e sem repetir — sem trazer o base64
+    "  (SELECT count(DISTINCT md5(btrim(x))) FROM (SELECT p.\"imageUrl\" AS x UNION ALL SELECT jsonb_array_elements_text(CASE WHEN jsonb_typeof(p.\"imageUrls\"::jsonb) = 'array' THEN p.\"imageUrls\"::jsonb ELSE '[]'::jsonb END)) t " +
+    "     WHERE btrim(x) ~* '^(https?://|data:image/[a-z0-9.+-]+.base64,)' AND btrim(x) !~* '(lookaside\\.instagram\\.com|/crawler/|google_widget|/seo/)') AS n_fotos, " +
+    '  EXISTS (SELECT 1 FROM "NuvemshopProductMapping" m WHERE m."localProductId" = p.id AND m."syncStatus" <> \'hidden-invalid\') AS publicado, ' +
+    '  EXISTS (SELECT 1 FROM "NuvemshopProductMapping" m WHERE m."localProductId" = p.id) AS ja_publicado ' +
     'FROM "Product" p WHERE p.active = true');
   const M = new Map();
   const P = new Map();
@@ -67,7 +71,7 @@ async function calcular(ler, { agora = new Date(), soMarca = null, diasParado = 
     const m = M.get(k);
     m.nomes.add(p.brand);
     m.cards++;
-    const fotos = Math.max(n0(p.tem_principal), n0(p.n_galeria));
+    const fotos = n0(p.n_fotos);
     if (!String(p.cor || '').trim()) m.cadastro.semCor++;
     if (fotos === 0) m.cadastro.semFoto++;
     if (fotos < 5) m.cadastro.menosDe5Fotos++;
@@ -95,7 +99,7 @@ async function calcular(ler, { agora = new Date(), soMarca = null, diasParado = 
     'SELECT ps."productId" AS pid, ss."storeId" AS sid, st.code AS loja, SUM(ss.stock)::int AS un, ' +
     "  SUM(CASE WHEN ss.stock > 0 AND ps.size LIKE 'T-%' THEN ss.stock ELSE 0 END)::int AS tecnico " +
     'FROM "StoreStock" ss JOIN "ProductSize" ps ON ps.id = ss."productSizeId" JOIN "Store" st ON st.id = ss."storeId" ' +
-    'WHERE ss.stock <> 0 AND ps."productId" = ANY($1::text[]) GROUP BY 1, 2, 3', ids);
+    'WHERE ss.stock <> 0 AND ps."productId" = ANY($1::text[]) GROUP BY 1, 2, 3, ps.id', ids);
   for (const r of ss) {
     const p = P.get(r.pid); if (!p) continue;
     const m = M.get(p.k); const un = n0(r.un);
@@ -107,7 +111,7 @@ async function calcular(ler, { agora = new Date(), soMarca = null, diasParado = 
     p.localizado += un; p.lojas[r.loja] = (p.lojas[r.loja] || 0) + un;
     if (nsIds.has(r.sid)) p.localizadoNS += un;
     m.porLoja[r.loja] = (m.porLoja[r.loja] || 0) + un;
-    if (n0(r.tecnico) > 0) m.cadastro.tamanhoTecnicoComEstoque++;
+    if (n0(r.tecnico) > 0 && !p.temTecnico) { p.temTecnico = true; m.cadastro.tamanhoTecnicoComEstoque++; } // conta CARD, não tamanho
   }
 
   // 3b) estoque NOVO: bipes das rodadas de substituição em curso (só bipe novo vale; rodada cancelada fica fora)
@@ -116,8 +120,8 @@ async function calcular(ler, { agora = new Date(), soMarca = null, diasParado = 
     '  COUNT(*) FILTER (WHERE b.applied)::int AS aplicados, COUNT(*) FILTER (WHERE NOT b.applied)::int AS pendentes ' +
     'FROM "StocktakeBipe" b JOIN "StocktakeRound" r ON r.id = b."roundId" JOIN "ProductSize" ps ON ps.id = b."productSizeId" ' +
     'JOIN "Store" st ON st.id = b."storeId" ' +
-    "WHERE r.\"operationType\" = 'replacement' AND r.status <> 'cancelled' AND b.\"excludedAt\" IS NULL AND ps.\"productId\" = ANY($1::text[]) " +
-    'GROUP BY 1, 2', ids);
+    "WHERE r.\"operationType\" = 'replacement' AND r.status <> 'cancelled' AND r.\"startedAt\" >= $2 AND b.\"excludedAt\" IS NULL AND ps.\"productId\" = ANY($1::text[]) " +
+    'GROUP BY 1, 2', ids, ESTOQUE_NOVO_DESDE());
   for (const r of bp) {
     const p = P.get(r.pid); if (!p) continue;
     const m = M.get(p.k);
@@ -212,7 +216,8 @@ async function calcular(ler, { agora = new Date(), soMarca = null, diasParado = 
     });
     for (const prod of lote) {
       const p = P.get(prod.id); const m = M.get(p.k);
-      const a = assessProductForNuvemshop(prod, { isNew: true }); // só avalia o que ainda NÃO está no site
+      // mesma régua da subida automática (ela confirma sozinha); 5 fotos só para quem nunca esteve no site
+      const a = assessProductForNuvemshop(prod, { requireConfirmation: false, isNew: !p.ja_publicado });
       if (a.eligible) { m.site.prontosParaSubir++; if (p.bipados > 0) conserto(m, p, null); continue; }
       m.site.bloqueados++;
       for (const motivo of a.reasons) { const t = motivo.replace(/^tamanho .+?: fisico.*/, 'físico maior que comprado').replace(/^tamanho .+ sem codigo de barras$/, 'tamanho sem código de barras'); m.site.motivos[t] = (m.site.motivos[t] || 0) + 1; }
@@ -221,7 +226,7 @@ async function calcular(ler, { agora = new Date(), soMarca = null, diasParado = 
     }
   }
   // regra das 5 fotos para TODO bipado (no site ou não): entra no passo de fotos
-  for (const p of P.values()) if (p.bipados > 0 && p.fotos < 5 && (p.publicado || p.localizadoNS <= 0)) conserto(M.get(p.k), p, ['menos de 5 fotos (' + p.fotos + ')']);
+  for (const p of P.values()) if (p.bipados > 0 && p.fotos < 5 && (p.publicado || p.ja_publicado || p.localizadoNS <= 0)) conserto(M.get(p.k), p, ['menos de 5 fotos (' + p.fotos + ')']);
   // bipado só em loja que não abastece o site: o gate nem chega a avaliar
   for (const p of P.values()) if (p.bipados > 0 && !p.publicado && p.localizadoNS <= 0) conserto(M.get(p.k), p, ['so em loja que nao vende no site']);
 

@@ -90,6 +90,8 @@ jobs:
         run: node scripts/test-rede-marcas.js
       - name: Painel dos gerentes de marca — sintaxe, mobile-first e rotas
         run: node scripts/test-marcas-painel.cjs
+      - name: 5 fotos por produto e espelho do card → Nuvemshop
+        run: node scripts/test-ns-fotos-espelho.js
       - name: Servidor MCP — acesso só do dono, ferramentas, confirmação e sem vazar PII
         env:
           PSQL: psql

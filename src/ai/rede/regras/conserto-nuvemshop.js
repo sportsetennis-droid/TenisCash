@@ -16,16 +16,13 @@
 
 const PASSOS = [
   { id: 'loja-fora-do-site', rx: /^so em loja que nao vende no site$/, titulo: 'Bipado só em loja que não abastece o site',
-    como: 'O site só vende o físico das lojas que abastecem a Nuvemshop (hoje 04, 06 e 07 no código; o CLAUDE.md diz todas as lojas — decisão pendente do dono). Ou o dono libera a loja para o site, ou transfere o par para uma loja do site (proposta de transferência).',
+    como: 'O estoque da loja online vem só das lojas que abastecem o site — hoje 04, 06 e 07 (dono 12/11: "tenho produtos corretamente no estoque das lojas 04, 06 e 07, eles podem subir pra Nuvemshop"). Ou o dono libera outra loja para o site, ou o par é transferido para uma loja do site (proposta de transferência, aprovada pelo dono).',
     quem: 'dono', dono: true },
-  { id: 'confirmacao', rx: /sem confirmacao humana/, titulo: 'Falta a confirmação do dono para subir',
-    como: 'Depois de conferir foto, cor, preço e tamanhos, o dono marca "confirmar para a Nuvemshop" no card (admin). É a trava final de propósito: nenhum agente marca por conta própria.',
-    quem: 'dono', dono: true },
-  { id: 'foto', rx: /sem foto valida/, titulo: 'Sem foto válida',
-    como: 'Buscar a foto OFICIAL pela referência/código exato da cor (fonte da marca na ficha); conferir a cor olhando cada foto; sem fonte online, a loja fotografa a peça. Nunca foto de outro colorway.',
-    quem: 'conteudo.foto-oficial / loja', dono: false, usaFicha: 'foto' },
+  { id: 'confirmacao', rx: /sem confirmacao humana/, titulo: 'Falta a confirmação para subir',
+    como: 'A subida automática (de hora em hora) confirma sozinha o card que passa em TODAS as outras travas. Pelo envio manual do admin, a confirmação é marcada no card antes de enviar.',
+    quem: 'subida automática / admin', dono: false },
   { id: 'fotos-minimas', rx: /menos de \d+ fotos/, titulo: 'Menos de 5 fotos (regra do dono: todo produto tem 5)',
-    como: 'Completar até 5 fotos DA MESMA COR do card, nesta ordem de fonte (todas testadas em 15–18/11/2026): ' +
+    como: 'Completar até 5 fotos DA MESMA COR do card, nesta ordem de fonte (usadas de verdade nas varreduras de fotos de 15/11 e 18/11/2026; registro na memória "fotos-oficiais"): ' +
       '1) lojas VTEX pelo código de barras exato — /api/catalog_system/pub/products/search?fq=alternateIds_Ean:<EAN> em americanas, paquetaesportes, oscarcalcados, shopcoopera, shopping.sicredi, pittol e nos sites oficiais (penalty, umbro, fila, asics, olympikus, kenner, mizuno, ous, cajubrasil, newbalance, skechers, underarmour); ' +
       '2) CDN oficial da marca pela referência+cor exata (fonte na ficha da marca); ' +
       '3) busca pelo nome só com conferência rígida de modelo E cor (na dúvida, não usa); ' +
@@ -45,8 +42,8 @@ const PASSOS = [
     como: 'Marca vem do fornecedor/NF-e e da etiqueta; card "A DEFINIR" não sobe. Corrigir no cadastro.',
     quem: 'cadastro', dono: false },
   { id: 'nome', rx: /^nome cru|nome ausente/, titulo: 'Nome cru da NF-e',
-    como: 'Renomear para MODELO + COR por extenso (sem código, tamanho ou espaço duplo da NF-e). A referência fica no campo de referência, não no nome.',
-    quem: 'cadastro', dono: false },
+    como: 'Renomear para MODELO + COR por extenso, sem tamanho, código de barras nem espaço duplo da NF-e. Atenção: referências diferentes são produtos diferentes e NUNCA se juntam; quando duas refs têm o mesmo modelo e cor (ex.: Kappa K101/K102), o nome precisa continuar distinguível — confirmar com o dono como escrever, porque o CLAUDE.md (Kappa) manda a REF no nome e o portão do site recusa código no nome.',
+    quem: 'cadastro / dono', dono: false },
   { id: 'custo', rx: /sem custo gravado/, titulo: 'Sem custo gravado',
     como: 'Custo = vUnCom da NF-e de ENTRADA do mesmo código (nunca transferência). Sem NF-e de entrada, falta importar a nota — não se estima custo.',
     quem: 'nfe / financeiro', dono: false },
@@ -75,8 +72,8 @@ const PASSOS = [
     como: 'Card marcado para não subir (ex.: junção errada a separar). Resolver o motivo do bloqueio e só então tirar a marca.',
     quem: 'dono', dono: true },
   { id: 'inativo', rx: /produto inativo/, titulo: 'Card inativo',
-    como: 'Bipe caiu em card inativo: achar o card canônico (curado) da mesma referência e religar, ou reativar o curado.',
-    quem: 'cadastro', dono: false },
+    como: 'Bipe caiu em card inativo: achar o card canônico (curado) da MESMA referência e religar. Só reativar card que tem NF-e de ENTRADA (card só de transferência fica descartado) e que não está numa decisão pendente do dono (ex.: os 28 Converse desativados).',
+    quem: 'cadastro / dono', dono: false },
 ];
 
 const sem = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();

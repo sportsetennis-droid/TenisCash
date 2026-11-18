@@ -12,6 +12,7 @@
 const crypto = require('crypto');
 const { prisma } = require('../middleware');
 const ns = require('./nuvemshop');
+const { mergeAiContext } = require('./aiContextMerge');
 const { assessProductForNuvemshop, nuvemshopStoreStocksQuery, physicalStock } = require('./nuvemshopEligibility');
 const storeRadio = require('./storeRadio');
 const { applyOrderStock } = require('./nuvemshopStockSafety');
@@ -146,8 +147,20 @@ async function upsertLocalProduct(nsProduct) {
   });
 
   let product;
+  // GUARDA ANTI-ECO 2 (auditoria 2026-11-18): card que NASCEU no TenisCash (source
+  // diferente de 'nuvemshop') é a fonte da verdade — o webhook é só o eco do envio.
+  // Vale também para código de barras alfanumérico (ex.: Botafogo, barcode = cProd),
+  // que a guarda 1 não reconhece. Não sobrescreve nome/foto/preço/categoria do card
+  // curado (senão o espelho do card reenviaria e viraria laço).
   if (mapping) {
-    // Atualiza produto existente
+    const local = await prisma.product.findUnique({ where: { id: mapping.localProductId } });
+    if (local && local.source !== 'nuvemshop') {
+      await prisma.nuvemshopProductMapping.update({ where: { id: mapping.id }, data: { lastSyncedAt: new Date() } });
+      return local;
+    }
+  }
+  if (mapping) {
+    // Atualiza produto existente (só card que nasceu na própria Nuvemshop)
     product = await prisma.product.update({
       where: { id: mapping.localProductId },
       data: {
@@ -1352,7 +1365,8 @@ function collectLocalImages(localProduct) {
       if (Array.isArray(arr)) arr.forEach(push);
     } catch (_) {}
   }
-  return out;
+  // regra do dono (11/11 e 18/11): no máximo 5 fotos por card na loja online
+  return out.slice(0, 5);
 }
 
 // Assinatura estável do conjunto (ordem importa — 1ª = capa).
@@ -1404,48 +1418,56 @@ function imageBodyFromSrc(src, position) {
   return body;
 }
 
-// Reconcilia as imagens do produto na Nuvemshop (replace-all, só quando muda).
+// Reconcilia as imagens do produto na Nuvemshop (troca o conjunto, só quando muda).
+// SEGURANÇA (auditoria 2026-11-18): SOBE as novas PRIMEIRO e só depois apaga as
+// antigas — o produto nunca fica com 0 fotos na loja (o reajuste de estoque apaga
+// produto sem foto) e, se nenhuma nova subir, as antigas ficam onde estão.
 async function syncNuvemshopImages(connection, nsProductId, localProduct) {
   const desired = collectLocalImages(localProduct);
   const sig = desired.length ? imageSignature(desired) : 'empty';
   const ctx = ctxOf(localProduct);
   if (ctx.nsImagesSig === sig) return { changed: false, added: 0, removed: 0, sig };
 
-  // Apaga as atuais
-  let removed = 0;
+  // Lê as atuais (para apagar DEPOIS e para posicionar as novas logo atrás delas)
+  let current = [];
   try {
-    const current = await ns.nuvemshopApi(connection, 'GET', `/products/${nsProductId}/images`);
-    if (Array.isArray(current)) {
-      for (const img of current) {
-        try { await ns.nuvemshopApi(connection, 'DELETE', `/products/${nsProductId}/images/${img.id}`); removed++; }
-        catch (e) { console.warn('[ns img] delete falhou', img.id, e.message); }
-      }
-    }
+    const got = await ns.nuvemshopApi(connection, 'GET', `/products/${nsProductId}/images`);
+    if (Array.isArray(got)) current = got;
   } catch (e) { console.warn('[ns img] GET atual falhou:', e.message); }
+  const base = current.reduce((m, img) => Math.max(m, Number(img.position) || 0), current.length);
 
-  // Sobe as locais na ordem (1ª = capa)
+  // 1) Sobe as locais na ordem (1ª = capa), depois das atuais
   let added = 0;
   const errors = [];
   for (let i = 0; i < desired.length; i++) {
+    const position = base + i + 1;
     try {
-      await ns.nuvemshopApi(connection, 'POST', `/products/${nsProductId}/images`, imageBodyFromSrc(desired[i], i + 1));
+      await ns.nuvemshopApi(connection, 'POST', `/products/${nsProductId}/images`, imageBodyFromSrc(desired[i], position));
       added++;
     } catch (e) {
       // Nuvemshop não baixou a URL → servidor baixa e manda o arquivo.
       const [att] = /^https?:\/\//i.test(desired[i]) ? await imagesAsAttachments([{ src: desired[i] }]) : [];
       let ok = false;
       if (att) {
-        try { await ns.nuvemshopApi(connection, 'POST', `/products/${nsProductId}/images`, { ...att, position: i + 1 }); added++; ok = true; }
+        try { await ns.nuvemshopApi(connection, 'POST', `/products/${nsProductId}/images`, { ...att, position }); added++; ok = true; }
         catch (_) { /* segue pro registro do erro */ }
       }
       if (!ok) { errors.push({ position: i + 1, error: e.message }); console.warn('[ns img] POST falhou pos', i + 1, e.message); }
     }
   }
 
-  // Persiste assinatura (só se algo subiu, ou se zeramos de propósito)
+  // 2) Só apaga as antigas se alguma nova subiu (ou se o card ficou sem foto de propósito)
+  let removed = 0;
   if (added > 0 || desired.length === 0) {
-    ctx.nsImagesSig = sig;
-    try { await prisma.product.update({ where: { id: localProduct.id }, data: { aiContext: ctx } }); }
+    for (const img of current) {
+      try { await ns.nuvemshopApi(connection, 'DELETE', `/products/${nsProductId}/images/${img.id}`); removed++; }
+      catch (e) { console.warn('[ns img] delete falhou', img.id, e.message); }
+    }
+  }
+
+  // 3) Grava SÓ a assinatura, de forma atômica (não desfaz edição feita no meio do envio)
+  if (added > 0 || desired.length === 0) {
+    try { await mergeAiContext(prisma, localProduct.id, { nsImagesSig: sig }); }
     catch (e) { console.warn('[ns img] salvar sig falhou:', e.message); }
   }
   return { changed: true, added, removed, sig, errors };
@@ -1478,8 +1500,10 @@ async function _pushProductToNuvemshopInner(localProductId, connection) {
   // A single gate controls CREATE and UPDATE. If a previously mapped card
   // becomes invalid, it is actively unpublished instead of remaining frozen
   // and visible in the storefront.
-  // produto NOVO na loja também precisa de 5 fotos (regra do dono 2026-11-18)
-  const eligibility = assessProductForNuvemshop(product, { isNew: !existingMapping || existingMapping.syncStatus === 'hidden-invalid' });
+  // produto NOVO na loja (nunca publicado) também precisa de 5 fotos (regra do dono 2026-11-18).
+  // Quem já teve publicação (mesmo que tenha saído do ar ao esgotar) NÃO é novo:
+  // a regra das 5 fotos não pode impedir a volta de produto que já estava na loja.
+  const eligibility = assessProductForNuvemshop(product, { isNew: !existingMapping });
   if (!eligibility.eligible) {
     const reason = eligibility.reasons.join('; ');
     console.log('[ns push] DESPUBLICADO/PULADO - gate de qualidade:', localProductId, reason);
@@ -1666,9 +1690,7 @@ async function _pushProductToNuvemshopInner(localProductId, connection) {
     // pra que o próximo update não as re-suba sem necessidade.
     try {
       const desired0 = collectLocalImages(product);
-      const ctx0 = ctxOf(product);
-      ctx0.nsImagesSig = desired0.length ? imageSignature(desired0) : 'empty';
-      await prisma.product.update({ where: { id: product.id }, data: { aiContext: ctx0 } });
+      await mergeAiContext(prisma, product.id, { nsImagesSig: desired0.length ? imageSignature(desired0) : 'empty' });
       imageSync = { fromCreate: true, count: desired0.length };
     } catch (e) { console.warn('[ns push] baseline sig (create) falhou:', e.message); }
     action = 'created';
@@ -1799,12 +1821,7 @@ async function removeProductFromNuvemshop(localProductId, connection) {
 
   // limpa marca de liberação + assinatura de estoque pra não re-subir
   try {
-    const p = await prisma.product.findUnique({ where: { id: localProductId }, select: { aiContext: true } });
-    const ctx = (() => { try { return typeof p?.aiContext === 'string' ? JSON.parse(p.aiContext) : (p?.aiContext || {}); } catch { return {}; } })();
-    if (ctx.releaseToNuvemshop != null || ctx.nsStockSig != null) {
-      delete ctx.releaseToNuvemshop; delete ctx.nsStockSig;
-      await prisma.product.update({ where: { id: localProductId }, data: { aiContext: ctx } });
-    }
+    await mergeAiContext(prisma, localProductId, {}, ['releaseToNuvemshop', 'nsStockSig']);
   } catch (_) {}
 
   await logSync('product', 'ok', `Removido da Nuvemshop: ${localProductId} (NS#${mapping.nuvemshopProductId})`);

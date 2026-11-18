@@ -44,7 +44,7 @@ const FICHAS = {
   },
   PUMA: {
     fornecedores: ['DRASTOSA'],
-    nfe: 'cProd "ESTILO   CORTAM" (ex 404440   002038): estilo 6 dígitos + cor 3 + tamanho.',
+    nfe: 'cProd "ESTILO   CORTAM" (ex 404440   002038): estilo (4 a 8 dígitos) + cor + tamanho.',
     tamanho: 'Sufixo do cProd; acessórios usam PEQ/MED/GRD/EGR (são tamanhos).',
     cor: 'Código de cor no cProd; nome em inglês na NF-e (traduzir por extenso).',
     foto: 'images.puma.com/.../global/<estilo>/<cor2>/<sv01..|bv|mod01..>/fnd/BRA/...',
@@ -74,7 +74,7 @@ const FICHAS = {
   HOKA: {
     fornecedores: ['DR COMERCIO'],
     nfe: 'cProd ESTILO+COR+TAM (ex 1162011CBLL44); 1 card por ESTILO+COR.',
-    cor: 'Decodificar o código de cor pelo cProd exato (ex CBLL = Cobalt Blue/Ultramarine).',
+    cor: 'Código de cor está no cProd; a cor por extenso sai da página OFICIAL da referência exata (regra 25: catálogo oficial), nunca de foto de revendedor.',
     armadilhas: ['Nunca unificar por foto de revendedor; Clifton masc 1162030 ≠ fem 1162031.'],
   },
   REEBOK: {
@@ -100,7 +100,7 @@ const FICHAS = {
   OUS: { foto: 'ous.com.br VTEX, productReference <modelo>_<cor>.' },
   EVERLAST: { fornecedores: ['NESK'], nfe: 'cProd SEMA195.195B.38.' },
   JOMA: { fornecedores: ['FIRST SPORTS'] },
-  KEMPA: { fornecedores: ['FIRST SPORTS'], armadilhas: ['Eagle Pro: NF-e diz PTO/BCO e a bola é vermelha/branca (2026-11-18).'] },
+  KEMPA: { fornecedores: ['FIRST SPORTS (NF-e 24631)'], armadilhas: ['Eagle Pro: NF-e diz PTO/BCO e a bola é vermelha/branca (2026-11-18).'] },
   SPALDING: { fornecedores: ['FIRST SPORTS'] },
   KAGIVA: { fornecedores: ['MUNDI MERCANTIL'], nfe: 'cProd = código interno impresso na bola ("CÓD 7453" = 000007453); SUB 7/9/11/13 = refs 7384/7383/7382/7381.', armadilhas: ['Card "SUB 11" ainda guarda o código da SUB 9 — separar.'] },
   MIKASA: { fornecedores: ['BR8'], nfe: 'cProd MK000xxx, muitos itens SEM EAN na NF-e.', armadilhas: ['Código 4907225881154 é V390W (etiqueta), não V360W.'] },

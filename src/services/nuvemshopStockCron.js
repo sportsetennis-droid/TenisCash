@@ -16,6 +16,7 @@ const {
 } = require('./nuvemshopEligibility');
 const TZ = 'America/Fortaleza';
 const { remoteStockDiffers } = require('./nuvemshopStockSafety');
+const { mergeAiContext } = require('./aiContextMerge');
 const { reconcileOrders, getStockAutomationState } = require('./nuvemshopStockAutomation');
 
 function physicalSig(product) {
@@ -319,11 +320,7 @@ async function runNuvemshopStockSync({
                   stockProductsChanged++;
                 }
                 if (!(variantResult.errors || []).length) {
-                  ctx.nsPhysicalStockVerifiedSig = stockSignature;
-                  await prisma.product.update({
-                    where: { id: product.id },
-                    data: { aiContext: ctx },
-                  });
+                  await mergeAiContext(prisma, product.id, { nsPhysicalStockVerifiedSig: stockSignature });
                 }
                 cronState.progress.stockProductsProcessed = stockProductsProcessed;
                 cronState.progress.stockProductsChanged = stockProductsChanged;
@@ -349,21 +346,7 @@ async function runNuvemshopStockSync({
         const result = await nsHandlers.pushProductToNuvemshop(mapping.localProductId, connection);
         if (!result?.skipped) synced++;
 
-        const fresh = await prisma.product.findUnique({
-          where: { id: mapping.localProductId },
-          select: { aiContext: true },
-        });
-        let freshCtx = {};
-        try {
-          freshCtx = (typeof fresh?.aiContext === 'string'
-            ? JSON.parse(fresh.aiContext)
-            : fresh?.aiContext) || {};
-        } catch (_) {}
-        freshCtx.nsCardSig = signature;
-        await prisma.product.update({
-          where: { id: mapping.localProductId },
-          data: { aiContext: freshCtx },
-        });
+        await mergeAiContext(prisma, mapping.localProductId, { nsCardSig: signature });
       } catch (error) {
         console.error('[nsStockCron] sync', mapping.localProductId, error.message);
       } finally {

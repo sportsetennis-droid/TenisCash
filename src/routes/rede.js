@@ -177,7 +177,8 @@ async function propostasPorMarca() {
 
 router.get('/marcas', wrap(async (req, res) => {
   noStore(res);
-  const [rel, props] = await Promise.all([ultimosRelatorios(), propostasPorMarca()]);
+  // até 30 dias: o painel mostra a idade do último relatório em vez de sumir com ele
+  const [rel, props] = await Promise.all([ultimosRelatorios(30), propostasPorMarca()]);
   const marcas = [...rel.values()].map((l) => {
     const d = l.dados;
     return {
@@ -207,9 +208,14 @@ router.get('/marcas/:marca', wrap(async (req, res) => {
   });
 }));
 
+// cada pedido roda o raio-x inteiro: no máximo 1 por marca a cada 60 s
+const ultimoPedidoMarca = new Map();
 router.post('/marcas/:marca/atualizar', wrap(async (req, res) => {
   const k = chaveMarca(req.params.marca);
   if (!k) return res.status(400).json({ error: 'Marca inválida.' });
+  const ult = ultimoPedidoMarca.get(k) || 0;
+  if (Date.now() - ult < 60000) return res.status(202).json({ marca: k, aviso: null, jaPedido: true });
+  ultimoPedidoMarca.set(k, Date.now());
   const s = await rede.emitir(Object.assign({ tipo: 'marca.pedir', dados: { marca: k, userId: req.userId } }, rede.SENSORES['marca.pedir']));
   res.status(202).json({ marca: k, traceId: s && s.traceId, aviso: s ? null : 'Rede desligada (RNA_ATIVA=0) — nada foi gerado.' });
 }));

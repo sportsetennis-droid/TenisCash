@@ -107,12 +107,13 @@ async function partB() {
     const r2 = await run({ limit: 1 });
     assert.strictEqual(r2.pushed, 1); assert.ok(!r2.pending);
   });
-  await t('falha no envio: não grava a assinatura e tenta de novo', async () => {
+  await t('falha no envio: não grava a assinatura e tenta de novo (depois da espera)', async () => {
     await prisma.product.update({ where: { id: A.id }, data: { name: 'Card 1 novo' } });
     const ruim = { pushProductToNuvemshop: async () => { throw new Error('Nuvemshop 500'); } };
-    const r = await run({ handlers: ruim });
+    const t0 = Date.now();
+    const r = await run({ handlers: ruim, agora: t0 });
     assert.strictEqual(r.errors, 1);
-    enviados.length = 0; const r2 = await run();
+    enviados.length = 0; const r2 = await run({ agora: t0 + 6 * 60 * 1000 });
     assert.strictEqual(r2.pushed, 1); assert.deepStrictEqual(enviados, [A.id]);
   });
   await t('card que deixou de passar no portão é despublicado (contado à parte)', async () => {
@@ -121,7 +122,99 @@ async function partB() {
     const r = await run({ handlers: desp });
     assert.strictEqual(r.unpublished, 1);
   });
+  // ---------- regressões da AUDITORIA de 18/11 ----------
+  await t('AUDITORIA: sem connection passada usa getConnection(); sem conexão ativa avisa no estado (não fica "saudável" calado)', async () => {
+    const usada = []; const comConn = { getConnection: async () => ({ id: 'c-real' }), pushProductToNuvemshop: async (id, c) => { usada.push(c && c.id); return { action: 'updated' }; } };
+    await prisma.product.update({ where: { id: A.id }, data: { name: 'Card 1 conexão' } });
+    await espelho.runNuvemshopCardMirror({ prisma, handlers: comConn });
+    assert.deepStrictEqual(usada, ['c-real']);
+    const semConn = { getConnection: async () => null, pushProductToNuvemshop: async () => { throw new Error('não devia enviar'); } };
+    const r = await espelho.runNuvemshopCardMirror({ prisma, handlers: semConn });
+    assert.ok(r.semConexao);
+    const st = espelho.getNuvemshopCardMirrorState();
+    assert.ok(st.lastError && /sem conexão/.test(st.lastError) && st.lastResult.semConexao);
+  });
+  await t('AUDITORIA: produto que saiu do ar (hidden-invalid) também é reenviado quando o card muda (pode voltar)', async () => {
+    await prisma.nuvemshopProductMapping.updateMany({ where: { localProductId: B.id }, data: { syncStatus: 'hidden-invalid' } });
+    await prisma.product.update({ where: { id: B.id }, data: { name: 'Card 2 reposto' } });
+    enviados.length = 0; await run();
+    assert.ok(enviados.includes(B.id));
+  });
+  await t('AUDITORIA: falha espera tempo crescente e não trava o lote', async () => {
+    await prisma.product.update({ where: { id: A.id }, data: { name: 'Card 1 falha' } });
+    const ruim = { pushProductToNuvemshop: async () => { throw new Error('Nuvemshop 404'); } };
+    const t0 = Date.now();
+    await run({ handlers: ruim, agora: t0 });
+    enviados.length = 0;
+    const r1 = await run({ agora: t0 + 60 * 1000 });
+    assert.strictEqual(r1.waitingRetry, 1); assert.ok(!enviados.includes(A.id), 'dentro da espera não reenvia');
+    await run({ agora: t0 + 6 * 60 * 1000 });
+    assert.ok(enviados.includes(A.id), 'depois da espera tenta de novo');
+    const a = await prisma.product.findUnique({ where: { id: A.id } });
+    assert.ok(!a.aiContext.nsMirrorFails, 'sucesso limpa o contador de falhas');
+    assert.strictEqual(espelho.esperaMs(1), 5 * 60000); assert.strictEqual(espelho.esperaMs(20), 24 * 3600000);
+  });
+  await t('AUDITORIA: assinatura cobre referência e mapeamento de categorias', () => {
+    const base = espelho.mirrorSig(card());
+    assert.notStrictEqual(espelho.mirrorSig(card({ sku: 'OUTRA' })), base);
+    assert.notStrictEqual(espelho.mirrorSig(card({ aiContext: { ...card().aiContext, nuvemshopMapping: { categoryIds: [1] } } })), base);
+  });
+  await t('AUDITORIA: gravação de assinatura não desfaz o resto do aiContext, nem em formato texto antigo', async () => {
+    const { mergeAiContext } = require('../src/services/aiContextMerge');
+    await prisma.product.update({ where: { id: A.id }, data: { aiContext: { color: 'Azul', classification: { tier: 'X' } } } });
+    await mergeAiContext(prisma, A.id, { nsMirrorSig: 's1' });
+    let a = await prisma.product.findUnique({ where: { id: A.id } });
+    assert.strictEqual(a.aiContext.color, 'Azul'); assert.strictEqual(a.aiContext.classification.tier, 'X'); assert.strictEqual(a.aiContext.nsMirrorSig, 's1');
+    await prisma.$executeRawUnsafe('UPDATE "Product" SET "aiContext" = to_jsonb($2::text) WHERE id = $1', A.id, JSON.stringify({ color: 'Verde' }));
+    await mergeAiContext(prisma, A.id, { nsMirrorSig: 's2' });
+    a = await prisma.product.findUnique({ where: { id: A.id } });
+    assert.strictEqual(a.aiContext.color, 'Verde'); assert.strictEqual(a.aiContext.nsMirrorSig, 's2');
+  });
   await limpar();
+  await prisma.$disconnect();
+}
+
+async function partC() {
+  // stub da API da Nuvemshop ANTES de carregar os handlers (nada sai para a loja)
+  const nsPath = require.resolve('../src/services/nuvemshop');
+  const chamadas = []; let falharPost = false;
+  require.cache[nsPath] = { id: nsPath, filename: nsPath, loaded: true, exports: { nuvemshopApi: async (conn, metodo, url) => {
+    chamadas.push(metodo + ' ' + url);
+    if (metodo === 'GET') return [{ id: 901, position: 1 }, { id: 902, position: 2 }];
+    if (metodo === 'POST' && falharPost) throw new Error('falhou');
+    return {};
+  } } };
+  const h = require('../src/services/nuvemshopHandlers');
+  const { prisma } = require('../src/middleware');
+  await prisma.nuvemshopProductMapping.deleteMany({}); await prisma.productSize.deleteMany({}); await prisma.product.deleteMany({});
+  const p = await prisma.product.create({ data: { sku: 'IMG1', name: 'Card fotos', brand: 'HOKA', category: 'Tênis', price: 10, imageUrl: 'https://img/a.jpg', imageUrls: fotos(7), aiContext: { color: 'Azul' } } });
+  await t('AUDITORIA: no máximo 5 fotos vão para a loja', () => {
+    assert.strictEqual(h.collectLocalImages(p).length, 5);
+  });
+  await t('AUDITORIA: troca de fotos SOBE as novas antes de APAGAR as antigas (nunca fica sem foto)', async () => {
+    chamadas.length = 0;
+    const r = await h.syncNuvemshopImages({ id: 'c' }, '555', p);
+    const iPost = chamadas.findIndex((c) => c.startsWith('POST')), iDel = chamadas.findIndex((c) => c.startsWith('DELETE'));
+    assert.ok(iPost >= 0 && iDel > iPost, chamadas.join(' | '));
+    assert.strictEqual(r.added, 5); assert.strictEqual(r.removed, 2);
+  });
+  await t('AUDITORIA: se nenhuma foto nova subir, as antigas ficam (não apaga)', async () => {
+    const q = await prisma.product.update({ where: { id: p.id }, data: { imageUrls: fotos(5).reverse() } });
+    chamadas.length = 0; falharPost = true;
+    const r = await h.syncNuvemshopImages({ id: 'c' }, '555', q);
+    falharPost = false;
+    assert.strictEqual(r.added, 0); assert.strictEqual(r.removed, 0);
+    assert.ok(!chamadas.some((c) => c.startsWith('DELETE')));
+  });
+  await t('AUDITORIA: eco de webhook não sobrescreve card curado (nem com código alfanumérico)', async () => {
+    const c = await prisma.product.create({ data: { sku: 'EKPB471902', name: 'Camisa Botafogo Curada', brand: 'BOTAFOGO', category: 'Roupas', price: 300, imageUrl: 'https://img/curada.jpg', aiContext: { color: 'Preto' } } });
+    await prisma.productSize.create({ data: { productId: c.id, size: 'M', barcode: 'EKPB471902044M', stock: 1 } });
+    await prisma.nuvemshopProductMapping.create({ data: { localProductId: c.id, nuvemshopProductId: '777' } });
+    await h.upsertLocalProduct({ id: 777, name: { pt: 'Nome da Loja' }, brand: 'X', categories: [{ name: { pt: 'geral' } }], images: [{ src: 'https://cdn.loja/x.jpg' }], variants: [{ sku: 'EKPB471902044M', price: '1' }], published: true });
+    const depois = await prisma.product.findUnique({ where: { id: c.id } });
+    assert.strictEqual(depois.name, 'Camisa Botafogo Curada'); assert.strictEqual(depois.imageUrl, 'https://img/curada.jpg'); assert.strictEqual(depois.price, 300);
+  });
+  await prisma.nuvemshopProductMapping.deleteMany({}); await prisma.productSize.deleteMany({}); await prisma.product.deleteMany({});
   await prisma.$disconnect();
 }
 
@@ -130,6 +223,8 @@ async function partB() {
   await partA();
   console.log('B) espelho no banco DESCARTÁVEL ' + process.env.DATABASE_URL.replace(/\/\/[^@]*@/, '//***@'));
   await partB();
+  console.log('C) envio de fotos e eco de webhook (API da Nuvemshop simulada)');
+  await partC();
   console.log(out.join('\n'));
   console.log((process.exitCode ? 'FALHOU' : 'OK') + ' — ' + pass + ' testes passaram');
   process.exit(process.exitCode || 0);

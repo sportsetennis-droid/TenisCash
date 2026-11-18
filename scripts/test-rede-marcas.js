@@ -123,12 +123,17 @@ async function partB() {
   await bipe(rNova, L.LOJA04, F, F.S['42']);                                            // F bipado e fora da Nuvemshop (loja do site)
   await bipe(rNova, L.LOJA04, F, F.S['42'], false);                                     // pendente: não conta como bipado
   await bipe(rCanc, L.LOJA02, C, C.S.M);                                                // rodada cancelada: não vale
+  const rVelha = await prisma.stocktakeRound.create({ data: { name: 'Substituição antiga', storeId: L.LOJA02.id, status: 'counting', operationType: 'replacement', baseline: {}, startedAt: new Date('2026-10-20T12:00:00-03:00') } });
+  await bipe(rVelha, L.LOJA02, C, C.S.M);                                               // rodada de antes de 09/11: bipe antigo, não vale
   const G = await prod({ sku: 'H4', name: 'Tênis HOKA no site sem bipe', brand: 'HOKA', price: 900, costPrice: 400, aiContext: { color: 'Branco' }, imageUrl: 'https://x/g.jpg' }, [{ size: '39', barcode: '0196565000039', stock: 2 }]);
   await prisma.nuvemshopProductMapping.create({ data: { localProductId: G.id, nuvemshopProductId: '222' } });
   // H: bipado só na LOJA02 (loja que não abastece o site neste teste)
   const rNova2 = await prisma.stocktakeRound.create({ data: { name: 'Substituição LOJA02', storeId: L.LOJA02.id, status: 'counting', operationType: 'replacement', baseline: {} } });
   const H = await prod({ sku: 'H5', name: 'Tênis HOKA só na Bessa', brand: 'HOKA', price: 900, costPrice: 400, aiContext: { color: 'Verde' }, imageUrl: 'https://x/h.jpg' }, [{ size: '43', barcode: '0196565000043', stock: 1 }]);
   await loc(L.LOJA02, H.S['43'], 1); await bipe(rNova2, L.LOJA02, H, H.S['43']);
+  // K: 1 foto principal + 4 na galeria (repetindo a principal) = 5 fotos válidas → não é "menos de 5"
+  const K = await prod({ sku: 'P9', name: 'Bola Penalty 5 fotos', brand: 'PENALTY', price: 200, costPrice: 80, imageUrl: 'https://x/k1.jpg', imageUrls: ['https://x/k1.jpg', 'https://x/k2.jpg', 'https://x/k3.jpg', 'https://x/k4.jpg', 'https://x/k5.jpg', 'nada'] }, [{ size: 'U', barcode: '7890000000999', stock: 1 }]);
+  await loc(L.LOJA02, K.S.U, 1); await bipe(rNova2, L.LOJA02, K, K.S.U);
 
   const ler = ferramentas.soLeitura(prisma);
   const sinais = await gerente.disparar({ sinal: { tipo: 'relogio.diario', dados: {} }, ler, agora: new Date(agora) });
@@ -144,7 +149,7 @@ async function partB() {
     assert.strictEqual(R.HOKA.comprado, 10);
     assert.strictEqual(R.HOKA.localizado, 5);
     assert.deepStrictEqual(R.HOKA.porLoja, { LOJA02: 2, LOJA04: 3 });
-    assert.strictEqual(R.PENALTY.localizado, 10, 'o -1 não desconta do localizado');
+    assert.strictEqual(R.PENALTY.localizado, 11, '10 do C + 1 do K; o -1 não desconta do localizado');
     assert.strictEqual(R.PENALTY.negativos.linhas, 1);
     assert.strictEqual(R.PENALTY.negativos.unidades, -1);
   });
@@ -194,7 +199,8 @@ async function partB() {
     assert.strictEqual(cf.bipadosSemCompra, 0);
     assert.strictEqual(cf.bipadosMenosDe5Fotos, 3, 'A, F e H têm 1 foto (regra do dono: 5)');
     assert.ok(R.HOKA.alertas.some((x) => x.area === 'fotos'));
-    assert.strictEqual(R.PENALTY.conferencia.cardsBipados, 0, 'bipe de rodada cancelada não vale');
+    assert.strictEqual(R.PENALTY.conferencia.cardsBipados, 1, 'só o K (bipe novo); rodada cancelada e anterior a 09/11 não valem');
+    assert.strictEqual(R.PENALTY.conferencia.bipadosMenosDe5Fotos, 0, 'foto conta igual ao portão: principal + galeria, sem repetir, só válidas');
     assert.ok(R.HOKA.alertas.some((a) => a.area === 'conferência' && /NÃO foram bipados/.test(a.texto)));
   });
   await t('manual de conserto: cada card bipado fora do site cai no passo do motivo que o segura', () => {
@@ -202,7 +208,7 @@ async function partB() {
     const P = Object.fromEntries(cs.passos.map((p) => [p.id, p]));
     assert.ok(P['loja-fora-do-site'] && P['loja-fora-do-site'].cards === 1 && P['loja-fora-do-site'].itens[0].nome === 'Tênis HOKA só na Bessa', JSON.stringify(cs.passos.map((p) => p.id)));
     assert.ok(P.descricao && P.descricao.itens[0].nome === 'Tênis HOKA Bondi 9 Preto', 'F sem descrição');
-    assert.ok(P.confirmacao && P.confirmacao.precisaDono, 'confirmação é do dono');
+    assert.ok(!P.confirmacao, 'gerente avalia como a subida automática, que confirma sozinha: confirmação não trava');
     assert.ok(cs.passos.every((p) => p.como && p.quem), 'todo passo diz como e quem');
     assert.ok(P['fotos-minimas'] && P['fotos-minimas'].cards === 3, 'todo bipado com < 5 fotos aprende a completar');
     assert.strictEqual(cs.prontosParaSubir, 0);

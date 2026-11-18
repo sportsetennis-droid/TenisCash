@@ -21,7 +21,7 @@
 <style>
 :root{
   --o1:#EA5128; --o2:#E5571E; --o3:#C93E19;
-  --tx:#fff; --mut:rgba(255,255,255,.88);
+  --tx:#fff; --mut:#fff;
   --wtx:#2a1206; --wmut:#74412c; --wline:rgba(70,22,0,.12);
   --ok:#0B7A4B; --okbg:rgba(11,122,75,.12); --warn:#8a5a00; --warnbg:#FFF1CC; --bad:#B3261E; --badbg:rgba(179,38,30,.1);
   --sat:env(safe-area-inset-top,0px); --sab:env(safe-area-inset-bottom,0px);
@@ -32,13 +32,14 @@ body{min-height:100vh;background:linear-gradient(205deg,#EF5A31 0%,#EA5128 45%,#
 button,input{font:inherit;color:inherit}
 button{background:none;border:0;cursor:pointer}
 :focus-visible{outline:2px solid #fff;outline-offset:2px;border-radius:8px}
+.sheet :focus-visible,.marca:focus-visible,nav.baixo :focus-visible{outline:3px solid var(--o3)}
 .app{max-width:480px;margin:0 auto;padding:14px 16px 0}
 header h1{font-weight:900;font-stretch:115%;font-size:26px;letter-spacing:-.01em;line-height:1.1}
 header p{color:var(--mut);font-size:13px;margin-top:4px}
 .busca{margin:14px 0 10px;display:flex;gap:8px}
-.busca input{flex:1;min-height:44px;border-radius:14px;border:0;padding:0 14px;background:#fff;color:var(--wtx);font-weight:600}
+.busca input{flex:1;min-height:44px;border-radius:14px;border:0;padding:0 14px;background:#fff;color:var(--wtx);font-weight:600;font-size:16px}
 .chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:10px;scrollbar-width:none}
-.chip{flex:0 0 auto;min-height:36px;padding:0 12px;border-radius:999px;background:rgba(255,255,255,.18);color:#fff;font-weight:800;font-size:13px}
+.chip{flex:0 0 auto;min-height:44px;padding:0 12px;border-radius:999px;background:rgba(255,255,255,.18);color:#fff;font-weight:800;font-size:13px}
 .chip[aria-pressed=true]{background:#fff;color:var(--o3)}
 .info{font-size:12.5px;color:var(--mut);margin:0 0 10px}
 .lista{display:grid;gap:10px}
@@ -61,9 +62,9 @@ header p{color:var(--mut);font-size:13px;margin-top:4px}
 .erro{background:#fff;color:var(--bad);border-radius:14px;padding:14px;font-weight:700}
 .demo{margin:0 0 12px;padding:9px 12px;border-radius:12px;background:#2a1206;color:#FFE3C2;font-size:12.5px;font-weight:700}
 /* bottom sheet do detalhe */
-.veu{position:fixed;inset:0;background:rgba(30,8,0,.45);opacity:0;pointer-events:none;transition:opacity .2s}
+.veu{position:fixed;inset:0;z-index:4;background:rgba(30,8,0,.45);opacity:0;pointer-events:none;transition:opacity .2s}
 .veu.on{opacity:1;pointer-events:auto}
-.sheet{position:fixed;left:0;right:0;bottom:0;max-width:480px;margin:0 auto;max-height:92vh;background:#fff;color:var(--wtx);border-radius:22px 22px 0 0;transform:translateY(100%);transition:transform .25s cubic-bezier(.22,.8,.24,1);display:flex;flex-direction:column;padding-bottom:var(--sab);z-index:5}
+.sheet{position:fixed;left:0;right:0;bottom:0;max-width:480px;margin:0 auto;max-height:92vh;max-height:92dvh;background:#fff;color:var(--wtx);border-radius:22px 22px 0 0;transform:translateY(100%);transition:transform .25s cubic-bezier(.22,.8,.24,1);display:flex;flex-direction:column;padding-bottom:var(--sab);z-index:5}
 .sheet.on{transform:none}
 .sheet .cab{display:flex;align-items:center;gap:10px;padding:14px 16px 10px;border-bottom:1px solid var(--wline)}
 .sheet .cab h2{flex:1;font-weight:900;font-stretch:110%;font-size:21px}
@@ -128,7 +129,12 @@ var DADOS = [];
 var FILTRO = 'todas';
 function $(s) { return document.querySelector(s); }
 function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-function token() { try { return localStorage.getItem('tc_token') || ''; } catch (e) { return ''; } }
+// aceita o login do app (tc_token) e o do admin (tc_admin_token)
+function token() { try { return localStorage.getItem('tc_token') || localStorage.getItem('tc_admin_token') || ''; } catch (e) { return ''; } }
+var LOJAS = { LOJA01: 'Baratão', LOJA02: 'Bessa', LOJA03: 'Campina Grande', LOJA04: 'Fábrica', LOJA05: 'Pirâmide', LOJA06: 'Tambiá', LOJA07: 'Manaíra', SITE: 'Site (Nuvemshop)' };
+function loja(k) { return LOJAS[k] ? LOJAS[k] + (k === 'SITE' ? '' : ' (' + k + ')') : k; }
+var RISCO = { low: 'baixo', medium: 'médio', high: 'alto' };
+function idade(iso) { var d = Math.floor((Date.now() - new Date(iso).getTime()) / 864e5); return d <= 0 ? 'hoje' : d === 1 ? 'ontem' : 'há ' + d + ' dias'; }
 function rs(v) { return v == null ? '—' : 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }); }
 function n(v) { return v == null ? '—' : Number(v).toLocaleString('pt-BR'); }
 function classeNota(a) { return a >= 50 ? 'n3' : a >= 20 ? 'n2' : 'n1'; }
@@ -150,7 +156,7 @@ function carregar() {
   api('/marcas').then(function (j) {
     DADOS = j.marcas || [];
     var quando = j.ultimaGeracao ? new Date(j.ultimaGeracao).toLocaleString('pt-BR') : null;
-    $('#info').textContent = DADOS.length ? (DADOS.length + ' marcas · relatório de ' + quando + ' · todo dia às 06:41') : '';
+    $('#info').textContent = DADOS.length ? (DADOS.length + ' marcas · último relatório ' + idade(j.ultimaGeracao) + ' (' + quando + ') · o gerente roda todo dia de manhã') : '';
     desenhar();
   }).catch(function (e) {
     $('#info').textContent = '';
@@ -169,21 +175,21 @@ function passa(m) {
 
 function desenhar() {
   var l = DADOS.filter(passa);
-  if (!DADOS.length) { $('#lista').innerHTML = '<div class="vazio">Ainda não há relatório. Os gerentes de marca rodam todo dia às 06:41.<br>Abra uma marca pela busca depois do primeiro relatório.</div>'; return; }
+  if (!DADOS.length) { $('#lista').innerHTML = '<div class="vazio">Ainda não há relatório recente. Os gerentes de marca rodam todo dia de manhã; se faltar, abra uma marca e toque em Atualizar.</div>'; return; }
   if (!l.length) { $('#lista').innerHTML = '<div class="vazio">Nenhuma marca neste filtro.</div>'; return; }
   $('#lista').innerHTML = l.map(function (m) {
     var v = m.vendas30 || {};
     var al = m.alertaPrincipal;
     return '<button class="marca" data-m="' + esc(m.marca) + '">' +
-      '<div class="topo"><span class="nome">' + esc(m.marca) + '</span><span class="nota ' + classeNota(m.atencao) + '" title="Atenção">' + m.atencao + '</span></div>' +
+      '<div class="topo"><span class="nome">' + esc(m.marca) + '</span><span class="nota ' + classeNota(m.atencao) + '" title="Atenção">' + n(m.atencao) + '</span></div>' +
       '<div class="nums"><div class="num"><b>' + n(m.localizado) + '</b><span>localizado de ' + n(m.comprado) + '</span></div>' +
       '<div class="num"><b>' + n(v.un) + '</b><span>vendidos 30 dias</span></div>' +
       '<div class="num"><b>' + rs(v.rs) + '</b><span>vendas 30 dias</span></div></div>' +
-      (m.conferencia ? '<div class="conf"><span><b>' + (m.conferencia.pctCardsBipados == null ? '—' : m.conferencia.pctCardsBipados + '%') + '</b> bipado no estoque novo</span>' +
+      (m.conferencia ? '<div class="conf"><span><b>' + (m.conferencia.pctCardsBipados == null ? '—' : n(m.conferencia.pctCardsBipados) + '%') + '</b> bipado no estoque novo</span>' +
         '<span><b>' + n(m.conferencia.bipadosNaNuvemshop) + '</b> bipados no site</span>' +
         (m.conferencia.publicadosNaoBipados ? '<span class="risco"><b>' + n(m.conferencia.publicadosNaoBipados) + '</b> no site sem bipe</span>' : '') + '</div>' : '') +
       (al ? '<div class="alerta"><i>!</i><span>' + esc(al.texto) + '</span></div>' : '<div class="alerta"><span class="mut">Sem alerta hoje.</span></div>') +
-      (m.propostasPendentes ? '<div class="prop">' + m.propostasPendentes + ' proposta(s) esperando você</div>' : '') +
+      (m.propostasPendentes ? '<div class="prop">' + n(m.propostasPendentes) + ' proposta(s) esperando você</div>' : '') +
       '</button>';
   }).join('');
 }
@@ -192,6 +198,7 @@ function abrir(marca) {
   $('#shTit').textContent = marca;
   $('#shCorpo').innerHTML = '<p class="mut">Carregando…</p>';
   $('#veu').classList.add('on'); $('#sheet').classList.add('on');
+  setTimeout(function () { var f = $('#fechar'); if (f) f.focus(); }, 50);
   api('/marcas/' + encodeURIComponent(marca)).then(function (j) { $('#shCorpo').innerHTML = detalhe(j); ligarAtualizar(marca); })
     .catch(function (e) { $('#shCorpo').innerHTML = '<div class="erro">' + esc(e.message) + '</div>'; });
 }
@@ -200,7 +207,7 @@ function fechar() { $('#veu').classList.remove('on'); $('#sheet').classList.remo
 function linhas(obj, fmt) {
   var ks = Object.keys(obj || {});
   if (!ks.length) return '<p class="mut">Nada registrado.</p>';
-  return '<table class="tab">' + ks.sort().map(function (k) { return '<tr><td>' + esc(k === 'SITE' ? 'Site (Nuvemshop)' : k) + '</td><td>' + fmt(obj[k]) + '</td></tr>'; }).join('') + '</table>';
+  return '<table class="tab">' + ks.sort().map(function (k) { return '<tr><td>' + esc(loja(k)) + '</td><td>' + fmt(obj[k]) + '</td></tr>'; }).join('') + '</table>';
 }
 
 function detalhe(j) {
@@ -209,12 +216,12 @@ function detalhe(j) {
   var v = r.vendas || {}, d30 = v.d30 || {}, d7 = v.d7 || {};
   var h = '<p class="mut">Relatório de ' + new Date(r.geradoEm).toLocaleString('pt-BR') + (r.sobDemanda ? ' (pedido agora)' : '') + ' · ' + n(r.cards) + ' cards ativos, ' + n(r.cardsComEstoque) + ' com estoque</p>';
   h += '<div class="sec"><h3>O que precisa de você</h3>' + ((r.alertas || []).length ? r.alertas.map(function (a) {
-    var itens = (a.itens || []).slice(0, 5).map(function (i) { return '<li>' + esc(i.nome) + (i.loja ? ' · ' + esc(i.loja) : '') + (i.unidades != null ? ' · ' + n(i.unidades) + ' un' : '') + (i.vendidos30 != null ? ' · vendeu ' + n(i.vendidos30) : '') + (i.dias != null ? ' · ' + i.dias + ' dias' : '') + (i.preco != null ? ' · preço ' + rs(i.preco) + ' / custo ' + rs(i.custo) : '') + '</li>'; }).join('');
-    return '<div class="al g' + a.gravidade + '">' + esc(a.texto) + (itens ? '<ul>' + itens + '</ul>' : '') + '</div>';
+    var itens = (a.itens || []).slice(0, 5).map(function (i) { return '<li>' + esc(i.nome) + (i.loja ? ' · ' + esc(loja(i.loja)) : '') + (i.unidades != null ? ' · ' + n(i.unidades) + ' un' : '') + (i.vendidos30 != null ? ' · vendeu ' + n(i.vendidos30) : '') + (i.dias != null ? ' · ' + n(i.dias) + ' dias' : '') + (i.preco != null ? ' · preço ' + rs(i.preco) + ' / custo ' + rs(i.custo) : '') + '</li>'; }).join('');
+    return '<div class="al g' + (Number(a.gravidade) || 1) + '">' + esc(a.texto) + (itens ? '<ul>' + itens + '</ul>' : '') + '</div>';
   }).join('') : '<p class="mut">Nada pendente hoje.</p>') + '</div>';
   h += '<div class="sec"><h3>Estoque</h3><table class="tab"><tr><td>Comprado (NF-e de entrada)</td><td>' + n(r.comprado) + '</td></tr><tr><td>Localizado nas lojas</td><td>' + n(r.localizado) + '</td></tr><tr><td>Cobertura (dias de venda)</td><td>' + n(r.coberturaDias) + '</td></tr><tr><td>Parados 90+ dias</td><td>' + n(r.parados && r.parados.cards) + ' cards · ' + rs(r.parados && r.parados.valorCustoRS) + '</td></tr></table>' +
     '<p class="mut" style="margin-top:8px">Por loja (localizado):</p>' + linhas(r.porLoja, function (x) { return n(x) + ' un'; }) + '</div>';
-  h += '<div class="sec"><h3>Venda — loja física × site</h3><table class="tab"><tr><td>Últimos 7 dias</td><td>' + n(d7.un) + ' un · ' + rs(d7.rs) + '</td></tr><tr><td>Últimos 30 dias</td><td>' + n(d30.un) + ' un · ' + rs(d30.rs) + '</td></tr><tr><td>Margem bruta 30 dias</td><td>' + (d30.margemPct == null ? '—' : d30.margemPct + '%') + '</td></tr></table>' +
+  h += '<div class="sec"><h3>Venda — loja física × site</h3><table class="tab"><tr><td>Últimos 7 dias</td><td>' + n(d7.un) + ' un · ' + rs(d7.rs) + '</td></tr><tr><td>Últimos 30 dias</td><td>' + n(d30.un) + ' un · ' + rs(d30.rs) + '</td></tr><tr><td>Margem bruta 30 dias</td><td>' + (d30.margemPct == null ? '—' : n(d30.margemPct) + '%') + '</td></tr></table>' +
     (d30.unSemCusto ? '<p class="mut">' + n(d30.unSemCusto) + ' un vendidas sem custo gravado ficaram fora da margem.</p>' : '') +
     '<p class="mut" style="margin-top:8px">Por canal (30 dias):</p>' + linhas(v.porCanal30, function (x) { return n(x.un) + ' un · ' + rs(x.rs); }) + '</div>';
   var cf = r.conferencia;
@@ -222,7 +229,7 @@ function detalhe(j) {
     var lst = function (arr, fmt) { return (arr || []).length ? '<ul style="margin:4px 0 0 18px;font-size:12.5px;color:var(--wmut)">' + arr.slice(0, 6).map(function (i) { return '<li>' + esc(i.nome) + ' · ' + fmt(i) + '</li>'; }).join('') + '</ul>' : ''; };
     h += '<div class="sec"><h3>Bipado no estoque novo × Nuvemshop</h3><table class="tab">' +
       '<tr><td>Cards comprados</td><td>' + n(cf.cardsComprados) + '</td></tr>' +
-      '<tr><td>Comprados já bipados no estoque novo</td><td>' + n(cf.compradosBipados) + (cf.pctCardsBipados == null ? '' : ' (' + cf.pctCardsBipados + '%)') + '</td></tr>' +
+      '<tr><td>Comprados já bipados no estoque novo</td><td>' + n(cf.compradosBipados) + (cf.pctCardsBipados == null ? '' : ' (' + n(cf.pctCardsBipados) + '%)') + '</td></tr>' +
       (cf.bipadosSemCompra ? '<tr><td>Bipados sem compra registrada (sem NF-e)</td><td>' + n(cf.bipadosSemCompra) + '</td></tr>' : '') +
       '<tr><td>Unidades bipadas</td><td>' + n(cf.unidadesBipadas) + (cf.bipesPendentes ? ' · ' + n(cf.bipesPendentes) + ' pendentes' : '') + '</td></tr>' +
       '<tr><td>Bipados e na Nuvemshop</td><td>' + n(cf.bipadosNaNuvemshop) + '</td></tr>' +
@@ -230,14 +237,16 @@ function detalhe(j) {
       '<tr><td>Bipados e fora da Nuvemshop</td><td>' + n(cf.bipadosForaNuvemshop) + '</td></tr>' +
       '<tr><td>Comprados e não bipados</td><td>' + n(cf.compradosNaoBipados) + '</td></tr>' +
       '<tr><td>Bipados com menos de 5 fotos</td><td>' + n(cf.bipadosMenosDe5Fotos) + '</td></tr></table>' +
+      (cf.bipadosMenosDe5Fotos ? '<p class="mut" style="margin-top:8px">Bipados com menos de 5 fotos (regra: todo produto tem 5):</p>' + lst(cf.itensMenosDe5Fotos, function (i) { return n(i.fotos) + ' foto(s)' + (i.noSite ? ' · já está no site' : ''); }) : '') +
+      (cf.compradosNaoBipados ? '<p class="mut" style="margin-top:8px">Comprados e ainda não bipados:</p>' + lst(cf.itensCompradosNaoBipados, function (i) { return 'comprado ' + n(i.comprado); }) : '') +
       '<p class="mut" style="margin-top:8px">Bipado por loja:</p>' + linhas(cf.porLoja, function (x) { return n(x) + ' un'; }) +
       (cf.publicadosNaoBipados ? '<p class="mut" style="margin-top:8px">Na Nuvemshop sem bipe:</p>' + lst(cf.itensPublicadosNaoBipados, function (i) { return 'localizado ' + n(i.localizado) + ' / comprado ' + n(i.comprado); }) : '') +
-      (cf.bipadosForaNuvemshop ? '<p class="mut" style="margin-top:8px">Bipados fora da Nuvemshop:</p>' + lst(cf.itensBipadosForaNuvemshop, function (i) { return n(i.unidades) + ' un · ' + Object.keys(i.lojas || {}).join(', ') + (i.nasLojasDoSite ? '' : ' (loja que não vende no site)'); }) : '') +
-      '<p class="mut" style="margin-top:6px">Bipado = estoque novo: bipes das contagens abertas em 09/11 (rodada cancelada, bipe antigo e bipe pendente não contam). Lojas que vendem no site: regra atual do sistema.</p></div>';
+      (cf.bipadosForaNuvemshop ? '<p class="mut" style="margin-top:8px">Bipados fora da Nuvemshop:</p>' + lst(cf.itensBipadosForaNuvemshop, function (i) { return n(i.unidades) + ' un · ' + Object.keys(i.lojas || {}).map(loja).join(', ') + (i.nasLojasDoSite ? '' : ' (loja que não vende no site)'); }) : '') +
+      '<p class="mut" style="margin-top:6px">Bipado = estoque novo: bipes aplicados das contagens de substituição abertas a partir de 09/11 (rodada cancelada, bipe de antes de 09/11 e bipe pendente não contam). Lojas que vendem no site: as que o sistema usa hoje para o estoque da loja online.</p></div>';
     var cs = cf.conserto;
     if (cs && (cs.prontosParaSubir || (cs.passos || []).length)) {
       h += '<div class="sec"><h3>Como colocar tudo no site</h3>' +
-        (cs.prontosParaSubir ? '<div class="al g1"><b>' + n(cs.prontosParaSubir) + ' pronto(s) para subir</b> — já passam no gate; sobem na próxima subida automática.' + lst(cs.itensProntos, function () { return 'pronto'; }) + '</div>' : '') +
+        (cs.prontosParaSubir ? '<div class="al g1"><b>' + n(cs.prontosParaSubir) + ' pronto(s) para subir</b> — já passam em todas as travas do site; a subida automática (de hora em hora) leva, se nada mudar até lá.' + lst(cs.itensProntos, function () { return 'pronto'; }) + '</div>' : '') +
         (cs.passos || []).map(function (p, i) {
           return '<div class="al ' + (p.precisaDono ? 'g2' : 'g1') + '"><b>' + (i + 1) + '. ' + esc(p.titulo) + ' — ' + n(p.cards) + ' card(s)</b>' +
             '<div style="margin-top:4px">' + esc(p.como) + '</div>' +
@@ -251,8 +260,8 @@ function detalhe(j) {
   h += '<div class="sec"><h3>Site (Nuvemshop)</h3><table class="tab"><tr><td>Publicados</td><td>' + n(s.publicados) + '</td></tr><tr><td>Publicados sem estoque físico</td><td>' + n(s.publicadosSemEstoque) + '</td></tr><tr><td>Prontos para subir</td><td>' + n(s.prontosParaSubir) + '</td></tr><tr><td>Com estoque e barrados pelo cadastro</td><td>' + n(s.bloqueados) + '</td></tr></table>' +
     (Object.keys(s.motivos || {}).length ? '<p class="mut" style="margin-top:8px">Motivos de barrar:</p>' + linhas(s.motivos, n) : '') + '</div>';
   var c = r.cadastro || {};
-  h += '<div class="sec"><h3>Cadastro</h3><table class="tab"><tr><td>Sem foto</td><td>' + n(c.semFoto) + '</td></tr><tr><td>Menos de 5 fotos</td><td>' + n(c.menosDe5Fotos) + '</td></tr><tr><td>Sem cor</td><td>' + n(c.semCor) + '</td></tr><tr><td>Sem custo</td><td>' + n(c.semCusto) + '</td></tr><tr><td>Preço ≤ custo</td><td>' + n(c.precoAbaixoCusto) + '</td></tr><tr><td>Tamanho técnico (T-) com estoque</td><td>' + n(c.tamanhoTecnicoComEstoque) + '</td></tr></table></div>';
-  h += '<div class="sec"><h3>Propostas esperando você</h3>' + ((j.propostas || []).length ? '<table class="tab">' + j.propostas.slice(0, 15).map(function (p) { return '<tr><td>' + esc(p.titulo) + '</td><td>' + esc(p.risco || '') + '</td></tr>'; }).join('') + '</table><p class="mut" style="margin-top:6px">Aprovar ou recusar em <a href="/rede.html" style="color:var(--o3)">Rede › Propostas</a>.</p>' : '<p class="mut">Nenhuma proposta pendente desta marca.</p>') + '</div>';
+  h += '<div class="sec"><h3>Cadastro</h3><table class="tab"><tr><td>Sem foto</td><td>' + n(c.semFoto) + '</td></tr><tr><td>Menos de 5 fotos</td><td>' + n(c.menosDe5Fotos) + '</td></tr><tr><td>Sem cor</td><td>' + n(c.semCor) + '</td></tr><tr><td>Sem custo</td><td>' + n(c.semCusto) + '</td></tr><tr><td>Preço ≤ custo</td><td>' + n(c.precoAbaixoCusto) + '</td></tr><tr><td>Tamanho ainda sem número confirmado (T-) com estoque</td><td>' + n(c.tamanhoTecnicoComEstoque) + '</td></tr></table></div>';
+  h += '<div class="sec"><h3>Propostas esperando você</h3>' + ((j.propostas || []).length ? '<table class="tab">' + j.propostas.slice(0, 15).map(function (p) { return '<tr><td>' + esc(p.titulo) + '</td><td>risco ' + esc(RISCO[p.risco] || p.risco || '—') + '</td></tr>'; }).join('') + '</table><p class="mut" style="margin-top:6px">Aprovar ou recusar em <a href="/rede.html" style="color:var(--o3)">Rede › Propostas</a>.</p>' : '<p class="mut">Nenhuma proposta pendente desta marca.</p>') + '</div>';
   var f = j.ficha;
   h += '<div class="sec"><h3>Ficha da marca</h3>' + (f ? '<dl class="ficha">' +
     (f.fornecedores ? '<dt>Fornecedores</dt><dd>' + esc(f.fornecedores.join(', ')) + '</dd>' : '') +
@@ -269,10 +278,21 @@ function detalhe(j) {
 function ligarAtualizar(marca) {
   var b = $('#atualizar'); if (!b) return;
   b.onclick = function () {
+    var antes = Date.now();
     b.disabled = true; b.textContent = 'Pedindo ao gerente da marca…';
     api('/marcas/' + encodeURIComponent(marca) + '/atualizar', { method: 'POST', body: '{}' }).then(function (j) {
-      b.textContent = j.aviso || 'Pedido feito. Recarregando em 8 segundos…';
-      if (!j.aviso) setTimeout(function () { abrir(marca); carregar(); }, 8000);
+      if (j.aviso) { b.textContent = j.aviso; return; }
+      b.textContent = 'Pedido feito. Esperando o relatório novo…';
+      var tentativas = 0;
+      (function esperar() {
+        tentativas++;
+        api('/marcas/' + encodeURIComponent(marca)).then(function (d) {
+          var novo = d.relatorio && d.relatorio.geradoEm && new Date(d.relatorio.geradoEm).getTime() >= antes - 5000;
+          if (novo) { $('#shCorpo').innerHTML = detalhe(d); ligarAtualizar(marca); carregar(); return; }
+          if (tentativas >= 30) { b.disabled = false; b.textContent = 'O relatório ainda não ficou pronto. Tente de novo em instantes.'; return; }
+          setTimeout(esperar, 4000);
+        }).catch(function (e) { b.disabled = false; b.textContent = e.message; });
+      })();
     }).catch(function (e) { b.disabled = false; b.textContent = e.message; });
   };
 }
