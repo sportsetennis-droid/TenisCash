@@ -22,10 +22,12 @@ function world(){
   saved:null};
  const db={
   $queryRaw:async()=>[],
+  // Recebimento automático (PR #293): nenhum recebimento neste cenário.
+  $queryRawUnsafe:async()=>[],$executeRaw:async()=>0,$executeRawUnsafe:async()=>0,
   $transaction:async fn=>fn(db),
   productSize:{findMany:async()=>w.owners,findUnique:async()=>w.size},
   stocktakeBipe:{findMany:async()=>w.others,findUnique:async()=>w.bipe,update:async()=>({})},
-  stocktakeRound:{findUnique:async()=>w.round},
+  stocktakeRound:{findUnique:async()=>w.round,findFirst:async({where}={})=>{const st=where&&where.status;const ok=!st||(st.in?st.in.includes(w.round.status):st===w.round.status);return ok&&(!where.operationType||where.operationType===w.round.operationType)?{...w.round,startedAt:new Date(0)}:null;}},
   productCapture:{findFirst:async()=>w.capture,update:async()=>({})},
   stockReplacementCheck:{findMany:async()=>w.checks,findUnique:async()=>null,upsert:async a=>{w.saved=a.create;return a.create;},
    createMany:async()=>{},updateMany:async()=>{}},
