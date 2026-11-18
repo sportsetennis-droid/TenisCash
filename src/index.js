@@ -463,14 +463,6 @@ app.post('/api/_falgen', async (req, res) => {
     return res.json({ ok: false, error: String(e.message).slice(0, 200), ...keys });
   }
 });
-// TEMPORÁRIO (dono 18/11/2026: áudio sem API): transcreve um áudio de teste no servidor. Remover depois.
-app.post('/api/_teste-audio', express.json({ limit: '2mb' }), async (req, res) => {
-  if (req.query.g !== '574274c3e3a638c72b9f49b3') return res.status(404).json({ error: 'not found' });
-  const t = Date.now();
-  const r = await require('./services/localTranscriber').transcribeBase64((req.body || {}).b64 || '');
-  res.json({ r, ms: Date.now() - t, estado: require('./services/localTranscriber').getAsrState(), memMB: Math.round(process.memoryUsage().rss / 1e6) });
-});
-
 app.use('/api/auth', authRoutes);
 app.use('/api/webauthn', webauthnRoutes);
 app.use('/api/face', faceRoutes);
