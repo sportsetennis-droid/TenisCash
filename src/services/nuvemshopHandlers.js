@@ -70,7 +70,9 @@ async function pedirReenvioDoCard(card, forcar) {
   const ultimo = Date.parse(ctx.nsReenvioPedidoAt || '') || 0;
   if (!forcar && Date.now() - ultimo < REENVIO_IRMAO_MS) return false;
   // nsImagesSig também: o anúncio pode estar com as FOTOS do outro card (auditoria 7)
-  await mergeAiContext(prisma, card.id, { nsReenvioPedidoAt: new Date().toISOString() }, ['nsMirrorSig', 'nsCardSig', 'nsImagesSig']);
+  // fotos só quando a situação mudou (o anúncio pode estar com as fotos do outro card);
+  // no repique de 6 h não refaz a troca de fotos que já está certa (auditoria 8)
+  await mergeAiContext(prisma, card.id, { nsReenvioPedidoAt: new Date().toISOString() }, forcar ? ['nsMirrorSig', 'nsCardSig', 'nsImagesSig'] : ['nsMirrorSig', 'nsCardSig']);
   return true;
 }
 

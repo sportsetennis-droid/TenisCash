@@ -200,6 +200,17 @@ async function partB() {
     const a = await prisma.product.findUnique({ where: { id: A.id } });
     assert.ok(a.aiContext.nsMirrorFails >= 1 && /fotos/.test(a.aiContext.nsMirrorLastError));
   });
+  await t('AUDITORIA 8: variante (preço/estoque) que não foi para a loja conta como falha e é tentada de novo', async () => {
+    await prisma.product.update({ where: { id: B.id }, data: { name: 'Card 2 falha variante' } });
+    const falha = { pushProductToNuvemshop: async () => ({ action: 'updated', variantSync: { errors: [{ reason: 'failed to fetch variants: 500' }] }, imageSync: { changed: false } }) };
+    const r1 = await run({ handlers: falha });
+    assert.strictEqual(r1.errors, 1);
+    const ctx = (await prisma.product.findUnique({ where: { id: B.id } })).aiContext;
+    assert.ok(ctx.nsMirrorFails >= 1 && /variantes/.test(ctx.nsMirrorLastError), JSON.stringify(ctx));
+    assert.notStrictEqual(ctx.nsMirrorSig, espelho.mirrorSig(Object.assign({}, B, { name: 'Card 2 falha variante' })), 'não gravou a assinatura');
+    delete ctx.nsMirrorFails; delete ctx.nsMirrorFailAt; delete ctx.nsMirrorLastError;
+    await prisma.product.update({ where: { id: B.id }, data: { aiContext: ctx } }); // tira da espera para o próximo teste
+  });
   await t('AUDITORIA 3: erro de foto no formato singular também conta como falha', async () => {
     await prisma.product.update({ where: { id: B.id }, data: { name: 'Card 2 erro singular' } });
     const um = { pushProductToNuvemshop: async () => ({ action: 'updated', imageSync: { changed: false, error: 'exceção na troca' } }) };

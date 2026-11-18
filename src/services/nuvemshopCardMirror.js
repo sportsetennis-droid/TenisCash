@@ -151,11 +151,15 @@ async function runNuvemshopCardMirror({ prisma = db(), handlers = null, connecti
           continue;
         }
         const erroFoto = r && r.imageSync && ((Array.isArray(r.imageSync.errors) && r.imageSync.errors[0] && r.imageSync.errors[0].error) || r.imageSync.error);
-        const fotosFalharam = !!erroFoto;
-        if (fotosFalharam) {
+        // variante (estoque/preço/promoção) que não foi para a loja também é falha: sem assinatura,
+        // tenta de novo depois (auditoria 8, 18/11)
+        const ev = r && r.variantSync && Array.isArray(r.variantSync.errors) ? r.variantSync.errors[0] : null;
+        const erroVariante = ev ? (ev.error || ev.reason || JSON.stringify(ev)) : null;
+        const erroEnvio = erroFoto ? 'fotos: ' + erroFoto : (erroVariante ? 'variantes: ' + erroVariante : null);
+        if (erroEnvio) {
           result.errors++;
-          if (result.items.length < 20) result.items.push({ productId: p.id, erro: 'troca de fotos incompleta: ' + String(erroFoto).slice(0, 150) });
-          await mergeAiContext(prisma, p.id, { nsMirrorFails: falhas + 1, nsMirrorFailAt: new Date(agora).toISOString(), nsMirrorLastError: 'fotos: ' + String(erroFoto).slice(0, 250) }).catch(() => {});
+          if (result.items.length < 20) result.items.push({ productId: p.id, erro: 'envio incompleto — ' + String(erroEnvio).slice(0, 150) });
+          await mergeAiContext(prisma, p.id, { nsMirrorFails: falhas + 1, nsMirrorFailAt: new Date(agora).toISOString(), nsMirrorLastError: String(erroEnvio).slice(0, 250) }).catch(() => {});
           continue;
         }
         if (r && r.action === 'unpublished-invalid') result.unpublished++;

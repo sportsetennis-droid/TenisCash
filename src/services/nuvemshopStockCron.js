@@ -352,7 +352,9 @@ async function runNuvemshopStockSync({
         const result = await nsHandlers.pushProductToNuvemshop(mapping.localProductId, connection);
         if (!result?.skipped) synced++;
 
-        await mergeAiContext(prisma, mapping.localProductId, { nsCardSig: signature });
+        // só dá o card por enviado se variantes e fotos foram de fato (senão a próxima rodada tenta de novo)
+        const falhouEnvio = (result?.variantSync?.errors?.length || 0) > 0 || (result?.imageSync?.errors?.length || 0) > 0 || !!result?.imageSync?.error;
+        if (!falhouEnvio) await mergeAiContext(prisma, mapping.localProductId, { nsCardSig: signature });
       } catch (error) {
         console.error('[nsStockCron] sync', mapping.localProductId, error.message);
       } finally {
