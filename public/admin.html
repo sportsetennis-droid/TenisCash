@@ -7675,6 +7675,7 @@ async function loadSellers() {
     if (sStores.length) html += '<div style="font-size:12px;color:#1d1d1f;padding:6px 10px;background:#f5f5f7;border-radius:8px;line-height:1.6;">🏬 ' + sStores.map(st => '<strong>' + escapeHtml(st.code) + '</strong> ' + escapeHtml(st.name)).join(' · ') + (sStores.length > 1 ? ' <span style="color:#0a843d;font-weight:700;">(' + sStores.length + ' lojas)</span>' : '') + '</div>';
     const cargo = jobTitles[s.id] || 'VENDEDOR';
     html += '<label style="font-size:11px;font-weight:700;color:#555;display:flex;align-items:center;gap:8px">Cargo <select class="js-job-title" data-seller-id="' + s.id + '" style="flex:1;height:34px;border:1px solid #ddd;border-radius:8px;padding:0 8px;font-size:13px">' + [['VENDEDOR','Vendedor'],['LOGISTICA','Logística'],['SUPERVISOR','Supervisor de vendas']].map(([v, l]) => '<option value="' + v + '"' + (cargo === v ? ' selected' : '') + '>' + l + '</option>').join('') + '</select></label>';
+    html += '<div style="display:flex;gap:6px"><button class="js-seller-phone" data-seller-id="' + s.id + '" data-seller-name="' + escapeHtml(s.name || '') + '" data-phone="' + escapeHtml(s.phone || '') + '" style="flex:1;padding:8px;background:#fff;border:1px solid #e5e5ea;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">✏️ WhatsApp</button><button class="js-escala-link" data-seller-id="' + s.id + '" data-seller-name="' + escapeHtml(s.name || '') + '" style="flex:1;padding:8px;background:#fff;border:1px solid #e5e5ea;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">📲 Enviar link da escala</button></div>';
     html += '<button class="js-pay-contract" data-seller-id="' + s.id + '" data-seller-name="' + escapeHtml(s.name || '') + '" style="padding:8px;background:#FFF4EE;border:1px solid #F6C9B3;border-radius:8px;font-size:12px;font-weight:700;color:#C2410C;cursor:pointer;margin-top:auto;">💵 Contrato e salário</button>';
     html += '<button class="js-remove-seller" data-seller-id="' + s.id + '" data-seller-name="' + escapeHtml(s.name || '') + '" style="padding:8px;background:white;border:1px solid #e5e5ea;border-radius:8px;font-size:12px;color:#d70015;cursor:pointer;margin-top:auto;">🗑 Remover</button>';
     html += '</div>';
@@ -7686,6 +7687,23 @@ async function loadSellers() {
       const r = await api('/admin/schedule/job-titles/' + encodeURIComponent(sel.dataset.sellerId), 'PUT', { title: sel.value });
       if (r.error) { alert('Erro: ' + r.error); loadSellers(); return; }
       sel.style.borderColor = '#0a843d'; setTimeout(() => { sel.style.borderColor = '#ddd'; }, 1500);
+    };
+  });
+  Array.from(wrap.querySelectorAll('.js-seller-phone')).forEach(btn => {
+    btn.onclick = async () => {
+      const cur = /^[0-9]+$/.test(btn.dataset.phone || '') ? btn.dataset.phone : '';
+      const v = prompt('WhatsApp de ' + btn.dataset.sellerName + ' (DDD + número):', cur);
+      if (v === null) return;
+      const r = await api('/admin/schedule/seller-phone/' + encodeURIComponent(btn.dataset.sellerId), 'PUT', { phone: v });
+      if (r.error) { alert(r.error); return; }
+      alert('WhatsApp salvo: ' + r.phone); loadSellers();
+    };
+  });
+  Array.from(wrap.querySelectorAll('.js-escala-link')).forEach(btn => {
+    btn.onclick = async () => {
+      if (!confirm('Enviar para ' + btn.dataset.sellerName + ', no WhatsApp, o link pessoal para preencher a escala do mês?')) return;
+      const r = await api('/admin/schedule/escala-link/' + encodeURIComponent(btn.dataset.sellerId), 'POST', {});
+      alert(r.error ? r.error : 'Link enviado para ' + btn.dataset.sellerName + '.');
     };
   });
   Array.from(wrap.querySelectorAll('.js-pay-contract')).forEach(btn => {
