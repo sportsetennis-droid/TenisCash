@@ -112,4 +112,4 @@ async function readMedia({ instance, data }) {
   return { kind: 'other', text: '[mensagem nao-texto]' };
 }
 
-module.exports = { readMedia };
+module.exports = { readMedia, downloadMedia, transcribeAudio };

@@ -2399,6 +2399,36 @@ const TOOLS = [
     input_schema: { type: 'object', properties: {} },
   },
   {
+    name: 'ficha_do_cliente',
+    description: 'Ficha do CLIENTE pelo telefone: nome, saldo de TenisCash, total comprado, ultimas compras (data, loja, itens e tamanhos). Use quando o vendedor perguntar sobre um cliente ("ja comprou?", "o que ele levou?", "quanto tem de TenisCash?"). Sugira o que oferecer com base no historico. Nunca repasse dado do cliente a terceiros.',
+    input_schema: { type: 'object', properties: { telefone: { type: 'string', description: 'Telefone do cliente com DDD.' } }, required: ['telefone'] },
+  },
+  {
+    name: 'tenis_cash_do_cliente',
+    description: 'Saldo de TenisCash do cliente + mensagem pronta (rascunho) para o VENDEDOR enviar ao cliente explicando como usar. Nao gasta saldo: o uso e no caixa (cliente informa o telefone) ou cupom no app.',
+    input_schema: { type: 'object', properties: { telefone: { type: 'string' } }, required: ['telefone'] },
+  },
+  {
+    name: 'foto_do_produto',
+    description: 'Manda pro vendedor, no WhatsApp, a FOTO OFICIAL do produto (ate 3) pra ele repassar ao cliente. Use quando pedirem foto/imagem de um produto.',
+    input_schema: { type: 'object', properties: { produto: { type: 'string', description: 'Modelo, marca, referencia ou codigo de barras.' }, cor: { type: 'string' } }, required: ['produto'] },
+  },
+  {
+    name: 'pedir_transferencia',
+    description: 'Registra um PEDIDO de transferencia de produto de outra loja para a loja do vendedor e avisa quem esta trabalhando na loja de origem. O estoque NAO muda agora (so quando a origem bipar o envio). Antes de chamar, confira com search_store_stock se a loja de origem tem o tamanho e CONFIRME com o vendedor; chame com confirmar=true so depois do "sim" dele.',
+    input_schema: { type: 'object', properties: { produto: { type: 'string' }, tamanho: { type: 'string' }, quantidade: { type: 'number' }, de_loja: { type: 'string', description: 'Codigo (LOJA06) ou nome (Tambia) da loja de origem.' }, observacao: { type: 'string' }, urgente: { type: 'boolean' }, confirmar: { type: 'boolean' } }, required: ['produto', 'de_loja', 'confirmar'] },
+  },
+  {
+    name: 'venda_perdida',
+    description: 'Registra uma VENDA PERDIDA: o que o cliente queria e nao tinha (produto, tamanho, motivo: sem_estoque | sem_tamanho | sem_cor | preco | outro). Isso vira sinal para compra. Use sempre que o vendedor contar que perdeu uma venda.',
+    input_schema: { type: 'object', properties: { produto: { type: 'string' }, tamanho: { type: 'string' }, motivo: { type: 'string' }, observacao: { type: 'string' } }, required: ['produto'] },
+  },
+  {
+    name: 'placar_da_loja',
+    description: 'Placar da LOJA do vendedor hoje: vendas e valor da loja, meta da loja hoje (R$ 1.000 por pessoa com ponto), quanto falta, e o resultado do proprio vendedor hoje. Nunca informe valores de colegas.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
     name: 'ask_manager',
     description: 'Encaminha a pergunta ao GERENTE dos agentes (e, se ele nao souber, ao dono Douglas). Use SEMPRE que nao houver dado real nas tools/contexto para responder, ou quando for decisao da empresa: desconto fora da regra, excecao, troca/devolucao especial, regra de RH/salario/comissao nao coberta, politica nova. Nunca invente nesses casos.',
     input_schema: { type: 'object', properties: { question: { type: 'string', description: 'A pergunta do vendedor, clara e completa.' }, what_i_know: { type: 'string', description: 'O que voce ja sabe/encontrou que ajuda o gerente (opcional).' } }, required: ['question'] },
@@ -2406,6 +2436,29 @@ const TOOLS = [
 ];
 
 async function execTool(name, input, snapshot) {
+  const powers = require('../services/sellerPowers');
+  const sellerOf = () => ({ id: snapshot.seller.id, name: snapshot.seller.name, storeId: snapshot.seller.storeId || (snapshot.seller.store && snapshot.seller.store.id) || null });
+  if (name === 'ficha_do_cliente') return powers.clientFile(prisma, input && input.telefone);
+  if (name === 'tenis_cash_do_cliente') {
+    const f = await powers.clientFile(prisma, input && input.telefone);
+    if (!f.encontrado) return f;
+    return { nome: f.nome, saldoTenisCash: f.saldoTenisCash, comoUsar: f.comoUsarTenisCash, mensagemProntaParaOVendedorEnviar: powers.tenisCashDraft(f.nome, f.saldoTenisCash) || 'Cliente sem saldo de TenisCash no momento.' };
+  }
+  if (name === 'foto_do_produto') {
+    const r = await powers.productPhotos(prisma, input && input.produto, input && input.cor);
+    if (r.encontrado && r.escolhido) {
+      (snapshot.outbox ||= []).push(...r.escolhido.fotos.slice(0, 3).map((f, i) => ({ image: f, caption: i === 0 ? [r.escolhido.nome, r.escolhido.cor].filter(Boolean).join(' · ') : '' })));
+      return { enviadas: Math.min(3, r.escolhido.fotos.length), produto: r.escolhido.nome, cor: r.escolhido.cor, outrasOpcoes: r.opcoes.slice(1), instrucao: snapshot.channel === 'whatsapp' ? 'As fotos vao logo depois da sua resposta.' : 'As fotos estao disponiveis no WhatsApp.' };
+    }
+    return r;
+  }
+  if (name === 'pedir_transferencia') {
+    if (!input || input.confirmar !== true) return { precisaConfirmar: true, instrucao: 'Confirme com o vendedor produto, tamanho, quantidade e loja de origem antes de registrar.' };
+    const wa = require('../whatsapp');
+    return powers.requestTransfer(prisma, sellerOf(), input, { send: (phone, msg) => wa.sendCustomMessage(phone, msg) });
+  }
+  if (name === 'venda_perdida') return powers.lostSale(prisma, sellerOf(), input || {});
+  if (name === 'placar_da_loja') return powers.storeScoreboard(prisma, sellerOf());
   if (name === 'get_my_results') return myResultsForAgent(snapshot);
   if (name === 'get_my_schedule') return myScheduleForAgent(snapshot);
   if (name === 'ask_manager') return askManagerForAgent(input, snapshot);
@@ -2440,6 +2493,9 @@ Regras:
 - Se o vendedor pedir produto sem falar de estoque, use recommend_products antes de recomendar; use search_products apenas para busca simples/listagem.
 - Diga no maximo 180 palavras. Nada de texto motivacional generico.
 - Para vendas, meta, comissao ou ranking DO VENDEDOR use get_my_results. Para escala, folga e horario use get_my_schedule. So mostre dados do proprio vendedor; nunca de colegas.
+- Cliente: use ficha_do_cliente (historico + TenisCash) e sugira o proximo produto pelo que ele ja levou. Foto pedida: foto_do_produto. Venda perdida: venda_perdida. "Como ta a loja?": placar_da_loja. Transferencia: confira o estoque da origem, confirme com o vendedor e so entao pedir_transferencia com confirmar=true.
+- Se a mensagem trouxer "[Foto enviada pelo vendedor]", use os codigos/modelo identificados para consultar search_store_stock (codigo de barras primeiro) e diga em que lojas e tamanhos tem. Se a identificacao for incerta, diga o que conseguiu ler e peca a etiqueta/codigo.
+- Se a mensagem vier de "[Audio do vendedor]", responda ao conteudo normalmente.
 - Se nao houver dado real para responder, ou se for decisao da empresa (desconto fora da regra, excecao, troca especial, RH, politica nova), use ask_manager. Nunca invente. As respostas oficiais do dono abaixo valem como regra da empresa.
 ${snapshot.channel === 'whatsapp' ? '- Canal: WhatsApp. Sem titulos markdown nem tabelas; use *negrito* do WhatsApp e listas curtas. Nao cite botoes do app, exceto para pedir folga (Escala e folgas > + MARCAR).' : ''}
 
@@ -2684,6 +2740,7 @@ async function runSellerAgentChat(req, text, { channel = 'app' } = {}) {
 
   const snapshot = await loadSellerSnapshot(req);
   snapshot.channel = channel;
+  snapshot.outbox = [];
   snapshot.ownerAnswersPrompt = await agentManager.knowledgePrompt(prisma);
   const whatsappDraft = sellerAssistant.parseWhatsappDraft(text);
   if (whatsappDraft) {
@@ -2710,7 +2767,8 @@ async function runSellerAgentChat(req, text, { channel = 'app' } = {}) {
     });
   }
 
-  if (isStockIntent(text)) {
+  // No WhatsApp o modelo decide com as ferramentas (os atalhos por palavra-chave atropelavam foto, cliente, transferência…).
+  if (channel !== 'whatsapp' && isStockIntent(text)) {
     const stockInput = await parseStockInputFromText(text);
     if (!stockInput.query) {
       const reply = isStockSizeDisplayComplaint(text) ? stockSizeDisplayHelpReply() : stockNeedsProductReply();
@@ -2733,7 +2791,7 @@ async function runSellerAgentChat(req, text, { channel = 'app' } = {}) {
     });
   }
 
-  if (isWebResearchIntent(text)) {
+  if (channel !== 'whatsapp' && isWebResearchIntent(text)) {
     const researchInput = {
       query: cleanProductNeed(text) || text,
       webQuery: text,
@@ -2750,7 +2808,7 @@ async function runSellerAgentChat(req, text, { channel = 'app' } = {}) {
     });
   }
 
-  if (isProductRecommendationIntent(text)) {
+  if (channel !== 'whatsapp' && isProductRecommendationIntent(text)) {
     const recommendation = await recommendProductsForAgent({ need: text, limit: 5 }, snapshot);
     const reply = formatRecommendationReply(recommendation);
     const conversationId = await persistSellerAgentTurn(req, text, reply, { intent: 'product_recommendation', productIds: recommendation.products?.map((p) => p.id) || [] });
@@ -2762,7 +2820,7 @@ async function runSellerAgentChat(req, text, { channel = 'app' } = {}) {
     });
   }
 
-  if (isLearningIntent(text)) {
+  if (channel !== 'whatsapp' && isLearningIntent(text)) {
     const saved = await saveSellerLearningForAgent({ detail: text, title: text.slice(0, 120), importance: 2 }, snapshot);
     const reply = saved.saved
       ? 'Salvei esse aprendizado na memoria da empresa. Vou considerar isso nas proximas recomendacoes e respostas da IA ST Vendedor.'
@@ -2888,6 +2946,7 @@ async function runSellerAgentChat(req, text, { channel = 'app' } = {}) {
   return ({
     conversationId: conv.id,
     reply: finalText,
+    media: snapshot.outbox || [],
     suggestions: ['Indique produto para cliente', 'Pesquisar produto na internet', 'Ver estoque por loja'],
     offline: providerFallback || undefined,
     providerUnavailable: providerFallback || undefined,
