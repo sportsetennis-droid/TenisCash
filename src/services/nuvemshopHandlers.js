@@ -1426,7 +1426,20 @@ async function updateNuvemshopVariants(connection, nsProductId, localProduct, si
       await ns.nuvemshopApi(connection, 'DELETE', `/products/${nsProductId}/variants/${v.id}`);
       result.deleted++;
     } catch (e) {
-      result.errors.push({ variantId: v.id, del: true, error: e.message });
+      // A loja recusou apagar o tamanho: ZERA o estoque dele para o site não vender o que não tem
+      // (auditoria 10, achado A1 — 18/11). Continua como erro para o espelho/reajuste tentarem
+      // apagar de novo depois; enquanto isso o tamanho aparece esgotado, nunca com estoque velho.
+      let zerado = v.stock_management === true && Number(v.stock || 0) === 0;
+      if (!zerado) {
+        try {
+          await ns.nuvemshopApi(connection, 'PUT', `/products/${nsProductId}/variants/${v.id}`, { stock_management: true, stock: 0 });
+          zerado = true;
+        } catch (e2) {
+          console.warn('[ns var] apagar e zerar falharam', nsProductId, v.id, e.message, '/', e2.message);
+        }
+      }
+      if (zerado) result.zeroed = (result.zeroed || 0) + 1;
+      result.errors.push({ variantId: v.id, del: true, zeroed: zerado, error: 'tamanho sem estoque não apagado' + (zerado ? ' (zerado na loja)' : ' nem zerado') + ': ' + e.message });
     }
   }
   return result;

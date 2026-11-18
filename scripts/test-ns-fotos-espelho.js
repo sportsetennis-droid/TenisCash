@@ -234,12 +234,14 @@ async function partB() {
 async function partC() {
   // stub da API da Nuvemshop ANTES de carregar os handlers (nada sai para a loja)
   const nsPath = require.resolve('../src/services/nuvemshop');
-  const chamadas = []; const corpos = []; let falharPost = false; let falharUma = null; let falharGet = false; let falharDelete = false; let seq = 800; let variantesRemotas = null;
+  const chamadas = []; const corpos = []; let falharPost = false; let falharUma = null; let falharGet = false; let falharDelete = false; let seq = 800; let variantesRemotas = null; let falharDeleteVar = false; let falharZerar = false;
   require.cache[nsPath] = { id: nsPath, filename: nsPath, loaded: true, exports: { fetchAllPages: async () => [], nuvemshopApi: async (conn, metodo, url, corpo) => {
     chamadas.push(metodo + ' ' + url + (corpo && corpo.published === false ? ' DESPUBLICA' : ''));
     corpos.push({ metodo, url, corpo });
     if (metodo === 'GET' && /images$/.test(url)) { if (falharGet) throw new Error('GET caiu'); return [{ id: 901, position: 1 }, { id: 902, position: 2 }]; }
     if (metodo === 'DELETE' && falharDelete && /images\/90\d$/.test(url)) throw new Error('delete caiu');
+    if (metodo === 'DELETE' && falharDeleteVar && /variants\/\d+$/.test(url)) throw new Error('variante não apaga');
+    if (metodo === 'PUT' && falharZerar && /variants\/\d+$/.test(url) && corpo && corpo.stock === 0) throw new Error('zerar caiu');
     if (metodo === 'POST' && (falharPost || (falharUma && JSON.stringify(corpo || {}).includes(falharUma)))) throw new Error('falhou');
     if (metodo === 'POST' && url === '/products') return { id: ++seq, images: (corpo.images || []).map((x, i) => ({ id: 700 + i })), variants: [] };
     if (metodo === 'POST') return { id: ++seq };
@@ -459,6 +461,54 @@ async function partC() {
     await h.updateNuvemshopVariants({ id: 'c' }, '7171', card, [{ size: '40', barcode: ps.barcode, stock: 2 }]);
     assert.ok(!corpos.some((x) => x.metodo === 'PUT'), 'sem mudança: nenhum envio');
     variantesRemotas = null;
+  });
+  await t('A1: tamanho que zerou e a loja recusa apagar → estoque vai a ZERO no site (não vende o que não tem) e fica para nova tentativa', async () => {
+    const { c, ps } = await cardValido(2);
+    const card = await prisma.product.findUnique({ where: { id: c.id } });
+    const remoto = () => [
+      { id: 81, values: [{ pt: '40' }], sku: ps.barcode, barcode: ps.barcode, stock_management: true, stock: 2, price: '900.00', promotional_price: null },
+      { id: 82, values: [{ pt: '41' }], sku: 'X41', barcode: 'X41', stock_management: true, stock: 3, price: '900.00', promotional_price: null },
+    ];
+    falharDeleteVar = true;
+    try {
+      variantesRemotas = remoto(); corpos.length = 0;
+      const r = await h.updateNuvemshopVariants({ id: 'c' }, '8181', card, [{ size: '40', barcode: ps.barcode, stock: 2 }, { size: '41', barcode: 'X41', stock: 0 }]);
+      const zera = corpos.find((x) => x.metodo === 'PUT' && x.url === '/products/8181/variants/82');
+      assert.ok(zera && zera.corpo.stock === 0 && zera.corpo.stock_management === true, 'zerou o 41: ' + JSON.stringify(corpos));
+      assert.strictEqual(r.zeroed, 1); assert.strictEqual(r.deleted, 0);
+      assert.ok(r.errors.length === 1 && r.errors[0].zeroed === true && /zerado na loja/.test(r.errors[0].error), 'segue como erro p/ tentar apagar de novo: ' + JSON.stringify(r.errors));
+      assert.ok(!corpos.some((x) => x.metodo === 'PUT' && x.url === '/products/8181/variants/81'), 'tamanho 40 sem mudança não é reenviado');
+      // já zerado na loja → não manda PUT de novo, só tenta apagar
+      variantesRemotas = remoto(); variantesRemotas[1].stock = 0; corpos.length = 0;
+      const r2 = await h.updateNuvemshopVariants({ id: 'c' }, '8181', card, [{ size: '40', barcode: ps.barcode, stock: 2 }, { size: '41', barcode: 'X41', stock: 0 }]);
+      assert.ok(!corpos.some((x) => x.metodo === 'PUT'), 'nada a reenviar: ' + JSON.stringify(corpos));
+      assert.strictEqual(r2.zeroed, 1); assert.strictEqual(r2.errors.length, 1);
+      // apagar E zerar falham → erro diz isso (não finge que resolveu)
+      falharZerar = true; variantesRemotas = remoto();
+      const r3 = await h.updateNuvemshopVariants({ id: 'c' }, '8181', card, [{ size: '40', barcode: ps.barcode, stock: 2 }, { size: '41', barcode: 'X41', stock: 0 }]);
+      assert.ok(!r3.zeroed && r3.errors[0].zeroed === false && /nem zerado/.test(r3.errors[0].error), JSON.stringify(r3));
+    } finally { falharDeleteVar = false; falharZerar = false; variantesRemotas = null; }
+    // apagar funcionando → nada de zerar, sem erro
+    variantesRemotas = remoto(); corpos.length = 0;
+    const r4 = await h.updateNuvemshopVariants({ id: 'c' }, '8181', card, [{ size: '40', barcode: ps.barcode, stock: 2 }, { size: '41', barcode: 'X41', stock: 0 }]);
+    assert.strictEqual(r4.deleted, 1); assert.ok(!r4.zeroed && !r4.errors.length, JSON.stringify(r4));
+    variantesRemotas = null;
+  });
+  await t('A1: no espelho, tamanho que não apaga fica zerado e o card volta a tentar (não grava como enviado)', async () => {
+    const { c, ps } = await cardValido(2);
+    await prisma.product.update({ where: { id: c.id }, data: { name: 'Tênis Válido Azul Espelho' } }); // número no nome parece tamanho
+    await prisma.nuvemshopProductMapping.create({ data: { localProductId: c.id, nuvemshopProductId: '8282' } });
+    falharDeleteVar = true;
+    variantesRemotas = [
+      { id: 91, values: [{ pt: '40' }], sku: ps.barcode, barcode: ps.barcode, stock_management: true, stock: 2, price: '900.00', promotional_price: null },
+      { id: 92, values: [{ pt: '39' }], sku: 'X39', barcode: 'X39', stock_management: true, stock: 4, price: '900.00', promotional_price: null },
+    ];
+    try {
+      corpos.length = 0;
+      const r = await h.pushProductToNuvemshop(c.id, { id: 'c' });
+      assert.ok(corpos.some((x) => x.metodo === 'PUT' && x.url === '/products/8282/variants/92' && x.corpo.stock === 0), 'zerou o 39 no push: ' + JSON.stringify(r));
+      assert.ok(r.variantSync && r.variantSync.errors.length, 'push reporta para nova tentativa');
+    } finally { falharDeleteVar = false; variantesRemotas = null; }
   });
   await t('AUDITORIA 3: foto inválida (Instagram/crawler) não vai para a loja nem trava a troca', () => {
     const lista = h.collectLocalImages({ imageUrl: 'https://lookaside.instagram.com/x', imageUrls: ['https://img/ok1.jpg', 'https://x/crawler/y', 'https://img/ok2.jpg'] });
