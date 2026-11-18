@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { splitStatements } = require('../finSchema');
-const { SEED_PARAMS, SEED_HOLIDAYS_2026, SEED_COMMISSION_RULE } = require('./params');
+const { SEED_PARAMS, SEED_HOLIDAYS_2026, SEED_COMMISSION_RULE, SEED_UPDATES } = require('./params');
 
 const MIGRATION = '20261116_payroll';
 const statements = splitStatements(fs.readFileSync(path.join(__dirname, '../../../prisma/migrations', MIGRATION, 'migration.sql'), 'utf8'));
@@ -23,6 +23,15 @@ async function seed(tx) {
     }
     const exists = await tx.payrollParam.findFirst({ where: { key: p.key, validFrom: p.validFrom, issuerId: null, storeId }, select: { id: true } });
     if (!exists) await tx.payrollParam.create({ data: { id: id(), key: p.key, value: p.value, validFrom: p.validFrom, status: p.status || 'ACTIVE', source: p.source, createdById: 'seed', ...(storeId ? { storeId } : {}) } });
+  }
+  for (const u of SEED_UPDATES || []) {
+    let storeId = null;
+    if (u.storeCode) {
+      const st = await tx.store.findFirst({ where: { code: u.storeCode }, select: { id: true } });
+      if (!st) continue;
+      storeId = st.id;
+    }
+    await tx.payrollParam.updateMany({ where: { key: u.key, validFrom: u.validFrom, issuerId: null, storeId, createdById: 'seed', source: u.oldSource }, data: u.set });
   }
   for (const h of SEED_HOLIDAYS_2026) {
     const exists = await tx.payrollHoliday.findFirst({ where: { date: h.date, scope: h.scope, locality: h.locality }, select: { id: true } });

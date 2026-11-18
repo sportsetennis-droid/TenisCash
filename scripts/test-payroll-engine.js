@@ -69,12 +69,12 @@ test('Parâmetro pendente de validação não é usado', () => {
 test('CCT João Pessoa 2026/2027: HE 60%, domingo/feriado R$ 72 + folga, VA R$ 14 (>4h), passagem R$ 11', () => {
   const r = resolveParams(PARAMS, { onDay: '2026-11-30' });
   assert.equal(r.params.HORA_EXTRA.pct, 60); assert.equal(r.params.DOMINGO_TRABALHADO.amountCents, 7200); assert.equal(r.params.FERIADO_TRABALHADO.amountCents, 7200);
-  assert.equal(r.params.VALE_ALIMENTACAO_DIA.amountCents, 1400); assert.equal(r.params.VALE_ALIMENTACAO_DIA.minWorkedMinutes, 240); assert.equal(r.params.PASSAGEM_DIA.amountCents, 1100);
+  assert.equal(r.params.VALE_ALIMENTACAO_DIA.amountCents, 1200); assert.equal(r.params.VALE_ALIMENTACAO_DIA.minWorkedMinutes, 240); assert.equal(r.params.PASSAGEM_DIA.amountCents, 1100);
   assert.ok(!Object.values(r.params).some((p) => p.pct === 100), '100% não foi gravado');
 });
-test('Campina Grande (LOJA03): HE, vale-alimentação e feriado pendentes — não herda os valores de JP', () => {
+test('Campina Grande (LOJA03): sem hora extra; VA R$ 12 e passagem R$ 11 gerais; feriado pendente', () => {
   const r = resolveParams(PARAMS, { onDay: '2026-11-30', storeId: 'store-LOJA03' });
-  assert.ok(!r.params.HORA_EXTRA && r.pending.HORA_EXTRA); assert.ok(!r.params.VALE_ALIMENTACAO_DIA && r.pending.VALE_ALIMENTACAO_DIA); assert.ok(!r.params.FERIADO_TRABALHADO && r.pending.FERIADO_TRABALHADO);
+  assert.ok(r.params.HORA_EXTRA.semHoraExtra && !r.pending.HORA_EXTRA); assert.equal(r.params.VALE_ALIMENTACAO_DIA.amountCents, 1200); assert.ok(!r.params.FERIADO_TRABALHADO && r.pending.FERIADO_TRABALHADO);
   assert.equal(r.params.PASSAGEM_DIA.amountCents, 1100);
 });
 test('Parâmetro sem vigência na competência não é usado', () => {
@@ -146,6 +146,13 @@ test('Falta de ponto não vira desconto sem conciliação', () => {
   assert.equal(item(r, 'FALTA'), 0); assert.ok(pendCodes(r).includes('SEM_PONTO'));
   const conf = computePayslip(base({ punches, marks: [{ id: 'f', kind: 'FALTA_CONFIRMADA', date: '2026-11-12' }] }));
   assert.equal(item(conf, 'FALTA'), Math.round(200000 / 30)); assert.equal(item(conf, 'FALTA_DSR'), Math.round(200000 / 30));
+});
+test('Campina Grande sem hora extra: não paga sozinho e vira pendência para conferir o ponto', () => {
+  const punches = workdays.flatMap((d) => fullDay(d, d === '2026-11-03' ? { exit: '19:20' } : {}));
+  const r = computePayslip(base({ punches, profile: { storeId: 'store-LOJA03' } }));
+  assert.equal(item(r, 'HORA_EXTRA'), 0); assert.ok(pendCodes(r).includes('HE_NAO_PREVISTA'));
+  const ok = computePayslip(base({ profile: { storeId: 'store-LOJA03' } }));
+  assert.ok(!pendCodes(ok).includes('HE_NAO_PREVISTA') && !pendCodes(ok).includes('PARAM_HE'));
 });
 test('Horas extras pelo saldo semanal (60% — CCT JP 2026/2027)', () => {
   const punches = workdays.flatMap((d) => fullDay(d, d === '2026-11-03' ? { exit: '19:20' } : {}));
@@ -269,7 +276,7 @@ test('Vale-alimentação R$ 14/dia (>4h) e passagem R$ 11/dia saem do ponto; man
   const n = new Set(punches.map((p) => new Date(new Date(p.timestamp).getTime() - 3 * 3600000).toISOString().slice(0, 10))).size;
   const r = computePayslip(base({ punches, profile: { vtOptIn: true } }));
   const va = r.benefits.find((b) => b.kind === 'VALE_ALIMENTACAO'), pas = r.benefits.find((b) => b.kind === 'PASSAGEM');
-  assert.equal(va.cents, n * 1400); assert.equal(pas.cents, n * 1100);
+  assert.equal(va.cents, n * 1200); assert.equal(pas.cents, n * 1100);
   assert.equal(item(r, 'VALE_TRANSPORTE'), Math.min(Math.round(200000 * 0.06), n * 1100));
   const noVt = computePayslip(base({ punches }));
   assert.ok(!noVt.benefits.some((b) => b.kind === 'PASSAGEM'), 'sem vale-transporte não gera passagem');

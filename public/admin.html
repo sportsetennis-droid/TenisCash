@@ -1594,6 +1594,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       <span class="section-title">Gerenciar Vendedores e Gerentes</span>
       <button class="refresh-btn" onclick="loadSellers(); loadManagers()">↻</button>
     </div>
+    <button type="button" onclick="setSalaryForAll()" style="width:100%;margin:0 0 8px;padding:12px;background:#FFF4EE;border:1px solid #F6C9B3;border-radius:12px;font-size:14px;font-weight:800;color:#C2410C;cursor:pointer">💵 Salário igual para todos</button>
     <button type="button" onclick="openSellerSignals()" style="width:100%;margin:0 0 8px;padding:12px;background:#fff;border:1px solid #e5e5ea;border-radius:12px;font-size:14px;font-weight:800;color:#1d1d1f;cursor:pointer">📉 Vendas perdidas e pedidos de transferência</button>
     <button type="button" onclick="openSellerGoals()" style="width:100%;margin:0 0 12px;padding:12px;background:#FFF4EE;border:1px solid #F6C9B3;border-radius:12px;font-size:14px;font-weight:800;color:#C2410C;cursor:pointer">🎯 Metas do mês dos vendedores</button>
 
@@ -7718,6 +7719,25 @@ async function loadSellers() {
 // Contrato do vendedor (folha/contracheque) — grava em PayrollEmployeeProfile.
 const PAY_CONTRACTS = [['MENSALISTA','Mensalista (CLT)'],['HORISTA','Horista'],['ESCALA_12X36','Escala 12x36'],['APRENDIZ','Aprendiz'],['PARCIAL','Tempo parcial'],['SEM_REGISTRO','Sem registro']];
 // Metas do mês (dono 17/11/2026): base da "meta de hoje" que vai 1 hora antes do expediente.
+// Dono 18/11/2026: "Salário é o mesmo para todos" — grava o mesmo salário mensal no contrato de cada vendedor ativo.
+async function setSalaryForAll() {
+  const v = prompt('Salário mensal igual para todos os vendedores ativos (R$). Ex: 1790,00');
+  if (v == null) return;
+  const sal = Number(String(v).trim().replace(/\./g, '').replace(',', '.'));
+  if (!(sal > 0)) { alert('Valor inválido.'); return; }
+  const data = await api('/admin/sellers');
+  if (data.error) { alert(data.error); return; }
+  const list = (data.sellers || []).filter((s) => s.active !== false);
+  const brlTxt = sal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  if (!confirm('Gravar ' + brlTxt + ' como salário de ' + list.length + ' pessoa(s)?\n\n' + list.map((s) => s.name).join(', '))) return;
+  let ok = 0; const erros = [];
+  for (const s of list) {
+    const r = await api('/payroll/admin/profiles/' + encodeURIComponent(s.id), 'PUT', { baseSalaryCents: Math.round(sal * 100), reason: 'Salário igual para todos (dono)' });
+    if (r && !r.error) ok++; else erros.push(s.name + ': ' + (r && r.error));
+  }
+  alert('Salário gravado para ' + ok + ' de ' + list.length + '.' + (erros.length ? '\n\nNão gravou:\n' + erros.join('\n') : '') + '\n\nFalta a data de admissão de cada um (botão 💵 Contrato e salário).');
+}
+
 // Sinais dos vendedores pelo WhatsApp: o que o cliente queria e não tinha + transferências pedidas.
 async function openSellerSignals() {
   let ov = document.getElementById('seller-signals-ov');

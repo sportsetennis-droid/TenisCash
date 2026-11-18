@@ -98,6 +98,7 @@ function computePayslip(input) {
   let extraPay = 0;
   if (!timeBank && t.extraMinutes > 0) {
     if (!params.HORA_EXTRA) pend(pendencies, 'PARAM_HE', 'Sem percentual de hora extra vigente.');
+    else if (params.HORA_EXTRA.semHoraExtra) pend(pendencies, 'HE_NAO_PREVISTA', `Esta loja não tem hora extra (decisão do dono), mas o ponto mostra ${hours(provisional ? t.extraMinutes : t.extraConfirmedMinutes)} acima da carga. Conferir o ponto antes de fechar: hora extra que existiu tem que ser paga (mínimo 50%).`);
     else {
       const minutes = provisional ? t.extraMinutes : t.extraConfirmedMinutes;
       extraPay = Math.round(minutes / 60 * hourCents * (1 + params.HORA_EXTRA.pct / 100));
