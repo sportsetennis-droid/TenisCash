@@ -208,6 +208,15 @@ async function partB() {
     const ctx = (await prisma.product.findUnique({ where: { id: B.id } })).aiContext;
     assert.ok(ctx.nsMirrorFails >= 1 && /variantes/.test(ctx.nsMirrorLastError), JSON.stringify(ctx));
     assert.notStrictEqual(ctx.nsMirrorSig, espelho.mirrorSig(Object.assign({}, B, { name: 'Card 2 falha variante' })), 'não gravou a assinatura');
+    // card editado de novo durante a espera: tenta JÁ (a espera vale só para a versão que falhou)
+    await prisma.product.update({ where: { id: B.id }, data: { name: 'Card 2 editado de novo' } });
+    let chamou = 0;
+    const ok = { pushProductToNuvemshop: async (id) => { if (id === B.id) chamou++; return { action: 'updated', variantSync: { errors: [] }, imageSync: { changed: false } }; } };
+    const r2 = await run({ handlers: ok });
+    assert.strictEqual(chamou, 1, 'edição nova não espera: ' + JSON.stringify(r2));
+    const ctx2 = (await prisma.product.findUnique({ where: { id: B.id } })).aiContext;
+    assert.ok(!ctx2.nsMirrorFails && !ctx2.nsMirrorFailSig, 'sucesso limpa a espera');
+    Object.assign(ctx, ctx2);
     delete ctx.nsMirrorFails; delete ctx.nsMirrorFailAt; delete ctx.nsMirrorLastError;
     await prisma.product.update({ where: { id: B.id }, data: { aiContext: ctx } }); // tira da espera para o próximo teste
   });
@@ -264,14 +273,15 @@ async function partC() {
     assert.ok(iPost >= 0 && iDel > iPost, chamadas.join(' | '));
     assert.strictEqual(r.added, 5); assert.strictEqual(r.removed, 2);
   });
-  await t('AUDITORIA 2: troca PARCIAL desfaz as novas, mantém as antigas e não grava a assinatura', async () => {
+  await t('AUDITORIA 9: troca PARCIAL fica com as novas que subiram, tira as antigas (nunca acumula) e não grava a assinatura', async () => {
     const q = await prisma.product.update({ where: { id: p.id }, data: { imageUrls: ['https://img/quebrada.jpg', ...fotos(5).slice(1, 4)] } });
     chamadas.length = 0; falharUma = 'quebrada';
     const r = await h.syncNuvemshopImages({ id: 'c' }, '555', q);
     falharUma = null;
-    assert.strictEqual(r.changed, false); assert.strictEqual(r.removed, 0);
-    assert.ok(!chamadas.some((c) => c === 'DELETE /products/555/images/901'), 'antigas ficaram: ' + chamadas.join(' | '));
-    assert.ok(chamadas.some((c) => /^DELETE \/products\/555\/images\/8\d\d$/.test(c)), 'novas desfeitas: ' + chamadas.join(' | '));
+    assert.ok(r.added > 0 && r.errors.length > 0, JSON.stringify(r));
+    assert.ok(chamadas.some((c) => c === 'DELETE /products/555/images/901') && chamadas.some((c) => c === 'DELETE /products/555/images/902'), 'antigas saíram: ' + chamadas.join(' | '));
+    assert.ok(!chamadas.some((c) => /^DELETE \/products\/555\/images\/8\d\d$/.test(c)), 'novas ficaram: ' + chamadas.join(' | '));
+    assert.notStrictEqual((await prisma.product.findUnique({ where: { id: p.id } })).aiContext.nsImagesSig, r.sig, 'não gravou a assinatura: tenta de novo');
   });
   await t('AUDITORIA 2: se não der para ler as fotos atuais, não troca nada (não passa de 5 na loja)', async () => {
     const q = await prisma.product.update({ where: { id: p.id }, data: { imageUrls: fotos(5).reverse() } });

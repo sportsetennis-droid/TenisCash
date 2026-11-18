@@ -1532,7 +1532,6 @@ async function syncNuvemshopImages(connection, nsProductId, localProduct) {
 
   // 1) Sobe as locais na ordem (1ª = capa), depois das atuais
   let added = 0;
-  const novas = [];
   const errors = [];
   for (let i = 0; i < desired.length; i++) {
     const position = base + i + 1;
@@ -1548,31 +1547,28 @@ async function syncNuvemshopImages(connection, nsProductId, localProduct) {
       }
       if (!criada) { errors.push({ position: i + 1, error: e.message }); console.warn('[ns img] POST falhou pos', i + 1, e.message); }
     }
-    if (criada) { added++; if (criada.id != null) novas.push(criada.id); }
+    if (criada) added++;
   }
 
-  // 2) Troca só quando TODAS subiram (ou o card ficou sem foto de propósito).
-  //    Parcial: desfaz as novas, mantém as antigas e NÃO grava a assinatura (tenta de novo depois).
+  // 2) Se pelo menos uma nova subiu, as antigas saem (as novas são as fotos certas do card e a loja
+  //    nunca acumula mais de 5 — a tentativa seguinte apaga tudo o que estiver lá antes das novas).
+  //    A assinatura só é gravada quando TODAS subiram e as antigas saíram; senão tenta de novo depois.
+  //    Nenhuma nova subiu: mantém as antigas (nunca deixa o produto sem foto).
   let removed = 0;
   const completa = desired.length === 0 || (added === desired.length && errors.length === 0);
-  if (completa) {
+  if (completa || added > 0) {
     for (const img of current) {
       try { await ns.nuvemshopApi(connection, 'DELETE', `/products/${nsProductId}/images/${img.id}`); removed++; }
       catch (e) { console.warn('[ns img] delete falhou', img.id, e.message); errors.push({ position: 0, error: 'foto antiga não apagada (' + img.id + '): ' + e.message }); }
     }
     // só dá por concluída se as antigas saíram (senão a loja fica com mais de 5); a próxima
     // tentativa apaga tudo o que estiver lá antes das novas.
-    if (!errors.length) {
+    if (completa && !errors.length) {
       try { await mergeAiContext(prisma, localProduct.id, { nsImagesSig: sig }); }
       catch (e) { console.warn('[ns img] salvar sig falhou:', e.message); }
     }
-  } else {
-    for (const id of novas) {
-      try { await ns.nuvemshopApi(connection, 'DELETE', `/products/${nsProductId}/images/${id}`); }
-      catch (e) { console.warn('[ns img] desfazer foto nova falhou', id, e.message); }
-    }
   }
-  return { changed: completa, added: completa ? added : 0, removed, sig, errors };
+  return { changed: completa || added > 0, added, removed, sig, errors };
 }
 
 // Trava anti-corrida POR PRODUTO (mesmo processo): cron + clique do admin no mesmo

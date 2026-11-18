@@ -137,7 +137,8 @@ async function runNuvemshopCardMirror({ prisma = db(), handlers = null, connecti
         const ctx = ctxOf(p);
         if (ctx.nsMirrorSig === sig) continue;
         result.changed++;
-        const falhas = Number(ctx.nsMirrorFails || 0);
+        // espera só vale para a MESMA versão do card que falhou: editou de novo → tenta já (auditoria 9)
+        const falhas = ctx.nsMirrorFailSig === sig ? Number(ctx.nsMirrorFails || 0) : 0;
         if (falhas > 0 && ctx.nsMirrorFailAt && agora - new Date(ctx.nsMirrorFailAt).getTime() < esperaMs(falhas)) { result.waitingRetry++; continue; }
         if (result.pushed + result.unpublished + result.skipped + result.errors >= batch) { result.pending = true; continue; }
         let r = null;
@@ -147,7 +148,7 @@ async function runNuvemshopCardMirror({ prisma = db(), handlers = null, connecti
           result.errors++;
           if (result.items.length < 20) result.items.push({ productId: p.id, erro: String(e.message).slice(0, 200) });
           // não grava a assinatura: tenta de novo depois de esperar (não trava o lote)
-          await mergeAiContext(prisma, p.id, { nsMirrorFails: falhas + 1, nsMirrorFailAt: new Date(agora).toISOString(), nsMirrorLastError: String(e.message).slice(0, 300) }).catch(() => {});
+          await mergeAiContext(prisma, p.id, { nsMirrorFails: falhas + 1, nsMirrorFailSig: sig, nsMirrorFailAt: new Date(agora).toISOString(), nsMirrorLastError: String(e.message).slice(0, 300) }).catch(() => {});
           continue;
         }
         const erroFoto = r && r.imageSync && ((Array.isArray(r.imageSync.errors) && r.imageSync.errors[0] && r.imageSync.errors[0].error) || r.imageSync.error);
@@ -159,7 +160,7 @@ async function runNuvemshopCardMirror({ prisma = db(), handlers = null, connecti
         if (erroEnvio) {
           result.errors++;
           if (result.items.length < 20) result.items.push({ productId: p.id, erro: 'envio incompleto — ' + String(erroEnvio).slice(0, 150) });
-          await mergeAiContext(prisma, p.id, { nsMirrorFails: falhas + 1, nsMirrorFailAt: new Date(agora).toISOString(), nsMirrorLastError: String(erroEnvio).slice(0, 250) }).catch(() => {});
+          await mergeAiContext(prisma, p.id, { nsMirrorFails: falhas + 1, nsMirrorFailSig: sig, nsMirrorFailAt: new Date(agora).toISOString(), nsMirrorLastError: String(erroEnvio).slice(0, 250) }).catch(() => {});
           continue;
         }
         if (r && r.action === 'unpublished-invalid') result.unpublished++;
@@ -167,7 +168,7 @@ async function runNuvemshopCardMirror({ prisma = db(), handlers = null, connecti
         else result.pushed++;
         if (result.items.length < 20) result.items.push({ productId: p.id, acao: (r && r.action) || 'enviado', motivo: (r && r.reason) || null });
         // grava só a assinatura (atômico, não desfaz edição feita no meio do envio)
-        await mergeAiContext(prisma, p.id, { nsMirrorSig: sig, nsMirrorImgHash: p.imagesHash || null, nsMirrorAt: inicioRodada }, ['nsMirrorFails', 'nsMirrorFailAt', 'nsMirrorLastError']);
+        await mergeAiContext(prisma, p.id, { nsMirrorSig: sig, nsMirrorImgHash: p.imagesHash || null, nsMirrorAt: inicioRodada }, ['nsMirrorFails', 'nsMirrorFailAt', 'nsMirrorLastError', 'nsMirrorFailSig']);
       }
     }
     return result;
