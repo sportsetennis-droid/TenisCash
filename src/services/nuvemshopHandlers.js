@@ -61,8 +61,17 @@ async function getConnection() {
   );
 }
 
-// NS# com reenvio de card irmão em andamento (evita ida-e-volta e espera circular entre os pushes)
-const _reenvioIrmao = new Set();
+// Pede ao espelho que reenvie o card (apaga as assinaturas de envio). Só uma vez por
+// mudança de situação; fora disso, no máximo a cada 6 h — não vira envio a cada rodada.
+const REENVIO_IRMAO_MS = 6 * 60 * 60 * 1000;
+async function pedirReenvioDoCard(card, forcar) {
+  let ctx = {};
+  try { ctx = (typeof card.aiContext === 'string' ? JSON.parse(card.aiContext) : card.aiContext) || {}; } catch (_) { ctx = {}; }
+  const ultimo = Date.parse(ctx.nsReenvioPedidoAt || '') || 0;
+  if (!forcar && Date.now() - ultimo < REENVIO_IRMAO_MS) return false;
+  await mergeAiContext(prisma, card.id, { nsReenvioPedidoAt: new Date().toISOString() }, ['nsMirrorSig', 'nsCardSig']);
+  return true;
+}
 
 async function unpublishMappedProduct(localProductId, connection, reason, mappingOverride = null) {
   const mapping = mappingOverride || await prisma.nuvemshopProductMapping.findUnique({
@@ -80,33 +89,34 @@ async function unpublishMappedProduct(localProductId, connection, reason, mappin
     select: { localProductId: true },
   });
   let irmaoValido = null;
-  const nsKey = String(mapping.nuvemshopProductId);
   for (const im of irmaosMap) {
     const irmao = await prisma.product.findUnique({
       where: { id: im.localProductId },
       include: { sizes: { include: { storeStocks: nuvemshopStoreStocksQuery() } } },
     });
-    if (irmao && irmao.active !== false && assessProductForNuvemshop(irmao, { isNew: false }).eligible) { irmaoValido = irmao.id; break; }
+    if (irmao && irmao.active !== false && assessProductForNuvemshop(irmao, { isNew: false }).eligible) { irmaoValido = irmao; break; }
   }
-  if (irmaoValido && !_reenvioIrmao.has(nsKey)) {
-    await prisma.nuvemshopProductMapping.update({
-      where: { id: mapping.id },
-      data: { syncStatus: 'hidden-invalid', lastSyncedAt: new Date() },
-    }).catch(() => {});
-    console.warn('[ns] NS# compartilhado — loja NÃO despublicada por este card:', localProductId, 'NS#' + nsKey, reason);
-    // O anúncio pode estar com o estoque/dados DESTE card (último a enviar). Reenvia o irmão
-    // válido para a loja vender só o estoque físico real dele e corrigir dados inválidos do
-    // anúncio (auditoria 5, 18/11). Trava por NS# impede ida-e-volta entre os dois cards.
-    _reenvioIrmao.add(nsKey);
-    let reenvio = null;
-    try { reenvio = await pushProductToNuvemshop(irmaoValido, connection || await getConnection()); }
-    catch (e) { reenvio = { error: e.message }; console.warn('[ns] reenvio do card irmão falhou:', irmaoValido, e.message); }
-    finally { _reenvioIrmao.delete(nsKey); }
-    if (reenvio && reenvio.error) throw new Error('NS# compartilhado: reenvio do card irmão falhou: ' + reenvio.error);
-    if (reenvio && reenvio.action === 'unpublished-invalid') {
-      return { unpublished: true, localProductId, nuvemshopProductId: nsKey, reason: 'card irmão também ficou inválido; ' + (reason || '') };
+  if (irmaoValido) {
+    // Este card pode estar inválido (fantasma, esgotado) ou ser válido com a cópia da loja
+    // errada. Só marca "fora" se ele mesmo não passa no portão.
+    const self = await prisma.product.findUnique({
+      where: { id: localProductId },
+      include: { sizes: { include: { storeStocks: nuvemshopStoreStocksQuery() } } },
+    });
+    const selfValido = !!(self && self.active !== false && assessProductForNuvemshop(self, { isNew: false }).eligible);
+    const transicao = mapping.syncStatus !== 'hidden-invalid';
+    if (!selfValido && transicao) {
+      await prisma.nuvemshopProductMapping.update({
+        where: { id: mapping.id },
+        data: { syncStatus: 'hidden-invalid', lastSyncedAt: new Date() },
+      }).catch(() => {});
     }
-    return { unpublished: false, shared: true, irmao: irmaoValido, reenvio: reenvio && reenvio.action, reason: 'produto da loja compartilhado com outro card; ' + (reason || '') };
+    // O anúncio pode estar com o estoque/dados DESTE card (último a enviar). Pede UM reenvio
+    // do card irmão válido pelo espelho (sem enviar daqui: sem espera circular entre envios,
+    // sem eco a cada rodada — auditorias 5 e 6, 18/11). Repete no máximo a cada 6 h.
+    const pedido = await pedirReenvioDoCard(irmaoValido, transicao);
+    console.warn('[ns] NS# compartilhado — loja NÃO despublicada por este card:', localProductId, 'NS#' + mapping.nuvemshopProductId, reason, pedido ? '(reenvio do irmão pedido)' : '');
+    return { unpublished: false, shared: true, irmao: irmaoValido.id, reenvioPedido: pedido, reason: 'produto da loja compartilhado com outro card; ' + (reason || '') };
   }
 
   const conn = connection || await getConnection();
@@ -202,9 +212,25 @@ async function upsertLocalProduct(nsProduct) {
   }
 
   // Tenta achar por mapeamento existente
-  const mapping = await prisma.nuvemshopProductMapping.findFirst({
+  const mapeamentos = await prisma.nuvemshopProductMapping.findMany({
     where: { nuvemshopProductId: String(nsProduct.id) },
   });
+  let mapping = mapeamentos[0] || null;
+  if (mapeamentos.length > 1) {
+    // NS# com mais de um card (fantasma + curado): o eco NÃO pode reativar nem regravar o
+    // fantasma (auditoria 6, 18/11). Usa o card curado, que a guarda 2 protege; só
+    // fantasmas → não mexe em nenhum.
+    const locais = await prisma.product.findMany({
+      where: { id: { in: mapeamentos.map((m) => m.localProductId) } },
+      select: { id: true, source: true },
+    });
+    const curado = locais.find((l) => l.source !== 'nuvemshop');
+    if (!curado) {
+      console.warn('[ns eco] NS# com mais de um card, nenhum curado — não altera nada:', nsProduct.id);
+      return null;
+    }
+    mapping = mapeamentos.find((m) => m.localProductId === curado.id);
+  }
 
   let product;
   // GUARDA ANTI-ECO 2 (auditoria 2026-11-18): card que NASCEU no TenisCash (source

@@ -294,7 +294,7 @@ async function partC() {
     const r = await h.pushProductToNuvemshop(fantasma.id, { id: 'c' });
     assert.strictEqual(r.action, 'skipped-shared');
     assert.ok(!chamadas.some((c) => c.endsWith('DESPUBLICA')), 'não despublicou: ' + chamadas.join(' | '));
-    assert.ok(chamadas.some((c) => c === 'PUT /products/888'), 'reenviou o card certo: ' + chamadas.join(' | '));
+    assert.ok((await prisma.product.findUnique({ where: { id: curado.id } })).aiContext.nsReenvioPedidoAt, 'pediu reenvio do card certo');
   });
   await t('AUDITORIA 2: eco de produto recém-enviado com código ALFANUMÉRICO não cria card-fantasma (corrida antes do mapping)', async () => {
     const c = await prisma.product.create({ data: { sku: 'EKPB999', name: 'Camisa Alfa', brand: 'BOTAFOGO', category: 'Roupas', price: 300, imageUrl: 'https://img/alfa.jpg', aiContext: { color: 'Preto' } } });
@@ -358,9 +358,49 @@ async function partC() {
     await prisma.storeStock.updateMany({ where: { productSizeId: psB.id }, data: { stock: 0 } });
     chamadas.length = 0;
     const r = await h.unpublishMappedProduct(b.id, { id: 'c' }, 'sem estoque', mb);
-    assert.ok(r.shared && r.irmao === a.id, JSON.stringify(r));
-    assert.ok(chamadas.some((c) => c === 'PUT /products/5050'), 'reenviou A: ' + chamadas.join(' | '));
-    assert.ok(!chamadas.some((c) => c.endsWith('DESPUBLICA')));
+    assert.ok(r.shared && r.irmao === a.id && r.reenvioPedido, JSON.stringify(r));
+    assert.ok(!chamadas.some((c) => c.startsWith('PUT')), 'não envia daqui (sem espera circular): ' + chamadas.join(' | '));
+    const ctxA = (await prisma.product.findUnique({ where: { id: a.id } })).aiContext;
+    assert.ok(ctxA.nsReenvioPedidoAt && !ctxA.nsMirrorSig && !ctxA.nsCardSig, 'espelho vai reenviar A');
+    // rodada seguinte do reajuste: não pede de novo (sem envio a cada 5 min)
+    const r2 = await h.unpublishMappedProduct(b.id, { id: 'c' }, 'sem estoque', await prisma.nuvemshopProductMapping.findUnique({ where: { id: mb.id } }));
+    assert.ok(r2.shared && !r2.reenvioPedido, 'não repete o pedido');
+  });
+  await t('AUDITORIA 6: card VÁLIDO com cópia da loja errada não é marcado como fora e nada é enviado daqui', async () => {
+    const { c: a } = await cardValido(1);
+    const { c: b } = await cardValido(1);
+    const ma = await prisma.nuvemshopProductMapping.create({ data: { localProductId: a.id, nuvemshopProductId: '6161' } });
+    await prisma.nuvemshopProductMapping.create({ data: { localProductId: b.id, nuvemshopProductId: '6161' } });
+    chamadas.length = 0;
+    const r = await h.unpublishMappedProduct(a.id, { id: 'c' }, 'copia remota invalida: marca', ma);
+    assert.ok(r.shared); assert.strictEqual(chamadas.length, 0);
+    assert.strictEqual((await prisma.nuvemshopProductMapping.findUnique({ where: { id: ma.id } })).syncStatus, 'synced');
+  });
+  await t('AUDITORIA 6: dois caminhos ao mesmo tempo (reajuste + espelho) não despublicam o card válido nem travam', async () => {
+    const { c: valido } = await cardValido(1);
+    const fantasma = await prisma.product.create({ data: { sku: 'GHOST6C', name: 'Fantasma 6c', brand: 'A DEFINIR', category: 'geral', price: 0, source: 'nuvemshop', active: false } });
+    await prisma.nuvemshopProductMapping.create({ data: { localProductId: valido.id, nuvemshopProductId: '6363' } });
+    const mf = await prisma.nuvemshopProductMapping.create({ data: { localProductId: fantasma.id, nuvemshopProductId: '6363' } });
+    chamadas.length = 0;
+    const limite = new Promise((_, rej) => setTimeout(() => rej(new Error('travou (espera circular)')), 20000));
+    const rs = await Promise.race([Promise.all([
+      h.unpublishMappedProduct(fantasma.id, { id: 'c' }, 'produto inativo', mf),
+      h.pushProductToNuvemshop(fantasma.id, { id: 'c' }),
+      h.unpublishMappedProduct(fantasma.id, { id: 'c' }, 'produto inativo', mf),
+    ]), limite]);
+    assert.ok(rs.every((r) => r.shared || r.action === 'skipped-shared'), JSON.stringify(rs));
+    assert.ok(!chamadas.some((c) => c.endsWith('DESPUBLICA')), 'não despublicou: ' + chamadas.join(' | '));
+  });
+  await t('AUDITORIA 6: eco do webhook num anúncio com fantasma + curado não reativa nem regrava o fantasma', async () => {
+    const { c: curado } = await cardValido(1);
+    const fantasma = await prisma.product.create({ data: { sku: 'GHOST6', name: 'Fantasma 6', brand: 'A DEFINIR', category: 'geral', price: 0, source: 'nuvemshop', active: false } });
+    await prisma.nuvemshopProductMapping.create({ data: { localProductId: fantasma.id, nuvemshopProductId: '6262' } });
+    await prisma.nuvemshopProductMapping.create({ data: { localProductId: curado.id, nuvemshopProductId: '6262' } });
+    const r = await h.upsertLocalProduct({ id: 6262, name: { pt: 'Nome da loja' }, brand: 'HOKA', categories: [], images: [], variants: [{ sku: 'X6262', price: '1', stock: 9 }], published: true });
+    assert.strictEqual(r && r.id, curado.id);
+    const f = await prisma.product.findUnique({ where: { id: fantasma.id } });
+    assert.strictEqual(f.active, false); assert.strictEqual(f.name, 'Fantasma 6');
+    assert.strictEqual((await prisma.product.findUnique({ where: { id: curado.id } })).name, curado.name);
   });
   await t('AUDITORIA 5: produto NOVO com 8 fotos é criado com no máximo 5', async () => {
     const { c } = await cardValido(2);
