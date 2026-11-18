@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#E5571E">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Minha escala">
+<link rel="manifest" href="/manifest.json">
+<title>Minha escala · TenisCash</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--brand:#E5571E;--brand-dark:#c4461a;--brand-soft:#fff1e8;--ink:#1d1d1f;--muted:#6e6e73;--line:#e8e8ed;--bg:#fff;--fill:#f6f6f8;--ok:#0a843d;--bad:#b42318;
+  --safe-b:env(safe-area-inset-bottom,0px);--safe-t:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:'Barlow',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.4;padding-top:var(--safe-t)}
+button,input{font:inherit;color:inherit}
+#app{max-width:480px;margin:0 auto;padding:16px 16px calc(96px + var(--safe-b))}
+h1{font-size:22px;font-weight:800}
+.sub{color:var(--muted);font-size:14px;margin-top:2px}
+.card{background:var(--fill);border-radius:16px;padding:14px;margin-top:14px}
+.card h2{font-size:15px;font-weight:800;margin-bottom:10px}
+.row{display:flex;gap:10px}
+.row>label{flex:1;font-size:12px;font-weight:700;color:var(--muted)}
+input[type=time]{width:100%;min-height:44px;border:1px solid var(--line);border-radius:10px;padding:0 10px;background:#fff;font-size:16px;margin-top:4px}
+.months{display:flex;gap:8px;margin-top:14px}
+.months button{flex:1;min-height:44px;border:1px solid var(--line);background:#fff;border-radius:12px;font-weight:700}
+.months button.on{background:var(--brand);border-color:var(--brand);color:#fff}
+.quick{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.quick button{flex:1;min-height:40px;border:1px solid var(--brand);background:#fff;color:var(--brand);border-radius:10px;font-weight:700;font-size:13px;padding:0 8px}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:10px}
+.wd{text-align:center;font-size:11px;font-weight:700;color:var(--muted)}
+.day{min-height:52px;border:1px solid var(--line);background:#fff;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:800;font-size:16px;padding:2px}
+.day small{font-size:9px;font-weight:600;line-height:1.1;margin-top:2px}
+.day.on{background:var(--brand);border-color:var(--brand);color:#fff}
+.day.past{opacity:.35}
+.day.empty{border:0;background:transparent}
+.hint{font-size:12px;color:var(--muted);margin-top:8px}
+.list{margin-top:10px;display:grid;gap:6px}
+.li{display:flex;justify-content:space-between;align-items:center;background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:13px}
+.li b{font-weight:800}
+.bar{position:fixed;left:0;right:0;bottom:0;background:rgba(255,255,255,.97);border-top:1px solid var(--line);padding:10px 16px calc(10px + var(--safe-b))}
+.bar .in{max-width:480px;margin:0 auto}
+.save{width:100%;min-height:52px;border:0;border-radius:14px;background:var(--brand);color:#fff;font-weight:800;font-size:17px}
+.save:disabled{opacity:.6}
+.msg{font-size:13px;text-align:center;margin-bottom:6px;min-height:18px}
+.msg.ok{color:var(--ok);font-weight:700}.msg.bad{color:var(--bad);font-weight:700}
+.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;z-index:50}
+.sheet{position:fixed;left:0;right:0;bottom:0;background:#fff;border-radius:18px 18px 0 0;padding:16px 16px calc(16px + var(--safe-b));max-width:480px;margin:0 auto;z-index:51;display:none}
+.sheet h3{font-size:17px;font-weight:800;margin-bottom:10px}
+.sheet .btns{display:flex;gap:8px;margin-top:14px}
+.sheet .btns button{flex:1;min-height:48px;border-radius:12px;font-weight:800;border:1px solid var(--line);background:#fff}
+.sheet .btns .p{background:var(--brand);border-color:var(--brand);color:#fff}
+.sheet .btns .x{color:var(--bad)}
+.gate{text-align:center;padding:60px 10px}
+.gate a{display:inline-block;margin-top:16px;background:var(--brand);color:#fff;padding:14px 22px;border-radius:12px;font-weight:800;text-decoration:none}
+@media (min-width:900px){body{background:#f2f2f4}#app{background:#fff;border-radius:24px;box-shadow:0 10px 40px rgba(0,0,0,.08);margin-top:24px}}
+</style>
+</head>
+<body>
+<div id="app"><div class="sub">Carregando…</div></div>
+<div class="sheet-bg" id="sbg"></div>
+<div class="sheet" id="sheet"></div>
+<div class="bar" id="bar" style="display:none"><div class="in"><div class="msg" id="msg"></div><button class="save" id="save">Salvar minha escala</button></div></div>
+<script>
+(function () {
+  const qs = new URLSearchParams(location.search);
+  const K = qs.get('k') || '';
+  const TOKEN = (() => { try { return localStorage.getItem('tc_token') || ''; } catch (_) { return ''; } })();
+  const WD = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+  const MES = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+  const $ = (s) => document.querySelector(s);
+  const esc = (t) => String(t == null ? '' : t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  let S = { month: null, today: null, days: {}, def: null, seller: null, dirty: false };
+
+  async function api(method, body, month) {
+    const url = '/api/minha-escala' + '?' + new URLSearchParams(Object.assign(K ? { k: K } : {}, month ? { month } : {})).toString();
+    const headers = { 'Content-Type': 'application/json' };
+    if (!K && TOKEN) headers.Authorization = 'Bearer ' + TOKEN;
+    const r = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, cache: 'no-store' });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { const e = new Error(j.error || 'Erro'); e.status = r.status; throw e; }
+    return j;
+  }
+  function gate(text) {
+    $('#bar').style.display = 'none';
+    $('#app').innerHTML = '<div class="gate"><h1>Minha escala</h1><p class="sub" style="margin-top:10px">' + esc(text) + '</p><a href="/">Entrar no app TenisCash</a></div>';
+  }
+  function monthKey(offset) { const [y, m] = S.today.slice(0, 7).split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 + offset, 1)); return d.toISOString().slice(0, 7); }
+  function monthLabel(mk) { const [y, m] = mk.split('-').map(Number); return MES[m - 1].replace(/^./, (c) => c.toUpperCase()) + (y !== Number(S.today.slice(0, 4)) ? ' ' + y : ''); }
+
+  async function load(month) {
+    if (S.dirty && !confirm('Você tem alterações não salvas. Trocar de mês mesmo assim?')) return;
+    try {
+      const j = await api('GET', null, month);
+      S.month = j.month; S.today = j.today; S.seller = j.seller; S.def = j.defaults; S.dirty = false;
+      S.days = {}; (j.days || []).forEach((d) => { S.days[d.date] = { start: d.start, end: d.end, breakStart: d.breakStart || '', breakEnd: d.breakEnd || '' }; });
+      render();
+    } catch (e) {
+      if (e.status === 401) gate(K ? 'Este link venceu. Entre pelo app TenisCash › Escala e folgas.' : 'Para preencher sua escala, entre no app TenisCash e volte aqui.');
+      else if (e.status === 403) gate(e.message);
+      else gate('Não foi possível carregar. Verifique a internet e tente de novo.');
+    }
+  }
+  function count() { return Object.keys(S.days).length; }
+  function setMsg(t, cls) { const m = $('#msg'); m.textContent = t || ''; m.className = 'msg' + (cls ? ' ' + cls : ''); }
+
+  function render() {
+    const [y, m] = S.month.split('-').map(Number);
+    const first = new Date(Date.UTC(y, m - 1, 1)), nDays = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    let cal = WD.map((w) => '<div class="wd">' + w + '</div>').join('');
+    for (let i = 0; i < first.getUTCDay(); i++) cal += '<div class="day empty"></div>';
+    for (let d = 1; d <= nDays; d++) {
+      const ymd = S.month + '-' + String(d).padStart(2, '0'), x = S.days[ymd], past = ymd < S.today;
+      cal += '<button class="day' + (x ? ' on' : '') + (past ? ' past' : '') + '" data-d="' + ymd + '"' + (past ? ' disabled' : '') + '>' + d + (x ? '<small>' + esc(x.start) + '<br>' + esc(x.end) + '</small>' : '') + '</button>';
+    }
+    const list = Object.keys(S.days).sort().map((k) => { const x = S.days[k]; const dt = new Date(k + 'T12:00:00Z'); return '<div class="li"><span><b>' + WD[dt.getUTCDay()] + ' ' + k.slice(8) + '/' + k.slice(5, 7) + '</b></span><span>' + esc(x.start) + '–' + esc(x.end) + (x.breakStart ? ' · intervalo ' + esc(x.breakStart) + '–' + esc(x.breakEnd) : ' · sem intervalo') + '</span></div>'; }).join('');
+    $('#app').innerHTML =
+      '<h1>Minha escala</h1><div class="sub">' + esc(S.seller.name) + (S.seller.store ? ' · ' + esc(S.seller.store) : '') + '</div>' +
+      '<div class="months">' + [0, 1].map((o) => { const mk = monthKey(o); return '<button data-m="' + mk + '" class="' + (mk === S.month ? 'on' : '') + '">' + monthLabel(mk) + '</button>'; }).join('') + '</div>' +
+      '<div class="card"><h2>1. Seu horário</h2><div class="row"><label>Entrada<input type="time" id="dS" value="' + esc(S.def.start) + '"></label><label>Saída<input type="time" id="dE" value="' + esc(S.def.end) + '"></label></div>' +
+      '<div class="row" style="margin-top:8px"><label>Intervalo: saída<input type="time" id="dBS" value="' + esc(S.def.breakStart) + '"></label><label>Intervalo: volta<input type="time" id="dBE" value="' + esc(S.def.breakEnd) + '"></label></div>' +
+      '<div class="quick"><button id="applyAll">Usar esse horário em todos os dias marcados</button></div></div>' +
+      '<div class="card"><h2>2. Toque nos dias que você vai trabalhar</h2><div class="quick"><button id="segSab">Marcar seg a sáb</button><button id="clear">Limpar</button></div>' +
+      '<div class="cal">' + cal + '</div><div class="hint">Toque de novo num dia marcado para mudar o horário dele ou tirar.</div></div>' +
+      (count() ? '<div class="card"><h2>3. Confira (' + count() + ' dias)</h2><div class="list">' + list + '</div></div>' : '');
+    $('#bar').style.display = 'block';
+    $('#save').textContent = count() ? 'Salvar minha escala (' + count() + ' dias)' : 'Salvar minha escala';
+    document.querySelectorAll('.months button').forEach((b) => { b.onclick = () => { if (b.dataset.m !== S.month) load(b.dataset.m); }; });
+    ['dS', 'dE', 'dBS', 'dBE'].forEach((id) => { $('#' + id).onchange = readDef; });
+    $('#applyAll').onclick = () => { if (!readDef(true)) return; Object.keys(S.days).forEach((k) => { if (k >= S.today) S.days[k] = Object.assign({}, S.def); }); S.dirty = true; render(); setMsg('Horário aplicado em todos os dias marcados. Agora é só salvar.'); };
+    $('#segSab').onclick = () => { if (!readDef(true)) return; const [yy, mm] = S.month.split('-').map(Number); const n = new Date(Date.UTC(yy, mm, 0)).getUTCDate(); for (let d = 1; d <= n; d++) { const k = S.month + '-' + String(d).padStart(2, '0'); if (k >= S.today && new Date(k + 'T12:00:00Z').getUTCDay() !== 0 && !S.days[k]) S.days[k] = Object.assign({}, S.def); } S.dirty = true; render(); setMsg('Marquei de segunda a sábado. Desmarque as folgas e salve.'); };
+    $('#clear').onclick = () => { if (!confirm('Tirar todos os dias marcados deste mês?')) return; Object.keys(S.days).forEach((k) => { if (k >= S.today) delete S.days[k]; }); S.dirty = true; render(); };
+    document.querySelectorAll('.day[data-d]').forEach((b) => { b.onclick = () => tapDay(b.dataset.d); });
+  }
+  function readDef(strict) {
+    const d = { start: $('#dS').value, end: $('#dE').value, breakStart: $('#dBS').value, breakEnd: $('#dBE').value };
+    const err = check(d);
+    if (err) { if (strict) setMsg(err, 'bad'); return false; }
+    S.def = d; setMsg(''); return true;
+  }
+  function check(d) {
+    if (!d.start || !d.end) return 'Preencha entrada e saída.';
+    if (d.start >= d.end) return 'A saída tem que ser depois da entrada.';
+    if ((d.breakStart && !d.breakEnd) || (!d.breakStart && d.breakEnd)) return 'Preencha a saída e a volta do intervalo (ou deixe os dois vazios).';
+    if (d.breakStart && (d.breakStart >= d.breakEnd || d.breakStart <= d.start || d.breakEnd >= d.end)) return 'O intervalo tem que ficar entre a entrada e a saída.';
+    return '';
+  }
+  function tapDay(k) {
+    if (!S.days[k]) { if (!readDef(true)) return; S.days[k] = Object.assign({}, S.def); S.dirty = true; render(); return; }
+    const x = S.days[k], dt = new Date(k + 'T12:00:00Z');
+    $('#sheet').innerHTML = '<h3>' + WD[dt.getUTCDay()] + ', ' + k.slice(8) + '/' + k.slice(5, 7) + '</h3>' +
+      '<div class="row"><label>Entrada<input type="time" id="xS" value="' + esc(x.start) + '"></label><label>Saída<input type="time" id="xE" value="' + esc(x.end) + '"></label></div>' +
+      '<div class="row" style="margin-top:8px"><label>Intervalo: saída<input type="time" id="xBS" value="' + esc(x.breakStart) + '"></label><label>Intervalo: volta<input type="time" id="xBE" value="' + esc(x.breakEnd) + '"></label></div>' +
+      '<div class="msg bad" id="xMsg"></div><div class="btns"><button class="x" id="xDel">Não vou trabalhar</button><button class="p" id="xOk">Ok</button></div>';
+    openSheet();
+    $('#xDel').onclick = () => { delete S.days[k]; S.dirty = true; closeSheet(); render(); };
+    $('#xOk').onclick = () => { const d = { start: $('#xS').value, end: $('#xE').value, breakStart: $('#xBS').value, breakEnd: $('#xBE').value }; const e = check(d); if (e) { $('#xMsg').textContent = e; return; } S.days[k] = d; S.dirty = true; closeSheet(); render(); };
+  }
+  function openSheet() { $('#sbg').style.display = 'block'; $('#sheet').style.display = 'block'; }
+  function closeSheet() { $('#sbg').style.display = 'none'; $('#sheet').style.display = 'none'; }
+  $('#sbg').onclick = closeSheet;
+  $('#save').onclick = async () => {
+    const days = Object.keys(S.days).filter((k) => k >= S.today).map((k) => Object.assign({ date: k }, S.days[k]));
+    for (const d of days) { const e = check(d); if (e) { setMsg('Dia ' + d.date.slice(8) + '/' + d.date.slice(5, 7) + ': ' + e, 'bad'); return; } }
+    $('#save').disabled = true; setMsg('Salvando…');
+    try { const r = await api('PUT', { month: S.month, days }); S.dirty = false; setMsg('Pronto! Sua escala de ' + monthLabel(S.month).toLowerCase() + ' foi salva (' + r.saved + ' dias). 🧡', 'ok'); }
+    catch (e) { setMsg(e.message || 'Não foi possível salvar.', 'bad'); }
+    $('#save').disabled = false;
+  };
+  window.addEventListener('beforeunload', (e) => { if (S.dirty) { e.preventDefault(); e.returnValue = ''; } });
+  if (!K && !TOKEN) { gate('Para preencher sua escala, entre no app TenisCash e volte aqui.'); return; }
+  load(qs.get('month') || null);
+})();
+</script>
+</body>
+</html>

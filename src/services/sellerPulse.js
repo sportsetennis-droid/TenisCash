@@ -197,10 +197,16 @@ async function shiftsBetween(prisma, sellerId, fromYmd, toYmd) {
     prisma.agendaActivity.findMany({ where: { sellerId, type: { in: ['folga', 'ferias'] }, date: { lte: to }, OR: [{ endDate: { gte: from } }, { endDate: null, date: { gte: from } }] }, select: { date: true, endDate: true, type: true } }),
   ]);
   const pub = new Set(published.map((p) => p.month));
+  const self = ((await require('./selfSchedule').shiftsMap(prisma, fromYmd, toYmd, sellerId).catch(() => ({})))[sellerId]) || {};
+  const storeName = Object.keys(self).length ? ((await prisma.user.findUnique({ where: { id: sellerId }, select: { store: { select: { name: true } } } }).catch(() => null)) || {}).store : null;
   const ymdOf = (d) => new Date(d).toISOString().slice(0, 10);
   return days.map((ymd) => {
     const off = offs.find((o) => ymd >= ymdOf(o.date) && ymd <= ymdOf(o.endDate || o.date));
     if (off) return { ymd, off: off.type };
+    if (!pub.has(ymd.slice(0, 7)) && self[ymd]) {
+      const x = self[ymd];
+      return { ymd, store: storeName ? storeName.name : null, start: x.start, end: x.end, breakStart: x.breakStart, breakEnd: x.breakEnd, informed: true };
+    }
     const s = pub.has(ymd.slice(0, 7)) ? monthly.find((m) => ymdOf(m.workDate) === ymd) : recurring.find((r) => r.weekday === dow(ymd));
     return s ? { ymd, store: s.store ? s.store.name : null, start: s.startTime, end: s.endTime } : { ymd };
   });
@@ -278,7 +284,7 @@ function formatPreShift(p, { nowMs = Date.now() } = {}) {
   const L = [`${hello}, ${firstName(p.name)}! ${hour < 12 ? "☀️" : "👋"}`];
   const s = p.shiftToday;
   if (s && s.start && s.approx) L.push(`⏰ *Seu expediente hoje* começa por volta das ${s.start}${s.store ? ` — ${s.store}` : ''}.`);
-  else if (s && s.start) L.push(`⏰ *Seu expediente hoje:* ${s.store || 'loja'}, das ${s.start} às ${s.end}.`);
+  else if (s && s.start) L.push(`⏰ *Seu expediente hoje:* ${s.store || 'loja'}, das ${s.start} às ${s.end}${s.breakStart ? ` (intervalo ${s.breakStart}–${s.breakEnd})` : ''}.`);
   L.push('');
   const yr = p.yesterdayResult;
   if (yr.count) L.push(`📊 *Ontem (${WEEKDAYS[dow(p.yesterday)]}, ${br(p.yesterday)}):* ${yr.count} ${yr.count === 1 ? 'venda' : 'vendas'} · ${brl(yr.revenue)} · ticket ${brl(yr.ticket)}`);
