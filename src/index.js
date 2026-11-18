@@ -463,34 +463,6 @@ app.post('/api/_falgen', async (req, res) => {
     return res.json({ ok: false, error: String(e.message).slice(0, 200), ...keys });
   }
 });
-// TEMPORÁRIO (dono 18/11/2026: "hoje foi enviado mensagem para todos?") — SÓ LEITURA. Remover depois.
-app.get('/api/_envios-hoje', async (req, res) => {
-  if (req.query.g !== '934fe42c0a6fb3a2c9763749') return res.status(404).json({ error: 'not found' });
-  try {
-    const { prisma } = require('./middleware');
-    const pulse = require('./services/sellerPulse');
-    const titles = await require('./services/jobTitle').all(prisma).catch(() => ({}));
-    const day = pulse.localYmd(Date.now());
-    const sends = await prisma.$queryRaw`SELECT "sellerId", "ok", "error", "sentAt" FROM "SellerPulseSend" WHERE "day" = ${day} AND "kind" = 'preshift'`;
-    const sellers = await prisma.user.findMany({ where: { role: 'seller', active: true }, select: { id: true, name: true, phone: true, store: { select: { code: true } } }, orderBy: { name: 'asc' } });
-    const since = new Date(Date.now() - 21 * 86400000);
-    const dayStart = new Date(day + 'T03:00:00.000Z');
-    const out = [];
-    for (const u of sellers) {
-      const [shift] = await pulse.shiftsBetween(prisma, u.id, day, day);
-      const snd = sends.find((x) => x.sellerId === u.id);
-      const lastClock = await prisma.clockIn.findFirst({ where: { userId: u.id, timestamp: { gte: since } }, orderBy: { timestamp: 'desc' }, select: { timestamp: true } });
-      const lastSale = await prisma.sale.findFirst({ where: { sellerId: u.id, createdAt: { gte: since } }, select: { id: true } });
-      const clockToday = await prisma.clockIn.findFirst({ where: { userId: u.id, timestamp: { gte: dayStart } }, orderBy: { timestamp: 'asc' }, select: { timestamp: true } });
-      const hhmm = (d) => new Date(new Date(d).getTime() - 3 * 3600000).toISOString().slice(11, 16);
-      out.push({ nome: u.name, loja: u.store ? u.store.code : null, cargo: titles[u.id] || 'VENDEDOR', temWhats: /\d{10,}/.test(String(u.phone || '').replace(/\D/g, '')),
-        escalaHoje: shift && shift.start ? shift.start + '-' + shift.end : (shift && shift.off ? shift.off : null), ativo21d: !!(lastClock || lastSale),
-        pontoHoje: clockToday ? hhmm(clockToday.timestamp) : null, envio: snd ? { hora: hhmm(snd.sentAt), ok: snd.ok, erro: snd.error } : null });
-    }
-    res.json({ day, total: out.length, enviados: out.filter((o) => o.envio && o.envio.ok).length, lista: out });
-  } catch (e) { console.error('[envios-hoje]', e); res.status(500).json({ error: e.message }); }
-});
-
 app.use('/api/auth', authRoutes);
 app.use('/api/webauthn', webauthnRoutes);
 app.use('/api/face', faceRoutes);
