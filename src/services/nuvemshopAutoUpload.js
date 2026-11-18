@@ -23,6 +23,7 @@ const prisma = new PrismaClient();
 const ns = require('./nuvemshop');
 const nsHandlers = require('./nuvemshopHandlers');
 const { assessProductForNuvemshop, nuvemshopStoreStocksQuery } = require('./nuvemshopEligibility');
+const { mergeAiContext } = require('./aiContextMerge');
 
 const TZ = 'America/Fortaleza';
 const RETRY_MS = 24 * 60 * 60 * 1000;
@@ -145,10 +146,7 @@ async function runNuvemshopAutoUpload({ limit } = {}) {
       }
 
       const ctx = ctxOf(full);
-      ctx.releaseToNuvemshop = true;
-      ctx.confirmedForNuvemshop = true;
-      ctx.nsAutoUpload = { ...(ctx.nsAutoUpload || {}), confirmedAt: new Date().toISOString() };
-      await prisma.product.update({ where: { id: full.id }, data: { aiContext: ctx } });
+      await mergeAiContext(prisma, full.id, { releaseToNuvemshop: true, confirmedForNuvemshop: true, nsAutoUpload: { ...(ctx.nsAutoUpload || {}), confirmedAt: new Date().toISOString() } });
 
       let pushed = null;
       let error = null;
@@ -166,8 +164,7 @@ async function runNuvemshopAutoUpload({ limit } = {}) {
       if (result.failures.length < 30) result.failures.push({ id: full.id, name: full.name, reason });
       const after = await prisma.product.findUnique({ where: { id: full.id }, select: { aiContext: true } });
       const ctx2 = ctxOf(after || {});
-      ctx2.nsAutoUpload = { ...(ctx2.nsAutoUpload || {}), lastFailAt: new Date().toISOString(), lastFailReason: reason };
-      await prisma.product.update({ where: { id: full.id }, data: { aiContext: ctx2 } });
+      await mergeAiContext(prisma, full.id, { nsAutoUpload: { ...(ctx2.nsAutoUpload || {}), lastFailAt: new Date().toISOString(), lastFailReason: reason } });
     }
     state.lastResult = result;
     console.log(`[nsAutoUpload] candidatos=${result.candidates} elegiveis=${result.eligible} subiram=${result.uploaded} falharam=${result.failed} repetidos=${result.skippedDuplicate} aguardando=${result.waitingRetry}`);

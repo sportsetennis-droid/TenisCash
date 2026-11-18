@@ -33,6 +33,7 @@ const num = (v, def, min, max) => { const n = Number(v); return Number.isFinite(
 let prismaRef = null;
 const db = () => prismaRef || (prismaRef = require('../middleware').prisma);
 let busy = false;
+let rodadas = 0;
 const state = {
   enabled: process.env.NS_CARD_MIRROR !== '0',
   running: false,
@@ -71,7 +72,7 @@ function mirrorSig(product) {
   const cls2 = ctx.classification2 || {};
   const sizes = (product.sizes || []).map((s) => `${s.size}:${s.barcode || ''}`).sort().join(',');
   const parts = [
-    'v2',
+    'v3',
     product.sku || '', product.name || '', product.brand || '', String(ctx.color || ''),
     product.longDescription || '', product.shortDescription || '',
     product.imagesHash || imagesHashJS(product),
@@ -79,6 +80,8 @@ function mirrorSig(product) {
     product.category || '', product.subcategory || '', cls.modality || '', cls.tier || '', cls.gender || '',
     cls2.category || '', cls2.subcategory || '', cls2.modality || '', cls2.tier || '', cls2.gender || '',
     JSON.stringify(ctx.nuvemshopMapping || null),
+    // tem ou não tem estoque físico nas lojas do site: a virada 0↔>0 reenvia (volta ao ar quando repõe)
+    product.temEstoqueSite ? 'com-estoque-site' : 'sem-estoque-site',
     ctx.hideFromNuvemshop === true ? 'oculto' : '', ctx.confirmedForNuvemshop === true ? 'confirmado' : '',
     String(product.active),
     sizes,
@@ -103,20 +106,31 @@ async function runNuvemshopCardMirror({ prisma = db(), handlers = null, connecti
     const conn = connection || (nsHandlers.getConnection ? await nsHandlers.getConnection() : null);
     if (!conn) { result.semConexao = true; state.lastError = 'sem conexão ativa com a Nuvemshop — nada foi enviado'; return result; }
     const batch = num(limit || process.env.NS_CARD_MIRROR_BATCH, 40, 1, 500);
+    const { nuvemshopStockStoreIds } = require('./nuvemshopEligibility');
+    const nsLojas = nuvemshopStockStoreIds();
+    rodadas++;
+    const completa = rodadas % 10 === 1; // a cada 10 rodadas (~30 min) recalcula o resumo de TODAS as fotos
     const maps = await prisma.nuvemshopProductMapping.findMany({ select: { localProductId: true } });
     const ids = [...new Set(maps.map((m) => m.localProductId))];
     for (let i = 0; i < ids.length; i += 200) {
       const lote = ids.slice(i, i + 200);
       const prods = await prisma.$queryRawUnsafe(
-        'SELECT p.id, p.sku, p.name, p.brand, p."longDescription", p."shortDescription", p.price, p."promoPrice", p."costPrice", ' +
+        'SELECT p.id, p.sku, p.name, p.brand, p.source, p."longDescription", p."shortDescription", p.price, p."promoPrice", p."costPrice", ' +
         '  p.category, p.subcategory, p."aiContext", p.active, ' +
-        "  md5(coalesce(p.\"imageUrl\", '') || chr(31) || coalesce(p.\"imageUrls\"::text, '')) AS \"imagesHash\" " +
-        'FROM "Product" p WHERE p.id = ANY($1::text[])', lote);
+        // resumo das fotos: só recalcula (lendo o base64) se o card mudou depois do último envio, ou na rodada completa
+        "  CASE WHEN $2::boolean OR p.\"aiContext\"->>'nsMirrorImgHash' IS NULL OR p.\"aiContext\"->>'nsMirrorAt' IS NULL " +
+        "         OR p.\"updatedAt\" > (p.\"aiContext\"->>'nsMirrorAt')::timestamptz " +
+        "       THEN md5(coalesce(p.\"imageUrl\", '') || chr(31) || coalesce(p.\"imageUrls\"::text, '')) " +
+        "       ELSE p.\"aiContext\"->>'nsMirrorImgHash' END AS \"imagesHash\", " +
+        '  EXISTS (SELECT 1 FROM "StoreStock" ss JOIN "ProductSize" ps ON ps.id = ss."productSizeId" ' +
+        '          WHERE ps."productId" = p.id AND ss.stock > 0 AND ss."storeId" = ANY($3::text[])) AS "temEstoqueSite" ' +
+        'FROM "Product" p WHERE p.id = ANY($1::text[])', lote, completa, nsLojas);
       const sizes = await prisma.productSize.findMany({ where: { productId: { in: lote } }, select: { productId: true, size: true, barcode: true } });
       const S = new Map();
       for (const s of sizes) { if (!S.has(s.productId)) S.set(s.productId, []); S.get(s.productId).push(s); }
       for (const p of prods) {
         p.sizes = S.get(p.id) || [];
+        if (p.source === 'nuvemshop') continue; // card espelhado DA loja: a loja é a fonte dele
         result.checked++;
         const sig = mirrorSig(p);
         const ctx = ctxOf(p);
@@ -135,12 +149,19 @@ async function runNuvemshopCardMirror({ prisma = db(), handlers = null, connecti
           await mergeAiContext(prisma, p.id, { nsMirrorFails: falhas + 1, nsMirrorFailAt: new Date(agora).toISOString(), nsMirrorLastError: String(e.message).slice(0, 300) }).catch(() => {});
           continue;
         }
+        const fotosFalharam = r && r.imageSync && Array.isArray(r.imageSync.errors) && r.imageSync.errors.length > 0;
+        if (fotosFalharam) {
+          result.errors++;
+          if (result.items.length < 20) result.items.push({ productId: p.id, erro: 'troca de fotos incompleta: ' + String(r.imageSync.errors[0].error).slice(0, 150) });
+          await mergeAiContext(prisma, p.id, { nsMirrorFails: falhas + 1, nsMirrorFailAt: new Date(agora).toISOString(), nsMirrorLastError: 'fotos: ' + String(r.imageSync.errors[0].error).slice(0, 250) }).catch(() => {});
+          continue;
+        }
         if (r && r.action === 'unpublished-invalid') result.unpublished++;
         else if (r && r.skipped) result.skipped++;
         else result.pushed++;
         if (result.items.length < 20) result.items.push({ productId: p.id, acao: (r && r.action) || 'enviado', motivo: (r && r.reason) || null });
         // grava só a assinatura (atômico, não desfaz edição feita no meio do envio)
-        await mergeAiContext(prisma, p.id, { nsMirrorSig: sig, nsMirrorAt: new Date(agora).toISOString() }, ['nsMirrorFails', 'nsMirrorFailAt', 'nsMirrorLastError']);
+        await mergeAiContext(prisma, p.id, { nsMirrorSig: sig, nsMirrorImgHash: p.imagesHash || null, nsMirrorAt: new Date().toISOString() }, ['nsMirrorFails', 'nsMirrorFailAt', 'nsMirrorLastError']);
       }
     }
     return result;

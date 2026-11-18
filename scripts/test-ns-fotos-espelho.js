@@ -170,6 +170,37 @@ async function partB() {
     a = await prisma.product.findUnique({ where: { id: A.id } });
     assert.strictEqual(a.aiContext.color, 'Verde'); assert.strictEqual(a.aiContext.nsMirrorSig, 's2');
   });
+  await t('AUDITORIA 2: produto que saiu do ar por falta de estoque VOLTA quando o estoque nas lojas do site volta', async () => {
+    const loja = await prisma.store.create({ data: { code: 'LOJA-TESTE-ESP', name: 'Loja Site Teste' } });
+    process.env.NS_STOCK_STORE_IDS = loja.id;
+    await prisma.nuvemshopProductMapping.updateMany({ where: { localProductId: B.id }, data: { syncStatus: 'hidden-invalid' } });
+    await prisma.product.update({ where: { id: B.id }, data: { aiContext: { color: 'Azul' } } });
+    await run(); // grava a assinatura "sem estoque nas lojas do site"
+    enviados.length = 0; await run();
+    assert.ok(!enviados.includes(B.id), 'sem mudança, não reenvia');
+    const ps = await prisma.productSize.findFirst({ where: { productId: B.id } });
+    await prisma.storeStock.create({ data: { storeId: loja.id, productSizeId: ps.id, stock: 2 } });
+    enviados.length = 0; await run();
+    assert.ok(enviados.includes(B.id), 'estoque voltou: reenvia (o portão decide a volta)');
+    await prisma.storeStock.deleteMany({}); await prisma.store.delete({ where: { id: loja.id } });
+    delete process.env.NS_STOCK_STORE_IDS;
+  });
+  await t('AUDITORIA 2: card que nasceu na própria Nuvemshop fica fora do espelho (a loja é a fonte dele; evita laço)', async () => {
+    const antes = (await prisma.product.findUnique({ where: { id: A.id } })).source;
+    await prisma.product.update({ where: { id: A.id }, data: { source: 'nuvemshop', name: 'Espelhado da loja' } });
+    enviados.length = 0;
+    try { await run(); assert.ok(!enviados.includes(A.id)); }
+    finally { await prisma.product.update({ where: { id: A.id }, data: { source: antes } }); }
+  });
+  await t('AUDITORIA 2: troca de fotos incompleta conta como falha (sem assinatura, tenta de novo depois)', async () => {
+    await prisma.product.update({ where: { id: A.id }, data: { name: 'Card 1 fotos incompletas' } });
+    const parcial = { pushProductToNuvemshop: async () => ({ action: 'updated', imageSync: { changed: false, errors: [{ position: 2, error: 'Remote image not found' }] } }) };
+    const r = await run({ handlers: parcial });
+    assert.strictEqual(r.errors, 1);
+    const a = await prisma.product.findUnique({ where: { id: A.id } });
+    assert.ok(a.aiContext.nsMirrorFails >= 1 && /fotos/.test(a.aiContext.nsMirrorLastError));
+  });
+  await prisma.storeStock.deleteMany({});
   await limpar();
   await prisma.$disconnect();
 }
@@ -177,11 +208,12 @@ async function partB() {
 async function partC() {
   // stub da API da Nuvemshop ANTES de carregar os handlers (nada sai para a loja)
   const nsPath = require.resolve('../src/services/nuvemshop');
-  const chamadas = []; let falharPost = false;
-  require.cache[nsPath] = { id: nsPath, filename: nsPath, loaded: true, exports: { nuvemshopApi: async (conn, metodo, url) => {
+  const chamadas = []; let falharPost = false; let falharUma = null; let falharGet = false; let seq = 800;
+  require.cache[nsPath] = { id: nsPath, filename: nsPath, loaded: true, exports: { nuvemshopApi: async (conn, metodo, url, corpo) => {
     chamadas.push(metodo + ' ' + url);
-    if (metodo === 'GET') return [{ id: 901, position: 1 }, { id: 902, position: 2 }];
-    if (metodo === 'POST' && falharPost) throw new Error('falhou');
+    if (metodo === 'GET' && /images$/.test(url)) { if (falharGet) throw new Error('GET caiu'); return [{ id: 901, position: 1 }, { id: 902, position: 2 }]; }
+    if (metodo === 'POST' && (falharPost || (falharUma && JSON.stringify(corpo || {}).includes(falharUma)))) throw new Error('falhou');
+    if (metodo === 'POST') return { id: ++seq };
     return {};
   } } };
   const h = require('../src/services/nuvemshopHandlers');
@@ -198,6 +230,22 @@ async function partC() {
     assert.ok(iPost >= 0 && iDel > iPost, chamadas.join(' | '));
     assert.strictEqual(r.added, 5); assert.strictEqual(r.removed, 2);
   });
+  await t('AUDITORIA 2: troca PARCIAL desfaz as novas, mantém as antigas e não grava a assinatura', async () => {
+    const q = await prisma.product.update({ where: { id: p.id }, data: { imageUrls: ['https://img/quebrada.jpg', ...fotos(5).slice(1, 4)] } });
+    chamadas.length = 0; falharUma = 'quebrada';
+    const r = await h.syncNuvemshopImages({ id: 'c' }, '555', q);
+    falharUma = null;
+    assert.strictEqual(r.changed, false); assert.strictEqual(r.removed, 0);
+    assert.ok(!chamadas.some((c) => c === 'DELETE /products/555/images/901'), 'antigas ficaram: ' + chamadas.join(' | '));
+    assert.ok(chamadas.some((c) => /^DELETE \/products\/555\/images\/8\d\d$/.test(c)), 'novas desfeitas: ' + chamadas.join(' | '));
+  });
+  await t('AUDITORIA 2: se não der para ler as fotos atuais, não troca nada (não passa de 5 na loja)', async () => {
+    const q = await prisma.product.update({ where: { id: p.id }, data: { imageUrls: fotos(5).reverse() } });
+    chamadas.length = 0; falharGet = true;
+    const r = await h.syncNuvemshopImages({ id: 'c' }, '555', q);
+    falharGet = false;
+    assert.ok(r.errors && r.errors.length); assert.ok(!chamadas.some((c) => c.startsWith('POST')));
+  });
   await t('AUDITORIA: se nenhuma foto nova subir, as antigas ficam (não apaga)', async () => {
     const q = await prisma.product.update({ where: { id: p.id }, data: { imageUrls: fotos(5).reverse() } });
     chamadas.length = 0; falharPost = true;
@@ -213,6 +261,25 @@ async function partC() {
     await h.upsertLocalProduct({ id: 777, name: { pt: 'Nome da Loja' }, brand: 'X', categories: [{ name: { pt: 'geral' } }], images: [{ src: 'https://cdn.loja/x.jpg' }], variants: [{ sku: 'EKPB471902044M', price: '1' }], published: true });
     const depois = await prisma.product.findUnique({ where: { id: c.id } });
     assert.strictEqual(depois.name, 'Camisa Botafogo Curada'); assert.strictEqual(depois.imageUrl, 'https://img/curada.jpg'); assert.strictEqual(depois.price, 300);
+  });
+  await t('AUDITORIA 2: card inválido que divide o produto da loja com OUTRO card não despublica (não derruba o card certo)', async () => {
+    const curado = await prisma.product.create({ data: { sku: 'SHARE1', name: 'Curado', brand: 'HOKA', category: 'Tênis', price: 900, costPrice: 400, imageUrl: 'https://img/c.jpg', aiContext: { color: 'Azul' } } });
+    const fantasma = await prisma.product.create({ data: { sku: 'SHARE1-NS', name: 'Fantasma', brand: 'A DEFINIR', category: 'geral', price: 0, source: 'nuvemshop' } });
+    await prisma.nuvemshopProductMapping.create({ data: { localProductId: curado.id, nuvemshopProductId: '888' } });
+    await prisma.nuvemshopProductMapping.create({ data: { localProductId: fantasma.id, nuvemshopProductId: '888' } });
+    chamadas.length = 0;
+    const r = await h.pushProductToNuvemshop(fantasma.id, { id: 'c' });
+    assert.strictEqual(r.action, 'skipped-shared');
+    assert.ok(!chamadas.some((c) => c.startsWith('PUT')), 'não mexeu na loja: ' + chamadas.join(' | '));
+  });
+  await t('AUDITORIA 2: eco de produto recém-enviado com código ALFANUMÉRICO não cria card-fantasma (corrida antes do mapping)', async () => {
+    const c = await prisma.product.create({ data: { sku: 'EKPB999', name: 'Camisa Alfa', brand: 'BOTAFOGO', category: 'Roupas', price: 300, imageUrl: 'https://img/alfa.jpg', aiContext: { color: 'Preto' } } });
+    await prisma.productSize.create({ data: { productId: c.id, size: 'G', barcode: 'EKPB999044G', stock: 1 } });
+    const antes = await prisma.product.count();
+    await h.upsertLocalProduct({ id: 9911, name: { pt: 'Camisa Alfa' }, brand: 'BOTAFOGO', categories: [], images: [], variants: [{ sku: 'EKPB999044G', price: '300' }], published: true });
+    assert.strictEqual(await prisma.product.count(), antes, 'não criou card novo');
+    const m = await prisma.nuvemshopProductMapping.findUnique({ where: { localProductId: c.id } });
+    assert.ok(m && m.nuvemshopProductId === '9911', 'só ligou o mapping no card certo');
   });
   await prisma.nuvemshopProductMapping.deleteMany({}); await prisma.productSize.deleteMany({}); await prisma.product.deleteMany({});
   await prisma.$disconnect();

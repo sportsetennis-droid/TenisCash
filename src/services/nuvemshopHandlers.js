@@ -122,9 +122,10 @@ async function upsertLocalProduct(nsProduct) {
   // NÃO espelhar (não criar card-fantasma nem sobrescrever o card curado): só GARANTIR o
   // mapping no card local existente (upsert, idempotente p/ corrida com o push) e sair.
   {
+    // qualquer formato (Botafogo: código = cProd alfanumérico), menos "SEM GTIN" (auditoria 18/11)
     const codes = variants
-      .map((v) => v.barcode || v.sku)
-      .filter((c) => c && /^[0-9]{6,}$/.test(String(c)));
+      .map((v) => String(v.barcode || v.sku || '').trim())
+      .filter((c) => c.length >= 6 && !/^SEM\s*GTIN$/i.test(c) && !/^NS-/i.test(c));
     if (codes.length) {
       const ps = await prisma.productSize.findFirst({
         where: { barcode: { in: codes } },
@@ -1428,49 +1429,56 @@ async function syncNuvemshopImages(connection, nsProductId, localProduct) {
   const ctx = ctxOf(localProduct);
   if (ctx.nsImagesSig === sig) return { changed: false, added: 0, removed: 0, sig };
 
-  // Lê as atuais (para apagar DEPOIS e para posicionar as novas logo atrás delas)
-  let current = [];
+  // Lê as atuais. Sem conseguir ler, NÃO troca nada (senão empilharia fotos e passaria de 5).
+  let current;
   try {
     const got = await ns.nuvemshopApi(connection, 'GET', `/products/${nsProductId}/images`);
-    if (Array.isArray(got)) current = got;
-  } catch (e) { console.warn('[ns img] GET atual falhou:', e.message); }
+    current = Array.isArray(got) ? got : [];
+  } catch (e) {
+    console.warn('[ns img] GET atual falhou — troca de fotos adiada:', e.message);
+    return { changed: false, added: 0, removed: 0, sig, errors: [{ position: 0, error: 'GET das fotos atuais falhou: ' + e.message }] };
+  }
   const base = current.reduce((m, img) => Math.max(m, Number(img.position) || 0), current.length);
 
   // 1) Sobe as locais na ordem (1ª = capa), depois das atuais
   let added = 0;
+  const novas = [];
   const errors = [];
   for (let i = 0; i < desired.length; i++) {
     const position = base + i + 1;
+    let criada = null;
     try {
-      await ns.nuvemshopApi(connection, 'POST', `/products/${nsProductId}/images`, imageBodyFromSrc(desired[i], position));
-      added++;
+      criada = await ns.nuvemshopApi(connection, 'POST', `/products/${nsProductId}/images`, imageBodyFromSrc(desired[i], position));
     } catch (e) {
       // Nuvemshop não baixou a URL → servidor baixa e manda o arquivo.
       const [att] = /^https?:\/\//i.test(desired[i]) ? await imagesAsAttachments([{ src: desired[i] }]) : [];
-      let ok = false;
       if (att) {
-        try { await ns.nuvemshopApi(connection, 'POST', `/products/${nsProductId}/images`, { ...att, position }); added++; ok = true; }
-        catch (_) { /* segue pro registro do erro */ }
+        try { criada = await ns.nuvemshopApi(connection, 'POST', `/products/${nsProductId}/images`, { ...att, position }); }
+        catch (_) { criada = null; }
       }
-      if (!ok) { errors.push({ position: i + 1, error: e.message }); console.warn('[ns img] POST falhou pos', i + 1, e.message); }
+      if (!criada) { errors.push({ position: i + 1, error: e.message }); console.warn('[ns img] POST falhou pos', i + 1, e.message); }
     }
+    if (criada) { added++; if (criada.id != null) novas.push(criada.id); }
   }
 
-  // 2) Só apaga as antigas se alguma nova subiu (ou se o card ficou sem foto de propósito)
+  // 2) Troca só quando TODAS subiram (ou o card ficou sem foto de propósito).
+  //    Parcial: desfaz as novas, mantém as antigas e NÃO grava a assinatura (tenta de novo depois).
   let removed = 0;
-  if (added > 0 || desired.length === 0) {
+  const completa = desired.length === 0 || (added === desired.length && errors.length === 0);
+  if (completa) {
     for (const img of current) {
       try { await ns.nuvemshopApi(connection, 'DELETE', `/products/${nsProductId}/images/${img.id}`); removed++; }
       catch (e) { console.warn('[ns img] delete falhou', img.id, e.message); }
     }
-  }
-
-  // 3) Grava SÓ a assinatura, de forma atômica (não desfaz edição feita no meio do envio)
-  if (added > 0 || desired.length === 0) {
     try { await mergeAiContext(prisma, localProduct.id, { nsImagesSig: sig }); }
     catch (e) { console.warn('[ns img] salvar sig falhou:', e.message); }
+  } else {
+    for (const id of novas) {
+      try { await ns.nuvemshopApi(connection, 'DELETE', `/products/${nsProductId}/images/${id}`); }
+      catch (e) { console.warn('[ns img] desfazer foto nova falhou', id, e.message); }
+    }
   }
-  return { changed: true, added, removed, sig, errors };
+  return { changed: completa, added: completa ? added : 0, removed, sig, errors };
 }
 
 // Trava anti-corrida POR PRODUTO (mesmo processo): cron + clique do admin no mesmo
@@ -1508,6 +1516,13 @@ async function _pushProductToNuvemshopInner(localProductId, connection) {
     const reason = eligibility.reasons.join('; ');
     console.log('[ns push] DESPUBLICADO/PULADO - gate de qualidade:', localProductId, reason);
     if (existingMapping) {
+      // NS# compartilhado com OUTRO card (fantasma + curado): despublicar aqui tiraria do ar
+      // o produto do card certo. Registra e não mexe na loja (auditoria 18/11).
+      const irmaos = await prisma.nuvemshopProductMapping.count({ where: { nuvemshopProductId: existingMapping.nuvemshopProductId } });
+      if (irmaos > 1) {
+        console.warn('[ns push] NS# compartilhado — não despublica pelo card inválido:', localProductId, 'NS#' + existingMapping.nuvemshopProductId);
+        return { skipped: true, action: 'skipped-shared', reason: 'produto da loja compartilhado com outro card; ' + reason };
+      }
       const hidden = await unpublishMappedProduct(
         localProductId,
         connection,

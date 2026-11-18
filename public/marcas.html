@@ -130,7 +130,7 @@ var FILTRO = 'todas';
 function $(s) { return document.querySelector(s); }
 function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 // aceita o login do app (tc_token) e o do admin (tc_admin_token)
-function token() { try { return localStorage.getItem('tc_token') || localStorage.getItem('tc_admin_token') || ''; } catch (e) { return ''; } }
+function token() { try { return localStorage.getItem('tc_admin_token') || localStorage.getItem('tc_token') || ''; } catch (e) { return ''; } }
 var LOJAS = { LOJA01: 'Baratão', LOJA02: 'Bessa', LOJA03: 'Campina Grande', LOJA04: 'Fábrica', LOJA05: 'Pirâmide', LOJA06: 'Tambiá', LOJA07: 'Manaíra', SITE: 'Site (Nuvemshop)' };
 function loja(k) { return LOJAS[k] ? LOJAS[k] + (k === 'SITE' ? '' : ' (' + k + ')') : k; }
 var RISCO = { low: 'baixo', medium: 'médio', high: 'alto' };
