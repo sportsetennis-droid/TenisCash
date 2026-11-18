@@ -141,6 +141,77 @@ router.post('/sinais', wrap(async (req, res) => {
   res.status(202).json({ traceId: s && s.traceId, sinalId: s && s.id });
 }));
 
+// ---------------------------------------------------------------------
+// GERENTE DE MARCA — um por marca (mini agente marca.gerente). O relatório
+// diário de cada marca fica em RnaSinal tipo 'marca.relatorio'.
+// ---------------------------------------------------------------------
+const { chave: chaveMarca, ficha: fichaMarca } = require('../ai/rede/regras/marcas');
+
+async function ultimosRelatorios(dias = 3) {
+  const desde = new Date(Date.now() - dias * 86400000);
+  const linhas = await prisma.rnaSinal.findMany({ where: { tipo: 'marca.relatorio', criadoEm: { gte: desde } }, orderBy: { criadoEm: 'desc' }, take: 2000 });
+  const porMarca = new Map();
+  for (const l of linhas) { const m = l.dados && l.dados.marca; if (m && !porMarca.has(m)) porMarca.set(m, l); }
+  return porMarca;
+}
+
+// Propostas pendentes da rede, agrupadas pela marca do produto (sinal de origem → dados.marca ou productId).
+async function propostasPorMarca() {
+  const aps = await prisma.aIApproval.findMany({ where: { type: { startsWith: 'rna_' }, status: 'pending' }, orderBy: { createdAt: 'desc' }, take: 500 });
+  const sinalIds = aps.map((a) => a.payload && a.payload.rna && a.payload.rna.sinalId).filter(Boolean);
+  const sinais = sinalIds.length ? await prisma.rnaSinal.findMany({ where: { id: { in: sinalIds } }, select: { id: true, dados: true } }) : [];
+  const S = new Map(sinais.map((s) => [s.id, s.dados || {}]));
+  const pids = [...new Set(sinais.map((s) => (s.dados || {}).productId).filter(Boolean))];
+  const prods = pids.length ? await prisma.product.findMany({ where: { id: { in: pids } }, select: { id: true, brand: true } }) : [];
+  const B = new Map(prods.map((p) => [p.id, p.brand]));
+  const out = new Map();
+  for (const a of aps) {
+    const d = S.get(a.payload && a.payload.rna && a.payload.rna.sinalId) || {};
+    const k = chaveMarca(d.marca || B.get(d.productId));
+    if (!k) continue;
+    if (!out.has(k)) out.set(k, []);
+    out.get(k).push({ id: a.id, tipo: a.type, titulo: a.title, risco: a.riskLevel, criadoEm: a.createdAt });
+  }
+  return out;
+}
+
+router.get('/marcas', wrap(async (req, res) => {
+  noStore(res);
+  const [rel, props] = await Promise.all([ultimosRelatorios(), propostasPorMarca()]);
+  const marcas = [...rel.values()].map((l) => {
+    const d = l.dados;
+    return {
+      marca: d.marca, atencao: d.atencao, geradoEm: d.geradoEm || l.criadoEm, cards: d.cards, cardsComEstoque: d.cardsComEstoque,
+      comprado: d.comprado, localizado: d.localizado, vendas30: d.vendas && d.vendas.d30, vendas7: d.vendas && d.vendas.d7,
+      coberturaDias: d.coberturaDias, alertas: (d.alertas || []).length, alertaPrincipal: (d.alertas || [])[0] || null,
+      propostasPendentes: (props.get(d.marca) || []).length, temFicha: !!d.ficha,
+    };
+  }).sort((a, b) => b.atencao - a.atencao || ((b.vendas30 && b.vendas30.rs) || 0) - ((a.vendas30 && a.vendas30.rs) || 0));
+  res.json({ total: marcas.length, ultimaGeracao: marcas.reduce((m, x) => (!m || x.geradoEm > m ? x.geradoEm : m), null), marcas });
+}));
+
+router.get('/marcas/:marca', wrap(async (req, res) => {
+  noStore(res);
+  const k = chaveMarca(req.params.marca);
+  if (!k) return res.status(400).json({ error: 'Marca inválida.' });
+  const hist = await prisma.rnaSinal.findMany({ where: { tipo: 'marca.relatorio', dados: { path: ['marca'], equals: k } }, orderBy: { criadoEm: 'desc' }, take: 30 });
+  const props = await propostasPorMarca();
+  res.json({
+    marca: k,
+    ficha: fichaMarca(k),
+    relatorio: hist[0] ? hist[0].dados : null,
+    historico: hist.map((h) => ({ em: h.criadoEm, atencao: h.dados.atencao, localizado: h.dados.localizado, vendas30: h.dados.vendas && h.dados.vendas.d30 && h.dados.vendas.d30.un, parados: h.dados.parados && h.dados.parados.cards })),
+    propostas: props.get(k) || [],
+  });
+}));
+
+router.post('/marcas/:marca/atualizar', wrap(async (req, res) => {
+  const k = chaveMarca(req.params.marca);
+  if (!k) return res.status(400).json({ error: 'Marca inválida.' });
+  const s = await rede.emitir(Object.assign({ tipo: 'marca.pedir', dados: { marca: k, userId: req.userId } }, rede.SENSORES['marca.pedir']));
+  res.status(202).json({ marca: k, traceId: s && s.traceId, aviso: s ? null : 'Rede desligada (RNA_ATIVA=0) — nada foi gerado.' });
+}));
+
 // Ao vivo: a rede pensando (Server-Sent Events)
 router.get('/ao-vivo', (req, res) => {
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });

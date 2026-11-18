@@ -393,6 +393,18 @@ Legenda de custo: **R** = regra/SQL (grátis) · **B** = IA barata · **F** = IA
 | Meta | `dono.resposta` | B | dono-pergunta → dono.resposta | Responde perguntas com ferramentas de leitura |
 | Meta | `resultado.medir` | R | relogio / fim objetivo → resultado.kpi | Mede KPI × base (treina a rede) |
 | Meta | `rede.poda` | R | relogio.mensal → dono.pendencia | Lista neurônios inúteis para desligar |
+| Marca | `marca.gerente` | R | relogio.diario / marca.pedir → marca.relatorio | Gerente de cada marca: raio-x diário de estoque, venda loja × site, site e cadastro |
+
+### 14.1 Gerentes de marca (um agente por marca — dono 2026-11-18)
+
+Pedido do dono: *"um agente para cada marca… cuidar de tudo sobre os produtos da marca, tanto do estoque quanto da venda, tanto na loja física como no site."*
+
+- **Um gerente por marca, mesma régua:** o mini agente `marca.gerente` (regra, custo zero) roda todo dia (06:41, Fortaleza) e gera **um relatório por marca** (`RnaSinal` tipo `marca.relatorio`, `dados.marca`). Grafias diferentes da mesma marca viram uma chave só (`src/ai/rede/regras/marcas.js`); "A DEFINIR"/sem marca ficam fora.
+- **O que cada relatório traz:** comprado (Σ `ProductSize.stock`) × localizado por loja (`StoreStock > 0`), negativos à parte; venda 7/30 dias por **loja física** e **site** (`Sale.erpReference` `NS-…`), margem só onde há custo gravado; parados 90+ dias (valor a custo); ruptura (vendeu e não tem físico — "falta repor ou falta contar"); site (publicados, publicados sem estoque, prontos para subir, barrados pelo gate oficial com o motivo); cadastro (sem foto, < 5 fotos, sem cor, sem custo, preço ≤ custo, tamanho técnico com estoque); alertas por gravidade e nota de atenção 0–100.
+- **Ficha da marca** (`regras/marcas.js`): o que a casa já aprendeu de cada marca (fornecedores, como a NF-e escreve ref/tamanho/cor, fonte de foto oficial, armadilhas). Só conhecimento registrado; marca sem ficha mostra "sem ficha".
+- **Não age:** só lê e relata. Correções continuam saindo como proposta dos mini agentes de cada assunto; o painel agrupa as propostas pendentes por marca.
+- **Painel:** `/marcas.html` (mobile-first; `?demo=1` para conferir a tela). API: `GET /api/admin/rede/marcas`, `GET /api/admin/rede/marcas/:marca`, `POST /api/admin/rede/marcas/:marca/atualizar` (sinal `marca.pedir` → raio-x na hora).
+- **Testes:** `scripts/test-rede-marcas.js` (banco descartável) e `scripts/test-marcas-painel.cjs`.
 
 ---
 
