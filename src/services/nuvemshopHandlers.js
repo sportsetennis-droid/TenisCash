@@ -1485,24 +1485,71 @@ function ctxOf(localProduct) {
 
 // Baixa no servidor as fotos que a Nuvemshop não conseguiu buscar pela URL e devolve
 // como { attachment, filename }. Ignora o que não for imagem ou passar de 9 MB.
-async function imagesAsAttachments(images) {
+// Lojas de terceiros (Casas Bahia, Extra, Ponto Frio, Magalu…) barram quem se identifica
+// como robô: o download do servidor se apresenta como navegador (auditoria 18/11 —
+// 13 cards presos com "Remote image not found" e a foto abrindo normal no navegador).
+const BROWSER_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+  'Accept-Language': 'pt-BR,pt;q=0.9',
+};
+const NS_IMG_MAX_LADO = 1920;
+
+// Foto grande demais ("Remote image exceeds maximum dimensions") ou em formato que a loja
+// recusa (webp/avif) vira JPG de no máximo 1920 px. JPG/PNG pequenos passam intactos.
+async function prepararFotoParaLoja(buf, type) {
+  let sharp;
+  try { sharp = require('sharp'); } catch (_) { return { buf, type }; }
+  try {
+    const img = sharp(buf, { limitInputPixels: 40e6, failOn: 'none' });
+    const meta = await img.metadata();
+    if (!meta || !meta.width || !meta.height) return null; // não é imagem de verdade
+    const grande = meta.width > NS_IMG_MAX_LADO || meta.height > NS_IMG_MAX_LADO;
+    const formatoOk = meta.format === 'jpeg' || meta.format === 'png';
+    if (!grande && formatoOk && buf.length <= 4 * 1024 * 1024) return { buf, type: meta.format === 'png' ? 'image/png' : 'image/jpeg' };
+    const out = await sharp(buf, { limitInputPixels: 40e6, failOn: 'none' })
+      .rotate()
+      .resize({ width: NS_IMG_MAX_LADO, height: NS_IMG_MAX_LADO, fit: 'inside', withoutEnlargement: true })
+      .flatten({ background: '#ffffff' })
+      .jpeg({ quality: 88 })
+      .toBuffer();
+    return { buf: out, type: 'image/jpeg' };
+  } catch (_) {
+    return null;
+  }
+}
+
+// diag (opcional): recebe { src, status } de cada foto que o servidor NÃO conseguiu baixar
+// (status HTTP, ou 'erro'/'nao-imagem'), para separar link morto (404/410) de falha passageira.
+async function imagesAsAttachments(images, diag) {
   const out = [];
   for (const img of images) {
     if (img && img.attachment) { out.push(img); continue; }
     const url = img && img.src;
     if (!url || !/^https?:\/\//i.test(url)) continue;
     try {
-      const resp = await fetch(url, {
-        signal: AbortSignal.timeout(20000),
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TenisCashBot/1.0)' },
-      });
+      const resp = await fetch(url, { signal: AbortSignal.timeout(20000), redirect: 'follow', headers: BROWSER_HEADERS });
       const type = String(resp.headers.get('content-type') || '').toLowerCase();
-      if (!resp.ok || !type.startsWith('image/')) continue;
-      const buf = Buffer.from(await resp.arrayBuffer());
-      if (!buf.length || buf.length > 9 * 1024 * 1024) continue;
-      const ext = (type.split('/')[1] || 'jpg').split(';')[0].replace('jpeg', 'jpg');
-      out.push({ attachment: buf.toString('base64'), filename: `img-${out.length + 1}.${ext}` });
-    } catch (_) { /* foto inacessível também pro servidor — pula */ }
+      const declarado = Number(resp.headers.get('content-length') || 0);
+      if (resp.ok && declarado > 15 * 1024 * 1024) {
+        try { if (resp.body && resp.body.cancel) await resp.body.cancel(); } catch (_) {}
+        if (Array.isArray(diag)) diag.push({ src: url, status: 'tamanho' });
+        continue;
+      }
+      if (!resp.ok || !type.startsWith('image/')) {
+        if (Array.isArray(diag)) diag.push({ src: url, status: resp.ok ? 'nao-imagem' : resp.status });
+        continue;
+      }
+      const bruto = Buffer.from(await resp.arrayBuffer());
+      if (!bruto.length || bruto.length > 15 * 1024 * 1024) { if (Array.isArray(diag)) diag.push({ src: url, status: 'tamanho' }); continue; }
+      const pronta = await prepararFotoParaLoja(bruto, type);
+      if (!pronta) { if (Array.isArray(diag)) diag.push({ src: url, status: 'nao-imagem' }); continue; }
+      const ext = pronta.type === 'image/png' ? 'png' : 'jpg';
+      out.push({ attachment: pronta.buf.toString('base64'), filename: `img-${out.length + 1}.${ext}` });
+    } catch (e) {
+      /* foto inacessível também pro servidor — pula */
+      if (Array.isArray(diag)) diag.push({ src: url, status: 'erro', error: e.message });
+    }
   }
   return out;
 }
@@ -1546,6 +1593,7 @@ async function syncNuvemshopImages(connection, nsProductId, localProduct) {
   // 1) Sobe as locais na ordem (1ª = capa), depois das atuais
   let added = 0;
   const errors = [];
+  const mortas = []; // link morto de verdade (404/410 também para o servidor)
   for (let i = 0; i < desired.length; i++) {
     const position = base + i + 1;
     let criada = null;
@@ -1553,7 +1601,9 @@ async function syncNuvemshopImages(connection, nsProductId, localProduct) {
       criada = await ns.nuvemshopApi(connection, 'POST', `/products/${nsProductId}/images`, imageBodyFromSrc(desired[i], position));
     } catch (e) {
       // Nuvemshop não baixou a URL → servidor baixa e manda o arquivo.
-      const [att] = /^https?:\/\//i.test(desired[i]) ? await imagesAsAttachments([{ src: desired[i] }]) : [];
+      const diag = [];
+      const [att] = /^https?:\/\//i.test(desired[i]) ? await imagesAsAttachments([{ src: desired[i] }], diag) : [];
+      if (!att && diag[0] && (diag[0].status === 404 || diag[0].status === 410)) mortas.push({ url: desired[i], status: diag[0].status });
       if (att) {
         try { criada = await ns.nuvemshopApi(connection, 'POST', `/products/${nsProductId}/images`, { ...att, position }); }
         catch (_) { criada = null; }
@@ -1581,7 +1631,57 @@ async function syncNuvemshopImages(connection, nsProductId, localProduct) {
       catch (e) { console.warn('[ns img] salvar sig falhou:', e.message); }
     }
   }
-  return { changed: completa || added > 0, added, removed, sig, errors };
+  if (mortas.length) await tirarFotosMortasDoCard(localProduct, mortas, desired);
+  return { changed: completa || added > 0, added, removed, sig, errors, mortas: mortas.length };
+}
+
+// Link de foto que não existe mais (404/410 para a loja E para o servidor) não é foto:
+// sai do card, fica anotado em aiContext.fotosMortas (evidência) e o card passa a contar
+// as fotos de verdade (regra das 5 fotos mostra o que falta). Assim a troca para de tentar
+// para sempre. Só tira se sobrar pelo menos 1 foto que funciona — card sem nenhuma foto boa
+// fica como está (a loja mantém as fotos que já tem) e marcado para buscar foto nova.
+async function tirarFotosMortasDoCard(localProduct, mortas, desired) {
+  const agora = new Date().toISOString();
+  const urlsMortas = new Set(mortas.map((m) => m.url));
+  const sobram = desired.filter((u) => !urlsMortas.has(u));
+  const registro = mortas.map((m) => ({ url: m.url, status: m.status, em: agora }));
+  try {
+    if (!sobram.length) {
+      const ja = ctxOf(localProduct).fotosMortas;
+      const antes0 = (Array.isArray(ja) ? ja : []).filter((x) => !urlsMortas.has(x && x.url));
+      await mergeAiContext(prisma, localProduct.id, { fotosMortas: [...antes0, ...registro].slice(-20), fotosMortasSemSubstituta: true });
+      return;
+    }
+    const atual = await prisma.product.findUnique({ where: { id: localProduct.id }, select: { imageUrl: true, imageUrls: true, aiContext: true } });
+    if (!atual) return;
+    let galeria = atual.imageUrls;
+    try { if (typeof galeria === 'string') galeria = JSON.parse(galeria); } catch (_) { galeria = []; }
+    if (!Array.isArray(galeria)) galeria = [];
+    const novaGaleria = galeria.filter((u) => !urlsMortas.has(typeof u === 'string' ? u.trim() : u));
+    let capa = atual.imageUrl;
+    if (capa && urlsMortas.has(String(capa).trim())) capa = sobram[0];
+    await prisma.product.update({ where: { id: localProduct.id }, data: { imageUrl: capa, imageUrls: novaGaleria } });
+    const ctx = ctxOf(atual);
+    const antes = (Array.isArray(ctx.fotosMortas) ? ctx.fotosMortas : []).filter((x) => !urlsMortas.has(x && x.url));
+    await mergeAiContext(prisma, localProduct.id, { fotosMortas: [...antes, ...registro].slice(-20) }, ['fotosMortasSemSubstituta']);
+    console.warn('[ns img] link de foto morto tirado do card:', localProduct.id, mortas.map((m) => m.status + ' ' + m.url.slice(0, 80)).join(' | '));
+  } catch (e) {
+    console.warn('[ns img] não consegui tirar foto morta do card:', localProduct.id, e.message);
+  }
+}
+
+// PUT deu 404: confere com um GET se o anúncio realmente não existe. Exige o STATUS 404 da
+// Nuvemshop nas duas respostas (não basta "not found" no texto: 422 de categoria ou 500 com
+// "not found" no corpo não podem ser lidos como anúncio apagado — auditoria 18/11).
+const NS_404 = /^\[Nuvemshop 404\]/;
+async function anuncioNaoExisteMais(connection, nsProductId, erro) {
+  if (!NS_404.test(String(erro && erro.message))) return false;
+  try {
+    await ns.nuvemshopApi(connection, 'GET', `/products/${nsProductId}`);
+    return false; // existe: o 404 era outra coisa
+  } catch (e2) {
+    return NS_404.test(String(e2 && e2.message));
+  }
 }
 
 // Trava anti-corrida POR PRODUTO (mesmo processo): cron + clique do admin no mesmo
@@ -1607,6 +1707,15 @@ async function _pushProductToNuvemshopInner(localProductId, connection) {
   const existingMapping = await prisma.nuvemshopProductMapping.findUnique({
     where: { localProductId: product.id },
   });
+
+  // Anúncio deste card foi APAGADO na Nuvemshop (painel do dono ou limpeza da loja): não
+  // atualiza (daria 404 para sempre) nem recria sozinho — recriar desfaria uma exclusão do
+  // dono e poderia repetir produto (auditoria 18/11). Fica marcado e aparece no gerente da
+  // marca como pendência do dono; volta só por ordem dele.
+  const sumiu = existingMapping && ctxOf(product).nsAnuncioSumiu;
+  if (sumiu && String(sumiu.ns) === String(existingMapping.nuvemshopProductId)) {
+    return { skipped: true, action: 'removed-on-store', reason: 'anúncio apagado na Nuvemshop em ' + (sumiu.em || '?') + ' — volta só por ordem do dono', anuncioApagado: String(existingMapping.nuvemshopProductId) };
+  }
 
   // A single gate controls CREATE and UPDATE. If a previously mapped card
   // becomes invalid, it is actively unpublished instead of remaining frozen
@@ -1710,12 +1819,25 @@ async function _pushProductToNuvemshopInner(localProductId, connection) {
       modality: aiCtx?.classification?.modality, tier: aiCtx?.classification?.tier,
       mode: 'update',
     });
-    nsProduct = await ns.nuvemshopApi(
-      connection,
-      'PUT',
-      `/products/${existingMapping.nuvemshopProductId}`,
-      payload,
-    );
+    try {
+      nsProduct = await ns.nuvemshopApi(
+        connection,
+        'PUT',
+        `/products/${existingMapping.nuvemshopProductId}`,
+        payload,
+      );
+    } catch (e) {
+      // Anúncio apagado na Nuvemshop (painel do dono ou limpeza da loja) e o vínculo ficou: o
+      // card tentava atualizar para sempre. Confirmado o 404 (PUT e GET), o vínculo fica como
+      // "fora do site" e o card é MARCADO — não é recriado sozinho (não desfaz exclusão do dono
+      // nem repete produto); aparece no gerente da marca para o dono decidir (auditoria 18/11).
+      const sumiu = await anuncioNaoExisteMais(connection, existingMapping.nuvemshopProductId, e);
+      if (!sumiu) throw e;
+      await prisma.nuvemshopProductMapping.update({ where: { id: existingMapping.id }, data: { syncStatus: 'hidden-invalid', lastSyncedAt: new Date() } }).catch(() => {});
+      await mergeAiContext(prisma, product.id, { nsAnuncioSumiu: { ns: String(existingMapping.nuvemshopProductId), em: new Date().toISOString() } }).catch(() => {});
+      await logSync('product', 'warning', `Anúncio NS#${existingMapping.nuvemshopProductId} não existe mais na loja — card marcado, volta só por ordem do dono: ${product.id} (${product.sku})`);
+      return { skipped: true, action: 'removed-on-store', reason: 'anúncio não existe mais na Nuvemshop; volta só por ordem do dono', anuncioApagado: String(existingMapping.nuvemshopProductId) };
+    }
     // Atualiza variants separadamente via /products/:id/variants/:vid
     variantSync = await updateNuvemshopVariants(connection, existingMapping.nuvemshopProductId, product, updateSizes);
     // Sincroniza imagens (PUT não aceita images — usa endpoints dedicados).
@@ -1869,6 +1991,7 @@ async function pushAllProducts({ onlyMissing = true, limit = 1000, withImageOnly
   const products = await prisma.product.findMany({ where, take: limit, orderBy: { createdAt: 'asc' } });
   let created = 0;
   let updated = 0;
+  let pulados = 0;
   let failed = 0;
   const errors = [];
 
@@ -1876,6 +1999,7 @@ async function pushAllProducts({ onlyMissing = true, limit = 1000, withImageOnly
     try {
       const r = await pushProductToNuvemshop(p.id, connection);
       if (r.action === 'created') created++;
+      else if (r && r.skipped) pulados++; // barrado no portão / anúncio apagado: não conta como atualizado
       else updated++;
       // Delay pequeno pra não estourar rate limit
       await new Promise((res) => setTimeout(res, 200));
@@ -1886,8 +2010,8 @@ async function pushAllProducts({ onlyMissing = true, limit = 1000, withImageOnly
     }
   }
 
-  await logSync('product', 'ok', `Push catálogo TenisCash → Nuvemshop: ${products.length} total, ${created} novos, ${updated} atualizados, ${failed} falhas`);
-  return { total: products.length, created, updated, failed, errors: errors.slice(0, 20) };
+  await logSync('product', 'ok', `Push catálogo TenisCash → Nuvemshop: ${products.length} total, ${created} novos, ${updated} atualizados, ${pulados} pulados, ${failed} falhas`);
+  return { total: products.length, created, updated, skipped: pulados, failed, errors: errors.slice(0, 20) };
 }
 
 async function pushStockUpdate(localProductId) {
@@ -1971,6 +2095,8 @@ module.exports = {
   syncNuvemshopImages,
   buildNuvemshopProductPayload,
   collectLocalImages,
+  imagesAsAttachments,
+  _anuncioNaoExisteMais: anuncioNaoExisteMais,
   imageSignature,
   updateNuvemshopVariants,
 };

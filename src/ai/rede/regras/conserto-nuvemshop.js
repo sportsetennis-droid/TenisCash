@@ -15,6 +15,9 @@
 // =====================================================================
 
 const PASSOS = [
+  { id: 'anuncio-apagado', rx: /^anuncio apagado na nuvemshop$/, titulo: 'Anúncio apagado na Nuvemshop',
+    como: 'O anúncio deste card não existe mais na loja online (apagado no painel da Nuvemshop ou na limpeza da loja). O sistema NÃO recria sozinho: recriar poderia desfazer uma exclusão do dono ou repetir produto na loja. Se é para voltar, o dono manda e o card é republicado conferindo antes se o produto já não está na loja (trava contra repetido).',
+    quem: 'dono', dono: true },
   { id: 'loja-fora-do-site', rx: /^so em loja que nao vende no site$/, titulo: 'Bipado só em loja que não abastece o site',
     como: 'O estoque da loja online vem só das lojas que abastecem o site — hoje 04, 06 e 07 (dono 12/11: "tenho produtos corretamente no estoque das lojas 04, 06 e 07, eles podem subir pra Nuvemshop"). Ou o dono libera outra loja para o site, ou o par é transferido para uma loja do site (proposta de transferência, aprovada pelo dono).',
     quem: 'dono', dono: true },
