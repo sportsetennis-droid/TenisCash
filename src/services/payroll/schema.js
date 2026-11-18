@@ -15,8 +15,14 @@ const id = () => 'c' + crypto.randomBytes(12).toString('hex');
 
 async function seed(tx) {
   for (const p of SEED_PARAMS) {
-    const exists = await tx.payrollParam.findFirst({ where: { key: p.key, validFrom: p.validFrom, issuerId: null, storeId: null }, select: { id: true } });
-    if (!exists) await tx.payrollParam.create({ data: { id: id(), key: p.key, value: p.value, validFrom: p.validFrom, status: p.status || 'ACTIVE', source: p.source, createdById: 'seed' } });
+    let storeId = null;
+    if (p.storeCode) {
+      const st = await tx.store.findFirst({ where: { code: p.storeCode }, select: { id: true } });
+      if (!st) continue;
+      storeId = st.id;
+    }
+    const exists = await tx.payrollParam.findFirst({ where: { key: p.key, validFrom: p.validFrom, issuerId: null, storeId }, select: { id: true } });
+    if (!exists) await tx.payrollParam.create({ data: { id: id(), key: p.key, value: p.value, validFrom: p.validFrom, status: p.status || 'ACTIVE', source: p.source, createdById: 'seed', ...(storeId ? { storeId } : {}) } });
   }
   for (const h of SEED_HOLIDAYS_2026) {
     const exists = await tx.payrollHoliday.findFirst({ where: { date: h.date, scope: h.scope, locality: h.locality }, select: { id: true } });

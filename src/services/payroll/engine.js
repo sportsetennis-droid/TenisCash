@@ -220,7 +220,23 @@ function computePayslip(input) {
   }
 
   // Vale-transporte: desconto até 6% do salário-base, limitado ao custo entregue.
-  const transportCost = entries.filter((e) => e.kind === 'VALE_TRANSPORTE' || e.kind === 'PASSAGEM').reduce((s, e) => s + e.amountCents, 0);
+  // Vale-alimentação e passagem pelo ponto (CCT JP 2026/2027 + dono 18/11/2026). Se o dono lançou o que
+  // entregou no mês, vale o lançamento; senão calcula pelos dias trabalhados até hoje.
+  const workedDays = time.days.filter((d) => !d.future && d.inBond && d.workedMinutes > 0);
+  const autoBenefits = [];
+  if (params.VALE_ALIMENTACAO_DIA && params.VALE_ALIMENTACAO_DIA.amountCents && !entries.some((e) => e.kind === 'VALE_ALIMENTACAO')) {
+    const minMin = params.VALE_ALIMENTACAO_DIA.minWorkedMinutes ?? 240;
+    const n = workedDays.filter((d) => d.workedMinutes > minMin).length;
+    if (n) autoBenefits.push({ kind: 'VALE_ALIMENTACAO', label: 'Vale-alimentação', date: asOfDay, cents: n * params.VALE_ALIMENTACAO_DIA.amountCents,
+      description: `${n} dia(s) trabalhado(s) acima de ${minMin / 60}h × ${brl(params.VALE_ALIMENTACAO_DIA.amountCents)}`, auto: true });
+  }
+  if (profile.vtOptIn && params.PASSAGEM_DIA && params.PASSAGEM_DIA.amountCents && !entries.some((e) => e.kind === 'VALE_TRANSPORTE' || e.kind === 'PASSAGEM')) {
+    const n = workedDays.length;
+    if (n) autoBenefits.push({ kind: 'PASSAGEM', label: 'Passagem', date: asOfDay, cents: n * params.PASSAGEM_DIA.amountCents,
+      description: `${n} dia(s) trabalhado(s) × ${brl(params.PASSAGEM_DIA.amountCents)}`, auto: true });
+  }
+  const transportCost = entries.filter((e) => e.kind === 'VALE_TRANSPORTE' || e.kind === 'PASSAGEM').reduce((s, e) => s + e.amountCents, 0)
+    + autoBenefits.filter((b) => b.kind === 'PASSAGEM').reduce((s, b) => s + b.cents, 0);
   let vtCalc = null;
   if (profile.vtOptIn && transportCost) {
     if (!params.VALE_TRANSPORTE) pend(pendencies, 'PARAM_VT', 'Sem parâmetro de vale-transporte vigente.');
@@ -248,7 +264,8 @@ function computePayslip(input) {
       pend(pendencies, 'LANCAMENTO_SEM_CLASSIFICACAO', `Lançamento "${e.kind}" de ${brl(e.amountCents)} sem classificação conhecida.`);
     }
   }
-  const benefits = entries.filter((e) => BENEFIT_KINDS.has(e.kind)).map((e) => ({ kind: e.kind, label: ENTRY_LABEL[e.kind], date: e.date, cents: e.amountCents, description: e.description || null }));
+  const benefits = entries.filter((e) => BENEFIT_KINDS.has(e.kind)).map((e) => ({ kind: e.kind, label: ENTRY_LABEL[e.kind], date: e.date, cents: e.amountCents, description: e.description || null }))
+    .concat(autoBenefits);
 
   // ── Totais ──────────────────────────────────────────────
   const gross = items.filter((i) => i.type === 'PROVENTO').reduce((s, i) => s + i.cents, 0);
