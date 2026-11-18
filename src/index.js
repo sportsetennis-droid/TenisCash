@@ -463,34 +463,6 @@ app.post('/api/_falgen', async (req, res) => {
     return res.json({ ok: false, error: String(e.message).slice(0, 200), ...keys });
   }
 });
-// TEMPORÁRIO (dono 18/11/2026: "deixe tudo perfeitamente pronto"): teste no ar do agente do vendedor
-// com a IA de verdade — chaves, leitura de foto real e 2 perguntas. Restaura a conversa do vendedor. Remover depois.
-app.post('/api/_teste-agente', async (req, res) => {
-  if (req.query.g !== 'a0a9dca26a2d8ddb99d207aa') return res.status(404).json({ error: 'not found' });
-  const out = { chaves: { anthropic: !!process.env.ANTHROPIC_API_KEY, groq: !!process.env.GROQ_API_KEY, openai: !!process.env.OPENAI_API_KEY } };
-  const { prisma } = require('./middleware');
-  try {
-    const p = await prisma.product.findFirst({ where: { active: true, imageUrl: { startsWith: 'https://' }, brand: { contains: 'adidas', mode: 'insensitive' } }, select: { name: true, imageUrl: true } });
-    if (p) {
-      const r = await fetch(p.imageUrl); const buf = Buffer.from(await r.arrayBuffer());
-      out.foto = { produtoReal: p.name, leitura: await require('./services/sellerPowers').identifyProductPhoto(buf.toString('base64'), r.headers.get('content-type') || 'image/jpeg', '').catch((e) => 'ERRO ' + e.message) };
-    }
-  } catch (e) { out.foto = { erro: e.message }; }
-  try {
-    const seller = await prisma.user.findFirst({ where: { name: 'Gladson Araujo de Melo', role: 'seller', active: true }, select: { id: true, name: true } });
-    const conv = await prisma.aIConversation.findFirst({ where: { userId: seller.id, userType: 'seller-agent', active: true }, select: { id: true, messages: true } });
-    const before = conv ? conv.messages : null;
-    const chat = require('./routes/sellerAgent').runSellerAgentChat;
-    const ask = async (q) => { const r = await chat({ userId: seller.id, userRole: 'seller', query: {}, body: {}, headers: {} }, q, { channel: 'whatsapp' }); return { pergunta: q, resposta: r.reply, fotos: (r.media || []).length }; };
-    out.agente = [await ask('Como tá a loja hoje?'), await ask('Tem Megaride no 41? Em quais lojas?')];
-    const after = await prisma.aIConversation.findFirst({ where: { userId: seller.id, userType: 'seller-agent', active: true }, select: { id: true } });
-    if (after) await prisma.aIConversation.update({ where: { id: after.id }, data: { messages: before == null ? [] : before } });
-    out.conversaRestaurada = true;
-  } catch (e) { out.agente = { erro: e.message }; }
-  out.ia = require('./services/aiResilientClient').getAiState();
-  res.json(out);
-});
-
 app.use('/api/auth', authRoutes);
 app.use('/api/webauthn', webauthnRoutes);
 app.use('/api/face', faceRoutes);
