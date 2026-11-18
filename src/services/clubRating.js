@@ -321,6 +321,30 @@ async function onResult(sport) {
   }
 }
 
+// Boot: esporte com jogo ENCERRADO e NENHUM rating gravado → recalcula do histórico.
+// Idempotente (o recálculo sempre reconstrói do zero); não mexe em esporte que já tem rating.
+// Resolve o ranking vazio depois do deploy sem precisar de botão nem token de admin.
+async function bootstrapEmpty() {
+  try {
+    const comJogo = await prisma.tournament.findMany({
+      where: { matches: { some: { status: 'FINISHED', homeEntryId: { not: null }, awayEntryId: { not: null } } } },
+      select: { sport: true }, distinct: ['sport'],
+    });
+    const feitos = [];
+    for (const { sport } of comJogo) {
+      if (!sport) continue;
+      const ja = await prisma.glickoRating.count({ where: { sport } });
+      if (ja > 0) continue;
+      const r = await recomputeSport(sport);
+      feitos.push(sport + ':' + (r && r.events));
+    }
+    if (feitos.length) console.log('[clubRating] ranking gerado do histórico no boot: ' + feitos.join(', '));
+    return feitos;
+  } catch (e) {
+    console.error('[clubRating] bootstrap falhou:', e.message);
+    return [];
+  }
+}
 // Níveis de um atleta (todos os esportes/formatos) + posição no pool
 async function athleteLevels(userId, now = new Date()) {
   const rows = await prisma.glickoRating.findMany({ where: { subjectType: 'USER', subjectKey: userId } });
@@ -340,5 +364,5 @@ module.exports = {
   setPrisma,
   TEAM_SPORTS, FORMATS, PROVISIONAL_RD,
   normName, periodIndex, periodStart, level, reliability, isProvisional, currentRd, present,
-  collectEvents, computePool, recomputeSport, onResult, athleteLevels,
+  collectEvents, computePool, recomputeSport, onResult, athleteLevels, bootstrapEmpty,
 };
