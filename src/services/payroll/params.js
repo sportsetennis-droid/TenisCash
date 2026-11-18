@@ -15,6 +15,7 @@ const SOURCES = {
   NOTURNO: 'CLT art. 73 — 20% entre 22h e 5h, hora noturna de 52min30s',
   SAL_FAM_2026: 'Portaria Interministerial MPS/MF nº 13/2026 — salário-família',
   FERIADOS: 'Lei 662/1949, Lei 6.802/1980, Lei 14.759/2023 (feriados nacionais)',
+  CCT_JP_2026: 'CCT comerciários Grande João Pessoa 2026/2027, registro MTE MR063315/2026 (vigência 01/07/2026 a 30/06/2027) — comerciario.com.br/seus-direitos; gravado por ordem do dono em 18/11/2026',
 };
 
 // Sementes: valores legais conferidos nas fontes acima. Domingo/feriado = valor fixo
@@ -49,6 +50,22 @@ const SEED_PARAMS = [
   { key: 'FERIADO_TRABALHADO', validFrom: '2026-01-01', status: 'PENDING_VALIDATION',
     source: 'Dono (16/11/2026): valor fixo por feriado trabalhado + folga compensatória — valor a cadastrar',
     value: { mode: 'FIXED', amountCents: null, compensatoryDayOff: true } },
+  // CCT João Pessoa 2026/2027 — vale para todas as lojas, menos as de outra base sindical (abaixo).
+  // O adicional de 100% de hora extra em domingo/feriado NÃO foi gravado (ordem do dono).
+  { key: 'HORA_EXTRA', validFrom: '2026-07-01', source: SOURCES.CCT_JP_2026 + ' — hora extra 60%', value: { pct: 60 } },
+  { key: 'DOMINGO_TRABALHADO', validFrom: '2026-07-01', source: SOURCES.CCT_JP_2026 + ' — R$ 72,00 + vale-transporte + um dia de folga',
+    value: { mode: 'FIXED', amountCents: 7200, compensatoryDayOff: true } },
+  { key: 'FERIADO_TRABALHADO', validFrom: '2026-07-01', source: SOURCES.CCT_JP_2026 + ' — R$ 72,00 + vale-transporte + um dia de folga',
+    value: { mode: 'FIXED', amountCents: 7200, compensatoryDayOff: true } },
+  { key: 'VALE_ALIMENTACAO_DIA', validFrom: '2026-07-01', source: SOURCES.CCT_JP_2026 + ' — R$ 14,00 por dia efetivamente trabalhado acima de 4h',
+    value: { amountCents: 1400, minWorkedMinutes: 240 } },
+  { key: 'PASSAGEM_DIA', validFrom: '2026-07-01', source: 'Dono (18/11/2026): passagem de R$ 11,00 por dia trabalhado (quem usa vale-transporte)',
+    value: { amountCents: 1100 } },
+  // Campina Grande (LOJA03) tem outra convenção: até o dono informar, fica pendente (não usa o valor de JP).
+  // Domingo lá é troca pedida pelo colaborador (sem adicional) — tratado no ponto (DOMINGO_TROCA).
+  { key: 'HORA_EXTRA', storeCode: 'LOJA03', validFrom: '2026-07-01', status: 'PENDING_VALIDATION', source: 'Campina Grande: convenção própria — percentual de hora extra a informar pelo dono', value: { pct: null } },
+  { key: 'VALE_ALIMENTACAO_DIA', storeCode: 'LOJA03', validFrom: '2026-07-01', status: 'PENDING_VALIDATION', source: 'Campina Grande: convenção própria — vale-alimentação a informar pelo dono', value: { amountCents: null } },
+  { key: 'FERIADO_TRABALHADO', storeCode: 'LOJA03', validFrom: '2026-07-01', status: 'PENDING_VALIDATION', source: 'Campina Grande: convenção própria — feriado trabalhado a informar pelo dono', value: { mode: 'FIXED', amountCents: null, compensatoryDayOff: true } },
 ];
 
 const SEED_HOLIDAYS_2026 = [

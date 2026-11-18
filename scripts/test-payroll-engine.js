@@ -6,7 +6,7 @@ const legal = require('../src/services/payroll/legal');
 const { SEED_PARAMS, SEED_HOLIDAYS_2026, SEED_COMMISSION_RULE, resolveParams } = require('../src/services/payroll/params');
 const cal = require('../src/services/payroll/calendar');
 
-const PARAMS = SEED_PARAMS.map((p, i) => ({ id: 'p' + i, status: p.status || 'ACTIVE', ...p }));
+const PARAMS = SEED_PARAMS.map((p, i) => ({ id: 'p' + i, status: p.status || 'ACTIVE', ...p, ...(p.storeCode ? { storeId: 'store-' + p.storeCode } : {}) }));
 const WITH_SUNDAY = PARAMS.map((p) => (p.key === 'DOMINGO_TRABALHADO' || p.key === 'FERIADO_TRABALHADO'
   ? { ...p, status: 'ACTIVE', value: { mode: 'FIXED', amountCents: 8000, compensatoryDayOff: true } } : p));
 const RULE = { id: 'r1', ...SEED_COMMISSION_RULE };
@@ -63,8 +63,19 @@ test('Vale-transporte: 6% limitado ao custo', () => {
   assert.equal(legal.valeTransporte(200000, 5000, P.VALE_TRANSPORTE).valueCents, 5000);
 });
 test('Parâmetro pendente de validação não é usado', () => {
-  const r = resolveParams(PARAMS, { onDay: '2026-11-30' });
+  const r = resolveParams(PARAMS, { onDay: '2026-06-30' });
   assert.ok(!r.params.DOMINGO_TRABALHADO); assert.ok(r.pending.DOMINGO_TRABALHADO);
+});
+test('CCT João Pessoa 2026/2027: HE 60%, domingo/feriado R$ 72 + folga, VA R$ 14 (>4h), passagem R$ 11', () => {
+  const r = resolveParams(PARAMS, { onDay: '2026-11-30' });
+  assert.equal(r.params.HORA_EXTRA.pct, 60); assert.equal(r.params.DOMINGO_TRABALHADO.amountCents, 7200); assert.equal(r.params.FERIADO_TRABALHADO.amountCents, 7200);
+  assert.equal(r.params.VALE_ALIMENTACAO_DIA.amountCents, 1400); assert.equal(r.params.VALE_ALIMENTACAO_DIA.minWorkedMinutes, 240); assert.equal(r.params.PASSAGEM_DIA.amountCents, 1100);
+  assert.ok(!Object.values(r.params).some((p) => p.pct === 100), '100% não foi gravado');
+});
+test('Campina Grande (LOJA03): HE, vale-alimentação e feriado pendentes — não herda os valores de JP', () => {
+  const r = resolveParams(PARAMS, { onDay: '2026-11-30', storeId: 'store-LOJA03' });
+  assert.ok(!r.params.HORA_EXTRA && r.pending.HORA_EXTRA); assert.ok(!r.params.VALE_ALIMENTACAO_DIA && r.pending.VALE_ALIMENTACAO_DIA); assert.ok(!r.params.FERIADO_TRABALHADO && r.pending.FERIADO_TRABALHADO);
+  assert.equal(r.params.PASSAGEM_DIA.amountCents, 1100);
 });
 test('Parâmetro sem vigência na competência não é usado', () => {
   assert.ok(!resolveParams(PARAMS, { onDay: '2025-06-30' }).params.INSS_EMPREGADO);
@@ -136,11 +147,11 @@ test('Falta de ponto não vira desconto sem conciliação', () => {
   const conf = computePayslip(base({ punches, marks: [{ id: 'f', kind: 'FALTA_CONFIRMADA', date: '2026-11-12' }] }));
   assert.equal(item(conf, 'FALTA'), Math.round(200000 / 30)); assert.equal(item(conf, 'FALTA_DSR'), Math.round(200000 / 30));
 });
-test('Horas extras pelo saldo semanal (50%)', () => {
+test('Horas extras pelo saldo semanal (60% — CCT JP 2026/2027)', () => {
   const punches = workdays.flatMap((d) => fullDay(d, d === '2026-11-03' ? { exit: '19:20' } : {}));
   const r = computePayslip(base({ punches }));
   assert.equal(r.time.totals.extraMinutes, 120);
-  assert.equal(item(r, 'HORA_EXTRA'), Math.round(2 * Math.round(200000 / 220) * 1.5));
+  assert.equal(item(r, 'HORA_EXTRA'), Math.round(2 * Math.round(200000 / 220) * 1.6));
   assert.ok(item(r, 'DSR_VARIAVEIS') > 0);
 });
 test('Fechamento: hora extra na última semana do mês é confirmada e paga', () => {
@@ -248,10 +259,22 @@ test('Domingo pago antes: aparece devido E antecipado, sobra só a diferença', 
   assert.equal(r.specialDays[0].status, 'CONCILIADO');
 });
 test('Domingo trabalhado com valor ainda não cadastrado: pendência, nada inventado', () => {
-  const r = computePayslip(base({ punches: [...workdays.flatMap((d) => fullDay(d)), ...fullDay('2026-11-08')],
+  const r = computePayslip(base({ params: PARAMS.filter((p) => !(p.key === 'DOMINGO_TRABALHADO' && p.validFrom === '2026-07-01')), punches: [...workdays.flatMap((d) => fullDay(d)), ...fullDay('2026-11-08')],
     entries: [{ id: 'd', kind: 'DOMINGO_PAGO', competence, date: '2026-11-09', amountCents: 8000, referenceDate: '2026-11-08' }] }));
   assert.equal(item(r, 'DOMINGO'), 0); assert.equal(item(r, 'DOMINGO_PAGO'), 0);
   assert.ok(pendCodes(r).includes('PARAM_DOMINGO_TRABALHADO')); assert.ok(pendCodes(r).includes('ANTECIPADO_SEM_VALOR'));
+});
+test('Vale-alimentação R$ 14/dia (>4h) e passagem R$ 11/dia saem do ponto; manual vence o automático', () => {
+  const punches = workdays.flatMap((d) => fullDay(d));
+  const n = new Set(punches.map((p) => new Date(new Date(p.timestamp).getTime() - 3 * 3600000).toISOString().slice(0, 10))).size;
+  const r = computePayslip(base({ punches, profile: { vtOptIn: true } }));
+  const va = r.benefits.find((b) => b.kind === 'VALE_ALIMENTACAO'), pas = r.benefits.find((b) => b.kind === 'PASSAGEM');
+  assert.equal(va.cents, n * 1400); assert.equal(pas.cents, n * 1100);
+  assert.equal(item(r, 'VALE_TRANSPORTE'), Math.min(Math.round(200000 * 0.06), n * 1100));
+  const noVt = computePayslip(base({ punches }));
+  assert.ok(!noVt.benefits.some((b) => b.kind === 'PASSAGEM'), 'sem vale-transporte não gera passagem');
+  const manual = computePayslip(base({ punches, entries: [{ id: 'va', kind: 'VALE_ALIMENTACAO', competence, date: '2026-11-05', amountCents: 30000 }] }));
+  assert.deepEqual(manual.benefits.filter((b) => b.kind === 'VALE_ALIMENTACAO').map((b) => b.cents), [30000]);
 });
 test('INSS/IRRF/FGTS no contracheque mensal', () => {
   const r = computePayslip(base({ profile: { baseSalaryCents: 600000 } }));
