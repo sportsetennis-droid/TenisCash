@@ -118,7 +118,11 @@ async function publicLots(db, lots) {
 async function transaction(db, work) {
   for (let attempt = 0; ; attempt++) {
     try { return await db.$transaction(work, { isolationLevel: 'Serializable', timeout: 30000 }); }
-    catch (error) { if (!['P2034', 'P2002'].includes(error.code) || attempt >= 5) throw error; }
+    catch (error) {
+      // conflito de serialização ou impasse (40001/40P01) entre o sync e a confirmação/contagem: repete
+      const impasse = (error.code === 'P2010' && ['40001', '40P01'].includes(error.meta?.code)) || /\b40P01\b|\b40001\b/.test(String(error.message || ''));
+      if ((!['P2034', 'P2002'].includes(error.code) && !impasse) || attempt >= 5) throw error;
+    }
   }
 }
 async function sync(db, actor, input) {

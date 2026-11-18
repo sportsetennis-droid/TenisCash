@@ -251,8 +251,8 @@ function iniciarRecebimentoAutomatico(db) {
   // índices parciais para as buscas por lote/leitura (só as linhas do recebimento automático)
   const indices = async () => {
     for (const sql of [
-      'CREATE INDEX IF NOT EXISTS "StoreStockMovement_recebimento_lote_idx" ON "StoreStockMovement" ((metadata->>\'lotId\')) WHERE source IN ' + SRC_SQL,
-      'CREATE INDEX IF NOT EXISTS "StoreStockMovement_recebimento_leitura_idx" ON "StoreStockMovement" ((metadata->>\'clientScanId\')) WHERE source IN ' + SRC_SQL,
+      'CREATE INDEX CONCURRENTLY IF NOT EXISTS "StoreStockMovement_recebimento_lote_idx" ON "StoreStockMovement" ((metadata->>\'lotId\')) WHERE source IN ' + SRC_SQL,
+      'CREATE INDEX CONCURRENTLY IF NOT EXISTS "StoreStockMovement_recebimento_leitura_idx" ON "StoreStockMovement" ((metadata->>\'clientScanId\')) WHERE source IN ' + SRC_SQL,
     ]) { try { await db.$executeRawUnsafe(sql); } catch (e) { console.warn('[recebimento automático] índice:', e.message); } }
   };
   indices();
