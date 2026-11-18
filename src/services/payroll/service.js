@@ -55,6 +55,9 @@ async function loadInput(prisma, userId, competence, { asOfDay = null, nowMs = D
   const store = storeId ? await prisma.store.findUnique({ where: { id: storeId }, select: { id: true, code: true, name: true, fiscalIssuerId: true } }) : null;
   const issuerId = profile.issuerId || store?.fiscalIssuerId || null;
   profile.issuerId = issuerId; profile.storeId = storeId;
+  // Lojas onde domingo é troca pedida pelo colaborador, sem adicional (dono 18/11/2026: Campina Grande).
+  const swapStores = String(process.env.PAYROLL_SUNDAY_SWAP_STORES || 'LOJA03').split(',').map((x) => x.trim()).filter(Boolean);
+  profile.sundaySwap = !!(store && swapStores.includes(store.code));
   const first = cal.firstDay(competence), last = cal.lastDay(competence);
   const start = cal.dayStartUtc(first), end = cal.dayEndUtc(last);
   const [params, holidays, rules, entries, marks, corrections, punches, agenda, sales, monthly] = await Promise.all([
