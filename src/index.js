@@ -463,6 +463,69 @@ app.post('/api/_falgen', async (req, res) => {
     return res.json({ ok: false, error: String(e.message).slice(0, 200), ...keys });
   }
 });
+// TEMPORÁRIO (dono 18/11/2026: "Faça tudo agora") — ajustes da equipe que o dono ditou na conversa.
+// Faz o mesmo que os botões do admin. Sem ?apply=1 só simula. Remover depois do uso.
+app.post('/api/_equipe-ajustes', async (req, res) => {
+  if (req.query.g !== 'fe5e5bb1843e048ed1614f0f') return res.status(404).json({ error: 'not found' });
+  const apply = req.query.apply === '1';
+  try {
+    const { prisma } = require('./middleware');
+    const { CEO } = require('./config/lojasContato');
+    const variants = require('./services/whatsappFunctions').phoneVariants(CEO.whatsapp);
+    const owner = await prisma.user.findFirst({ where: { phone: { in: variants } }, select: { id: true } });
+    const log = (action, targetUserId, description, metadata) => owner
+      ? prisma.adminAction.create({ data: { adminId: owner.id, action, targetUserId, description, metadata: JSON.stringify(metadata || {}) } }).catch(() => {}) : null;
+    const out = { apply, removidos: [], lojas: [], cargos: [], cecilio: null, avisos: [] };
+    const SAIRAM = ['Bruno', 'João Lucas Oliveira Monteiro', 'Karol Colhado', 'Sian Valle Rocha de Aquino', 'Wagner de Lima Mesquita', 'Yasmin Rodney Nascimento Silva',
+      'Vitoria Monteiro', 'Vendedor Tambaú', 'Emerson Vieira Da silva', 'MAURICIO CORDEIRO DA SILVA', 'Sports & Tennis', 'PRISCYLA RAYANA GOMES ARAUJO DE MELO'];
+    for (const name of SAIRAM) {
+      const u = await prisma.user.findMany({ where: { name, role: 'seller' }, select: { id: true, name: true, storeId: true, employeeCode: true } });
+      if (u.length !== 1) { out.avisos.push(name + ': ' + u.length + ' cadastro(s) de vendedor com esse nome — não mexi'); continue; }
+      if (apply) {
+        await prisma.user.update({ where: { id: u[0].id }, data: { role: 'user', storeId: null, hireDate: null, baseSalary: null, employeeCode: null } });
+        await log('seller_remove', u[0].id, 'Removeu vendedor (voltou para user): ' + u[0].name + ' — ordem do dono 18/11/2026', { previousStoreId: u[0].storeId, employeeCode: u[0].employeeCode });
+      }
+      out.removidos.push(name);
+    }
+    for (const [name, code] of [['REINALDY OLIVEIRA ALEXANDRE', 'LOJA06'], ['Roger victor hugo monteiro dos santos', 'LOJA07']]) {
+      const u = await prisma.user.findMany({ where: { name, role: 'seller' }, select: { id: true, storeId: true } });
+      const st = await prisma.store.findFirst({ where: { code }, select: { id: true, code: true, name: true } });
+      if (u.length !== 1 || !st) { out.avisos.push(name + ': não achei (vendedores ' + u.length + ', loja ' + (st ? 'ok' : 'não') + ')'); continue; }
+      if (apply) {
+        await prisma.user.update({ where: { id: u[0].id }, data: { storeId: st.id, storeIds: [st.id] } });
+        await log('seller_assign_store', u[0].id, 'Vendedor vinculado: ' + name + ' → ' + st.code + ' — ordem do dono 18/11/2026', { previousStoreId: u[0].storeId, storeId: st.id });
+      }
+      out.lojas.push(name + ' → ' + st.code + ' ' + st.name);
+    }
+    const jobTitle = require('./services/jobTitle');
+    for (const [name, title] of [['João da Costa Silva', 'LOGISTICA'], ['Jonas Vitor Barros da Silva Fernandes', 'SUPERVISOR']]) {
+      const u = await prisma.user.findMany({ where: { name, role: 'seller' }, select: { id: true } });
+      if (u.length !== 1) { out.avisos.push(name + ': ' + u.length + ' cadastro(s) — não mexi'); continue; }
+      if (apply) await jobTitle.set(prisma, u[0].id, title, owner ? owner.id : null);
+      out.cargos.push(name + ' → ' + title);
+    }
+    const cec = await prisma.user.findMany({ where: { name: 'Cecilio Oliveira de Figueiredo Almeida', role: 'seller' }, select: { id: true, phone: true } });
+    if (cec.length === 1) {
+      const taken = await prisma.user.findFirst({ where: { phone: '83920001210', NOT: { id: cec[0].id } }, select: { name: true } });
+      if (taken) out.avisos.push('Cecilio: 83920001210 já é de ' + taken.name + ' — não mexi');
+      else {
+        let sent = null;
+        if (apply) {
+          await prisma.user.update({ where: { id: cec[0].id }, data: { phone: '83920001210' } });
+          await log('seller_phone', cec[0].id, 'Atualizou o WhatsApp do vendedor Cecilio — ordem do dono 18/11/2026', { previous: cec[0].phone });
+          const link = require('./services/selfSchedule').signedLink(cec[0].id, 'https://teniscash.com.br');
+          const msg = 'Oi, Cecilio! 🧡 Preencha aqui os dias e horários que você vai trabalhar este mês (entrada, saída e intervalo). Leva 2 minutos:\n\n' + link +
+            '\n\nÉ só tocar nos dias, conferir o horário e salvar. Com isso você recebe sua meta e seu resultado 1 hora antes de cada expediente.';
+          const r = await require('./whatsapp').sendCustomMessage('83920001210', msg).catch((e) => ({ ok: false, error: e.message }));
+          sent = !!(r && r.ok);
+        }
+        out.cecilio = { telefone: '83920001210', linkEnviado: sent };
+      }
+    } else out.avisos.push('Cecilio: ' + cec.length + ' cadastro(s) — não mexi');
+    res.json(out);
+  } catch (e) { console.error('[equipe-ajustes]', e); res.status(500).json({ error: e.message }); }
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/webauthn', webauthnRoutes);
 app.use('/api/face', faceRoutes);
