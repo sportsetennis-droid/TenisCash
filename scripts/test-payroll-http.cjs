@@ -41,6 +41,9 @@ const day44 = (userId, storeId, d, exit = '17:20') => [
 (async () => {
   await router.ensureSchema();
   await createPayrollRouterAgainTwice();
+  // Este teste exercita o caminho 'sem valor vigente' (pendência → dono cadastra). A semente da CCT JP
+  // (vigente desde 07/2026, gravada pelo dono em 18/11/2026) é tirada só neste banco de teste.
+  await db.payrollParam.deleteMany({ where: { validFrom: '2026-07-01' } });
   const u = randomUUID().slice(0, 8);
   const issuerA = await db.fiscalIssuer.create({ data: { cnpj: '9' + Date.now().toString().slice(-13), companyName: 'Empresa A Teste LTDA', fantasyName: 'A Teste', city: 'João Pessoa', state: 'PB' } });
   const issuerB = await db.fiscalIssuer.create({ data: { cnpj: '8' + Date.now().toString().slice(-13), companyName: 'Empresa B Teste LTDA' } });
@@ -130,8 +133,7 @@ const day44 = (userId, storeId, d, exit = '17:20') => [
     const r = pv.data.result;
     assert.equal(r.commission.confirmed.totalCents, 2200000); assert.equal(r.commission.canceled.count, 1);
     assert.equal(r.time.totals.sundaysWorked, 1);
-    assert.ok(r.pendencies.some((p) => p.code === 'PONTO_INCOMPLETO')); // CCT JP 2025/2026 gravada (dono 18/11/2026): domingo trabalhado tem valor (R$ 72) desde 07/2026 — não é mais pendência.
-    assert.ok(!r.pendencies.some((p) => p.code === 'PARAM_DOMINGO_TRABALHADO'));
+    assert.ok(r.pendencies.some((p) => p.code === 'PONTO_INCOMPLETO')); assert.ok(r.pendencies.some((p) => p.code === 'PARAM_DOMINGO_TRABALHADO'));
     ok('prévia do funcionário com ponto, comissão (cancelada fora) e pendências');
 
     // Correção de ponto: funcionário pede, gerente aprova → batida nova (original intocada)
