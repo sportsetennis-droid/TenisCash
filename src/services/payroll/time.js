@@ -137,6 +137,8 @@ function buildTime(input) {
     else if (kinds.has('ATESTADO')) status = worked ? 'ATESTADO_PARCIAL' : 'ATESTADO';
     else if (read.issues.length) status = 'INCOMPLETO';
     else if (read.open) status = 'EM_ANDAMENTO';
+    // Campina Grande (dono 18/11/2026): domingo é TROCA pedida pelo colaborador — não é domingo trabalhado.
+    else if (worked > 0 && !is12x36 && weekday === 0 && profile.sundaySwap && !holiday) status = 'DOMINGO_TROCA';
     else if (worked > 0 && !is12x36 && weekday === 0) status = 'DOMINGO_TRABALHADO';
     else if (worked > 0 && !is12x36 && holiday) status = 'FERIADO_TRABALHADO';
     else if (worked > 0) status = 'COMPLETO';
@@ -164,9 +166,29 @@ function buildTime(input) {
       scheduled: shifts.has(day) ? shifts.get(day) : null,
     });
   }
+  if (profile.sundaySwap) applySundaySwaps(days, asOfDay);
   const weeks = is12x36 ? [] : buildWeeks(days, asOfDay, !!input.final);
   const shiftsSummary = is12x36 ? build12x36(days, profile) : null;
   return { days, weeks, shifts12x36: shiftsSummary, dailyExpectedMinutes: dailyExpected, totals: totals(days, weeks, shiftsSummary, asOfDay) };
+}
+
+// Troca de domingo (Campina Grande): para cada domingo trabalhado em troca, o dia útil sem ponto mais
+// próximo (até 6 dias antes ou depois) é a folga da troca. As horas do domingo cobrem esse dia
+// (crédito até a carga do dia) e ele deixa de ser falta/pendência. Sem folga achada, o domingo fica
+// como troca aguardando a folga (sem adicional de domingo).
+function applySundaySwaps(days, asOfDay) {
+  const used = new Set();
+  for (const sun of days.filter((d) => d.status === 'DOMINGO_TROCA')) {
+    const candidates = days.filter((d) => d.weekday !== 0 && !used.has(d.date) && d.status === 'SEM_PONTO' && d.date <= asOfDay
+      && Math.abs((Date.parse(d.date) - Date.parse(sun.date)) / 86400000) <= 6)
+      .sort((a, b) => Math.abs(Date.parse(a.date) - Date.parse(sun.date)) - Math.abs(Date.parse(b.date) - Date.parse(sun.date)));
+    const off = candidates[0];
+    if (!off) { sun.swapWith = null; continue; }
+    used.add(off.date);
+    off.status = 'FOLGA_TROCA'; off.pending = false; off.swapOf = sun.date;
+    off.creditMinutes = Math.min(off.expectedMinutes || 0, sun.workedMinutes);
+    sun.swapWith = off.date;
+  }
 }
 
 // Semana de segunda a sábado; domingo e feriado trabalhados não entram na soma.
@@ -240,6 +262,7 @@ function totals(days, weeks, s12, asOfDay) {
     nightMinutes: sum(past, (d) => d.nightMinutes),
     lateConfirmedMinutes: sum(past, (d) => d.lateMinutes),
     sundaysWorked: past.filter((d) => d.status === 'DOMINGO_TRABALHADO').length,
+    sundaySwaps: past.filter((d) => d.status === 'DOMINGO_TROCA').map((d) => ({ date: d.date, offDay: d.swapWith || null })),
     holidaysWorked: past.filter((d) => d.status === 'FERIADO_TRABALHADO').length,
     daysWithoutPunch: past.filter((d) => d.status === 'SEM_PONTO').map((d) => d.date),
     incompleteDays: past.filter((d) => d.status === 'INCOMPLETO').map((d) => ({ date: d.date, issues: d.issues })),
