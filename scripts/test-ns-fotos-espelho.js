@@ -225,6 +225,18 @@ async function partC() {
   const h = require('../src/services/nuvemshopHandlers');
   const { prisma } = require('../src/middleware');
   await prisma.nuvemshopProductMapping.deleteMany({}); await prisma.productSize.deleteMany({}); await prisma.product.deleteMany({});
+  const lojaSite = await prisma.store.create({ data: { code: 'LOJA-SITE-C', name: 'Loja Site C' } });
+  process.env.NS_STOCK_STORE_IDS = lojaSite.id;
+  let nCard = 0;
+  const cardValido = async (estoque = 2) => {
+    nCard++;
+    const c = await prisma.product.create({ data: { sku: 'VAL' + nCard, name: 'Tênis Válido Azul ' + nCard, brand: 'HOKA', category: 'Tênis', subcategory: 'Corrida',
+      price: 900, costPrice: 400, longDescription: 'Descrição real.', imageUrl: 'https://img/v' + nCard + '.jpg',
+      aiContext: { color: 'Azul', classification: { modality: 'Corrida', tier: 'Performance' }, confirmedForNuvemshop: true } } });
+    const ps = await prisma.productSize.create({ data: { productId: c.id, size: '40', barcode: '0196565' + String(100000 + nCard), stock: 3, sizeConfirmedAt: new Date() } });
+    await prisma.storeStock.create({ data: { storeId: lojaSite.id, productSizeId: ps.id, stock: estoque } });
+    return { c, ps };
+  };
   const p = await prisma.product.create({ data: { sku: 'IMG1', name: 'Card fotos', brand: 'HOKA', category: 'Tênis', price: 10, imageUrl: 'https://img/a.jpg', imageUrls: fotos(7), aiContext: { color: 'Azul' } } });
   await t('AUDITORIA: no máximo 5 fotos vão para a loja', () => {
     assert.strictEqual(h.collectLocalImages(p).length, 5);
@@ -269,7 +281,8 @@ async function partC() {
     assert.strictEqual(depois.name, 'Camisa Botafogo Curada'); assert.strictEqual(depois.imageUrl, 'https://img/curada.jpg'); assert.strictEqual(depois.price, 300);
   });
   await t('AUDITORIA 2: card inválido que divide o produto da loja com OUTRO card não despublica (não derruba o card certo)', async () => {
-    const curado = await prisma.product.create({ data: { sku: 'SHARE1', name: 'Curado', brand: 'HOKA', category: 'Tênis', price: 900, costPrice: 400, imageUrl: 'https://img/c.jpg', aiContext: { color: 'Azul' } } });
+    const curado = (await cardValido()).c;
+    assert.ok(h.assessProductForNuvemshop(await prisma.product.findUnique({ where: { id: curado.id }, include: { sizes: { include: { storeStocks: true } } } })).eligible, 'curado de teste passa no portão');
     const fantasma = await prisma.product.create({ data: { sku: 'SHARE1-NS', name: 'Fantasma', brand: 'A DEFINIR', category: 'geral', price: 0, source: 'nuvemshop' } });
     await prisma.nuvemshopProductMapping.create({ data: { localProductId: curado.id, nuvemshopProductId: '888' } });
     await prisma.nuvemshopProductMapping.create({ data: { localProductId: fantasma.id, nuvemshopProductId: '888' } });
@@ -288,7 +301,7 @@ async function partC() {
     assert.ok(m && m.nuvemshopProductId === '9911', 'só ligou o mapping no card certo');
   });
   await t('AUDITORIA 3: despublicar (qualquer caminho, inclusive o reajuste de estoque) não derruba produto da loja compartilhado', async () => {
-    const um = await prisma.product.create({ data: { sku: 'SH2A', name: 'Curado 2', brand: 'HOKA', category: 'Tênis', price: 900 } });
+    const um = (await cardValido()).c;
     const dois = await prisma.product.create({ data: { sku: 'SH2B', name: 'Inválido 2', brand: 'HOKA', category: 'Tênis', price: 0 } });
     await prisma.nuvemshopProductMapping.create({ data: { localProductId: um.id, nuvemshopProductId: '889' } });
     const m2 = await prisma.nuvemshopProductMapping.create({ data: { localProductId: dois.id, nuvemshopProductId: '889' } });
@@ -314,11 +327,31 @@ async function partC() {
     assert.strictEqual(r2, null);
     assert.strictEqual((await prisma.nuvemshopProductMapping.findUnique({ where: { localProductId: y.id } })).nuvemshopProductId, '444', 'não reapontou');
   });
+  await t('AUDITORIA 4: card certo que ESGOTOU sai do ar mesmo dividindo o anúncio com um fantasma (não vende o que não tem)', async () => {
+    const { c: certo, ps } = await cardValido(1);
+    const fantasma = await prisma.product.create({ data: { sku: 'GHOST4', name: 'Fantasma 4', brand: 'A DEFINIR', category: 'geral', price: 0, source: 'nuvemshop' } });
+    const mc = await prisma.nuvemshopProductMapping.create({ data: { localProductId: certo.id, nuvemshopProductId: '4040' } });
+    await prisma.nuvemshopProductMapping.create({ data: { localProductId: fantasma.id, nuvemshopProductId: '4040' } });
+    await prisma.storeStock.updateMany({ where: { productSizeId: ps.id }, data: { stock: 0 } });
+    chamadas.length = 0;
+    const r = await h.unpublishMappedProduct(certo.id, { id: 'c' }, 'sem tamanho valido com estoque fisico', mc);
+    assert.ok(!r.shared, 'irmão é fantasma inválido: não segura');
+    assert.ok(chamadas.some((x) => x === 'PUT /products/4040'), 'despublicou: ' + chamadas.join(' | '));
+  });
+  await t('AUDITORIA 4: código que só existe em card INATIVO não cria card-fantasma', async () => {
+    const inat = await prisma.product.create({ data: { sku: 'INAT4', name: 'Inativo 4', brand: 'HOKA', category: 'Tênis', price: 1, active: false } });
+    await prisma.productSize.create({ data: { productId: inat.id, size: '40', barcode: '0196565999404', stock: 1 } });
+    const antes = await prisma.product.count();
+    const r = await h.upsertLocalProduct({ id: 4041, name: { pt: 'W' }, categories: [], images: [], variants: [{ sku: '0196565999404', price: '1' }] });
+    assert.strictEqual(r, null); assert.strictEqual(await prisma.product.count(), antes);
+  });
   await t('AUDITORIA 3: foto inválida (Instagram/crawler) não vai para a loja nem trava a troca', () => {
     const lista = h.collectLocalImages({ imageUrl: 'https://lookaside.instagram.com/x', imageUrls: ['https://img/ok1.jpg', 'https://x/crawler/y', 'https://img/ok2.jpg'] });
     assert.deepStrictEqual(lista, ['https://img/ok1.jpg', 'https://img/ok2.jpg']);
   });
-  await prisma.nuvemshopProductMapping.deleteMany({}); await prisma.productSize.deleteMany({}); await prisma.product.deleteMany({});
+  await prisma.storeStock.deleteMany({}); await prisma.nuvemshopProductMapping.deleteMany({}); await prisma.productSize.deleteMany({}); await prisma.product.deleteMany({});
+  await prisma.store.delete({ where: { id: lojaSite.id } }).catch(() => {});
+  delete process.env.NS_STOCK_STORE_IDS;
   await prisma.$disconnect();
 }
 

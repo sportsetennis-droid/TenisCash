@@ -238,15 +238,17 @@ async function runNuvemshopStockSync({
           const remote = remoteById.get(String(mapping.nuvemshopProductId));
           const stillPublished = remote && remote.published !== false;
           if ((mapping.syncStatus !== 'hidden-invalid' || stillPublished) && cleanupActions < cleanupLimit) {
-            await nsHandlers.unpublishMappedProduct(
+            const r = await nsHandlers.unpublishMappedProduct(
               mapping.localProductId,
               connection,
               product ? 'produto inativo' : 'produto local inexistente',
               mapping,
             );
-            cleanupActions++;
-            unpublishedInvalid++;
-            if (remote) remote.published = false;
+            if (!r || !r.shared) {
+              cleanupActions++;
+              unpublishedInvalid++;
+              if (remote) remote.published = false;
+            }
           }
           continue;
         }
@@ -256,15 +258,17 @@ async function runNuvemshopStockSync({
           const remote = remoteById.get(String(mapping.nuvemshopProductId));
           const stillPublished = remote && remote.published !== false;
           if ((mapping.syncStatus !== 'hidden-invalid' || stillPublished) && cleanupActions < cleanupLimit) {
-            await nsHandlers.unpublishMappedProduct(
+            const r = await nsHandlers.unpublishMappedProduct(
               mapping.localProductId,
               connection,
               eligibility.reasons.join('; '),
               mapping,
             );
-            cleanupActions++;
-            unpublishedInvalid++;
-            if (remote) remote.published = false;
+            if (!r || !r.shared) {
+              cleanupActions++;
+              unpublishedInvalid++;
+              if (remote) remote.published = false;
+            }
           }
           continue;
         }
@@ -277,15 +281,17 @@ async function runNuvemshopStockSync({
           const remoteEligibility = assessRemoteProductForNuvemshop(remote);
           if (remote && remote.published !== false && !remoteEligibility.eligible) {
             if (cleanupActions < cleanupLimit) {
-              await nsHandlers.unpublishMappedProduct(
+              const r = await nsHandlers.unpublishMappedProduct(
                 mapping.localProductId,
                 connection,
                 `copia remota invalida: ${remoteEligibility.reasons.join('; ')}`,
                 mapping,
               );
-              remote.published = false;
-              cleanupActions++;
-              unpublishedInvalid++;
+              if (!r || !r.shared) {
+                remote.published = false;
+                cleanupActions++;
+                unpublishedInvalid++;
+              }
             }
             continue;
           }

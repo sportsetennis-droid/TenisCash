@@ -70,10 +70,21 @@ async function unpublishMappedProduct(localProductId, connection, reason, mappin
   // NS# compartilhado com OUTRO card (fantasma + curado): despublicar derrubaria o
   // produto do card certo. Só marca ESTE mapping como fora e não mexe na loja.
   // (auditoria 18/11 — vale para push, reajuste de estoque e ações da rede)
-  const irmaos = await prisma.nuvemshopProductMapping.count({
+  // Só segura quando um card IRMÃO (mesmo NS#) está ativo e passa no portão: aí o anúncio é dele.
+  // Se o irmão é fantasma/inválido, despublica normalmente (o card certo esgotado sai do ar).
+  const irmaosMap = await prisma.nuvemshopProductMapping.findMany({
     where: { nuvemshopProductId: mapping.nuvemshopProductId, NOT: { id: mapping.id } },
+    select: { localProductId: true },
   });
-  if (irmaos > 0) {
+  let irmaoValido = false;
+  for (const im of irmaosMap) {
+    const irmao = await prisma.product.findUnique({
+      where: { id: im.localProductId },
+      include: { sizes: { include: { storeStocks: nuvemshopStoreStocksQuery() } } },
+    });
+    if (irmao && irmao.active !== false && assessProductForNuvemshop(irmao, { isNew: false }).eligible) { irmaoValido = true; break; }
+  }
+  if (irmaoValido) {
     await prisma.nuvemshopProductMapping.update({
       where: { id: mapping.id },
       data: { syncStatus: 'hidden-invalid', lastSyncedAt: new Date() },
@@ -145,10 +156,14 @@ async function upsertLocalProduct(nsProduct) {
       .filter((c) => c.length >= 6 && !/^SEM\s*GTIN$/i.test(c) && !/^NS-/i.test(c));
     if (!jaMapeado && codes.length) {
       const achados = await prisma.productSize.findMany({
-        where: { barcode: { in: codes }, product: { active: true } },
-        select: { productId: true },
+        where: { barcode: { in: codes } },
+        select: { productId: true, product: { select: { active: true } } },
       });
-      const donos = [...new Set(achados.map((a) => a.productId))];
+      const donos = [...new Set(achados.filter((a) => a.product && a.product.active).map((a) => a.productId))];
+      if (!donos.length && achados.length) {
+        console.warn('[ns eco] código só existe em card INATIVO — não cria card-fantasma:', nsProduct.id);
+        return null;
+      }
       if (donos.length > 1) {
         console.warn('[ns eco] código casa com mais de um card — não liga nem cria:', nsProduct.id, donos.join(','));
         return null;
@@ -1548,17 +1563,13 @@ async function _pushProductToNuvemshopInner(localProductId, connection) {
     if (existingMapping) {
       // NS# compartilhado com OUTRO card (fantasma + curado): despublicar aqui tiraria do ar
       // o produto do card certo. Registra e não mexe na loja (auditoria 18/11).
-      const irmaos = await prisma.nuvemshopProductMapping.count({ where: { nuvemshopProductId: existingMapping.nuvemshopProductId } });
-      if (irmaos > 1) {
-        console.warn('[ns push] NS# compartilhado — não despublica pelo card inválido:', localProductId, 'NS#' + existingMapping.nuvemshopProductId);
-        return { skipped: true, action: 'skipped-shared', reason: 'produto da loja compartilhado com outro card; ' + reason };
-      }
       const hidden = await unpublishMappedProduct(
         localProductId,
         connection,
         reason,
         existingMapping,
       );
+      if (hidden && hidden.shared) return { skipped: true, action: 'skipped-shared', reason: hidden.reason };
       return { skipped: true, action: 'unpublished-invalid', reason, ...hidden };
     }
     return { skipped: true, action: 'skipped', reason };
