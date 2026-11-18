@@ -386,8 +386,11 @@ router.post('/evolution', async (req, res) => {
           try {
             if (m.audioMessage || m.pttMessage) {
               const { base64, mimetype } = await media.downloadMedia(instance, data);
-              const r = base64 ? await media.transcribeAudio(base64, mimetype).catch((e) => ({ ok: false, reason: e.message })) : { ok: false };
-              if (!r.ok || !r.text) { await sendToClient(r.reason === 'no_key' ? 'Ainda não consigo ouvir áudio, ' + first + '. Me manda por *texto*. 🧡' : 'Não consegui entender o áudio, ' + first + '. Pode mandar de novo ou escrever? 🙏').catch(() => {}); return; }
+              // Sem API (dono 18/11/2026): Whisper rodando no próprio servidor. API só se o local falhar.
+              if (base64) await sendToClient('🎧 Ouvindo seu áudio, ' + first + '…').catch(() => {});
+              let r = base64 ? await require('../services/localTranscriber').transcribeBase64(base64) : { ok: false };
+              if (!r.ok && base64 && r.reason !== 'curto' && r.reason !== 'vazio') r = await media.transcribeAudio(base64, mimetype).catch((e) => ({ ok: false, reason: e.message }));
+              if (!r.ok || !r.text) { console.warn('[agente-vendedor] áudio', r.reason); await sendToClient('Não consegui entender o áudio, ' + first + '. Pode mandar de novo, mais perto do celular, ou escrever? 🙏').catch(() => {}); return; }
               input = '[Audio do vendedor] ' + r.text; heard = '🎙️ _Entendi: "' + r.text.slice(0, 200) + '"_\n\n';
             } else if (m.imageMessage) {
               const cap = String(m.imageMessage.caption || '').trim();
