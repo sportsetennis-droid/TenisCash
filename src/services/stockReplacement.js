@@ -267,8 +267,10 @@ async function applyVerified(db,c,read,reference,options={}){
   await tx.stockReplacementCheck.upsert({where:{bipeId:now.bipe.id},create:{bipeId:now.bipe.id,roundId:now.round.id,status:'applied',evidence:snapshot,imageReview,appliedProductSizeId:now.size.id,appliedAt:new Date()},update:{status:'applied',reason:null,evidence:snapshot,imageReview,appliedProductSizeId:now.size.id,appliedAt:new Date(),checkedAt:new Date()}});
   await tx.stocktakeBipe.update({where:{id:now.bipe.id},data:{applied:true,productName:now.size.product.name,productBrand:now.size.product.brand,productSize:now.size.size}});
   await tx.productCapture.update({where:{id:now.capture.id},data:{status:'vinculado',resolvedAt:new Date(),note:require('./scannerCapturePhoto').photoNote(now.capture.note,'etiqueta Uma peça incluída no novo estoque oficial.')},select:{id:true}});
+  // Peça que já entrou pelo Recebimento: o bipe da contagem confirma a mesma peça (não soma duas vezes).
+  const pareio=await require('./receiptAutoApply').parear(tx,now.round.storeId,now.size.id);
   if(options.beforeCommit)await options.beforeCommit(tx);
-  return {applied:true,stock:movement.stockAfter};
+  return {applied:true,stock:movement.stockAfter,pareadoComRecebimento:pareio.pareados>0||undefined};
  },{timeout:20000});
 }
 async function check(db,bipeId,options={}){
@@ -325,8 +327,11 @@ async function report(db,id){
 async function exclude(tx,bipe,reason){
  const check=await tx.stockReplacementCheck.findUnique({where:{bipeId:bipe.id}});
  if(!check?.appliedAt||check.reversedAt)return;
+ // estava pareado com um recebimento: devolve o -1 do pareamento antes do -1 da exclusão
+ await require('./receiptAutoApply').antesDeExcluirBipe(tx,check,bipe.storeId);
  await applyStoreStockDelta(tx,{storeId:bipe.storeId,productSizeId:check.appliedProductSizeId,quantity:-1,type:'inventory_adjustment',source:'stock-replacement-correction',reason,metadata:{roundId:bipe.roundId,bipeId:bipe.id}});
  await tx.stockReplacementCheck.update({where:{bipeId:bipe.id},data:{status:'excluded',reversedAt:new Date(),reason}});
+ await require('./receiptAutoApply').parear(tx,bipe.storeId,check.appliedProductSizeId);
 }
 async function finish(db,id){
  return db.$transaction(async tx=>{

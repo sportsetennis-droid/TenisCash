@@ -174,6 +174,8 @@ async function syncWithin(tx, actual, value, payloadHash, options = {}) {
         barcodeHistory: previous && previous.barcode !== scan.barcode ? [...history, { from: previous.barcode, to: scan.barcode, at: new Date().toISOString(), actorId: actual.id }] : history };
       await tx.scanActionRead.upsert({ where: { clientScanId: scan.clientScanId }, create: scanData, update: scanData });
     }
+    // Recebimento ativo automático (dono 18/11): cada peça reconhecida entra no estoque da loja na hora.
+    if (value.mode === 'receipt') await require('./receiptAutoApply').aplicarLote(tx, value.sessionId);
     lot = await tx.scanActionLot.findUnique({ where: { sessionId: value.sessionId }, include: { scans: true } });
     return { lot: (await publicLots(tx, [lot]))[0], synced: true };
 }

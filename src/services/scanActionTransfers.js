@@ -323,9 +323,11 @@ async function receiveConfirm(db, actor, id, input = {}) {
     if (reusedRequest) fail('Identificador de recebimento já utilizado em outra transferência.');
     const updatedNote = { ...note, receipt: { requestId: input.requestId, actorId: actual.id, selectionHash, scans: selection.scans, reviewToken: input.reviewToken } };
     const saved = await tx.stockTransfer.update({ where: { id }, data: { status: 'received', receivedById: actual.id, receivedAt: new Date(), note: JSON.stringify(updatedNote) }, include: transferInclude });
-    for (const item of report.items) await applyStoreStockDelta(tx, { storeId: selection.storeId, productSizeId: item.productSizeId, quantity: item.expected,
+    // Peças que já entraram sozinhas no estoque ao serem bipadas no Recebimento não somam de novo (dono 18/11).
+    const jaEntrou = await require('./receiptAutoApply').jaEntrouPorLeituras(tx, selection.storeId, selection.scans.map(scan => scan.clientScanId));
+    for (const item of report.items) { const falta = item.expected - Math.min(item.expected, jaEntrou.get(item.productSizeId) || 0); if (falta > 0) await applyStoreStockDelta(tx, { storeId: selection.storeId, productSizeId: item.productSizeId, quantity: falta,
       type: 'transfer_in', source: SOURCE, reason: 'Recebimento conferido da transferência #' + saved.code,
-      metadata: { transferId: id, requestId: input.requestId, actorId: actual.id, clientScanIds: selection.scans.filter(scan => scan.productSizeId === item.productSizeId).map(scan => scan.clientScanId) } });
+      metadata: { transferId: id, requestId: input.requestId, actorId: actual.id, clientScanIds: selection.scans.filter(scan => scan.productSizeId === item.productSizeId).map(scan => scan.clientScanId), jaEntrouNoBipe: jaEntrou.get(item.productSizeId) || 0 } }); }
     await markConfirmed(tx, actual, { ...selection, mode: 'receipt' }, saved, report.items);
     return { transfer: publicTransfer(saved), alreadySaved: false };
   });
