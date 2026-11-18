@@ -38,7 +38,7 @@ const TIPOS = [
   { tipo: 'tênis', rx: new RegExp('\\bSAPATENIS\\b|' + NAO_E_O_CALCADO + '(?<!BEACH )\\bTENIS\\b(?! DE MESA)'), categorias: ['TENIS'] },
   { tipo: 'chuteira', rx: new RegExp(NAO_E_O_CALCADO + '\\bCHUTEIRAS?\\b'), categorias: ['CHUTEIRAS'] },
   { tipo: 'sandália/chinelo', rx: /\b(CHINELOS?|SANDALIAS?|SLIDES?|BABUCHES?)\b/, categorias: ['SANDALIAS', 'TENIS'] },
-  { tipo: 'acessório', rx: /\b(MEIAS?|MEIAO|BOLAS?|BOLSAS?|MOCHILAS?|BONES?|VISEIRAS?|CANELEIRAS?|JOELHEIRAS?|COTOVELEIRAS?|TORNOZELEIRAS?|MUNHEQUEIRAS?|LUVAS?|GARRAFAS?|SQUEEZES?|OCULOS|TOUCAS?|APITOS?|BOMBAS?|CHAVEIROS?|MANGUITOS?|CANELITOS?|REDES?|RAQUETES?|PORTA|FIGURAS?|LIMPA|LIMPEZA|PALMILHAS?|CADARCOS?|OVERGRIPS?|GRIPS?|TRAVAS?|CRAVOS?)\b/, categorias: ['ACESSORIOS'] },
+  { tipo: 'acessório', rx: /\b(MEIAS?|MEIAO|BOLAS?|BOLSAS?|MOCHILAS?|BONES?|VISEIRAS?|CANELEIRAS?|JOELHEIRAS?|COTOVELEIRAS?|TORNOZELEIRAS?|MUNHEQUEIRAS?|LUVAS?|GARRAFAS?|SQUEEZES?|OCULOS|TOUCAS?|APITOS?|BOMBAS?|CHAVEIROS?|MANGUITOS?|CANELITOS?|REDES?|RAQUETES?|PORTA|FIGURAS?|LIMPA|LIMPEZA|PALMILHAS?|(?<!SEM )CADARCOS?|OVERGRIPS?|TRAVAS?|CRAVOS?)\b/, categorias: ['ACESSORIOS'] },
   { tipo: 'roupa', rx: /\b(CAMISETAS?|CAMISAS?|REGATAS?|BERMUDAS?|SHORTS?|CALCAO|CALCOES|CALCAS?|LEGGINGS?|CROPPED|JAQUETAS?|CASACOS?|BLUSAS?|BLUSAO|AGASALHOS?|MACAQUINHOS?|MACACAO|MAIOS?|SUNGAS?|BIQUINIS?|KIMONOS?|MOLETONS?|SAIAS?|CORTA[- ]VENTO)\b/, categorias: ['VESTUARIO', 'ROUPAS'] },
 ];
 
@@ -67,7 +67,8 @@ function modalidadeChuteira(nome) {
 // ("BABY LOOK" é corte feminino adulto — BABY não conta como infantil.)
 function publicoDoNome(nome) {
   const n = norm(nome);
-  const infantil = /\b(INFANTIL|INFANTO|JUVENIL|KIDS|JR|JUNIOR|INF)\b/.test(n);
+  // "NEYMAR JR" é nome de linha/jogador (chuteira e camisa ADULTAS), não infantil
+  const infantil = /\b(INFANTIL|INFANTO|JUVENIL|KIDS|JUNIOR|INF)\b|(?<!NEYMAR )\bJR\b/.test(n);
   const masc = /\b(MASCULINO|MASCULINA|MASC)\b/.test(n);
   const fem = /\b(FEMININO|FEMININA|FEM)\b/.test(n);
   return { infantil, genero: masc && !fem ? 'masculino' : fem && !masc ? 'feminino' : null };

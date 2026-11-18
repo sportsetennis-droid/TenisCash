@@ -63,7 +63,7 @@ async function partA() {
       ['TENIS MASC 28', 'Tênis', 'Menino'], ['CAMISETA BABY LOOK DRY FIT', 'Vestuário', 'Mulher'], ['BLUSA BABY LOOK FEMININA', 'Roupas', 'Mulher'],
       ['PALMILHA PARA TENIS', 'Acessórios', 'Unissex'], ['CADARÇO PARA TÊNIS', 'Acessórios', 'Unissex'], ['KIT LIMPEZA TENIS', 'Acessórios', 'Unissex'], ['OVERGRIP TENIS WILSON', 'Acessórios', 'Unissex'],
       ['TRAVA PARA CHUTEIRA', 'Acessórios', 'Unissex'], ['CRAVO CHUTEIRA CAMPO', 'Acessórios', 'Unissex'], ['KIT BEACH  TENIS', 'Acessórios', 'Unissex'],
-      ['TENIS ADIDAS', 'Dropper', 'Homem'], ['TENIS NIKE', 'Tênis', 'Tamanhos'], ['TENIS NIKE FEMININO', 'Tênis', 'Feminino'], ['CHINELO RIDER', 'Sandálias', 'Homem']]) {
+      ['TENIS ADIDAS', 'Dropper', 'Homem'], ['CHUTEIRA PUMA FUTURE 7 PLAY NEYMAR JR FG', 'Chuteiras', 'Homem', 'Campo'], ['CAMISA PSG NEYMAR JR', 'Vestuário', 'Homem'], ['SKECHERS GO WALK SLIP INS SEM CADARCO', 'Tênis', 'Homem'], ['ASICS GEL DEDICATE GRIP', 'Tênis', 'Homem'], ['TENIS NIKE', 'Tênis', 'Tamanhos'], ['TENIS NIKE FEMININO', 'Tênis', 'Feminino'], ['CHINELO RIDER', 'Sandálias', 'Homem']]) {
       assert.deepStrictEqual(conferirLocal(card(nome, cat, sub, mod || 'X', 'Y')), [], nome + ' em ' + cat + ' > ' + sub + ' está certo');
     }
     assert.ok(/nome diz feminino, card está em Menino/.test(conferirLocal(card('TENIS INFANTIL FEMININO', 'Tênis', 'Menino', 'X', 'Y'))[0]), 'gênero da criança também é conferido');
