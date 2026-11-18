@@ -61,6 +61,9 @@ async function getConnection() {
   );
 }
 
+// NS# com reenvio de card irmão em andamento (evita ida-e-volta e espera circular entre os pushes)
+const _reenvioIrmao = new Set();
+
 async function unpublishMappedProduct(localProductId, connection, reason, mappingOverride = null) {
   const mapping = mappingOverride || await prisma.nuvemshopProductMapping.findUnique({
     where: { localProductId },
@@ -76,21 +79,34 @@ async function unpublishMappedProduct(localProductId, connection, reason, mappin
     where: { nuvemshopProductId: mapping.nuvemshopProductId, NOT: { id: mapping.id } },
     select: { localProductId: true },
   });
-  let irmaoValido = false;
+  let irmaoValido = null;
+  const nsKey = String(mapping.nuvemshopProductId);
   for (const im of irmaosMap) {
     const irmao = await prisma.product.findUnique({
       where: { id: im.localProductId },
       include: { sizes: { include: { storeStocks: nuvemshopStoreStocksQuery() } } },
     });
-    if (irmao && irmao.active !== false && assessProductForNuvemshop(irmao, { isNew: false }).eligible) { irmaoValido = true; break; }
+    if (irmao && irmao.active !== false && assessProductForNuvemshop(irmao, { isNew: false }).eligible) { irmaoValido = irmao.id; break; }
   }
-  if (irmaoValido) {
+  if (irmaoValido && !_reenvioIrmao.has(nsKey)) {
     await prisma.nuvemshopProductMapping.update({
       where: { id: mapping.id },
       data: { syncStatus: 'hidden-invalid', lastSyncedAt: new Date() },
     }).catch(() => {});
-    console.warn('[ns] NS# compartilhado — loja NÃO despublicada por este card:', localProductId, 'NS#' + mapping.nuvemshopProductId, reason);
-    return { unpublished: false, shared: true, reason: 'produto da loja compartilhado com outro card; ' + (reason || '') };
+    console.warn('[ns] NS# compartilhado — loja NÃO despublicada por este card:', localProductId, 'NS#' + nsKey, reason);
+    // O anúncio pode estar com o estoque/dados DESTE card (último a enviar). Reenvia o irmão
+    // válido para a loja vender só o estoque físico real dele e corrigir dados inválidos do
+    // anúncio (auditoria 5, 18/11). Trava por NS# impede ida-e-volta entre os dois cards.
+    _reenvioIrmao.add(nsKey);
+    let reenvio = null;
+    try { reenvio = await pushProductToNuvemshop(irmaoValido, connection || await getConnection()); }
+    catch (e) { reenvio = { error: e.message }; console.warn('[ns] reenvio do card irmão falhou:', irmaoValido, e.message); }
+    finally { _reenvioIrmao.delete(nsKey); }
+    if (reenvio && reenvio.error) throw new Error('NS# compartilhado: reenvio do card irmão falhou: ' + reenvio.error);
+    if (reenvio && reenvio.action === 'unpublished-invalid') {
+      return { unpublished: true, localProductId, nuvemshopProductId: nsKey, reason: 'card irmão também ficou inválido; ' + (reason || '') };
+    }
+    return { unpublished: false, shared: true, irmao: irmaoValido, reenvio: reenvio && reenvio.action, reason: 'produto da loja compartilhado com outro card; ' + (reason || '') };
   }
 
   const conn = connection || await getConnection();
@@ -1228,15 +1244,8 @@ function buildNuvemshopProductPayload(localProduct, sizes, opts = {}) {
     if (!isData && !isHttpImg(norm)) return;
     seenImg.add(norm); allImages.push(toImgBody(norm));
   };
-  if (localProduct.imageUrl) addImg(localProduct.imageUrl);
-  if (localProduct.imageUrls) {
-    try {
-      const arr = typeof localProduct.imageUrls === 'string'
-        ? JSON.parse(localProduct.imageUrls)
-        : localProduct.imageUrls;
-      if (Array.isArray(arr)) arr.forEach(addImg);
-    } catch (_) {}
-  }
+  // mesmas fotos (válidas, no máximo 5, capa primeiro) que a troca de fotos usa — regra do dono
+  collectLocalImages(localProduct).forEach(addImg);
 
   // Descrição: prioriza longa, depois curta. NÃO cai pro nome (causa duplicação no Nuvemshop).
   // Se nenhuma das duas existe, manda string vazia (Nuvemshop aceita).
@@ -1513,10 +1522,14 @@ async function syncNuvemshopImages(connection, nsProductId, localProduct) {
   if (completa) {
     for (const img of current) {
       try { await ns.nuvemshopApi(connection, 'DELETE', `/products/${nsProductId}/images/${img.id}`); removed++; }
-      catch (e) { console.warn('[ns img] delete falhou', img.id, e.message); }
+      catch (e) { console.warn('[ns img] delete falhou', img.id, e.message); errors.push({ position: 0, error: 'foto antiga não apagada (' + img.id + '): ' + e.message }); }
     }
-    try { await mergeAiContext(prisma, localProduct.id, { nsImagesSig: sig }); }
-    catch (e) { console.warn('[ns img] salvar sig falhou:', e.message); }
+    // só dá por concluída se as antigas saíram (senão a loja fica com mais de 5); a próxima
+    // tentativa apaga tudo o que estiver lá antes das novas.
+    if (!errors.length) {
+      try { await mergeAiContext(prisma, localProduct.id, { nsImagesSig: sig }); }
+      catch (e) { console.warn('[ns img] salvar sig falhou:', e.message); }
+    }
   } else {
     for (const id of novas) {
       try { await ns.nuvemshopApi(connection, 'DELETE', `/products/${nsProductId}/images/${id}`); }
@@ -1746,8 +1759,14 @@ async function _pushProductToNuvemshopInner(localProductId, connection) {
     // pra que o próximo update não as re-suba sem necessidade.
     try {
       const desired0 = collectLocalImages(product);
-      await mergeAiContext(prisma, product.id, { nsImagesSig: desired0.length ? imageSignature(desired0) : 'empty' });
-      imageSync = { fromCreate: true, count: desired0.length };
+      const naLoja = Array.isArray(nsProduct && nsProduct.images) ? nsProduct.images.length : desired0.length;
+      if (naLoja === desired0.length) {
+        await mergeAiContext(prisma, product.id, { nsImagesSig: desired0.length ? imageSignature(desired0) : 'empty' });
+      } else {
+        // faltou foto na criação: sem assinatura, o espelho reenvia e a troca de fotos completa
+        await mergeAiContext(prisma, product.id, {}, ['nsImagesSig', 'nsMirrorSig']);
+      }
+      imageSync = { fromCreate: true, count: naLoja, expected: desired0.length };
     } catch (e) { console.warn('[ns push] baseline sig (create) falhou:', e.message); }
     action = 'created';
   }
@@ -1905,6 +1924,7 @@ module.exports = {
   clearNsCache,
   pushStockUpdate,
   syncNuvemshopImages,
+  buildNuvemshopProductPayload,
   collectLocalImages,
   imageSignature,
   updateNuvemshopVariants,

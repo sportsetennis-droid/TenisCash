@@ -214,12 +214,16 @@ async function partB() {
 async function partC() {
   // stub da API da Nuvemshop ANTES de carregar os handlers (nada sai para a loja)
   const nsPath = require.resolve('../src/services/nuvemshop');
-  const chamadas = []; let falharPost = false; let falharUma = null; let falharGet = false; let seq = 800;
-  require.cache[nsPath] = { id: nsPath, filename: nsPath, loaded: true, exports: { nuvemshopApi: async (conn, metodo, url, corpo) => {
-    chamadas.push(metodo + ' ' + url);
+  const chamadas = []; const corpos = []; let falharPost = false; let falharUma = null; let falharGet = false; let falharDelete = false; let seq = 800;
+  require.cache[nsPath] = { id: nsPath, filename: nsPath, loaded: true, exports: { fetchAllPages: async () => [], nuvemshopApi: async (conn, metodo, url, corpo) => {
+    chamadas.push(metodo + ' ' + url + (corpo && corpo.published === false ? ' DESPUBLICA' : ''));
+    corpos.push({ metodo, url, corpo });
     if (metodo === 'GET' && /images$/.test(url)) { if (falharGet) throw new Error('GET caiu'); return [{ id: 901, position: 1 }, { id: 902, position: 2 }]; }
+    if (metodo === 'DELETE' && falharDelete && /images\/90\d$/.test(url)) throw new Error('delete caiu');
     if (metodo === 'POST' && (falharPost || (falharUma && JSON.stringify(corpo || {}).includes(falharUma)))) throw new Error('falhou');
+    if (metodo === 'POST' && url === '/products') return { id: ++seq, images: (corpo.images || []).map((x, i) => ({ id: 700 + i })), variants: [] };
     if (metodo === 'POST') return { id: ++seq };
+    if (metodo === 'GET' && /^\/products\/\d+$/.test(url)) return { id: Number(url.split('/').pop()), variants: [] };
     return {};
   } } };
   const h = require('../src/services/nuvemshopHandlers');
@@ -289,7 +293,8 @@ async function partC() {
     chamadas.length = 0;
     const r = await h.pushProductToNuvemshop(fantasma.id, { id: 'c' });
     assert.strictEqual(r.action, 'skipped-shared');
-    assert.ok(!chamadas.some((c) => c.startsWith('PUT')), 'não mexeu na loja: ' + chamadas.join(' | '));
+    assert.ok(!chamadas.some((c) => c.endsWith('DESPUBLICA')), 'não despublicou: ' + chamadas.join(' | '));
+    assert.ok(chamadas.some((c) => c === 'PUT /products/888'), 'reenviou o card certo: ' + chamadas.join(' | '));
   });
   await t('AUDITORIA 2: eco de produto recém-enviado com código ALFANUMÉRICO não cria card-fantasma (corrida antes do mapping)', async () => {
     const c = await prisma.product.create({ data: { sku: 'EKPB999', name: 'Camisa Alfa', brand: 'BOTAFOGO', category: 'Roupas', price: 300, imageUrl: 'https://img/alfa.jpg', aiContext: { color: 'Preto' } } });
@@ -308,7 +313,7 @@ async function partC() {
     chamadas.length = 0;
     const r = await h.unpublishMappedProduct(dois.id, { id: 'c' }, 'produto inativo', m2);
     assert.ok(r.shared && !r.unpublished);
-    assert.ok(!chamadas.some((c) => c.startsWith('PUT')), 'não mexeu na loja: ' + chamadas.join(' | '));
+    assert.ok(!chamadas.some((c) => c.endsWith('DESPUBLICA')), 'não despublicou: ' + chamadas.join(' | '));
     assert.strictEqual((await prisma.nuvemshopProductMapping.findUnique({ where: { id: m2.id } })).syncStatus, 'hidden-invalid');
   });
   await t('AUDITORIA 3: eco não liga quando o código casa com DOIS cards, nem reaponta card que já é de outro NS#', async () => {
@@ -336,7 +341,7 @@ async function partC() {
     chamadas.length = 0;
     const r = await h.unpublishMappedProduct(certo.id, { id: 'c' }, 'sem tamanho valido com estoque fisico', mc);
     assert.ok(!r.shared, 'irmão é fantasma inválido: não segura');
-    assert.ok(chamadas.some((x) => x === 'PUT /products/4040'), 'despublicou: ' + chamadas.join(' | '));
+    assert.ok(chamadas.some((x) => x === 'PUT /products/4040 DESPUBLICA'), 'despublicou: ' + chamadas.join(' | '));
   });
   await t('AUDITORIA 4: código que só existe em card INATIVO não cria card-fantasma', async () => {
     const inat = await prisma.product.create({ data: { sku: 'INAT4', name: 'Inativo 4', brand: 'HOKA', category: 'Tênis', price: 1, active: false } });
@@ -344,6 +349,36 @@ async function partC() {
     const antes = await prisma.product.count();
     const r = await h.upsertLocalProduct({ id: 4041, name: { pt: 'W' }, categories: [], images: [], variants: [{ sku: '0196565999404', price: '1' }] });
     assert.strictEqual(r, null); assert.strictEqual(await prisma.product.count(), antes);
+  });
+  await t('AUDITORIA 5: dois cards válidos no mesmo anúncio — o que esgota faz o OUTRO ser reenviado (loja fica com o estoque real dele)', async () => {
+    const { c: a } = await cardValido(1);
+    const { c: b, ps: psB } = await cardValido(3);
+    await prisma.nuvemshopProductMapping.create({ data: { localProductId: a.id, nuvemshopProductId: '5050' } });
+    const mb = await prisma.nuvemshopProductMapping.create({ data: { localProductId: b.id, nuvemshopProductId: '5050' } });
+    await prisma.storeStock.updateMany({ where: { productSizeId: psB.id }, data: { stock: 0 } });
+    chamadas.length = 0;
+    const r = await h.unpublishMappedProduct(b.id, { id: 'c' }, 'sem estoque', mb);
+    assert.ok(r.shared && r.irmao === a.id, JSON.stringify(r));
+    assert.ok(chamadas.some((c) => c === 'PUT /products/5050'), 'reenviou A: ' + chamadas.join(' | '));
+    assert.ok(!chamadas.some((c) => c.endsWith('DESPUBLICA')));
+  });
+  await t('AUDITORIA 5: produto NOVO com 8 fotos é criado com no máximo 5', async () => {
+    const { c } = await cardValido(2);
+    const fotos = ['https://img/n1.jpg', 'https://img/n2.jpg', 'https://img/n3.jpg', 'https://img/n4.jpg', 'https://img/n5.jpg', 'https://img/n6.jpg', 'https://img/n7.jpg'];
+    await prisma.product.update({ where: { id: c.id }, data: { imageUrls: fotos } });
+    const payload = h.buildNuvemshopProductPayload(await prisma.product.findUnique({ where: { id: c.id } }), [], { mode: 'create' });
+    assert.strictEqual(payload.images.length, 5);
+  });
+  await t('AUDITORIA 5: foto antiga que não sai da loja não dá a troca por concluída (tenta de novo depois)', async () => {
+    const { c } = await cardValido(2);
+    await prisma.product.update({ where: { id: c.id }, data: { imageUrls: ['https://img/z1.jpg'] } });
+    falharDelete = true;
+    try {
+      const r = await h.syncNuvemshopImages({ id: 'c' }, '6060', await prisma.product.findUnique({ where: { id: c.id } }));
+      assert.ok(r.errors && r.errors.length, 'reportou erro');
+      const ctx = (await prisma.product.findUnique({ where: { id: c.id } })).aiContext;
+      assert.ok(!ctx.nsImagesSig, 'não gravou a assinatura');
+    } finally { falharDelete = false; }
   });
   await t('AUDITORIA 3: foto inválida (Instagram/crawler) não vai para a loja nem trava a troca', () => {
     const lista = h.collectLocalImages({ imageUrl: 'https://lookaside.instagram.com/x', imageUrls: ['https://img/ok1.jpg', 'https://x/crawler/y', 'https://img/ok2.jpg'] });
