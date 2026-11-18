@@ -463,6 +463,19 @@ app.post('/api/_falgen', async (req, res) => {
     return res.json({ ok: false, error: String(e.message).slice(0, 200), ...keys });
   }
 });
+// TEMPORÁRIO (dono 18/11/2026: "deveria fazer sem"): confere a trava do webhook com mensagens reais. Remover depois.
+app.post('/api/_teste-trava', async (req, res) => {
+  if (req.query.g !== 'd92812998bc355e43c19344c') return res.status(404).json({ error: 'not found' });
+  const { prisma } = require('./middleware');
+  const wa = require('./routes/whatsapp');
+  const msgs = await prisma.whatsappMessage.findMany({ where: { fromMe: false, isGroup: false, messageId: { not: null } }, orderBy: { ts: 'desc' }, take: 4, select: { instance: true, chatJid: true, messageId: true, ts: true } });
+  const reais = [];
+  for (const m of msgs) reais.push({ instancia: m.instance, quando: m.ts, real: await wa.webhookGenuine({}, m.instance, { key: { id: m.messageId, remoteJid: m.chatJid } }) });
+  const m0 = msgs[0];
+  const forjada = m0 ? await wa.webhookGenuine({ apikey: 'falsa' }, m0.instance, { key: { id: 'FORJADA' + Date.now(), remoteJid: m0.chatJid } }) : null;
+  res.json({ reais, forjadaAceita: forjada, stats: wa.webhookAuthStats });
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/webauthn', webauthnRoutes);
 app.use('/api/face', faceRoutes);
