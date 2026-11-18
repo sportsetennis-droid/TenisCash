@@ -42,6 +42,17 @@ Pegar o token: faça login no admin e copie o JWT. Ele fica no armazenamento loc
 
 ## Conectar o Claude
 
+### Pelo OAuth (recomendado, desde 18/11/2026)
+
+O `/mcp` tem OAuth 2.1 (`src/ai/rede/mcp/oauth.js`): descoberta RFC 9728/8414, registro dinâmico (RFC 7591), PKCE S256 obrigatório, token de 1 h (JWT do TenisCash) + renovação de 60 dias com rotação. Só conta admin/superadmin/manager autoriza.
+
+- **claude.ai / Desktop / celular:** Configurações → Conectores → Adicionar conector personalizado → URL `https://teniscash.com.br/mcp` → Conectar → entrar com o login do admin → Autorizar.
+- **Claude Code:** `claude mcp add --transport http teniscash https://teniscash.com.br/mcp` e depois `/mcp` → teniscash → Authenticate.
+- Tabelas (SQL aditivo): `McpOAuthClient`, `McpOAuthCode`, `McpOAuthRefresh`. Teste local: registro → autorização → token → initialize → renovação (14/14 em 18/11/2026).
+
+O caminho antigo abaixo (Bearer colado à mão / mcp-remote) continua funcionando.
+
+
 ### Claude Code
 
 ```bash
