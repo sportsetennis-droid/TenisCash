@@ -993,10 +993,9 @@ async function persistSellerAgentTurn(req, text, reply, metadata = {}) {
   }
 }
 
+// Anthropic com reserva automática na OpenAI (dono 18/11/2026): o agente não para se a chave cair.
 function anthropicClient() {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) return null;
-  return new Anthropic({ apiKey: key });
+  return require('../services/aiResilientClient').resilientClient();
 }
 
 function buildCostBRL(usage) {

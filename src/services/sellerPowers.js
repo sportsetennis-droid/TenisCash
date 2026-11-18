@@ -178,12 +178,10 @@ async function storeScoreboard(prisma, seller) {
 
 // 1 — identificar produto na foto (marca, modelo, cor, códigos legíveis).
 async function identifyProductPhoto(base64, mimetype, caption) {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key || !base64) return null;
-  const Anthropic = require('@anthropic-ai/sdk');
+  const client = require('./aiResilientClient').resilientClient(); // Anthropic, com reserva na OpenAI
+  if (!client || !base64) return null;
   const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
   const mt = allowed.includes(String(mimetype || '').toLowerCase()) ? String(mimetype).toLowerCase() : 'image/jpeg';
-  const client = new Anthropic({ apiKey: key });
   const resp = await client.messages.create({
     model: process.env.SELLER_VISION_MODEL || process.env.SELLER_AGENT_MODEL || 'claude-haiku-4-5-20251001',
     max_tokens: 300,
