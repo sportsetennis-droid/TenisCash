@@ -7649,6 +7649,7 @@ async function loadSellers() {
   wrap.innerHTML = '<div class=\"loading-spinner\">Carregando vendedores...</div>';
   const data = await api('/admin/sellers');
   if (data.error) { wrap.innerHTML = '<div class=\"empty-state\">Erro: ' + data.error + '</div>'; return; }
+  const jt = await api('/admin/schedule/job-titles'); const jobTitles = (jt && jt.byUser) || {};
 
   const sellers = data.sellers || [];
   const countEl = document.getElementById('seller-count');
@@ -7672,12 +7673,21 @@ async function loadSellers() {
     html += '</div></div>';
     html += '<div style="font-size:12px;color:#8e8e93;">📱 ' + escapeHtml(s.phone || '—') + '</div>';
     if (sStores.length) html += '<div style="font-size:12px;color:#1d1d1f;padding:6px 10px;background:#f5f5f7;border-radius:8px;line-height:1.6;">🏬 ' + sStores.map(st => '<strong>' + escapeHtml(st.code) + '</strong> ' + escapeHtml(st.name)).join(' · ') + (sStores.length > 1 ? ' <span style="color:#0a843d;font-weight:700;">(' + sStores.length + ' lojas)</span>' : '') + '</div>';
+    const cargo = jobTitles[s.id] || 'VENDEDOR';
+    html += '<label style="font-size:11px;font-weight:700;color:#555;display:flex;align-items:center;gap:8px">Cargo <select class="js-job-title" data-seller-id="' + s.id + '" style="flex:1;height:34px;border:1px solid #ddd;border-radius:8px;padding:0 8px;font-size:13px">' + [['VENDEDOR','Vendedor'],['LOGISTICA','Logística'],['SUPERVISOR','Supervisor de vendas']].map(([v, l]) => '<option value="' + v + '"' + (cargo === v ? ' selected' : '') + '>' + l + '</option>').join('') + '</select></label>';
     html += '<button class="js-pay-contract" data-seller-id="' + s.id + '" data-seller-name="' + escapeHtml(s.name || '') + '" style="padding:8px;background:#FFF4EE;border:1px solid #F6C9B3;border-radius:8px;font-size:12px;font-weight:700;color:#C2410C;cursor:pointer;margin-top:auto;">💵 Contrato e salário</button>';
     html += '<button class="js-remove-seller" data-seller-id="' + s.id + '" data-seller-name="' + escapeHtml(s.name || '') + '" style="padding:8px;background:white;border:1px solid #e5e5ea;border-radius:8px;font-size:12px;color:#d70015;cursor:pointer;margin-top:auto;">🗑 Remover</button>';
     html += '</div>';
   });
   html += '</div>';
   wrap.innerHTML = html;
+  Array.from(wrap.querySelectorAll('.js-job-title')).forEach(sel => {
+    sel.onchange = async () => {
+      const r = await api('/admin/schedule/job-titles/' + encodeURIComponent(sel.dataset.sellerId), 'PUT', { title: sel.value });
+      if (r.error) { alert('Erro: ' + r.error); loadSellers(); return; }
+      sel.style.borderColor = '#0a843d'; setTimeout(() => { sel.style.borderColor = '#ddd'; }, 1500);
+    };
+  });
   Array.from(wrap.querySelectorAll('.js-pay-contract')).forEach(btn => {
     btn.onclick = () => openPayContract(btn.dataset.sellerId, btn.dataset.sellerName);
   });

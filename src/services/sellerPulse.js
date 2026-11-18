@@ -322,8 +322,10 @@ async function runPreShift(prisma, { nowMs = Date.now(), send = defaultSend(), l
     prisma.sale.findMany({ where: { createdAt: { gte: since } }, distinct: ['sellerId'], select: { sellerId: true } }),
   ]);
   const working = new Set([...recentClock.map((r) => r.userId), ...recentSale.map((r) => r.sellerId)]);
+  // Cargo: logística e supervisor têm acesso de vendedor mas não recebem meta/resultado de vendedor.
+  const titles = await require('./jobTitle').all(prisma).catch(() => ({}));
   for (const sl of sellers) {
-    if (done.has(sl.id) || !working.has(sl.id)) continue;
+    if (done.has(sl.id) || !working.has(sl.id) || (titles[sl.id] && titles[sl.id] !== 'VENDEDOR')) continue;
     if (!/^\+?\d{10,13}$/.test(String(sl.phone || '').replace(/\D/g, ''))) continue;
     const [s] = await shiftsBetween(prisma, sl.id, today, today);
     const start = s && s.start ? minutes(s.start) : null;
