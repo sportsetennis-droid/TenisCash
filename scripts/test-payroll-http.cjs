@@ -130,7 +130,8 @@ const day44 = (userId, storeId, d, exit = '17:20') => [
     const r = pv.data.result;
     assert.equal(r.commission.confirmed.totalCents, 2200000); assert.equal(r.commission.canceled.count, 1);
     assert.equal(r.time.totals.sundaysWorked, 1);
-    assert.ok(r.pendencies.some((p) => p.code === 'PONTO_INCOMPLETO')); assert.ok(r.pendencies.some((p) => p.code === 'PARAM_DOMINGO_TRABALHADO'));
+    assert.ok(r.pendencies.some((p) => p.code === 'PONTO_INCOMPLETO')); // CCT JP 2025/2026 gravada (dono 18/11/2026): domingo trabalhado tem valor (R$ 72) desde 07/2026 — não é mais pendência.
+    assert.ok(!r.pendencies.some((p) => p.code === 'PARAM_DOMINGO_TRABALHADO'));
     ok('prévia do funcionário com ponto, comissão (cancelada fora) e pendências');
 
     // Correção de ponto: funcionário pede, gerente aprova → batida nova (original intocada)
