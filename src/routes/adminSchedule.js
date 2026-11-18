@@ -525,6 +525,39 @@ router.put('/job-titles/:userId', async (req, res) => {
   } catch (err) { console.error('[schedule/job-titles:put]', err); res.status(err.statusCode || 500).json({ error: err.message }); }
 });
 
+// WhatsApp do vendedor (dono 18/11/2026: cadastro do Cecilio estava com código de e-mail no telefone).
+router.put('/seller-phone/:userId', async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: String(req.params.userId) }, select: { id: true, role: true, name: true } });
+    if (!user || user.role !== 'seller') return res.status(404).json({ error: 'Vendedor não encontrado.' });
+    let d = String((req.body || {}).phone || '').replace(/\D/g, '');
+    if (d.startsWith('55') && d.length >= 12) d = d.slice(2);
+    if (d.length !== 10 && d.length !== 11) return res.status(400).json({ error: 'Número inválido. Use DDD + número, ex.: 83 99999-9999.' });
+    const taken = await prisma.user.findFirst({ where: { phone: d, NOT: { id: user.id } }, select: { name: true } });
+    if (taken) return res.status(409).json({ error: 'Esse número já está no cadastro de ' + taken.name + '.' });
+    await prisma.user.update({ where: { id: user.id }, data: { phone: d } });
+    await prisma.adminAction.create({ data: { adminId: req.userId, action: 'seller_phone', targetUserId: user.id, description: 'Atualizou o WhatsApp do vendedor ' + user.name } }).catch(() => {});
+    res.json({ ok: true, phone: d });
+  } catch (err) { console.error('[schedule/seller-phone]', err); res.status(500).json({ error: err.message }); }
+});
+
+// Envia ao vendedor o link pessoal para preencher a escala do mês (data, entrada, saída, intervalo).
+router.post('/escala-link/:userId', async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: String(req.params.userId) }, select: { id: true, role: true, active: true, name: true, phone: true } });
+    if (!user || user.role !== 'seller' || !user.active) return res.status(404).json({ error: 'Vendedor não encontrado.' });
+    const { validPhone } = require('../services/sellerPulse');
+    if (!validPhone(user.phone)) return res.status(400).json({ error: 'Esse vendedor está sem WhatsApp no cadastro. Corrija o número primeiro.' });
+    const link = require('../services/selfSchedule').signedLink(user.id, 'https://teniscash.com.br');
+    const first = String(user.name || '').trim().split(/\s+/)[0].toLowerCase().replace(/^./, (c) => c.toUpperCase());
+    const msg = 'Oi, ' + first + '! 🧡 Preencha aqui os dias e horários que você vai trabalhar este mês (entrada, saída e intervalo). Leva 2 minutos:\n\n' + link +
+      '\n\nÉ só tocar nos dias, conferir o horário e salvar. Com isso você recebe sua meta e seu resultado 1 hora antes de cada expediente.';
+    const r = await require('../whatsapp').sendCustomMessage(user.phone, msg).catch((e) => ({ ok: false, error: e.message }));
+    if (!r || !r.ok) return res.status(502).json({ error: 'O WhatsApp não enviou: ' + ((r && r.error) || 'erro') });
+    res.json({ ok: true });
+  } catch (err) { console.error('[schedule/escala-link]', err); res.status(500).json({ error: err.message }); }
+});
+
 router.get('/requests', async (req, res) => {
   try {
     const status = ['PENDENTE', 'APROVADO', 'RECUSADO', 'CANCELADO'].includes(req.query.status) ? req.query.status : 'PENDENTE';
