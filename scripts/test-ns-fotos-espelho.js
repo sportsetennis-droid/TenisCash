@@ -200,6 +200,12 @@ async function partB() {
     const a = await prisma.product.findUnique({ where: { id: A.id } });
     assert.ok(a.aiContext.nsMirrorFails >= 1 && /fotos/.test(a.aiContext.nsMirrorLastError));
   });
+  await t('AUDITORIA 3: erro de foto no formato singular também conta como falha', async () => {
+    await prisma.product.update({ where: { id: B.id }, data: { name: 'Card 2 erro singular' } });
+    const um = { pushProductToNuvemshop: async () => ({ action: 'updated', imageSync: { changed: false, error: 'exceção na troca' } }) };
+    const r = await run({ handlers: um });
+    assert.strictEqual(r.errors, 1);
+  });
   await prisma.storeStock.deleteMany({});
   await limpar();
   await prisma.$disconnect();
@@ -280,6 +286,37 @@ async function partC() {
     assert.strictEqual(await prisma.product.count(), antes, 'não criou card novo');
     const m = await prisma.nuvemshopProductMapping.findUnique({ where: { localProductId: c.id } });
     assert.ok(m && m.nuvemshopProductId === '9911', 'só ligou o mapping no card certo');
+  });
+  await t('AUDITORIA 3: despublicar (qualquer caminho, inclusive o reajuste de estoque) não derruba produto da loja compartilhado', async () => {
+    const um = await prisma.product.create({ data: { sku: 'SH2A', name: 'Curado 2', brand: 'HOKA', category: 'Tênis', price: 900 } });
+    const dois = await prisma.product.create({ data: { sku: 'SH2B', name: 'Inválido 2', brand: 'HOKA', category: 'Tênis', price: 0 } });
+    await prisma.nuvemshopProductMapping.create({ data: { localProductId: um.id, nuvemshopProductId: '889' } });
+    const m2 = await prisma.nuvemshopProductMapping.create({ data: { localProductId: dois.id, nuvemshopProductId: '889' } });
+    chamadas.length = 0;
+    const r = await h.unpublishMappedProduct(dois.id, { id: 'c' }, 'produto inativo', m2);
+    assert.ok(r.shared && !r.unpublished);
+    assert.ok(!chamadas.some((c) => c.startsWith('PUT')), 'não mexeu na loja: ' + chamadas.join(' | '));
+    assert.strictEqual((await prisma.nuvemshopProductMapping.findUnique({ where: { id: m2.id } })).syncStatus, 'hidden-invalid');
+  });
+  await t('AUDITORIA 3: eco não liga quando o código casa com DOIS cards, nem reaponta card que já é de outro NS#', async () => {
+    const x1 = await prisma.product.create({ data: { sku: 'DUP1', name: 'Dup 1', brand: 'HOKA', category: 'Tênis', price: 1 } });
+    const x2 = await prisma.product.create({ data: { sku: 'DUP2', name: 'Dup 2', brand: 'HOKA', category: 'Tênis', price: 1 } });
+    await prisma.productSize.create({ data: { productId: x1.id, size: '40', barcode: 'REFDUPLA01', stock: 1 } });
+    await prisma.productSize.create({ data: { productId: x2.id, size: '41', barcode: 'REFDUPLA01', stock: 1 } });
+    const antes = await prisma.product.count();
+    const r1 = await h.upsertLocalProduct({ id: 7001, name: { pt: 'X' }, categories: [], images: [], variants: [{ sku: 'REFDUPLA01', price: '1' }] });
+    assert.strictEqual(r1, null); assert.strictEqual(await prisma.product.count(), antes, 'não criou card');
+    assert.strictEqual(await prisma.nuvemshopProductMapping.count({ where: { nuvemshopProductId: '7001' } }), 0, 'não ligou nada');
+    const y = await prisma.product.create({ data: { sku: 'OUTRONS', name: 'Já de outro NS', brand: 'HOKA', category: 'Tênis', price: 1 } });
+    await prisma.productSize.create({ data: { productId: y.id, size: 'U', barcode: 'ACESS0RI0REF', stock: 1 } });
+    await prisma.nuvemshopProductMapping.create({ data: { localProductId: y.id, nuvemshopProductId: '444' } });
+    const r2 = await h.upsertLocalProduct({ id: 333, name: { pt: 'Z' }, categories: [], images: [], variants: [{ sku: 'ACESS0RI0REF', price: '1' }] });
+    assert.strictEqual(r2, null);
+    assert.strictEqual((await prisma.nuvemshopProductMapping.findUnique({ where: { localProductId: y.id } })).nuvemshopProductId, '444', 'não reapontou');
+  });
+  await t('AUDITORIA 3: foto inválida (Instagram/crawler) não vai para a loja nem trava a troca', () => {
+    const lista = h.collectLocalImages({ imageUrl: 'https://lookaside.instagram.com/x', imageUrls: ['https://img/ok1.jpg', 'https://x/crawler/y', 'https://img/ok2.jpg'] });
+    assert.deepStrictEqual(lista, ['https://img/ok1.jpg', 'https://img/ok2.jpg']);
   });
   await prisma.nuvemshopProductMapping.deleteMany({}); await prisma.productSize.deleteMany({}); await prisma.product.deleteMany({});
   await prisma.$disconnect();

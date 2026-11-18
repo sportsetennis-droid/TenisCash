@@ -110,6 +110,7 @@ async function runNuvemshopCardMirror({ prisma = db(), handlers = null, connecti
     const nsLojas = nuvemshopStockStoreIds();
     rodadas++;
     const completa = rodadas % 10 === 1; // a cada 10 rodadas (~30 min) recalcula o resumo de TODAS as fotos
+    const inicioRodada = new Date().toISOString(); // edição feita durante a rodada fica para a próxima
     const maps = await prisma.nuvemshopProductMapping.findMany({ select: { localProductId: true } });
     const ids = [...new Set(maps.map((m) => m.localProductId))];
     for (let i = 0; i < ids.length; i += 200) {
@@ -119,7 +120,7 @@ async function runNuvemshopCardMirror({ prisma = db(), handlers = null, connecti
         '  p.category, p.subcategory, p."aiContext", p.active, ' +
         // resumo das fotos: só recalcula (lendo o base64) se o card mudou depois do último envio, ou na rodada completa
         "  CASE WHEN $2::boolean OR p.\"aiContext\"->>'nsMirrorImgHash' IS NULL OR p.\"aiContext\"->>'nsMirrorAt' IS NULL " +
-        "         OR p.\"updatedAt\" > (p.\"aiContext\"->>'nsMirrorAt')::timestamptz " +
+        "         OR (p.\"updatedAt\" AT TIME ZONE 'UTC') > (p.\"aiContext\"->>'nsMirrorAt')::timestamptz " +
         "       THEN md5(coalesce(p.\"imageUrl\", '') || chr(31) || coalesce(p.\"imageUrls\"::text, '')) " +
         "       ELSE p.\"aiContext\"->>'nsMirrorImgHash' END AS \"imagesHash\", " +
         '  EXISTS (SELECT 1 FROM "StoreStock" ss JOIN "ProductSize" ps ON ps.id = ss."productSizeId" ' +
@@ -149,11 +150,12 @@ async function runNuvemshopCardMirror({ prisma = db(), handlers = null, connecti
           await mergeAiContext(prisma, p.id, { nsMirrorFails: falhas + 1, nsMirrorFailAt: new Date(agora).toISOString(), nsMirrorLastError: String(e.message).slice(0, 300) }).catch(() => {});
           continue;
         }
-        const fotosFalharam = r && r.imageSync && Array.isArray(r.imageSync.errors) && r.imageSync.errors.length > 0;
+        const erroFoto = r && r.imageSync && ((Array.isArray(r.imageSync.errors) && r.imageSync.errors[0] && r.imageSync.errors[0].error) || r.imageSync.error);
+        const fotosFalharam = !!erroFoto;
         if (fotosFalharam) {
           result.errors++;
-          if (result.items.length < 20) result.items.push({ productId: p.id, erro: 'troca de fotos incompleta: ' + String(r.imageSync.errors[0].error).slice(0, 150) });
-          await mergeAiContext(prisma, p.id, { nsMirrorFails: falhas + 1, nsMirrorFailAt: new Date(agora).toISOString(), nsMirrorLastError: 'fotos: ' + String(r.imageSync.errors[0].error).slice(0, 250) }).catch(() => {});
+          if (result.items.length < 20) result.items.push({ productId: p.id, erro: 'troca de fotos incompleta: ' + String(erroFoto).slice(0, 150) });
+          await mergeAiContext(prisma, p.id, { nsMirrorFails: falhas + 1, nsMirrorFailAt: new Date(agora).toISOString(), nsMirrorLastError: 'fotos: ' + String(erroFoto).slice(0, 250) }).catch(() => {});
           continue;
         }
         if (r && r.action === 'unpublished-invalid') result.unpublished++;
@@ -161,7 +163,7 @@ async function runNuvemshopCardMirror({ prisma = db(), handlers = null, connecti
         else result.pushed++;
         if (result.items.length < 20) result.items.push({ productId: p.id, acao: (r && r.action) || 'enviado', motivo: (r && r.reason) || null });
         // grava só a assinatura (atômico, não desfaz edição feita no meio do envio)
-        await mergeAiContext(prisma, p.id, { nsMirrorSig: sig, nsMirrorImgHash: p.imagesHash || null, nsMirrorAt: new Date().toISOString() }, ['nsMirrorFails', 'nsMirrorFailAt', 'nsMirrorLastError']);
+        await mergeAiContext(prisma, p.id, { nsMirrorSig: sig, nsMirrorImgHash: p.imagesHash || null, nsMirrorAt: inicioRodada }, ['nsMirrorFails', 'nsMirrorFailAt', 'nsMirrorLastError']);
       }
     }
     return result;

@@ -67,6 +67,21 @@ async function unpublishMappedProduct(localProductId, connection, reason, mappin
   });
   if (!mapping) return { unpublished: false, reason: 'produto sem mapping' };
 
+  // NS# compartilhado com OUTRO card (fantasma + curado): despublicar derrubaria o
+  // produto do card certo. Só marca ESTE mapping como fora e não mexe na loja.
+  // (auditoria 18/11 — vale para push, reajuste de estoque e ações da rede)
+  const irmaos = await prisma.nuvemshopProductMapping.count({
+    where: { nuvemshopProductId: mapping.nuvemshopProductId, NOT: { id: mapping.id } },
+  });
+  if (irmaos > 0) {
+    await prisma.nuvemshopProductMapping.update({
+      where: { id: mapping.id },
+      data: { syncStatus: 'hidden-invalid', lastSyncedAt: new Date() },
+    }).catch(() => {});
+    console.warn('[ns] NS# compartilhado — loja NÃO despublicada por este card:', localProductId, 'NS#' + mapping.nuvemshopProductId, reason);
+    return { unpublished: false, shared: true, reason: 'produto da loja compartilhado com outro card; ' + (reason || '') };
+  }
+
   const conn = connection || await getConnection();
   if (!conn) throw new Error('Sem conexao Nuvemshop ativa');
 
@@ -116,28 +131,41 @@ async function upsertLocalProduct(nsProduct) {
   const sku = firstVariant.sku || `NS-${nsProduct.id}`;
   const imageUrl = nsProduct.images?.[0]?.src || null;
 
-  // GUARDA ANTI-ECO (2026-06-08): se alguma variante casa com um ProductSize existente
-  // (o sku/barcode da variante NO NS é o EAN = ProductSize.barcode), este produto NASCEU
-  // no TenisCash e foi empurrado pro Nuvemshop — o webhook product/created é só o ECO do push.
-  // NÃO espelhar (não criar card-fantasma nem sobrescrever o card curado): só GARANTIR o
-  // mapping no card local existente (upsert, idempotente p/ corrida com o push) e sair.
+  // GUARDA ANTI-ECO (2026-06-08, endurecida na auditoria de 18/11): se alguma variante casa
+  // com um ProductSize existente, este produto NASCEU no TenisCash e o webhook é só o ECO do
+  // envio — NÃO espelhar (nem card-fantasma, nem sobrescrever o curado).
+  //  1) se o NS# já tem mapping, segue o caminho do mapping (guarda 2 protege o card curado);
+  //  2) código casa com UM único card ATIVO → liga o mapping nele, só se ele não tiver outro NS#;
+  //  3) código casa com mais de um card, ou o card já pertence a outro NS# → não liga nada e
+  //     não cria card (evita reapontar o anúncio de outro card).
   {
-    // qualquer formato (Botafogo: código = cProd alfanumérico), menos "SEM GTIN" (auditoria 18/11)
+    const jaMapeado = await prisma.nuvemshopProductMapping.findFirst({ where: { nuvemshopProductId: String(nsProduct.id) } });
     const codes = variants
       .map((v) => String(v.barcode || v.sku || '').trim())
       .filter((c) => c.length >= 6 && !/^SEM\s*GTIN$/i.test(c) && !/^NS-/i.test(c));
-    if (codes.length) {
-      const ps = await prisma.productSize.findFirst({
-        where: { barcode: { in: codes } },
+    if (!jaMapeado && codes.length) {
+      const achados = await prisma.productSize.findMany({
+        where: { barcode: { in: codes }, product: { active: true } },
         select: { productId: true },
       });
-      if (ps) {
+      const donos = [...new Set(achados.map((a) => a.productId))];
+      if (donos.length > 1) {
+        console.warn('[ns eco] código casa com mais de um card — não liga nem cria:', nsProduct.id, donos.join(','));
+        return null;
+      }
+      if (donos.length === 1) {
+        const dono = donos[0];
+        const atual = await prisma.nuvemshopProductMapping.findUnique({ where: { localProductId: dono } });
+        if (atual && String(atual.nuvemshopProductId) !== String(nsProduct.id)) {
+          console.warn('[ns eco] card já pertence a outro NS# — não reaponta:', dono, 'NS#' + atual.nuvemshopProductId, '≠', nsProduct.id);
+          return null;
+        }
         await prisma.nuvemshopProductMapping.upsert({
-          where: { localProductId: ps.productId },
-          create: { localProductId: ps.productId, nuvemshopProductId: String(nsProduct.id), syncStatus: 'synced', lastSyncedAt: new Date() },
+          where: { localProductId: dono },
+          create: { localProductId: dono, nuvemshopProductId: String(nsProduct.id), syncStatus: 'synced', lastSyncedAt: new Date() },
           update: { nuvemshopProductId: String(nsProduct.id), syncStatus: 'synced', lastSyncedAt: new Date() },
         });
-        return prisma.product.findUnique({ where: { id: ps.productId } });
+        return prisma.product.findUnique({ where: { id: dono } });
       }
     }
   }
@@ -1356,7 +1384,9 @@ async function updateNuvemshopVariants(connection, nsProductId, localProduct, si
 // Junta imageUrl (capa) + imageUrls[] numa lista ordenada e deduplicada.
 function collectLocalImages(localProduct) {
   const out = [];
-  const push = (u) => { if (u && typeof u === 'string' && !out.includes(u)) out.push(u); };
+  // só foto VÁLIDA (mesmo critério do portão): link de Instagram/crawler/widget não vai e não trava a troca
+  const valida = (u) => /^(https?:\/\/|data:image\/[a-z0-9.+-]+;base64,)/i.test(u) && !/lookaside\.instagram\.com|\/crawler\/|google_widget|\/seo\//i.test(u);
+  const push = (u) => { u = typeof u === 'string' ? u.trim() : u; if (u && typeof u === 'string' && valida(u) && !out.includes(u)) out.push(u); };
   push(localProduct.imageUrl);
   if (localProduct.imageUrls) {
     try {
