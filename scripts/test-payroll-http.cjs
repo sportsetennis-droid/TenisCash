@@ -41,6 +41,9 @@ const day44 = (userId, storeId, d, exit = '17:20') => [
 (async () => {
   await router.ensureSchema();
   await createPayrollRouterAgainTwice();
+  // Este teste exercita o caminho 'sem valor vigente' (pendência → dono cadastra). A semente da CCT JP
+  // (vigente desde 07/2026, gravada pelo dono em 18/11/2026) é tirada só neste banco de teste.
+  await db.payrollParam.deleteMany({ where: { validFrom: '2026-07-01' } });
   const u = randomUUID().slice(0, 8);
   const issuerA = await db.fiscalIssuer.create({ data: { cnpj: '9' + Date.now().toString().slice(-13), companyName: 'Empresa A Teste LTDA', fantasyName: 'A Teste', city: 'João Pessoa', state: 'PB' } });
   const issuerB = await db.fiscalIssuer.create({ data: { cnpj: '8' + Date.now().toString().slice(-13), companyName: 'Empresa B Teste LTDA' } });
