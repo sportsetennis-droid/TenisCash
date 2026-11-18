@@ -234,7 +234,7 @@ async function partB() {
 async function partC() {
   // stub da API da Nuvemshop ANTES de carregar os handlers (nada sai para a loja)
   const nsPath = require.resolve('../src/services/nuvemshop');
-  const chamadas = []; const corpos = []; let falharPost = false; let falharUma = null; let falharGet = false; let falharDelete = false; let seq = 800; let variantesRemotas = null; let falharDeleteVar = false; let falharZerar = false;
+  const chamadas = []; const corpos = []; let falharPost = false; let falharUma = null; let falharGet = false; let falharDelete = false; let seq = 800; let variantesRemotas = null; let falharDeleteVar = false; let falharZerar = false; let sumido = null; let sumidoExisteNoGet = false;
   require.cache[nsPath] = { id: nsPath, filename: nsPath, loaded: true, exports: { fetchAllPages: async () => [], nuvemshopApi: async (conn, metodo, url, corpo) => {
     chamadas.push(metodo + ' ' + url + (corpo && corpo.published === false ? ' DESPUBLICA' : ''));
     corpos.push({ metodo, url, corpo });
@@ -242,6 +242,7 @@ async function partC() {
     if (metodo === 'DELETE' && falharDelete && /images\/90\d$/.test(url)) throw new Error('delete caiu');
     if (metodo === 'DELETE' && falharDeleteVar && /variants\/\d+$/.test(url)) throw new Error('variante não apaga');
     if (metodo === 'PUT' && falharZerar && /variants\/\d+$/.test(url) && corpo && corpo.stock === 0) throw new Error('zerar caiu');
+    if (sumido && url === '/products/' + sumido && (metodo === 'PUT' || (metodo === 'GET' && !sumidoExisteNoGet))) throw new Error('[Nuvemshop 404] {"code":404,"message":"Not Found","description":"Product with such id does not exist"}');
     if (metodo === 'POST' && (falharPost || (falharUma && JSON.stringify(corpo || {}).includes(falharUma)))) throw new Error('falhou');
     if (metodo === 'POST' && url === '/products') return { id: ++seq, images: (corpo.images || []).map((x, i) => ({ id: 700 + i })), variants: [] };
     if (metodo === 'POST') return { id: ++seq };
@@ -510,11 +511,121 @@ async function partC() {
       assert.ok(r.variantSync && r.variantSync.errors.length, 'push reporta para nova tentativa');
     } finally { falharDeleteVar = false; variantesRemotas = null; }
   });
+  // ---- fotos de terceiros / link morto / anúncio que sumiu (18/11) ----
+  const sharp = require('sharp');
+  const fetchOriginal = global.fetch;
+  const pedidosFetch = [];
+  const respostas = new Map(); // url -> { status, type, body }
+  const imagemFalsa = async (w, hgt, formato = 'png') => sharp({ create: { width: w, height: hgt, channels: 3, background: '#3366aa' } })[formato]().toBuffer();
+  global.fetch = async (url, opts = {}) => {
+    pedidosFetch.push({ url: String(url), headers: opts.headers || {} });
+    const r = respostas.get(String(url));
+    if (!r) throw new Error('rede desligada no teste');
+    return new Response(r.body || null, { status: r.status, headers: { 'content-type': r.type || 'text/html' } });
+  };
+  try {
+    await t('foto que a loja não baixa (site barra robô) é baixada como NAVEGADOR e vai como arquivo', async () => {
+      respostas.set('https://terceiro/barra-robo.jpg', { status: 200, type: 'image/jpeg', body: await imagemFalsa(800, 800, 'jpeg') });
+      pedidosFetch.length = 0;
+      const att = await h.imagesAsAttachments([{ src: 'https://terceiro/barra-robo.jpg' }]);
+      assert.strictEqual(att.length, 1);
+      const ua = pedidosFetch[0].headers['User-Agent'] || '';
+      assert.ok(/Mozilla\/5\.0 \(Windows/.test(ua) && /Chrome/.test(ua) && !/bot/i.test(ua), 'se apresenta como navegador: ' + ua);
+    });
+    await t('foto GRANDE demais ou em webp vira JPG de no máximo 1920 px (a loja recusa "exceeds maximum dimensions")', async () => {
+      respostas.set('https://terceiro/gigante.png', { status: 200, type: 'image/png', body: await imagemFalsa(4000, 3000, 'png') });
+      respostas.set('https://terceiro/foto.webp', { status: 200, type: 'image/webp', body: await imagemFalsa(600, 600, 'webp') });
+      const [g, w] = await h.imagesAsAttachments([{ src: 'https://terceiro/gigante.png' }, { src: 'https://terceiro/foto.webp' }]);
+      const mg = await sharp(Buffer.from(g.attachment, 'base64')).metadata();
+      assert.strictEqual(mg.format, 'jpeg'); assert.ok(mg.width <= 1920 && mg.height <= 1920, mg.width + 'x' + mg.height);
+      assert.ok(/\.jpg$/.test(g.filename));
+      assert.strictEqual((await sharp(Buffer.from(w.attachment, 'base64')).metadata()).format, 'jpeg');
+      // JPG pequeno passa intacto
+      const pequeno = await imagemFalsa(500, 500, 'jpeg');
+      respostas.set('https://terceiro/ok.jpg', { status: 200, type: 'image/jpeg', body: pequeno });
+      const [ok] = await h.imagesAsAttachments([{ src: 'https://terceiro/ok.jpg' }]);
+      assert.ok(Buffer.from(ok.attachment, 'base64').equals(pequeno), 'não mexe em JPG pequeno');
+    });
+    await t('link de foto MORTO (404/410) sai do card, fica anotado, e a próxima troca termina com as fotos que funcionam', async () => {
+      const { c } = await cardValido(2);
+      const boas = ['https://terceiro/boa1.jpg', 'https://terceiro/boa2.jpg'];
+      await prisma.product.update({ where: { id: c.id }, data: { imageUrl: 'https://terceiro/morta.jpg', imageUrls: [...boas, 'https://terceiro/morta2.jpg'] } });
+      respostas.set('https://terceiro/morta.jpg', { status: 404 }); respostas.set('https://terceiro/morta2.jpg', { status: 410 });
+      falharUma = 'morta';
+      try {
+        const r = await h.syncNuvemshopImages({ id: 'c' }, '9191', await prisma.product.findUnique({ where: { id: c.id } }));
+        assert.strictEqual(r.mortas, 2); assert.ok(r.errors.length, 'esta rodada ainda não está completa');
+        const depois = await prisma.product.findUnique({ where: { id: c.id } });
+        assert.strictEqual(depois.imageUrl, boas[0], 'capa morta trocada pela 1ª foto boa');
+        assert.deepStrictEqual(depois.imageUrls, boas);
+        assert.deepStrictEqual(depois.aiContext.fotosMortas.map((m) => m.status), [404, 410]);
+        assert.ok(!depois.aiContext.nsImagesSig);
+        // próxima rodada: só as boas → termina e grava a assinatura
+        const r2 = await h.syncNuvemshopImages({ id: 'c' }, '9191', depois);
+        assert.ok(!r2.errors.length && r2.added === 2, JSON.stringify(r2));
+        assert.ok((await prisma.product.findUnique({ where: { id: c.id } })).aiContext.nsImagesSig);
+      } finally { falharUma = null; }
+    });
+    await t('TODAS as fotos mortas: o card NÃO fica sem foto e a loja mantém as que já tem', async () => {
+      const { c } = await cardValido(2);
+      const mortas = ['https://terceiro/tudo-morta1.jpg', 'https://terceiro/tudo-morta2.jpg'];
+      await prisma.product.update({ where: { id: c.id }, data: { imageUrl: mortas[0], imageUrls: mortas } });
+      for (const u of mortas) respostas.set(u, { status: 404 });
+      falharUma = 'tudo-morta'; chamadas.length = 0;
+      try {
+        const r = await h.syncNuvemshopImages({ id: 'c' }, '9292', await prisma.product.findUnique({ where: { id: c.id } }));
+        assert.strictEqual(r.added, 0);
+        assert.ok(!chamadas.some((x) => x.startsWith('DELETE')), 'não apagou as fotos da loja: ' + chamadas.join(' | '));
+        const depois = await prisma.product.findUnique({ where: { id: c.id } });
+        assert.strictEqual(depois.imageUrl, mortas[0]); assert.deepStrictEqual(depois.imageUrls, mortas);
+        assert.strictEqual(depois.aiContext.fotosMortasSemSubstituta, true);
+      } finally { falharUma = null; }
+    });
+    await t('falha PASSAGEIRA (rede caiu, 500) NÃO tira a foto do card', async () => {
+      const { c } = await cardValido(2);
+      await prisma.product.update({ where: { id: c.id }, data: { imageUrl: 'https://terceiro/oscila.jpg', imageUrls: ['https://terceiro/boa3.jpg', 'https://terceiro/erro500.jpg'] } });
+      respostas.set('https://terceiro/erro500.jpg', { status: 500 }); // oscila.jpg: rede caiu (sem resposta)
+      falharUma = 'oscila';
+      try {
+        const r1 = await h.syncNuvemshopImages({ id: 'c' }, '9393', await prisma.product.findUnique({ where: { id: c.id } }));
+        falharUma = 'erro500';
+        const r2 = await h.syncNuvemshopImages({ id: 'c' }, '9393', await prisma.product.findUnique({ where: { id: c.id } }));
+        assert.ok(!r1.mortas && !r2.mortas);
+        const depois = await prisma.product.findUnique({ where: { id: c.id } });
+        assert.strictEqual(depois.imageUrl, 'https://terceiro/oscila.jpg'); assert.strictEqual(depois.imageUrls.length, 2);
+        assert.ok(!depois.aiContext.fotosMortas);
+      } finally { falharUma = null; }
+    });
+  } finally { global.fetch = fetchOriginal; }
+  await t('anúncio que NÃO existe mais na Nuvemshop: desfaz só o vínculo morto (card volta pela subida automática)', async () => {
+    const { c } = await cardValido(2);
+    await prisma.product.update({ where: { id: c.id }, data: { name: 'Tênis Válido Azul Sumido' } });
+    await prisma.nuvemshopProductMapping.create({ data: { localProductId: c.id, nuvemshopProductId: '9494' } });
+    await prisma.nuvemshopVariantMapping.create({ data: { localInventoryId: 'inv-9494', localProductId: c.id, nuvemshopProductId: '9494', nuvemshopVariantId: '1' } });
+    sumido = '9494'; sumidoExisteNoGet = false;
+    try {
+      const r = await h.pushProductToNuvemshop(c.id, { id: 'c' });
+      assert.strictEqual(r.action, 'mapping-orphan-removed', JSON.stringify(r));
+      assert.strictEqual(await prisma.nuvemshopProductMapping.count({ where: { localProductId: c.id } }), 0);
+      assert.strictEqual(await prisma.nuvemshopVariantMapping.count({ where: { localProductId: c.id } }), 0);
+      assert.ok((await prisma.product.findUnique({ where: { id: c.id } })).active, 'card continua ativo');
+    } finally { sumido = null; }
+  });
+  await t('PUT deu 404 mas o anúncio EXISTE (GET acha): não desfaz o vínculo, erro segue para nova tentativa', async () => {
+    const { c } = await cardValido(2);
+    await prisma.product.update({ where: { id: c.id }, data: { name: 'Tênis Válido Azul Existe' } });
+    await prisma.nuvemshopProductMapping.create({ data: { localProductId: c.id, nuvemshopProductId: '9595' } });
+    sumido = '9595'; sumidoExisteNoGet = true;
+    try {
+      await assert.rejects(() => h.pushProductToNuvemshop(c.id, { id: 'c' }), /404/);
+      assert.strictEqual(await prisma.nuvemshopProductMapping.count({ where: { localProductId: c.id } }), 1);
+    } finally { sumido = null; sumidoExisteNoGet = false; }
+  });
   await t('AUDITORIA 3: foto inválida (Instagram/crawler) não vai para a loja nem trava a troca', () => {
     const lista = h.collectLocalImages({ imageUrl: 'https://lookaside.instagram.com/x', imageUrls: ['https://img/ok1.jpg', 'https://x/crawler/y', 'https://img/ok2.jpg'] });
     assert.deepStrictEqual(lista, ['https://img/ok1.jpg', 'https://img/ok2.jpg']);
   });
-  await prisma.storeStock.deleteMany({}); await prisma.nuvemshopProductMapping.deleteMany({}); await prisma.productSize.deleteMany({}); await prisma.product.deleteMany({});
+  await prisma.storeStock.deleteMany({}); await prisma.nuvemshopVariantMapping.deleteMany({}); await prisma.nuvemshopProductMapping.deleteMany({}); await prisma.productSize.deleteMany({}); await prisma.product.deleteMany({});
   await prisma.store.delete({ where: { id: lojaSite.id } }).catch(() => {});
   delete process.env.NS_STOCK_STORE_IDS;
   await prisma.$disconnect();
