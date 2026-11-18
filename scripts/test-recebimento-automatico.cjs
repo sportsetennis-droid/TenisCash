@@ -141,6 +141,65 @@ async function main() {
     await prisma.$transaction((tx) => auto.aplicarLote(tx, l.sessionId));
     assert.equal((await prisma.storeStock.findUnique({ where: { storeId_productSizeId: { storeId: outra.id, productSizeId: ps39.id } } }))?.stock || 0, 0);
   });
+  // ---- casos da auditoria 18/11 (viram teste permanente) ----
+  await t('AUDITORIA 1: lote CONFIRMADO pela remessa nunca é mexido (a remessa já contou) — inclusive Adidas que ganhou tamanho na confirmação', async () => {
+    const ps = await tam('36');
+    const l = await lote();
+    await leitura(l, ps, min(140)); const ad = await leitura(l, ps, min(141), { requiresSizeConfirmation: true });
+    await aplicar(l); assert.equal(await estoque(ps), 1);
+    // remessa confirmada: soma o que faltava (1) e grava o tamanho; lote vira confirmed
+    const { applyStoreStockDelta } = require('../src/services/storeStockLedger');
+    await prisma.$transaction((tx) => applyStoreStockDelta(tx, { storeId: loja.id, productSizeId: ps.id, quantity: 1, type: 'transfer_in', source: 'teste-remessa', reason: 'teste' }));
+    await prisma.scanActionRead.update({ where: { clientScanId: ad.clientScanId }, data: { confirmedSize: '36' } });
+    await prisma.scanActionLot.update({ where: { sessionId: l.sessionId }, data: { status: 'confirmed', confirmedAt: new Date() } });
+    await aplicar(l); await auto.aplicarTodos(prisma);
+    assert.equal(await estoque(ps), 2, 'nada somado de novo depois de confirmado');
+  });
+  await t('AUDITORIA 1b: tirar o tempo de corte depois não desfaz o que já entrou (só sai por motivo da leitura)', async () => {
+    const ps = await tam('35');
+    const l = await lote(); await leitura(l, ps, min(150));
+    await aplicar(l); assert.equal(await estoque(ps), 1);
+    const antes = process.env.RECEBIMENTO_AUTOMATICO_DESDE;
+    process.env.RECEBIMENTO_AUTOMATICO_DESDE = new Date(Date.now() + 86400e3).toISOString();
+    try { await aplicar(l); assert.equal(await estoque(ps), 1); } finally { process.env.RECEBIMENTO_AUTOMATICO_DESDE = antes; }
+  });
+  await t('AUDITORIA 2: contagem FECHADA + recebimento pareado removido depois = a peça contada continua (não perde unidade)', async () => {
+    const ps = await tam('34');
+    const l = await lote(); const rd = await leitura(l, ps, min(160));
+    await aplicar(l); await contar(ps, min(170));
+    assert.equal(await estoque(ps), 1);
+    await prisma.stocktakeRound.update({ where: { id: round.id }, data: { status: 'closed', activeReplacementStoreId: null } });
+    try {
+      await prisma.scanActionRead.update({ where: { clientScanId: rd.clientScanId }, data: { removed: true } });
+      await aplicar(l);
+      assert.equal(await estoque(ps), 1, 'peça contada continua');
+      // recebimento NÃO pareado removido com a contagem fechada: desfaz normalmente
+      const ps2 = await tam('33');
+      const l2 = await lote(); const r2 = await leitura(l2, ps2, min(180));
+      await aplicar(l2); assert.equal(await estoque(ps2), 1, 'rodada fechada: recebimento continua entrando');
+      await prisma.scanActionRead.update({ where: { clientScanId: r2.clientScanId }, data: { removed: true } });
+      await aplicar(l2); assert.equal(await estoque(ps2), 0);
+    } finally { await prisma.stocktakeRound.update({ where: { id: round.id }, data: { status: 'counting', activeReplacementStoreId: loja.id } }); }
+  });
+  await t('AUDITORIA 3: contagem nova aberta depois (zera a loja) não desfaz recebimento da contagem anterior', async () => {
+    const ps = await tam('32');
+    const l = await lote(); const rd = await leitura(l, ps, min(190));
+    await aplicar(l); assert.equal(await estoque(ps), 1);
+    await prisma.stocktakeRound.update({ where: { id: round.id }, data: { status: 'closed', activeReplacementStoreId: null } });
+    const r2 = await prisma.stocktakeRound.create({ data: { name: 'Substituição 2', storeId: loja.id, status: 'counting', operationType: 'replacement', activeReplacementStoreId: loja.id, baseline: [], startedAt: new Date() } });
+    try {
+      const { applyStoreStockDelta } = require('../src/services/storeStockLedger');
+      await prisma.$transaction((tx) => applyStoreStockDelta(tx, { storeId: loja.id, productSizeId: ps.id, quantity: -1, type: 'inventory_adjustment', source: 'stock-replacement-start', reason: 'zera' }));
+      await auto.aplicarTodos(prisma);
+      assert.equal(await estoque(ps), 0, 'varredura não desfaz (não fica -1)');
+      await prisma.scanActionRead.update({ where: { clientScanId: rd.clientScanId }, data: { removed: true } });
+      await aplicar(l);
+      assert.equal(await estoque(ps), 0, 'nem leitura removida desfaz entrada de contagem antiga');
+    } finally {
+      await prisma.stocktakeRound.update({ where: { id: r2.id }, data: { status: 'cancelled', activeReplacementStoreId: null } });
+      await prisma.stocktakeRound.update({ where: { id: round.id }, data: { status: 'counting', activeReplacementStoreId: loja.id } });
+    }
+  });
   await t('o comprado (ProductSize.stock) nunca muda', async () => {
     for (const ps of [ps39, ps40, ps41, ps42, ps43]) assert.equal((await prisma.productSize.findUnique({ where: { id: ps.id } })).stock, 5);
   });

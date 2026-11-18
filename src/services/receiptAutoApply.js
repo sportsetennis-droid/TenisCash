@@ -52,56 +52,89 @@ async function replacementRound(tx, storeId) {
   return closed ? { ...closed, open: false } : null;
 }
 
-// Leitura que deve estar no estoque agora.
+const SRC_SQL = "('" + SOURCE + "', '" + SOURCE_REVERSE + "')"; // literal: casa com o índice parcial
+
+// Pode ENTRAR agora (entrada nova): lote aberto, peça reconhecida e com tamanho, bipada depois
+// do ponto de partida e do início da contagem nova da loja.
 function deveEntrar(read, lot, round) {
-  if (!lot || lot.mode !== 'receipt' || lot.status === 'archived' || !round) return false;
-  if (read.removed || !read.recognized || !read.productSizeId) return false;
-  if (read.requiresSizeConfirmation && !String(read.confirmedSize || '').trim()) return false;
+  if (!lot || lot.mode !== 'receipt' || lot.status !== 'open' || !round) return false;
+  if (deveSair(read, lot)) return false;
   const t = new Date(read.scannedAt).getTime();
   return t >= new Date(round.startedAt).getTime() && t >= desde();
 }
+// Só sai do estoque por motivo EXPLÍCITO na própria leitura ou no lote (nunca por data/janela).
+function deveSair(read, lot) {
+  if (lot && lot.status === 'archived') return true;
+  if (read.removed || !read.recognized || !read.productSizeId) return true;
+  return !!(read.requiresSizeConfirmation && !String(read.confirmedSize || '').trim());
+}
 
-// Situação atual de cada leitura do lote no histórico: { clientScanId: { productSizeId, net } }
+// Situação de cada leitura do lote: { clientScanId: { productSizeId, net, roundId } }
 async function aplicadoPorLeitura(tx, lotId) {
   const rows = await tx.$queryRawUnsafe(
-    'SELECT metadata->>\'clientScanId\' AS cs, "productSizeId" AS ps, SUM(quantity)::int AS net FROM "StoreStockMovement" ' +
-    'WHERE source IN ($1, $2) AND metadata->>\'lotId\' = $3 GROUP BY 1, 2', SOURCE, SOURCE_REVERSE, lotId);
+    'SELECT metadata->>\'clientScanId\' AS cs, "productSizeId" AS ps, SUM(quantity)::int AS net, MAX(metadata->>\'roundId\') AS rid FROM "StoreStockMovement" ' +
+    'WHERE source IN ' + SRC_SQL + ' AND metadata->>\'lotId\' = $1 GROUP BY 1, 2', lotId);
   const out = new Map();
-  for (const r of rows) if (r.net) out.set(r.cs, { productSizeId: r.ps, net: r.net });
+  for (const r of rows) if (r.net) out.set(r.cs, { productSizeId: r.ps, net: r.net, roundId: r.rid || null });
   return out;
 }
 
 async function lockSize(tx, storeId, productSizeId) {
   await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${'receipt-stock:' + storeId + ':' + productSizeId}))::text`;
 }
+// Ordem única de travas (auditoria 18/11): sempre em ordem crescente, ANTES de mexer no StoreStock.
+async function lockSizes(tx, storeId, ids) {
+  for (const id of [...new Set(ids.filter(Boolean))].sort()) await lockSize(tx, storeId, id);
+}
 
-// Reaplica o lote: soma o que deve entrar e ainda não entrou; desfaz o que não deve mais estar.
+// Pode desfazer uma entrada? Só na MESMA contagem em que ela entrou. Contagem nova aberta
+// depois (que zerou e recontou a loja) = não desfaz. Contagem já fechada: só desfaz se a
+// peça não foi confirmada por um bipe da contagem (pareada) — senão a peça contada some.
+async function podeDesfazer(tx, storeId, entrada, clientScanId) {
+  const atual = await replacementRound(tx, storeId);
+  if (!atual || !entrada.roundId || atual.id !== entrada.roundId) return false;
+  if (atual.open) return true;
+  const pareado = await tx.$queryRawUnsafe(
+    'SELECT 1 FROM "StockReplacementCheck" WHERE "roundId" = $1 AND "reversedAt" IS NULL AND evidence->>\'pareadoComRecebimento\' = $2 LIMIT 1', atual.id, clientScanId);
+  return !pareado.length;
+}
+
+// Reaplica o lote: soma o que deve entrar e ainda não entrou; desfaz o que saiu por motivo explícito.
+// Lote CONFIRMADO pela remessa não é mexido: a confirmação já descontou o que tinha entrado sozinho.
 async function aplicarLote(tx, lotId) {
   const lot = await tx.scanActionLot.findUnique({ where: { sessionId: lotId }, include: { scans: true } });
-  if (!lot || lot.mode !== 'receipt') return { aplicadas: 0, desfeitas: 0 };
+  if (!lot || lot.mode !== 'receipt' || lot.status === 'confirmed') return { aplicadas: 0, desfeitas: 0 };
   const round = await replacementRound(tx, lot.toStoreId);
   const atual = await aplicadoPorLeitura(tx, lotId);
-  let aplicadas = 0, desfeitas = 0;
-  const tocados = new Set();
+  // planeja primeiro; trava todos os tamanhos em ordem; só então escreve
+  const planos = [];
   for (const read of lot.scans) {
     const ja = atual.get(read.clientScanId);
-    const deve = deveEntrar(read, lot, round);
-    // desfaz: não deve mais entrar, ou mudou de variante
-    if (ja && ja.net > 0 && (!deve || ja.productSizeId !== read.productSizeId)) {
-      await lockSize(tx, lot.toStoreId, ja.productSizeId);
-      await applyStoreStockDelta(tx, { storeId: lot.toStoreId, productSizeId: ja.productSizeId, quantity: -ja.net, type: 'receipt_reverse', source: SOURCE_REVERSE,
-        reason: 'Recebimento desfeito (leitura removida, trocada ou lote arquivado)', metadata: { lotId, clientScanId: read.clientScanId } });
-      desfeitas++; tocados.add(ja.productSizeId);
-      atual.delete(read.clientScanId);
-    }
-    if (deve && !(atual.get(read.clientScanId)?.net > 0)) {
-      await lockSize(tx, lot.toStoreId, read.productSizeId);
-      await applyStoreStockDelta(tx, { storeId: lot.toStoreId, productSizeId: read.productSizeId, quantity: 1, type: 'receipt', source: SOURCE,
-        reason: 'Recebimento bipado (entra automático no estoque da loja)', metadata: { lotId, clientScanId: read.clientScanId, scannedAt: new Date(read.scannedAt).toISOString() } });
-      aplicadas++; tocados.add(read.productSizeId);
+    const temEntrada = !!(ja && ja.net > 0);
+    const trocou = temEntrada && !!read.productSizeId && ja.productSizeId !== read.productSizeId;
+    if (temEntrada && (deveSair(read, lot) || trocou)) {
+      if (await podeDesfazer(tx, lot.toStoreId, ja, read.clientScanId)) {
+        planos.push({ tipo: 'sai', read, ja });
+        if (trocou && deveEntrar(read, lot, round)) planos.push({ tipo: 'entra', read });
+      }
+    } else if (!temEntrada && deveEntrar(read, lot, round)) planos.push({ tipo: 'entra', read });
+  }
+  if (!planos.length) return { aplicadas: 0, desfeitas: 0 };
+  await lockSizes(tx, lot.toStoreId, planos.map((x) => (x.tipo === 'sai' ? x.ja.productSizeId : x.read.productSizeId)));
+  let aplicadas = 0, desfeitas = 0;
+  const tocados = new Set();
+  for (const x of planos) {
+    if (x.tipo === 'sai') {
+      await applyStoreStockDelta(tx, { storeId: lot.toStoreId, productSizeId: x.ja.productSizeId, quantity: -x.ja.net, type: 'receipt_reverse', source: SOURCE_REVERSE,
+        reason: 'Recebimento desfeito (leitura removida, trocada ou lote arquivado)', metadata: { lotId, clientScanId: x.read.clientScanId, roundId: x.ja.roundId } });
+      desfeitas++; tocados.add(x.ja.productSizeId);
+    } else {
+      await applyStoreStockDelta(tx, { storeId: lot.toStoreId, productSizeId: x.read.productSizeId, quantity: 1, type: 'receipt', source: SOURCE,
+        reason: 'Recebimento bipado (entra automático no estoque da loja)', metadata: { lotId, clientScanId: x.read.clientScanId, scannedAt: new Date(x.read.scannedAt).toISOString(), roundId: round.id } });
+      aplicadas++; tocados.add(x.read.productSizeId);
     }
   }
-  if (round && round.open) for (const ps of tocados) await parear(tx, lot.toStoreId, ps, round);
+  if (round && round.open) for (const ps of [...tocados].sort()) await parear(tx, lot.toStoreId, ps, round);
   return { aplicadas, desfeitas };
 }
 
@@ -109,7 +142,7 @@ async function aplicarLote(tx, lotId) {
 async function recebimentosAtivos(tx, storeId, productSizeId, round) {
   const rows = await tx.$queryRawUnsafe(
     'SELECT metadata->>\'clientScanId\' AS cs, MIN(metadata->>\'scannedAt\') AS em, SUM(quantity)::int AS net FROM "StoreStockMovement" ' +
-    'WHERE source IN ($1, $2) AND "storeId" = $3 AND "productSizeId" = $4 GROUP BY 1', SOURCE, SOURCE_REVERSE, storeId, productSizeId);
+    'WHERE source IN ' + SRC_SQL + ' AND "storeId" = $1 AND "productSizeId" = $2 GROUP BY 1 HAVING MAX(metadata->>\'roundId\') = $3', storeId, productSizeId, round.id);
   const inicio = new Date(round.startedAt).getTime();
   return rows.filter((r) => r.net > 0 && r.em && new Date(r.em).getTime() >= inicio)
     .map((r) => ({ cs: r.cs, em: new Date(r.em).getTime() }))
@@ -188,15 +221,17 @@ async function jaEntrouPorLeituras(tx, storeId, clientScanIds) {
   const out = new Map();
   if (!ids.length) return out;
   const rows = await tx.$queryRawUnsafe(
-    'SELECT "productSizeId" AS ps, SUM(quantity)::int AS net FROM "StoreStockMovement" WHERE source IN ($1, $2) AND "storeId" = $3 AND metadata->>\'clientScanId\' = ANY($4::text[]) GROUP BY 1',
-    SOURCE, SOURCE_REVERSE, storeId, ids);
+    'SELECT "productSizeId" AS ps, SUM(quantity)::int AS net FROM "StoreStockMovement" WHERE source IN ' + SRC_SQL + ' AND "storeId" = $1 AND metadata->>\'clientScanId\' = ANY($2::text[]) GROUP BY 1',
+    storeId, ids);
   for (const r of rows) if (r.net > 0) out.set(r.ps, r.net);
   return out;
 }
 
 // Varredura: aplica todos os lotes de recebimento (inclui leituras que ganharam tamanho depois).
 async function aplicarTodos(db, { limite = 500 } = {}) {
-  const lots = await db.scanActionLot.findMany({ where: { mode: 'receipt' }, select: { sessionId: true }, orderBy: { updatedAt: 'desc' }, take: limite });
+  // só lote aberto (ou arquivado há pouco, para desfazer); confirmado pela remessa não se mexe
+  const lots = await db.scanActionLot.findMany({ where: { mode: 'receipt', OR: [{ status: 'open' }, { status: 'archived', updatedAt: { gte: new Date(Date.now() - 3 * 86400e3) } }] },
+    select: { sessionId: true }, orderBy: { updatedAt: 'desc' }, take: limite });
   let aplicadas = 0, desfeitas = 0, erros = 0;
   for (const l of lots) {
     try {
@@ -213,6 +248,14 @@ async function aplicarTodos(db, { limite = 500 } = {}) {
 const state = { lastRunAt: null, lastResult: null, lastError: null };
 function iniciarRecebimentoAutomatico(db) {
   if (process.env.RECEBIMENTO_AUTOMATICO === '0') { console.log('[recebimento automático] desligado (RECEBIMENTO_AUTOMATICO=0)'); return; }
+  // índices parciais para as buscas por lote/leitura (só as linhas do recebimento automático)
+  const indices = async () => {
+    for (const sql of [
+      'CREATE INDEX IF NOT EXISTS "StoreStockMovement_recebimento_lote_idx" ON "StoreStockMovement" ((metadata->>\'lotId\')) WHERE source IN ' + SRC_SQL,
+      'CREATE INDEX IF NOT EXISTS "StoreStockMovement_recebimento_leitura_idx" ON "StoreStockMovement" ((metadata->>\'clientScanId\')) WHERE source IN ' + SRC_SQL,
+    ]) { try { await db.$executeRawUnsafe(sql); } catch (e) { console.warn('[recebimento automático] índice:', e.message); } }
+  };
+  indices();
   const rodar = () => aplicarTodos(db).then((r) => { state.lastRunAt = new Date().toISOString(); state.lastResult = r; state.lastError = null; if (r.aplicadas || r.desfeitas) console.log('[recebimento automático]', JSON.stringify(r)); })
     .catch((e) => { state.lastError = e.message; console.warn('[recebimento automático] falhou:', e.message); });
   setTimeout(rodar, 90 * 1000);
@@ -221,4 +264,4 @@ function iniciarRecebimentoAutomatico(db) {
 }
 function estadoRecebimentoAutomatico() { return JSON.parse(JSON.stringify(state)); }
 
-module.exports = { desde, SOURCE, SOURCE_REVERSE, SOURCE_PAIR, SOURCE_UNPAIR, aplicarLote, parear, antesDeExcluirBipe, jaEntrouPorTamanho, jaEntrouPorLeituras, aplicarTodos, iniciarRecebimentoAutomatico, estadoRecebimentoAutomatico, deveEntrar, replacementRound };
+module.exports = { desde, deveSair, SOURCE, SOURCE_REVERSE, SOURCE_PAIR, SOURCE_UNPAIR, aplicarLote, parear, antesDeExcluirBipe, jaEntrouPorTamanho, jaEntrouPorLeituras, aplicarTodos, iniciarRecebimentoAutomatico, estadoRecebimentoAutomatico, deveEntrar, replacementRound };
