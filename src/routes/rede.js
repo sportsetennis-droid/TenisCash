@@ -185,6 +185,8 @@ router.get('/marcas', wrap(async (req, res) => {
       comprado: d.comprado, localizado: d.localizado, vendas30: d.vendas && d.vendas.d30, vendas7: d.vendas && d.vendas.d7,
       coberturaDias: d.coberturaDias, alertas: (d.alertas || []).length, alertaPrincipal: (d.alertas || [])[0] || null,
       propostasPendentes: (props.get(d.marca) || []).length, temFicha: !!d.ficha,
+      conferencia: d.conferencia ? { pctCardsBipados: d.conferencia.pctCardsBipados, cardsBipados: d.conferencia.cardsBipados, cardsComprados: d.conferencia.cardsComprados,
+        publicadosNaoBipados: d.conferencia.publicadosNaoBipados, bipadosForaNuvemshop: d.conferencia.bipadosForaNuvemshop, bipadosNaNuvemshop: d.conferencia.bipadosNaNuvemshop } : null,
     };
   }).sort((a, b) => b.atencao - a.atencao || ((b.vendas30 && b.vendas30.rs) || 0) - ((a.vendas30 && a.vendas30.rs) || 0));
   res.json({ total: marcas.length, ultimaGeracao: marcas.reduce((m, x) => (!m || x.geradoEm > m ? x.geradoEm : m), null), marcas });

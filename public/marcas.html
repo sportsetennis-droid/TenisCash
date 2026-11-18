@@ -54,6 +54,9 @@ header p{color:var(--mut);font-size:13px;margin-top:4px}
 .alerta{margin-top:10px;font-size:13px;color:var(--wtx);display:flex;gap:6px}
 .alerta i{font-style:normal;font-weight:900}
 .prop{margin-top:8px;font-size:12.5px;font-weight:800;color:var(--o3)}
+.conf{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;font-size:12px}
+.conf span{background:var(--okbg);color:var(--ok);border-radius:999px;padding:4px 9px}
+.conf span.risco{background:var(--badbg);color:var(--bad)}
 .vazio{background:rgba(255,255,255,.16);border-radius:16px;padding:18px;text-align:center;color:#fff}
 .erro{background:#fff;color:var(--bad);border-radius:14px;padding:14px;font-weight:700}
 .demo{margin:0 0 12px;padding:9px 12px;border-radius:12px;background:#2a1206;color:#FFE3C2;font-size:12.5px;font-weight:700}
@@ -176,6 +179,9 @@ function desenhar() {
       '<div class="nums"><div class="num"><b>' + n(m.localizado) + '</b><span>localizado de ' + n(m.comprado) + '</span></div>' +
       '<div class="num"><b>' + n(v.un) + '</b><span>vendidos 30 dias</span></div>' +
       '<div class="num"><b>' + rs(v.rs) + '</b><span>vendas 30 dias</span></div></div>' +
+      (m.conferencia ? '<div class="conf"><span><b>' + (m.conferencia.pctCardsBipados == null ? '—' : m.conferencia.pctCardsBipados + '%') + '</b> bipado no estoque novo</span>' +
+        '<span><b>' + n(m.conferencia.bipadosNaNuvemshop) + '</b> bipados no site</span>' +
+        (m.conferencia.publicadosNaoBipados ? '<span class="risco"><b>' + n(m.conferencia.publicadosNaoBipados) + '</b> no site sem bipe</span>' : '') + '</div>' : '') +
       (al ? '<div class="alerta"><i>!</i><span>' + esc(al.texto) + '</span></div>' : '<div class="alerta"><span class="mut">Sem alerta hoje.</span></div>') +
       (m.propostasPendentes ? '<div class="prop">' + m.propostasPendentes + ' proposta(s) esperando você</div>' : '') +
       '</button>';
@@ -211,6 +217,23 @@ function detalhe(j) {
   h += '<div class="sec"><h3>Venda — loja física × site</h3><table class="tab"><tr><td>Últimos 7 dias</td><td>' + n(d7.un) + ' un · ' + rs(d7.rs) + '</td></tr><tr><td>Últimos 30 dias</td><td>' + n(d30.un) + ' un · ' + rs(d30.rs) + '</td></tr><tr><td>Margem bruta 30 dias</td><td>' + (d30.margemPct == null ? '—' : d30.margemPct + '%') + '</td></tr></table>' +
     (d30.unSemCusto ? '<p class="mut">' + n(d30.unSemCusto) + ' un vendidas sem custo gravado ficaram fora da margem.</p>' : '') +
     '<p class="mut" style="margin-top:8px">Por canal (30 dias):</p>' + linhas(v.porCanal30, function (x) { return n(x.un) + ' un · ' + rs(x.rs); }) + '</div>';
+  var cf = r.conferencia;
+  if (cf) {
+    var lst = function (arr, fmt) { return (arr || []).length ? '<ul style="margin:4px 0 0 18px;font-size:12.5px;color:var(--wmut)">' + arr.slice(0, 6).map(function (i) { return '<li>' + esc(i.nome) + ' · ' + fmt(i) + '</li>'; }).join('') + '</ul>' : ''; };
+    h += '<div class="sec"><h3>Bipado no estoque novo × Nuvemshop</h3><table class="tab">' +
+      '<tr><td>Cards comprados</td><td>' + n(cf.cardsComprados) + '</td></tr>' +
+      '<tr><td>Comprados já bipados no estoque novo</td><td>' + n(cf.compradosBipados) + (cf.pctCardsBipados == null ? '' : ' (' + cf.pctCardsBipados + '%)') + '</td></tr>' +
+      (cf.bipadosSemCompra ? '<tr><td>Bipados sem compra registrada (sem NF-e)</td><td>' + n(cf.bipadosSemCompra) + '</td></tr>' : '') +
+      '<tr><td>Unidades bipadas</td><td>' + n(cf.unidadesBipadas) + (cf.bipesPendentes ? ' · ' + n(cf.bipesPendentes) + ' pendentes' : '') + '</td></tr>' +
+      '<tr><td>Bipados e na Nuvemshop</td><td>' + n(cf.bipadosNaNuvemshop) + '</td></tr>' +
+      '<tr><td>Na Nuvemshop SEM bipe</td><td>' + n(cf.publicadosNaoBipados) + '</td></tr>' +
+      '<tr><td>Bipados e fora da Nuvemshop</td><td>' + n(cf.bipadosForaNuvemshop) + '</td></tr>' +
+      '<tr><td>Comprados e não bipados</td><td>' + n(cf.compradosNaoBipados) + '</td></tr></table>' +
+      '<p class="mut" style="margin-top:8px">Bipado por loja:</p>' + linhas(cf.porLoja, function (x) { return n(x) + ' un'; }) +
+      (cf.publicadosNaoBipados ? '<p class="mut" style="margin-top:8px">Na Nuvemshop sem bipe:</p>' + lst(cf.itensPublicadosNaoBipados, function (i) { return 'localizado ' + n(i.localizado) + ' / comprado ' + n(i.comprado); }) : '') +
+      (cf.bipadosForaNuvemshop ? '<p class="mut" style="margin-top:8px">Bipados fora da Nuvemshop:</p>' + lst(cf.itensBipadosForaNuvemshop, function (i) { return n(i.unidades) + ' un · ' + Object.keys(i.lojas || {}).join(', ') + (i.nasLojasDoSite ? '' : ' (loja que não vende no site)'); }) : '') +
+      '<p class="mut" style="margin-top:6px">Estoque novo = bipes das contagens abertas em 09/11 (rodadas canceladas não contam). Lojas que vendem no site: regra atual do sistema.</p></div>';
+  }
   var s = r.site || {};
   h += '<div class="sec"><h3>Site (Nuvemshop)</h3><table class="tab"><tr><td>Publicados</td><td>' + n(s.publicados) + '</td></tr><tr><td>Publicados sem estoque físico</td><td>' + n(s.publicadosSemEstoque) + '</td></tr><tr><td>Prontos para subir</td><td>' + n(s.prontosParaSubir) + '</td></tr><tr><td>Com estoque e barrados pelo cadastro</td><td>' + n(s.bloqueados) + '</td></tr></table>' +
     (Object.keys(s.motivos || {}).length ? '<p class="mut" style="margin-top:8px">Motivos de barrar:</p>' + linhas(s.motivos, n) : '') + '</div>';
@@ -260,12 +283,14 @@ function demoApi(path, opts) {
       vendas: { d7: { un: 9, rs: 2100 }, d30: { un: 40 - i, rs: 12000 - i * 900, margemPct: 38.5, unSemCusto: 2 }, porCanal30: { LOJA02: { un: 10, rs: 3000 }, LOJA05: { un: 25, rs: 7500 }, SITE: { un: 5, rs: 1500 } } },
       parados: { cards: 12, valorCustoRS: 18450 }, site: { publicados: 30, publicadosSemEstoque: 3, prontosParaSubir: 2, bloqueados: 9, motivos: { 'sem cor (risco de foto da cor errada)': 5, 'sem descricao': 4 } },
       cadastro: { semFoto: 4, menosDe5Fotos: 20, semCor: 11, semCusto: 3, precoAbaixoCusto: i === 0 ? 1 : 0, tamanhoTecnicoComEstoque: 2 },
+      conferencia: { cardsComprados: 100, cardsBipados: 60 - i * 5, compradosBipados: 58 - i * 5, bipadosSemCompra: 2, unidadesBipadas: 240, bipesPendentes: 6, porLoja: { LOJA02: 60, LOJA04: 120, LOJA05: 60 }, bipadosNaNuvemshop: 22, publicadosNaoBipados: 8 - i, bipadosForaNuvemshop: 38, foraNuvemshopNasLojasDoSite: 10, foraNuvemshopSoEmOutrasLojas: 28, compradosNaoBipados: 40, pctCardsBipados: 60 - i * 5,
+        itensPublicadosNaoBipados: [{ nome: 'Tênis Exemplo no site sem bipe (demo)', localizado: 0, comprado: 6 }], itensBipadosForaNuvemshop: [{ nome: 'Chuteira Exemplo bipada (demo)', unidades: 4, lojas: { LOJA04: 4 }, nasLojasDoSite: true }] },
       alertas: [{ gravidade: 2, area: 'venda', texto: '5 card(s) venderam nos últimos 30 dias e estão sem estoque localizado — falta repor OU falta contar na loja (demo)', itens: [{ nome: 'Tênis Exemplo Run (demo)', vendidos30: 4 }] }, { gravidade: 2, area: 'estoque', texto: '12 card(s) parados há 90+ dias (demo)', itens: [{ nome: 'Chuteira Exemplo (demo)', unidades: 8, dias: 140 }] }],
       sobDemanda: false };
   }
   return new Promise(function (ok) {
     setTimeout(function () {
-      if (path === '/marcas') return ok({ total: marcas.length, ultimaGeracao: new Date().toISOString(), marcas: marcas.map(function (k, i) { var r = rel(k, i); return { marca: k, atencao: r.atencao, geradoEm: r.geradoEm, cards: r.cards, cardsComEstoque: r.cardsComEstoque, comprado: r.comprado, localizado: r.localizado, vendas30: r.vendas.d30, vendas7: r.vendas.d7, coberturaDias: r.coberturaDias, alertas: 2, alertaPrincipal: r.alertas[0], propostasPendentes: i % 3, temFicha: true }; }) });
+      if (path === '/marcas') return ok({ total: marcas.length, ultimaGeracao: new Date().toISOString(), marcas: marcas.map(function (k, i) { var r = rel(k, i); return { marca: k, atencao: r.atencao, geradoEm: r.geradoEm, cards: r.cards, cardsComEstoque: r.cardsComEstoque, comprado: r.comprado, localizado: r.localizado, vendas30: r.vendas.d30, vendas7: r.vendas.d7, coberturaDias: r.coberturaDias, alertas: 2, alertaPrincipal: r.alertas[0], propostasPendentes: i % 3, temFicha: true, conferencia: r.conferencia }; }) });
       var mm = path.match(/^\/marcas\/([^/]+)(\/atualizar)?$/);
       if (mm && mm[2]) return ok({ marca: decodeURIComponent(mm[1]), traceId: 'tr_demo', aviso: 'Modo demonstração: nada foi pedido.' });
       if (mm) { var k = decodeURIComponent(mm[1]); return ok({ marca: k, ficha: { fornecedores: ['FORNECEDOR (demo)'], nfe: 'Formato da NF-e (demo).', foto: 'Fonte da foto oficial (demo).' }, relatorio: rel(k, Math.max(0, marcas.indexOf(k))), historico: [], propostas: [{ id: 'ap1', titulo: 'Transferir 4 pares de LOJA05 para LOJA02 (demo)', risco: 'low' }] }); }

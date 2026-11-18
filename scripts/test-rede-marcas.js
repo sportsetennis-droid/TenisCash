@@ -67,6 +67,7 @@ async function partB() {
   const atras = (d) => new Date(agora - d * DIA);
 
   async function limpar() {
+    await prisma.stocktakeBipe.deleteMany({}); await prisma.stocktakeRound.deleteMany({});
     await prisma.nuvemshopProductMapping.deleteMany({});
     await prisma.storeStockMovement.deleteMany({}); await prisma.saleItem.deleteMany({}); await prisma.sale.deleteMany({});
     await prisma.storeStock.deleteMany({}); await prisma.productSize.deleteMany({}); await prisma.product.deleteMany({}); await prisma.store.deleteMany({});
@@ -114,18 +115,29 @@ async function partB() {
   await prod({ sku: 'X1', name: 'Sem Marca', brand: 'A DEFINIR', price: 10, costPrice: 5 }, [{ size: 'U', barcode: '7890000000881', stock: 1 }]);
   await prod({ sku: 'X2', name: 'Inativo', brand: 'NIKE', price: 10, costPrice: 5, active: false }, [{ size: 'U', barcode: '7890000000991', stock: 1 }]);
 
+  // estoque NOVO: rodada de substituição em curso (vale) e rodada cancelada (não vale)
+  const rNova = await prisma.stocktakeRound.create({ data: { name: 'Substituição LOJA04', storeId: L.LOJA04.id, status: 'counting', operationType: 'replacement', baseline: {} } });
+  const rCanc = await prisma.stocktakeRound.create({ data: { name: 'Substituição cancelada', storeId: L.LOJA02.id, status: 'cancelled', operationType: 'replacement', baseline: {} } });
+  const bipe = (round, store, p, size, applied = true) => prisma.stocktakeBipe.create({ data: { roundId: round.id, storeId: store.id, barcode: size.barcode, productId: p.id, productSizeId: size.id, found: true, applied } });
+  await bipe(rNova, L.LOJA04, A, A.S['41']); await bipe(rNova, L.LOJA04, A, A.S['41']); // A publicado e bipado (2 un)
+  await bipe(rNova, L.LOJA04, F, F.S['42']);                                            // F bipado e fora da Nuvemshop (loja do site)
+  await bipe(rNova, L.LOJA04, F, F.S['42'], false);                                     // pendente: não conta como bipado
+  await bipe(rCanc, L.LOJA02, C, C.S.M);                                                // rodada cancelada: não vale
+  const G = await prod({ sku: 'H4', name: 'Tênis HOKA no site sem bipe', brand: 'HOKA', price: 900, costPrice: 400, aiContext: { color: 'Branco' }, imageUrl: 'https://x/g.jpg' }, [{ size: '39', barcode: '0196565000039', stock: 2 }]);
+  await prisma.nuvemshopProductMapping.create({ data: { localProductId: G.id, nuvemshopProductId: '222' } });
+
   const ler = ferramentas.soLeitura(prisma);
   const sinais = await gerente.disparar({ sinal: { tipo: 'relogio.diario', dados: {} }, ler, agora: new Date(agora) });
   const R = Object.fromEntries(sinais.map((s) => [s.dados.marca, s.dados]));
 
-  await t('1 relatório por marca: HOKA (3 grafias juntas) e PENALTY; sem marca e inativo ficam fora', () => {
+  await t('1 relatório por marca: HOKA (3 grafias juntas, 4 cards) e PENALTY; sem marca e inativo ficam fora', () => {
     assert.deepStrictEqual(Object.keys(R).sort(), ['HOKA', 'PENALTY']);
     assert.ok(sinais.every((s) => s.tipo === 'marca.relatorio' && s.dados.chave.startsWith('marca|')));
-    assert.strictEqual(R.HOKA.cards, 3);
+    assert.strictEqual(R.HOKA.cards, 4);
     assert.deepStrictEqual(R.HOKA.nomes.sort(), ['HOKA', 'Hoka', 'hoka']);
   });
   await t('estoque: comprado = Σ ProductSize.stock; localizado = StoreStock > 0 por loja; negativo à parte', () => {
-    assert.strictEqual(R.HOKA.comprado, 7);
+    assert.strictEqual(R.HOKA.comprado, 9);
     assert.strictEqual(R.HOKA.localizado, 4);
     assert.deepStrictEqual(R.HOKA.porLoja, { LOJA02: 1, LOJA04: 3 });
     assert.strictEqual(R.PENALTY.localizado, 10, 'o -1 não desconta do localizado');
@@ -148,7 +160,7 @@ async function partB() {
     assert.strictEqual(R.PENALTY.ruptura.itens[0].vendidos30, 2);
   });
   await t('site: publicado contado; físico na loja do site sem publicar passa pelo gate oficial (sem descrição = barrado)', () => {
-    assert.strictEqual(R.HOKA.site.publicados, 1);
+    assert.strictEqual(R.HOKA.site.publicados, 2);
     assert.strictEqual(R.HOKA.site.bloqueados, 1);
     assert.ok(R.HOKA.site.motivos['sem descricao'] >= 1, JSON.stringify(R.HOKA.site.motivos));
     assert.strictEqual(R.HOKA.site.prontosParaSubir, 0);
@@ -159,6 +171,25 @@ async function partB() {
     const areas = R.PENALTY.alertas.map((a) => a.area);
     for (const x of ['estoque', 'venda']) assert.ok(areas.includes(x), areas.join(','));
     assert.ok(R.HOKA.ficha && /cProd/.test(R.HOKA.ficha.nfe), 'ficha da HOKA viaja no relatório');
+  });
+  await t('conferência: bipado no estoque novo × Nuvemshop (rodada cancelada e bipe pendente não contam)', () => {
+    const cf = R.HOKA.conferencia;
+    assert.strictEqual(cf.cardsComprados, 3, 'A, F e G têm comprado');
+    assert.strictEqual(cf.cardsBipados, 2, 'A e F');
+    assert.strictEqual(cf.unidadesBipadas, 3, '2 do A + 1 do F (o pendente fica fora)');
+    assert.strictEqual(cf.bipesPendentes, 1);
+    assert.deepStrictEqual(cf.porLoja, { LOJA04: 3 });
+    assert.strictEqual(cf.bipadosNaNuvemshop, 1, 'A');
+    assert.strictEqual(cf.publicadosNaoBipados, 1, 'G está no site sem bipe');
+    assert.strictEqual(cf.itensPublicadosNaoBipados[0].nome, 'Tênis HOKA no site sem bipe');
+    assert.strictEqual(cf.bipadosForaNuvemshop, 1, 'F');
+    assert.strictEqual(cf.foraNuvemshopNasLojasDoSite, 1);
+    assert.strictEqual(cf.compradosNaoBipados, 1, 'G');
+    assert.strictEqual(cf.pctCardsBipados, 66.67);
+    assert.strictEqual(cf.compradosBipados, 2);
+    assert.strictEqual(cf.bipadosSemCompra, 0);
+    assert.strictEqual(R.PENALTY.conferencia.cardsBipados, 0, 'bipe de rodada cancelada não vale');
+    assert.ok(R.HOKA.alertas.some((a) => a.area === 'conferência' && /NÃO foram bipados/.test(a.texto)));
   });
   await t('pedido sob demanda (marca.pedir "hoka") gera só a HOKA; marca indefinida não inventa relatório', async () => {
     const s = await gerente.disparar({ sinal: { tipo: 'marca.pedir', dados: { marca: 'hoka' } }, ler, agora: new Date(agora) });
