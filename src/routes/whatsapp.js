@@ -338,10 +338,41 @@ router.post('/evolution', async (req, res) => {
       if (seller && await agentesOn()) {
         // Reação (❤️), figurinha, edição, mensagem apagada etc. NÃO pedem resposta (dono 18/11/2026:
         // o vendedor reagiu ❤️ e recebeu "me manda por texto"). Só áudio/foto/vídeo/documento.
-        if (!text) { if (isMediaMessage(m)) await sendToClient('Me manda por *texto*, ' + String(seller.name || '').split(' ')[0] + ', que eu te respondo. 🧡').catch(() => {}); return; }
+        const first = String(seller.name || '').split(' ')[0];
+        let input = text, heard = '';
+        if (!input) {
+          // Áudio → transcreve; foto → identifica o produto (dono 18/11/2026: "Faça tudo do 1 ao 8").
+          const media = require('../services/waMediaReader');
+          try {
+            if (m.audioMessage || m.pttMessage) {
+              const { base64, mimetype } = await media.downloadMedia(instance, data);
+              const r = base64 ? await media.transcribeAudio(base64, mimetype).catch((e) => ({ ok: false, reason: e.message })) : { ok: false };
+              if (!r.ok || !r.text) { await sendToClient(r.reason === 'no_key' ? 'Ainda não consigo ouvir áudio, ' + first + '. Me manda por *texto*. 🧡' : 'Não consegui entender o áudio, ' + first + '. Pode mandar de novo ou escrever? 🙏').catch(() => {}); return; }
+              input = '[Audio do vendedor] ' + r.text; heard = '🎙️ _Entendi: "' + r.text.slice(0, 200) + '"_\n\n';
+            } else if (m.imageMessage) {
+              const cap = String(m.imageMessage.caption || '').trim();
+              const { base64, mimetype } = await media.downloadMedia(instance, data);
+              const desc = base64 ? await require('../services/sellerPowers').identifyProductPhoto(base64, mimetype, cap).catch(() => null) : null;
+              if (!desc) { await sendToClient('Não consegui ler a foto, ' + first + '. Tenta de novo mostrando a etiqueta ou o código de barras. 🙏').catch(() => {}); return; }
+              input = '[Foto enviada pelo vendedor] Identificacao: ' + desc + '. Pergunta: ' + (cap || 'tem em estoque? em quais lojas e tamanhos?');
+            } else if (isMediaMessage(m)) {
+              await sendToClient('Me manda por *texto*, áudio ou foto, ' + first + ', que eu te respondo. 🧡').catch(() => {}); return;
+            } else return; // reação, figurinha, edição: silêncio
+          } catch (e) {
+            console.error('[agente-vendedor] mídia', e.message);
+            await sendToClient('Não consegui abrir essa mídia agora, ' + first + '. Me manda por texto? 🙏').catch(() => {}); return;
+          }
+        }
         try {
-          const out = await sellerAgentRoute.runSellerAgentChat({ userId: seller.id, userRole: 'seller', query: {}, body: {}, headers: {} }, text.slice(0, 1200), { channel: 'whatsapp' });
-          await sendToClient(String(out.reply || '').slice(0, 3500) || 'Não consegui responder agora. Tenta de novo em instantes.').catch(() => {});
+          const out = await sellerAgentRoute.runSellerAgentChat({ userId: seller.id, userRole: 'seller', query: {}, body: {}, headers: {} }, input.slice(0, 1500), { channel: 'whatsapp' });
+          await sendToClient((heard + String(out.reply || '')).slice(0, 3500) || 'Não consegui responder agora. Tenta de novo em instantes.').catch(() => {});
+          // Fotos oficiais pedidas pelo vendedor (foto_do_produto) vão logo depois da resposta.
+          const { sendEvolutionImage } = require('../whatsapp');
+          for (const f of (out.media || []).slice(0, 3)) {
+            const img = String(f.image || '');
+            const payload = img.startsWith('data:') ? img.replace(/^data:[^;]+;base64,/, '') : img;
+            await sendEvolutionImage(phone, payload, f.caption || '').catch((e) => console.error('[agente-vendedor] foto', e.message));
+          }
         } catch (e) {
           console.error('[agente-vendedor]', e.message);
           await sendToClient('Tive um problema pra responder agora. Tenta de novo em instantes. 🙏').catch(() => {});
