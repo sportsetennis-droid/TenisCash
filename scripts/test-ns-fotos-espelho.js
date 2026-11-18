@@ -610,6 +610,7 @@ async function partC() {
     try {
       const r = await h.pushProductToNuvemshop(c.id, { id: 'c' });
       assert.strictEqual(r.action, 'removed-on-store', JSON.stringify(r));
+      assert.ok(!r.ok && !r.synced && !r.nuvemshopProductId, 'telas do admin não leem como publicado: ' + JSON.stringify(r));
       const m2 = await prisma.nuvemshopProductMapping.findUnique({ where: { id: m.id } });
       assert.ok(m2, 'vínculo mantido (a subida automática não recria)'); assert.strictEqual(m2.syncStatus, 'hidden-invalid');
       const ctx = (await prisma.product.findUnique({ where: { id: c.id } })).aiContext;

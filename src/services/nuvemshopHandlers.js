@@ -1714,7 +1714,7 @@ async function _pushProductToNuvemshopInner(localProductId, connection) {
   // marca como pendência do dono; volta só por ordem dele.
   const sumiu = existingMapping && ctxOf(product).nsAnuncioSumiu;
   if (sumiu && String(sumiu.ns) === String(existingMapping.nuvemshopProductId)) {
-    return { skipped: true, action: 'removed-on-store', reason: 'anúncio apagado na Nuvemshop em ' + (sumiu.em || '?') + ' — volta só por ordem do dono', nuvemshopProductId: String(existingMapping.nuvemshopProductId) };
+    return { skipped: true, action: 'removed-on-store', reason: 'anúncio apagado na Nuvemshop em ' + (sumiu.em || '?') + ' — volta só por ordem do dono', anuncioApagado: String(existingMapping.nuvemshopProductId) };
   }
 
   // A single gate controls CREATE and UPDATE. If a previously mapped card
@@ -1836,7 +1836,7 @@ async function _pushProductToNuvemshopInner(localProductId, connection) {
       await prisma.nuvemshopProductMapping.update({ where: { id: existingMapping.id }, data: { syncStatus: 'hidden-invalid', lastSyncedAt: new Date() } }).catch(() => {});
       await mergeAiContext(prisma, product.id, { nsAnuncioSumiu: { ns: String(existingMapping.nuvemshopProductId), em: new Date().toISOString() } }).catch(() => {});
       await logSync('product', 'warning', `Anúncio NS#${existingMapping.nuvemshopProductId} não existe mais na loja — card marcado, volta só por ordem do dono: ${product.id} (${product.sku})`);
-      return { skipped: true, action: 'removed-on-store', reason: 'anúncio não existe mais na Nuvemshop; volta só por ordem do dono', nuvemshopProductId: String(existingMapping.nuvemshopProductId) };
+      return { skipped: true, action: 'removed-on-store', reason: 'anúncio não existe mais na Nuvemshop; volta só por ordem do dono', anuncioApagado: String(existingMapping.nuvemshopProductId) };
     }
     // Atualiza variants separadamente via /products/:id/variants/:vid
     variantSync = await updateNuvemshopVariants(connection, existingMapping.nuvemshopProductId, product, updateSizes);
@@ -1991,6 +1991,7 @@ async function pushAllProducts({ onlyMissing = true, limit = 1000, withImageOnly
   const products = await prisma.product.findMany({ where, take: limit, orderBy: { createdAt: 'asc' } });
   let created = 0;
   let updated = 0;
+  let pulados = 0;
   let failed = 0;
   const errors = [];
 
@@ -1998,6 +1999,7 @@ async function pushAllProducts({ onlyMissing = true, limit = 1000, withImageOnly
     try {
       const r = await pushProductToNuvemshop(p.id, connection);
       if (r.action === 'created') created++;
+      else if (r && r.skipped) pulados++; // barrado no portão / anúncio apagado: não conta como atualizado
       else updated++;
       // Delay pequeno pra não estourar rate limit
       await new Promise((res) => setTimeout(res, 200));
@@ -2008,8 +2010,8 @@ async function pushAllProducts({ onlyMissing = true, limit = 1000, withImageOnly
     }
   }
 
-  await logSync('product', 'ok', `Push catálogo TenisCash → Nuvemshop: ${products.length} total, ${created} novos, ${updated} atualizados, ${failed} falhas`);
-  return { total: products.length, created, updated, failed, errors: errors.slice(0, 20) };
+  await logSync('product', 'ok', `Push catálogo TenisCash → Nuvemshop: ${products.length} total, ${created} novos, ${updated} atualizados, ${pulados} pulados, ${failed} falhas`);
+  return { total: products.length, created, updated, skipped: pulados, failed, errors: errors.slice(0, 20) };
 }
 
 async function pushStockUpdate(localProductId) {
