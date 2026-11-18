@@ -2267,7 +2267,11 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     const { ensureApexSchema } = require('./services/ensureApexSchema');
     ensureApexSchema(prisma)
       .catch((e) => console.error('[ensureApexSchema] erro:', e.message))
-      .finally(() => require('./ai/rede').iniciar().catch((e) => console.error('[RNA] iniciar:', e.message)));
+      .finally(() => {
+        require('./ai/rede').iniciar().catch((e) => console.error('[RNA] iniciar:', e.message));
+        // ranking Glicko-2: gera do histórico os esportes que ainda não têm rating (idempotente)
+        require('./services/clubRating').bootstrapEmpty();
+      });
   } catch (e) {
     console.error('[ensureApexSchema] falha ao iniciar:', e.message);
   }
