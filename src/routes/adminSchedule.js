@@ -508,6 +508,23 @@ router.put('/goals', async (req, res) => {
   } catch (err) { console.error('[schedule/goals:put]', err); res.status(500).json({ error: err.message }); }
 });
 
+// CARGO do colaborador (Vendedor / Logística / Supervisor). Acesso continua o de vendedor.
+router.get('/job-titles', async (req, res) => {
+  try {
+    const jobTitle = require('../services/jobTitle');
+    res.json({ titles: jobTitle.TITLES, byUser: await jobTitle.all(prisma) });
+  } catch (err) { console.error('[schedule/job-titles]', err); res.status(500).json({ error: err.message }); }
+});
+router.put('/job-titles/:userId', async (req, res) => {
+  try {
+    const jobTitle = require('../services/jobTitle');
+    const user = await prisma.user.findUnique({ where: { id: String(req.params.userId) }, select: { id: true, role: true } });
+    if (!user || user.role !== 'seller') return res.status(404).json({ error: 'Colaborador não encontrado entre os vendedores.' });
+    const title = await jobTitle.set(prisma, user.id, (req.body || {}).title, req.userId);
+    res.json({ ok: true, title });
+  } catch (err) { console.error('[schedule/job-titles:put]', err); res.status(err.statusCode || 500).json({ error: err.message }); }
+});
+
 router.get('/requests', async (req, res) => {
   try {
     const status = ['PENDENTE', 'APROVADO', 'RECUSADO', 'CANCELADO'].includes(req.query.status) ? req.query.status : 'PENDENTE';
