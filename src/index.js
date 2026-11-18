@@ -828,6 +828,7 @@ siteBrand.mount(app);
 
 // Medalhas digitais: verificação (/verificar, /v/:serial), estante (/estante/:handle), contexto JSON-LD.
 require('./services/medalPages').mount(app);
+require('./ai/rede/mcp/oauth').mount(app); // OAuth do MCP: o Claude conecta só com a URL (dono autoriza com o login do admin)
 require('./ai/rede/mcp/servidor').mount(app); // MCP da rede (/mcp) — só admin/dono via Bearer JWT
 
 app.get(['/transferencia','/transferencia/'], (_req,res)=>{res.set('Cache-Control','no-store');res.sendFile(path.join(__dirname,'../public/transferencia.html'),{cacheControl:false});});

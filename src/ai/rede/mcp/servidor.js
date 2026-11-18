@@ -570,7 +570,12 @@ function criarServidor(ctx) {
 // ---------------------------------------------------------------------
 function rpcErro(res, status, mensagem, extra = {}) {
   if (res.headersSent) return;
-  if (status === 401) res.set('WWW-Authenticate', 'Bearer realm="teniscash-mcp"');
+  if (status === 401) {
+    // Aponta o Claude para a descoberta do OAuth (RFC 9728) — ele abre a tela de autorização sozinho.
+    let meta = '';
+    try { meta = ', resource_metadata="' + require('./oauth').baseDe(res.req) + '/.well-known/oauth-protected-resource/mcp"'; } catch (_) {}
+    res.set('WWW-Authenticate', 'Bearer realm="teniscash-mcp"' + meta);
+  }
   res.status(status).json({ jsonrpc: '2.0', error: { code: extra.code || -32001, message: mensagem }, id: null });
 }
 
