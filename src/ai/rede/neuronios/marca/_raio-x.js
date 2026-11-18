@@ -46,7 +46,7 @@ function novaMarca(k) {
       bipadosMenosDe5Fotos: 0, itensMenosDe5Fotos: [],
     },
     // regra 30 (dono 18/11): cada produto no lugar certo — categoria, subcategoria (público), modalidade, especialidade
-    local: { conferidos: 0, noLugarCerto: 0, foraDoLugar: 0, foraDoLugarNoSite: 0, incompletos: 0, motivos: {}, itens: [] },
+    local: { conferidos: 0, noLugarCerto: 0, foraDoLugar: 0, foraDoLugarNoSite: 0, incompletos: 0, motivos: {}, motivosFora: {}, itens: [], itensNoSite: [], itensFora: [] },
     cadastro: { semCor: 0, semFoto: 0, menosDe5Fotos: 0, semCusto: 0, precoZerado: 0, precoAbaixoCusto: 0, tamanhoTecnicoComEstoque: 0, itensPreco: [] },
   };
 }
@@ -57,7 +57,7 @@ async function calcular(ler, { agora = new Date(), soMarca = null, diasParado = 
 
   // 1) cards ativos (sem carregar imagem: só contagem)
   const prods = await ler.$queryRawUnsafe(
-    'SELECT p.id, p.brand, p.name, p.sku, p.category, p.subcategory, (p."aiContext"->\'classification\') AS cls, p.price, p."costPrice", p."createdAt", ' +
+    'SELECT p.id, p.brand, p.name, p.sku, p.category, p.subcategory, (p."aiContext"->\'classification\') AS cls, (p."aiContext"->\'classification2\') AS cls2, (jsonb_typeof(p."aiContext"->\'nuvemshopMapping\'->\'categoryIds\') = \'array\') AS mapa_ia, p.price, p."costPrice", p."createdAt", ' +
     "  (p.\"aiContext\"->>'color') AS cor, " +
     // anúncio apagado na Nuvemshop: o card não volta sozinho (decisão do dono)
     "  (p.\"aiContext\"->'nsAnuncioSumiu') IS NOT NULL AS anuncio_sumiu, " +
@@ -89,7 +89,7 @@ async function calcular(ler, { agora = new Date(), soMarca = null, diasParado = 
     }
     if (p.publicado) m.site.publicados++;
     // lugar certo (regra 30): o que está escrito no nome × a classificação que coloca o card no menu do site
-    const lugar = conferirLocal({ name: p.name, category: p.category, subcategory: p.subcategory, aiContext: { classification: p.cls || {} } });
+    const lugar = conferirLocal({ name: p.name, category: p.category, subcategory: p.subcategory, aiContext: { classification: p.cls || {}, classification2: p.cls2 || undefined } });
     const lugarErrado = lugar.filter((x) => x !== INCOMPLETA);
     m.local.conferidos++;
     if (!lugar.length) m.local.noLugarCerto++;
@@ -98,7 +98,11 @@ async function calcular(ler, { agora = new Date(), soMarca = null, diasParado = 
       m.local.foraDoLugar++;
       if (p.publicado) m.local.foraDoLugarNoSite++;
       for (const x of lugarErrado) { const t = x.replace(/ \(.*$/, ''); m.local.motivos[t] = (m.local.motivos[t] || 0) + 1; }
-      m.local.itens.push({ productId: p.id, nome: p.name, motivo: lugarErrado[0].replace(/^local: /, ''), noSite: !!p.publicado });
+      // card com mapeamento antigo da IA: no site vale esse mapeamento, não a classificação do card
+      const mapa = p.publicado && p.mapa_ia ? ' — no site vale o mapeamento antigo da IA (aiContext.nuvemshopMapping): apagar junto ao corrigir' : '';
+      const item = { productId: p.id, nome: p.name, motivo: lugarErrado[0].replace(/^local: /, '') + mapa, noSite: !!p.publicado };
+      if (p.publicado) m.local.itensNoSite.push(item);
+      else { m.local.itensFora.push(item); for (const x of lugarErrado) { const t = x.replace(/ \(.*$/, ''); m.local.motivosFora[t] = (m.local.motivosFora[t] || 0) + 1; } }
     }
     P.set(p.id, { ...p, k, fotos, lugar, comprado: 0, localizado: 0, localizadoNS: 0, lojas: {}, un30: 0, ultVenda: null });
   }
@@ -264,7 +268,9 @@ async function calcular(ler, { agora = new Date(), soMarca = null, diasParado = 
     cf.itensBipadosForaNuvemshop = cf.itensBipadosForaNuvemshop.sort((a, b) => (b.nasLojasDoSite - a.nasLojasDoSite) || b.unidades - a.unidades).slice(0, TOP);
     cf.itensCompradosNaoBipados = cf.itensCompradosNaoBipados.sort((a, b) => b.comprado - a.comprado).slice(0, TOP);
     cf.itensMenosDe5Fotos = cf.itensMenosDe5Fotos.sort((a, b) => (b.noSite - a.noSite) || a.fotos - b.fotos).slice(0, TOP);
-    m.local.itens = m.local.itens.sort((a, b) => (b.noSite - a.noSite)).slice(0, TOP);
+    m.local.itensNoSite = m.local.itensNoSite.slice(0, TOP);
+    m.local.itensFora = m.local.itensFora.slice(0, TOP);
+    m.local.itens = [...m.local.itensNoSite, ...m.local.itensFora].slice(0, TOP); // o que está no site vem primeiro
     cf.pctCardsBipados = cf.cardsComprados ? r2(100 * cf.compradosBipados / cf.cardsComprados) : null; // % dos cards COMPRADOS (NF-e) que já foram bipados
     const v = m.vendas.d30;
     v.rs = r2(v.rs); v.custoRS = r2(v.custoRS); m.vendas.d7.rs = r2(m.vendas.d7.rs);
@@ -329,8 +335,8 @@ function alertas(m) {
   if (m.site.publicadosSemEstoque) add(1, 'site', `${m.site.publicadosSemEstoque} card(s) publicados sem estoque físico nas lojas do site`);
   if (m.site.bloqueados) add(1, 'site', `${m.site.bloqueados} card(s) com estoque nas lojas do site mas barrados pelo cadastro`, { motivos: m.site.motivos, itens: m.site.itens });
   const lc = m.local || {};
-  if (lc.foraDoLugarNoSite) add(3, 'lugar', `${lc.foraDoLugarNoSite} card(s) NO SITE no lugar errado (categoria, público ou modalidade não batem com o que o nome do produto diz) — o cliente acha o produto na seção errada`, { itens: (lc.itens || []).filter((i) => i.noSite) });
-  if (lc.foraDoLugar - (lc.foraDoLugarNoSite || 0) > 0) add(2, 'lugar', `${lc.foraDoLugar - (lc.foraDoLugarNoSite || 0)} card(s) fora do lugar certo (ainda fora do site; se subirem, vão para a seção errada)`, { motivos: lc.motivos, itens: (lc.itens || []).filter((i) => !i.noSite) });
+  if (lc.foraDoLugarNoSite) add(3, 'lugar', `${lc.foraDoLugarNoSite} card(s) NO SITE no lugar errado (categoria, público ou modalidade não batem com o que o nome do produto diz) — o cliente acha o produto na seção errada`, { itens: lc.itensNoSite || [] });
+  if (lc.foraDoLugar - (lc.foraDoLugarNoSite || 0) > 0) add(2, 'lugar', `${lc.foraDoLugar - (lc.foraDoLugarNoSite || 0)} card(s) fora do lugar certo (ainda fora do site; se subirem, vão para a seção errada)`, { motivos: lc.motivosFora, itens: lc.itensFora || [] });
   if (lc.incompletos) add(1, 'lugar', `${lc.incompletos} card(s) sem as 4 classificações (categoria, público, modalidade, especialidade) — não sobem para o site`);
   if (m.cadastro.semFoto) add(1, 'cadastro', `${m.cadastro.semFoto} card(s) sem nenhuma foto`);
   if (m.cadastro.semCor) add(1, 'cadastro', `${m.cadastro.semCor} card(s) sem cor`);

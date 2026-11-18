@@ -9,24 +9,36 @@
 // Modalidade > Especialidade) é a que coloca o produto no MENU da loja online:
 // o envio para a Nuvemshop resolve essa cadeia contra o menu e cria o ramo que
 // faltar. Card de MEIA classificado em "Tênis" aparece no site dentro de Tênis.
+// (Exceção: card com aiContext.nuvemshopMapping vai pelos IDs desse mapeamento
+// antigo — quem chama avisa isso; ver _raio-x.)
 //
 // Esta régua só usa o que está ESCRITO no nome do card (o tipo do produto,
 // a modalidade da chuteira, o público). Nada é deduzido nem chutado: se o
 // nome não diz, a régua não acusa. Ela ACUSA e ENSINA; quem corrige é o
 // cadastro, e o envio ao site é automático depois da correção (regra 28).
+// Auditoria 18/11: criança nunca é empurrada para adulto; acessório "para
+// tênis/chuteira" não é calçado; Sandálias/Roupas/Feminino como o catálogo usa.
 // =====================================================================
 
-const norm = (s) => String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+// maiúsculas, sem acento e com espaço simples (texto de NF-e vem com espaço duplo)
+const norm = (s) => String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ');
 const vazio = (v) => ['', 'A CLASSIFICAR', 'A DEFINIR', 'NAO DEFINIDO', 'SEM MARCA'].includes(norm(v).trim());
 
-// Tipo do produto pela palavra escrita no nome → categorias em que ele pode estar.
+// Categorias fora desta conferência: uso interno (INSUMO) e dropshipping (Dropper).
+const FORA_DA_CONFERENCIA = new Set(['INSUMO', 'DROPPER']);
+
+// "PARA TÊNIS", "DE CHUTEIRA", "P/ TÊNIS" = acessório DO calçado, não o calçado.
+const NAO_E_O_CALCADO = '(?<!PARA )(?<!DE )(?<!P\\/ )(?<!P\\/)';
+
+// Tipo do produto pela palavra escrita no nome → categorias em que ele pode estar
+// (como o catálogo usa hoje: Sandálias e Roupas são aceitas ao lado da árvore oficial).
 // Só palavras sem ambiguidade (FAIXA, KIT, CONJUNTO, BOTA ficam de fora de propósito).
 const TIPOS = [
   // "BEACH TENIS" e "TENIS DE MESA" são o ESPORTE, não o calçado
-  { tipo: 'tênis', rx: /\bSAPATENIS\b|(?<!BEACH )\bTENIS\b(?! DE MESA)/, categorias: ['TENIS'] },
-  { tipo: 'chuteira', rx: /\bCHUTEIRAS?\b/, categorias: ['CHUTEIRAS'] },
+  { tipo: 'tênis', rx: new RegExp('\\bSAPATENIS\\b|' + NAO_E_O_CALCADO + '(?<!BEACH )\\bTENIS\\b(?! DE MESA)'), categorias: ['TENIS'] },
+  { tipo: 'chuteira', rx: new RegExp(NAO_E_O_CALCADO + '\\bCHUTEIRAS?\\b'), categorias: ['CHUTEIRAS'] },
   { tipo: 'sandália/chinelo', rx: /\b(CHINELOS?|SANDALIAS?|SLIDES?|BABUCHES?)\b/, categorias: ['SANDALIAS', 'TENIS'] },
-  { tipo: 'acessório', rx: /\b(MEIAS?|MEIAO|BOLAS?|BOLSAS?|MOCHILAS?|BONES?|VISEIRAS?|CANELEIRAS?|JOELHEIRAS?|COTOVELEIRAS?|TORNOZELEIRAS?|MUNHEQUEIRAS?|LUVAS?|GARRAFAS?|SQUEEZES?|OCULOS|TOUCAS?|APITOS?|BOMBAS?|CHAVEIROS?|MANGUITOS?|CANELITOS?|REDES?|RAQUETES?|PORTA|FIGURAS?|LIMPA)\b/, categorias: ['ACESSORIOS'] },
+  { tipo: 'acessório', rx: /\b(MEIAS?|MEIAO|BOLAS?|BOLSAS?|MOCHILAS?|BONES?|VISEIRAS?|CANELEIRAS?|JOELHEIRAS?|COTOVELEIRAS?|TORNOZELEIRAS?|MUNHEQUEIRAS?|LUVAS?|GARRAFAS?|SQUEEZES?|OCULOS|TOUCAS?|APITOS?|BOMBAS?|CHAVEIROS?|MANGUITOS?|CANELITOS?|REDES?|RAQUETES?|PORTA|FIGURAS?|LIMPA|LIMPEZA|PALMILHAS?|CADARCOS?|OVERGRIPS?|GRIPS?|TRAVAS?|CRAVOS?)\b/, categorias: ['ACESSORIOS'] },
   { tipo: 'roupa', rx: /\b(CAMISETAS?|CAMISAS?|REGATAS?|BERMUDAS?|SHORTS?|CALCAO|CALCOES|CALCAS?|LEGGINGS?|CROPPED|JAQUETAS?|CASACOS?|BLUSAS?|BLUSAO|AGASALHOS?|MACAQUINHOS?|MACACAO|MAIOS?|SUNGAS?|BIQUINIS?|KIMONOS?|MOLETONS?|SAIAS?|CORTA[- ]VENTO)\b/, categorias: ['VESTUARIO', 'ROUPAS'] },
 ];
 
@@ -51,24 +63,27 @@ function modalidadeChuteira(nome) {
   return achou.size === 1 ? [...achou][0] : null;
 }
 
-// público escrito no nome
+// Público escrito no nome: criança e gênero são coisas separadas.
+// ("BABY LOOK" é corte feminino adulto — BABY não conta como infantil.)
 function publicoDoNome(nome) {
   const n = norm(nome);
-  const infantil = /\b(INFANTIL|JUVENIL|INFANTO|KIDS|BABY|JR)\b/.test(n);
+  const infantil = /\b(INFANTIL|INFANTO|JUVENIL|KIDS|JR|JUNIOR|INF)\b/.test(n);
   const masc = /\b(MASCULINO|MASCULINA|MASC)\b/.test(n);
   const fem = /\b(FEMININO|FEMININA|FEM)\b/.test(n);
-  if (infantil) return 'infantil';
-  if (masc && !fem) return 'masculino';
-  if (fem && !masc) return 'feminino';
-  return null;
+  return { infantil, genero: masc && !fem ? 'masculino' : fem && !masc ? 'feminino' : null };
 }
 
+// Público de cada subcategoria do card (como o catálogo e a árvore usam).
 const PUBLICOS = {
-  HOMEM: 'masculino', MASCULINO: 'masculino',
-  MULHER: 'feminino', FEMININO: 'feminino',
-  MENINO: 'infantil', MENINA: 'infantil', INFANTIL: 'infantil', 'INF. M': 'infantil', 'INF. F': 'infantil', 'INF M': 'infantil', 'INF F': 'infantil',
-  UNISSEX: 'unissex',
+  HOMEM: { infantil: false, genero: 'masculino' }, MASCULINO: { infantil: false, genero: 'masculino' },
+  MULHER: { infantil: false, genero: 'feminino' }, FEMININO: { infantil: false, genero: 'feminino' },
+  MENINO: { infantil: true, genero: 'masculino' }, 'INF. M': { infantil: true, genero: 'masculino' }, 'INF M': { infantil: true, genero: 'masculino' },
+  MENINA: { infantil: true, genero: 'feminino' }, 'INF. F': { infantil: true, genero: 'feminino' }, 'INF F': { infantil: true, genero: 'feminino' },
+  INFANTIL: { infantil: true, genero: null },
+  UNISSEX: { infantil: null, genero: null },
 };
+// nós da árvore que não são público, mas existem nela (filtro de tamanhos)
+const SUB_DA_ARVORE_SEM_PUBLICO = new Set(['TAMANHOS', 'TAMANHO']);
 
 const INCOMPLETA = 'local: classificação incompleta';
 
@@ -79,13 +94,19 @@ function conferirLocal(produto) {
   const cls = ctx.classification || {};
   const motivos = [];
   const cat = norm(p.category).trim();
+  if (FORA_DA_CONFERENCIA.has(cat)) return motivos;
 
   if (vazio(p.category) || vazio(p.subcategory) || vazio(cls.modality) || vazio(cls.tier)) motivos.push(INCOMPLETA);
 
   const tipo = tipoDoNome(p.name);
-  // INSUMO = uso interno da loja (não vai ao site): fora desta conferência
-  if (tipo && !vazio(p.category) && cat !== 'INSUMO' && !tipo.categorias.includes(cat)) {
+  if (tipo && !vazio(p.category) && !tipo.categorias.includes(cat)) {
     motivos.push(`local: categoria errada (nome diz ${tipo.tipo}, card está em ${String(p.category).trim()})`);
+  }
+  // 2ª classificação (2ª cadeia no menu do site): mesma régua de tipo
+  const c2 = ctx.classification2 || {};
+  const cat2 = norm(c2.category).trim();
+  if (tipo && !vazio(c2.category) && !FORA_DA_CONFERENCIA.has(cat2) && !tipo.categorias.includes(cat2)) {
+    motivos.push(`local: categoria errada na 2ª classificação (nome diz ${tipo.tipo}, está em ${String(c2.category).trim()})`);
   }
 
   if (cat === 'CHUTEIRAS' && !vazio(cls.modality)) {
@@ -96,10 +117,14 @@ function conferirLocal(produto) {
   if (!vazio(p.subcategory)) {
     const sub = norm(p.subcategory).trim();
     const doCard = PUBLICOS[sub];
-    if (!doCard) motivos.push(`local: subcategoria fora da árvore (${String(p.subcategory).trim()}; deve ser o público: Homem, Mulher, Menino, Menina ou Unissex)`);
-    else {
+    if (!doCard) {
+      if (!SUB_DA_ARVORE_SEM_PUBLICO.has(sub)) motivos.push(`local: subcategoria fora da árvore (${String(p.subcategory).trim()}; deve ser o público: Homem, Mulher/Feminino, Menino, Menina ou Unissex)`);
+    } else if (doCard.infantil !== null) {
       const doNome = publicoDoNome(p.name);
-      if (doNome && doCard !== 'unissex' && doNome !== doCard) motivos.push(`local: público errado (nome diz ${doNome}, card está em ${String(p.subcategory).trim()})`);
+      const onde = String(p.subcategory).trim();
+      // só acusa o que o nome DIZ e contradiz o card; criança nunca é empurrada para adulto
+      if (doNome.infantil && doCard.infantil === false) motivos.push(`local: público errado (nome diz infantil, card está em ${onde})`);
+      else if (doNome.genero && doCard.genero && doNome.genero !== doCard.genero) motivos.push(`local: público errado (nome diz ${doNome.genero}, card está em ${onde})`);
     }
   }
   return motivos;

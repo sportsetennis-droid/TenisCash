@@ -58,6 +58,16 @@ async function partA() {
     assert.ok(/público errado \(nome diz feminino, card está em Homem\)/.test(conferirLocal(card('TENIS FILA COMET 2 FEMININO', 'Tênis', 'Homem', 'Corrida', 'Iniciante'))[0]));
     assert.deepStrictEqual(conferirLocal(card('TENIS FILA COMET 2 MASCULINO', 'Tênis', 'Unissex', 'Corrida', 'Iniciante')), [], 'unissex não acusa');
     assert.ok(/subcategoria fora da árvore \(Óculos \/ Natação/.test(conferirLocal(card('SPEEDO OCULOS VULCAN AZUL', 'Acessórios', 'Óculos / Natação', 'Óculos', 'Básica'))[0]));
+    // AUDITORIA 18/11: criança nunca vai para adulto; BABY LOOK é adulto; acessório "para tênis/chuteira" não é calçado
+    for (const [nome, cat, sub, mod] of [['TENIS INF MASC', 'Tênis', 'Menino'], ['TENIS INF. FEM', 'Tênis', 'Menina'], ['CHUTEIRA FUTSAL JUNIOR MASCULINA', 'Chuteiras', 'Menino', 'Futsal'],
+      ['TENIS MASC 28', 'Tênis', 'Menino'], ['CAMISETA BABY LOOK DRY FIT', 'Vestuário', 'Mulher'], ['BLUSA BABY LOOK FEMININA', 'Roupas', 'Mulher'],
+      ['PALMILHA PARA TENIS', 'Acessórios', 'Unissex'], ['CADARÇO PARA TÊNIS', 'Acessórios', 'Unissex'], ['KIT LIMPEZA TENIS', 'Acessórios', 'Unissex'], ['OVERGRIP TENIS WILSON', 'Acessórios', 'Unissex'],
+      ['TRAVA PARA CHUTEIRA', 'Acessórios', 'Unissex'], ['CRAVO CHUTEIRA CAMPO', 'Acessórios', 'Unissex'], ['KIT BEACH  TENIS', 'Acessórios', 'Unissex'],
+      ['TENIS ADIDAS', 'Dropper', 'Homem'], ['TENIS NIKE', 'Tênis', 'Tamanhos'], ['TENIS NIKE FEMININO', 'Tênis', 'Feminino'], ['CHINELO RIDER', 'Sandálias', 'Homem']]) {
+      assert.deepStrictEqual(conferirLocal(card(nome, cat, sub, mod || 'X', 'Y')), [], nome + ' em ' + cat + ' > ' + sub + ' está certo');
+    }
+    assert.ok(/nome diz feminino, card está em Menino/.test(conferirLocal(card('TENIS INFANTIL FEMININO', 'Tênis', 'Menino', 'X', 'Y'))[0]), 'gênero da criança também é conferido');
+    assert.ok(/2ª classificação/.test(conferirLocal({ name: 'TENIS Y', category: 'Tênis', subcategory: 'Homem', aiContext: { classification: { modality: 'Corrida', tier: 'Z' }, classification2: { category: 'Acessórios' } } })[0]), '2ª cadeia do menu também é conferida');
     // incompleta e INSUMO
     assert.deepStrictEqual(conferirLocal(card('TENIS HOKA CLIFTON', 'Tênis', null, null, null)), ['local: classificação incompleta']);
     assert.deepStrictEqual(conferirLocal(card('MEIA ACTVITTA USO COMUM', 'INSUMO', 'Unissex', 'Meia', 'Básica')), [], 'INSUMO é uso interno, fora da conferência');
