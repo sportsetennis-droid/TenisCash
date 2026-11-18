@@ -18,8 +18,12 @@ const NUVEMSHOP_AUTOMATICA = 'Toda alteração no card (foto, tamanho, código, 
 const TESTE_E_AUDITORIA = 'Nenhuma tarefa está pronta sem: 1) testar tudo antes de ensinar ou entregar; 2) depois de ensinar, uma equipe de AUDITORIA independente ' +
   'verifica tudo o que foi produzido e se seguiu todas as regras; só então a tarefa está finalizada (dono, 18/11/2026).';
 
-const REGRAS_DO_DONO = [BIPADO, CINCO_FOTOS, NUVEMSHOP_AUTOMATICA, TESTE_E_AUDITORIA];
+const LUGAR_CERTO = 'Cada agente confere se TODO produto sob sua responsabilidade está no LUGAR CERTO com as especificações certas: categoria, subcategoria (o público: Homem, Mulher, Menino, Menina ou Unissex), modalidade e especialidade. ' +
+  'A classificação do card é o endereço dele no menu da loja online e tem que bater com o que o NOME do produto diz (meia/bola/bolsa = Acessórios, camiseta/short = Vestuário, chuteira FUTSAL = Futsal, JR/infantil = Menino/Menina). ' +
+  'Só vale o que está escrito (nome, NF-e, caixa): nada é deduzido. Régua em src/ai/rede/regras/local-certo.js; conserto em regras/conserto-nuvemshop.js; o gerente de cada marca mostra o que está fora do lugar (dono, 18/11/2026).';
+
+const REGRAS_DO_DONO = [BIPADO, CINCO_FOTOS, NUVEMSHOP_AUTOMATICA, TESTE_E_AUDITORIA, LUGAR_CERTO];
 
 const VOCABULARIO_DO_DONO = ['VOCABULÁRIO E REGRAS DO DONO:', ...REGRAS_DO_DONO.map((r) => '- ' + r)].join('\n');
 
-module.exports = { BIPADO, CINCO_FOTOS, NUVEMSHOP_AUTOMATICA, TESTE_E_AUDITORIA, REGRAS_DO_DONO, VOCABULARIO_DO_DONO };
+module.exports = { BIPADO, CINCO_FOTOS, NUVEMSHOP_AUTOMATICA, TESTE_E_AUDITORIA, LUGAR_CERTO, REGRAS_DO_DONO, VOCABULARIO_DO_DONO };
