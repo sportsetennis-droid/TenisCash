@@ -131,7 +131,7 @@ function formatPulse(p) {
   L.push('');
   if (m.position) {
     L.push(`*No mês:* ${brl(m.total)} · ${m.position}º lugar entre ${m.sellers} vendedores`);
-    if (m.position > 1 && m.gapToNext != null) L.push(`Faltam ${brl0(m.gapToNext + 1)} para passar o ${m.position - 1}º lugar.`);
+    if (m.position > 1 && m.gapToNext != null && m.gapToNext < 1000) L.push(`Você está colado no ${m.position - 1}º lugar: um bom dia de vendas e você sobe.`);
     if (m.position === 1) L.push('Você lidera a rede. Agora é manter a distância. 🏆');
   } else {
     L.push('*No mês:* ainda sem venda registrada no seu nome.');

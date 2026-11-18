@@ -22,6 +22,8 @@ function ensureSchema(prisma) {
     ready = prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "LostSale" (
       "id" TEXT PRIMARY KEY, "sellerId" TEXT NOT NULL, "storeId" TEXT, "product" TEXT NOT NULL, "size" TEXT,
       "reason" TEXT NOT NULL DEFAULT 'SEM_ESTOQUE', "note" TEXT, "productId" TEXT, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT NOW())`)
+      .then(() => prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "ClientLookupLog" (
+        "id" SERIAL PRIMARY KEY, "sellerId" TEXT, "phone" TEXT NOT NULL, "found" BOOLEAN NOT NULL DEFAULT false, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT NOW())`))
       .catch((e) => { ready = null; throw e; });
   }
   return ready;
@@ -30,14 +32,19 @@ function ensureSchema(prisma) {
 function phoneVariants(raw) { return require('./whatsappFunctions').phoneVariants(raw); }
 
 // 3 + 7 — ficha do cliente pelo telefone (nome, saldo, compras). Sem CPF/e-mail.
-async function clientFile(prisma, phone) {
+async function clientFile(prisma, phone, { sellerId = null } = {}) {
   const variants = phoneVariants(phone);
   if (!variants.length) return { erro: 'Telefone inválido. Use DDD + número.' };
-  const user = await prisma.user.findFirst({ where: { phone: { in: variants } }, select: { id: true, name: true, balance: true, createdAt: true } });
+  // LGPD: toda consulta fica registrada (quem consultou qual telefone).
+  const logLookup = (found) => ensureSchema(prisma).then(() => prisma.$executeRaw`INSERT INTO "ClientLookupLog" ("sellerId","phone","found") VALUES (${sellerId}, ${variants[0]}, ${found})`).catch((e) => console.warn('[ficha] log', e.message));
+  const staff = await prisma.user.findFirst({ where: { phone: { in: variants }, role: { notIn: ['client', 'customer', 'user'] } }, select: { id: true } });
+  if (staff) { await logLookup(false); return { encontrado: false, mensagem: 'Esse telefone é de alguém da equipe. A ficha é só pra cliente.' }; }
+  const user = await prisma.user.findFirst({ where: { phone: { in: variants }, role: { in: ['client', 'customer', 'user'] } }, select: { id: true, name: true, balance: true, createdAt: true } });
   const sellerClients = await prisma.sellerClient.findMany({ where: { phone: { in: variants } }, select: { id: true, name: true } });
   const or = [];
   if (user) or.push({ customerUserId: user.id });
   if (sellerClients.length) or.push({ clientId: { in: sellerClients.map((c) => c.id) } });
+  await logLookup(or.length > 0);
   if (!or.length) return { encontrado: false, mensagem: 'Esse telefone não tem cadastro nem compra registrada no TenisCash.' };
   const sales = await prisma.sale.findMany({
     where: { OR: or, status: { not: 'canceled' } }, orderBy: { createdAt: 'desc' }, take: 8,
@@ -84,9 +91,17 @@ async function productPhotos(prisma, query, color) {
   });
   const withColor = (p) => { try { const c = typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : p.aiContext; return (c && c.color) || null; } catch (_) { return null; } };
   let found = products.map((p) => ({ id: p.id, nome: p.name, marca: p.brand, ref: p.sku, cor: withColor(p), fotos: imagesOf(p) })).filter((p) => p.fotos.length);
-  if (color) { const c = String(color).toLowerCase(); const f = found.filter((p) => String(p.cor || p.nome).toLowerCase().includes(c)); if (f.length) found = f; }
   if (!found.length) return { encontrado: false, mensagem: products.length ? 'Achei o produto, mas ele está sem foto no cadastro.' : 'Não achei produto com esse nome/código.' };
-  return { encontrado: true, opcoes: found.slice(0, 4).map((p) => ({ id: p.id, nome: p.nome, cor: p.cor, ref: p.ref, qtdFotos: p.fotos.length })), escolhido: found[0] };
+  const opcoes = found.slice(0, 6).map((p) => ({ id: p.id, nome: p.nome, cor: p.cor, ref: p.ref, qtdFotos: p.fotos.length }));
+  // Nunca chutar a cor (regra global): só manda foto quando sobra UM card só.
+  if (color) {
+    const c = String(color).toLowerCase();
+    const f = found.filter((p) => String(p.cor || p.nome).toLowerCase().includes(c));
+    if (!f.length) return { encontrado: true, semFotoDaCor: true, opcoes, mensagem: 'Não achei foto nessa cor. Confirme com o vendedor qual destas opções é a certa.' };
+    found = f;
+  }
+  if (found.length > 1) return { encontrado: true, precisaEscolher: true, opcoes: found.slice(0, 6).map((p) => ({ id: p.id, nome: p.nome, cor: p.cor, ref: p.ref })), mensagem: 'Tem mais de uma cor/modelo. Pergunte ao vendedor qual é (cor ou referência) e chame de novo com ela.' };
+  return { encontrado: true, opcoes, escolhido: found[0] };
 }
 
 // 5 — pedido de transferência: registra e avisa a loja de origem (estoque não se move aqui).
@@ -96,9 +111,12 @@ async function requestTransfer(prisma, seller, input, { send } = {}) {
   const toStore = seller.storeId ? await prisma.store.findUnique({ where: { id: seller.storeId }, select: { id: true, code: true, name: true } }) : null;
   if (!toStore) return { erro: 'Seu cadastro está sem loja. Peça pro Douglas vincular.' };
   const stores = await prisma.store.findMany({ where: { active: true }, select: { id: true, code: true, name: true } });
-  const de = String(input.de_loja || '').toLowerCase();
-  const fromStore = stores.find((s) => s.code.toLowerCase() === de || s.name.toLowerCase().includes(de)) || null;
-  if (!fromStore) return { erro: 'Não achei a loja de origem. Lojas: ' + stores.map((s) => s.code + ' ' + s.name).join(', ') };
+  const de = String(input.de_loja || '').trim().toLowerCase();
+  const lojas = stores.map((s) => s.code + ' ' + s.name).join(', ');
+  const exact = de ? stores.find((s) => s.code.toLowerCase() === de) : null;
+  const byName = de.length >= 3 ? stores.filter((s) => s.name.toLowerCase().includes(de)) : [];
+  const fromStore = exact || (byName.length === 1 ? byName[0] : null);
+  if (!fromStore) return { erro: (byName.length > 1 ? 'Mais de uma loja com esse nome. ' : 'Não achei a loja de origem. ') + 'Diga qual: ' + lojas };
   if (fromStore.id === toStore.id) return { erro: 'A loja de origem é a mesma loja de destino.' };
   const qtd = Math.max(1, Math.min(20, parseInt(input.quantidade, 10) || 1));
   const tam = String(input.tamanho || '').trim().slice(0, 12);

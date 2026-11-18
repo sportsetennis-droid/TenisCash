@@ -199,6 +199,40 @@ router.post('/webhook', async (req, res) => {
 // caem aqui e sao respondidas pelo atendente de IA (automatico).
 // Interruptor: env AI_ATTENDANT_ENABLED='false' desliga a IA.
 // =====================================================================
+// Auditoria 18/11/2026: o webhook é público. Antes de qualquer poder (comando do dono, agente do
+// vendedor), confirma que a mensagem é de verdade: apikey da Evolution no corpo OU a própria
+// Evolution confirma que a mensagem existe (findMessages). Forjada = ignorada.
+const webhookAuthStats = { apikey: 0, evolution: 0, rejeitada: 0, ultimaRejeicao: null };
+function safeEq(a, b) {
+  const x = Buffer.from(String(a)); const y = Buffer.from(String(b));
+  return x.length === y.length && require('crypto').timingSafeEqual(x, y);
+}
+async function webhookGenuine(body, instance, data) {
+  const k = String(body.apikey || '');
+  const keys = [process.env.EVOLUTION_API_KEY, ...String(process.env.EVOLUTION_WEBHOOK_KEYS || '').split(',')].map((s) => String(s || '').trim()).filter(Boolean);
+  if (k && keys.some((x) => safeEq(x, k))) { webhookAuthStats.apikey++; return true; }
+  const key = (data && data.key) || {};
+  const base = process.env.EVOLUTION_API_URL; const apikey = process.env.EVOLUTION_API_KEY;
+  if (key.id && instance && base && apikey) {
+    try {
+      const r = await fetch(`${base}/chat/findMessages/${encodeURIComponent(instance)}`, {
+        method: 'POST', headers: { apikey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ where: { key: { id: key.id } } }), signal: AbortSignal.timeout(8000),
+      });
+      if (r.ok) {
+        const j = await r.json().catch(() => null);
+        const recs = Array.isArray(j) ? j : (j && j.messages && (j.messages.records || j.messages)) || (j && j.records) || [];
+        const hit = (Array.isArray(recs) ? recs : []).find((x) => x && x.key && x.key.id === key.id);
+        if (hit && (!hit.key.remoteJid || !key.remoteJid || hit.key.remoteJid === key.remoteJid || hit.key.remoteJidAlt === key.remoteJid)) { webhookAuthStats.evolution++; return true; }
+      }
+    } catch (_) {}
+  }
+  webhookAuthStats.rejeitada++; webhookAuthStats.ultimaRejeicao = new Date().toISOString();
+  console.warn('[whatsapp/evolution] mensagem NÃO confirmada (possível forjada) — sem comando/agente', instance, key.id || '?');
+  return false;
+}
+router.webhookAuthStats = webhookAuthStats;
+
 router.post('/evolution', async (req, res) => {
   res.json({ received: true }); // responde rapido (Evolution nao espera)
 
@@ -304,7 +338,11 @@ router.post('/evolution', async (req, res) => {
     const crmReg = !isGroup ? await crm.registerFromEvolution(instance, body).catch(() => null) : null;
 
     // DONO: "IA OFF" / "IA ON" / "IA STATUS" — funciona com o robô ligado ou desligado.
+    // Só confere na Evolution quando a mensagem pediria um poder (dono ou vendedor) — cliente comum segue igual.
+    let genuine = null;
+    const isGenuine = async () => (genuine == null ? (genuine = await webhookGenuine(body, instance, data)) : genuine);
     const roboCmd = !isGroup && text && isOwnerPhone(phone) ? parseRoboCmd(text) : null;
+    if (roboCmd && !(await isGenuine())) return;
     if (roboCmd) {
       if (roboCmd !== 'status') await setRoboSwitch(roboCmd === 'on');
       const on = await isMainRoboOn();
@@ -316,6 +354,7 @@ router.post('/evolution', async (req, res) => {
     }
     // ===== AGENTES DOS VENDEDORES (dono 17/11/2026) — separados da IA de cliente =====
     // Dono: "R12 resposta" responde a pergunta #12 que o agente gerente encaminhou; "AGENTES OFF/ON" liga/desliga.
+    if (!isGroup && text && isOwnerPhone(phone) && (agentManager.parseOwnerAnswer(text) || parseAgentesCmd(text)) && !(await isGenuine())) return;
     if (!isGroup && text && isOwnerPhone(phone)) {
       const ans = agentManager.parseOwnerAnswer(text);
       if (ans) {
@@ -335,7 +374,7 @@ router.post('/evolution', async (req, res) => {
     // Vendedor falando com o PRÓPRIO agente (reconhecido pelo telefone do cadastro).
     if (!isGroup && !isOwnerPhone(phone)) {
       const seller = await findSellerByPhone(phone);
-      if (seller && await agentesOn()) {
+      if (seller && await agentesOn() && await isGenuine()) {
         // Reação (❤️), figurinha, edição, mensagem apagada etc. NÃO pedem resposta (dono 18/11/2026:
         // o vendedor reagiu ❤️ e recebeu "me manda por texto"). Só áudio/foto/vídeo/documento.
         const first = String(seller.name || '').split(' ')[0];
@@ -368,7 +407,7 @@ router.post('/evolution', async (req, res) => {
           await sendToClient((heard + String(out.reply || '')).slice(0, 3500) || 'Não consegui responder agora. Tenta de novo em instantes.').catch(() => {});
           // Fotos oficiais pedidas pelo vendedor (foto_do_produto) vão logo depois da resposta.
           const { sendEvolutionImage } = require('../whatsapp');
-          for (const f of (out.media || []).slice(0, 3)) {
+          for (const f of (replyJid ? [] : (out.media || []).slice(0, 3))) {
             const img = String(f.image || '');
             const payload = img.startsWith('data:') ? img.replace(/^data:[^;]+;base64,/, '') : img;
             await sendEvolutionImage(phone, payload, f.caption || '').catch((e) => console.error('[agente-vendedor] foto', e.message));

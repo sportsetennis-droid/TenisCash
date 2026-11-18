@@ -54,7 +54,8 @@ function redirectValido(uri) {
   try {
     const u = new URL(String(uri));
     if (u.hash) return false;
-    if (u.protocol === 'https:') return true;
+    // Só o Claude (claude.ai/claude.com/anthropic.com) ou o próprio computador.
+    if (u.protocol === 'https:') return ['claude.ai', 'claude.com', 'anthropic.com'].some((d) => u.hostname === d || u.hostname.endsWith('.' + d));
     return u.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(u.hostname);
   } catch (_) { return false; }
 }
@@ -78,6 +79,7 @@ button{width:100%;min-height:52px;border:0;border-radius:14px;font-weight:800;fo
 .ok{background:var(--brand);color:#fff}.no{background:#fff;border:1px solid var(--line);color:var(--ink)}.msg{color:var(--bad);font-size:14px;margin-top:10px;min-height:18px}</style></head>
 <body><div class="c"><div class="logo">TC</div><h1>Conectar ${esc(cliente.name || 'Claude')} ao TenisCash</h1>
 <p>O aplicativo <b>${esc(cliente.name || 'Claude')}</b> quer acessar o TenisCash em seu nome, com as ferramentas do MCP:</p>
+<p style="font-size:13px;color:#6e6e73">Retorno para: <b>${esc(new URL(params.redirect_uri).host)}</b>. Só autorize se for o Claude.</p>
 <ul><li>consultar estoque, vendas, NF-e e propostas da rede de agentes;</li><li>decidir uma proposta só depois da sua confirmação.</li></ul>
 <p>Só funciona com conta de dono/administração. O acesso dura 1 hora e renova sozinho; você pode desconectar quando quiser.</p>
 <div id="area"></div><div class="msg" id="msg"></div></div>
@@ -150,7 +152,7 @@ function mount(app, opcoes = {}) {
       await garantirTabelas(db);
       const b = req.body || {};
       const uris = Array.isArray(b.redirect_uris) ? b.redirect_uris.map(String).slice(0, 10) : [];
-      if (!uris.length || !uris.every(redirectValido)) return erroOAuth(res, 400, 'invalid_redirect_uri', 'Endereço de retorno precisa ser https ou localhost.');
+      if (!uris.length || !uris.every(redirectValido)) return erroOAuth(res, 400, 'invalid_redirect_uri', 'Endereço de retorno precisa ser do Claude (claude.ai) ou localhost.');
       const id = 'tc_' + rand(18);
       const name = String(b.client_name || 'Claude').slice(0, 80);
       await db.$executeRaw`INSERT INTO "McpOAuthClient" ("id","name","redirectUris") VALUES (${id}, ${name}, ${JSON.stringify(uris)})`;
@@ -224,7 +226,7 @@ function mount(app, opcoes = {}) {
         const codeHash = sha(b.code || '');
         const [row] = await db.$queryRaw`SELECT *, ("expiresAt" > NOW()) AS "vigente" FROM "McpOAuthCode" WHERE "codeHash" = ${codeHash} LIMIT 1`;
         if (!row || row.usedAt || !row.vigente) return erroOAuth(res, 400, 'invalid_grant', 'Código inválido ou vencido.');
-        if (row.clientId !== String(b.client_id || row.clientId) || row.redirectUri !== String(b.redirect_uri || '')) return erroOAuth(res, 400, 'invalid_grant', 'Código não confere com o aplicativo.');
+        if (row.clientId !== String(b.client_id || '') || row.redirectUri !== String(b.redirect_uri || '')) return erroOAuth(res, 400, 'invalid_grant', 'Código não confere com o aplicativo.');
         const challenge = crypto.createHash('sha256').update(String(b.code_verifier || '')).digest('base64url');
         if (!b.code_verifier || challenge !== row.codeChallenge) return erroOAuth(res, 400, 'invalid_grant', 'PKCE não confere.');
         const usado = await db.$executeRaw`UPDATE "McpOAuthCode" SET "usedAt" = NOW() WHERE "codeHash" = ${codeHash} AND "usedAt" IS NULL`;
@@ -236,7 +238,12 @@ function mount(app, opcoes = {}) {
       if (b.grant_type === 'refresh_token') {
         const h = sha(b.refresh_token || '');
         const [row] = await db.$queryRaw`SELECT *, ("expiresAt" > NOW()) AS "vigente" FROM "McpOAuthRefresh" WHERE "tokenHash" = ${h} LIMIT 1`;
-        if (!row || row.revokedAt || !row.vigente || (b.client_id && row.clientId !== String(b.client_id))) return erroOAuth(res, 400, 'invalid_grant', 'Renovação inválida. Conecte de novo.');
+        if (row && row.revokedAt) {
+          // Reuso de renovação já usada = possível roubo: derruba todas as renovações desse aplicativo.
+          await db.$executeRaw`UPDATE "McpOAuthRefresh" SET "revokedAt" = NOW() WHERE "clientId" = ${row.clientId} AND "userId" = ${row.userId} AND "revokedAt" IS NULL`;
+          return erroOAuth(res, 400, 'invalid_grant', 'Renovação já usada. Conecte de novo.');
+        }
+        if (!row || !row.vigente || row.clientId !== String(b.client_id || '')) return erroOAuth(res, 400, 'invalid_grant', 'Renovação inválida. Conecte de novo.');
         const revogado = await db.$executeRaw`UPDATE "McpOAuthRefresh" SET "revokedAt" = NOW() WHERE "tokenHash" = ${h} AND "revokedAt" IS NULL`;
         if (!revogado) return erroOAuth(res, 400, 'invalid_grant', 'Renovação já usada. Conecte de novo.');
         const t = await emitir(row.userId, row.clientId, row.scope);

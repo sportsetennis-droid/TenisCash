@@ -86,6 +86,10 @@ async function authMiddleware(req, res, next) {
     } catch (_) {
       return res.status(401).json({ error: 'Token inválido ou expirado' });
     }
+    // Token emitido pelo OAuth do MCP vale SÓ no /mcp (nunca no admin/preço/folha).
+    if (decoded.aud === 'teniscash-mcp' && !/^\/mcp(\/|\?|$)/.test(String(req.originalUrl || req.url || ''))) {
+      return res.status(401).json({ error: 'Token do MCP não vale aqui' });
+    }
     let user;
     try {
       // The database is authoritative. A demotion or deactivation takes effect

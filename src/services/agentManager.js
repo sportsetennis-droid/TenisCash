@@ -110,7 +110,7 @@ async function escalate(prisma, { seller, question, context = '', client = null,
 
 // "R12 resposta" vindo do dono.
 function parseOwnerAnswer(text) {
-  const m = String(text || '').trim().match(/^r\s*#?\s*(\d{1,7})\s*[:\-–]?\s+([\s\S]{1,2000})$/i);
+  const m = String(text || '').trim().match(/^r#?(\d{1,7})\s*[:\-–]?\s+([\s\S]{1,2000})$/i);
   return m ? { id: Number(m[1]), answer: m[2].trim() } : null;
 }
 
@@ -123,7 +123,7 @@ async function ownerAnswer(prisma, id, answer, { send = defaultSend() } = {}) {
   await prisma.$executeRaw`UPDATE "AgentQuestion" SET "status" = 'RESPONDIDA', "answer" = ${answer}, "answeredBy" = 'dono', "answeredAt" = NOW(), "knowledgeId" = ${kb.id} WHERE "id" = ${id}`;
   const seller = await prisma.user.findUnique({ where: { id: q.sellerId }, select: { name: true, phone: true } });
   let delivered = false;
-  if (seller && seller.phone) {
+  if (seller && seller.phone && require('./sellerPulse').validPhone(seller.phone)) {
     const r = await send(seller.phone, `📩 *Resposta do Douglas* (sua pergunta #${id}):\n"${q.question}"\n\n${answer}`).catch((e) => ({ ok: false, error: e.message }));
     delivered = !!(r && r.ok);
   }
