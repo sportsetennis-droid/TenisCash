@@ -4,6 +4,23 @@
 // competência; a mais específica vence (loja > estabelecimento > geral). Parâmetro com
 // status PENDING_VALIDATION não é usado: vira pendência "validar com o departamento pessoal".
 
+const VA_SRC_DONO = 'Dono (18/11/2026): vale-alimentação de R$ 12,00 por dia trabalhado acima de 4h, para todas as lojas (a CCT JP 2026/2027 cita R$ 14,00)';
+const HE_CG_SRC = 'Dono (18/11/2026): Campina Grande não terá hora extra — se o ponto mostrar, conferir';
+
+// Ajustes do dono em parâmetros que já foram semeados no banco (a semente só cria o que falta).
+// Idempotente: só troca a linha da semente que ainda tem a fonte antiga.
+const SEED_UPDATES = [
+  { key: 'VALE_ALIMENTACAO_DIA', validFrom: '2026-07-01', storeCode: null,
+    oldSource: 'CCT comerciários Grande João Pessoa 2026/2027, registro MTE MR063315/2026 (vigência 01/07/2026 a 30/06/2027) — comerciario.com.br/seus-direitos; gravado por ordem do dono em 18/11/2026 — R$ 14,00 por dia efetivamente trabalhado acima de 4h',
+    set: { value: { amountCents: 1200, minWorkedMinutes: 240 }, status: 'ACTIVE', source: VA_SRC_DONO } },
+  { key: 'HORA_EXTRA', validFrom: '2026-07-01', storeCode: 'LOJA03',
+    oldSource: 'Campina Grande: convenção própria — percentual de hora extra a informar pelo dono',
+    set: { value: { pct: null, semHoraExtra: true }, status: 'ACTIVE', source: HE_CG_SRC } },
+  { key: 'VALE_ALIMENTACAO_DIA', validFrom: '2026-07-01', storeCode: 'LOJA03',
+    oldSource: 'Campina Grande: convenção própria — vale-alimentação a informar pelo dono',
+    set: { status: 'REVOKED', source: 'Dono (18/11/2026): vale-alimentação geral (R$ 12,00) vale também para Campina Grande' } },
+];
+
 const SOURCES = {
   INSS_2026: 'Portaria Interministerial MPS/MF nº 13, de 09/01/2026 (efeitos desde 01/01/2026)',
   IRRF_TABLE: 'Tabela progressiva mensal do IRRF vigente desde 05/2025 (Lei 15.191/2025), mantida em 2026',
@@ -57,14 +74,15 @@ const SEED_PARAMS = [
     value: { mode: 'FIXED', amountCents: 7200, compensatoryDayOff: true } },
   { key: 'FERIADO_TRABALHADO', validFrom: '2026-07-01', source: SOURCES.CCT_JP_2026 + ' — R$ 72,00 + vale-transporte + um dia de folga',
     value: { mode: 'FIXED', amountCents: 7200, compensatoryDayOff: true } },
-  { key: 'VALE_ALIMENTACAO_DIA', validFrom: '2026-07-01', source: SOURCES.CCT_JP_2026 + ' — R$ 14,00 por dia efetivamente trabalhado acima de 4h',
-    value: { amountCents: 1400, minWorkedMinutes: 240 } },
-  { key: 'PASSAGEM_DIA', validFrom: '2026-07-01', source: 'Dono (18/11/2026): passagem de R$ 11,00 por dia trabalhado (quem usa vale-transporte)',
+  { key: 'VALE_ALIMENTACAO_DIA', validFrom: '2026-07-01', source: VA_SRC_DONO,
+    value: { amountCents: 1200, minWorkedMinutes: 240 } },
+  { key: 'PASSAGEM_DIA', validFrom: '2026-07-01', source: 'Dono (18/11/2026): passagem de R$ 11,00 por dia trabalhado (quem usa vale-transporte), para todas as lojas',
     value: { amountCents: 1100 } },
-  // Campina Grande (LOJA03) tem outra convenção: até o dono informar, fica pendente (não usa o valor de JP).
-  // Domingo lá é troca pedida pelo colaborador (sem adicional) — tratado no ponto (DOMINGO_TROCA).
-  { key: 'HORA_EXTRA', storeCode: 'LOJA03', validFrom: '2026-07-01', status: 'PENDING_VALIDATION', source: 'Campina Grande: convenção própria — percentual de hora extra a informar pelo dono', value: { pct: null } },
-  { key: 'VALE_ALIMENTACAO_DIA', storeCode: 'LOJA03', validFrom: '2026-07-01', status: 'PENDING_VALIDATION', source: 'Campina Grande: convenção própria — vale-alimentação a informar pelo dono', value: { amountCents: null } },
+  // Campina Grande (LOJA03): domingo é troca pedida pelo colaborador (sem adicional) — tratado no ponto (DOMINGO_TROCA).
+  // Dono (18/11/2026): "Campina não terá hora extra". Se aparecer hora extra no ponto, vira pendência para conferir
+  // (não paga sozinho nem some: a lei manda pagar hora extra que de fato existiu, mínimo 50%).
+  // Vale-alimentação e passagem: os gerais (R$ 12 e R$ 11), "para todos".
+  { key: 'HORA_EXTRA', storeCode: 'LOJA03', validFrom: '2026-07-01', source: HE_CG_SRC, value: { pct: null, semHoraExtra: true } },
   { key: 'FERIADO_TRABALHADO', storeCode: 'LOJA03', validFrom: '2026-07-01', status: 'PENDING_VALIDATION', source: 'Campina Grande: convenção própria — feriado trabalhado a informar pelo dono', value: { mode: 'FIXED', amountCents: null, compensatoryDayOff: true } },
 ];
 
@@ -123,4 +141,5 @@ function resolveCommissionRule(rules, { onDay, userId, storeId, issuerId }) {
   return ok[0] || null;
 }
 
-module.exports = { SOURCES, SEED_PARAMS, SEED_HOLIDAYS_2026, SEED_COMMISSION_RULE, resolveParams, resolveCommissionRule };
+module.exports = {
+  SEED_UPDATES, SOURCES, SEED_PARAMS, SEED_HOLIDAYS_2026, SEED_COMMISSION_RULE, resolveParams, resolveCommissionRule };
