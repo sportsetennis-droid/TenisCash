@@ -129,7 +129,7 @@ async function runNuvemshopAutoUpload({ limit } = {}) {
         include: { sizes: { include: { storeStocks: nuvemshopStoreStocksQuery() } } },
       });
       if (!full || mappedIds.has(full.id)) continue;
-      const check = assessProductForNuvemshop(full, { requireConfirmation: false });
+      const check = assessProductForNuvemshop(full, { requireConfirmation: false, isNew: true });
       if (!check.eligible) continue;
       result.eligible++;
 

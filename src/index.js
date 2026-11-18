@@ -707,6 +707,8 @@ app.get('/api/health', (req, res) => {
   } catch (_) {}
   let nuvemshopAutoUpload = null;
   try { nuvemshopAutoUpload = require('./services/nuvemshopAutoUpload').getNuvemshopAutoUploadState(); } catch (_) {}
+  let nuvemshopCardMirror = null;
+  try { nuvemshopCardMirror = require('./services/nuvemshopCardMirror').getNuvemshopCardMirrorState(); } catch (_) {}
   let qrOffers = null;
   try { qrOffers = require('./services/qrOffersCron').getQROffersCronState(); } catch (_) {}
   let imageRepair = null;
@@ -721,6 +723,7 @@ app.get('/api/health', (req, res) => {
     version: '1.0.0',
     nuvemshopCatalog,
     nuvemshopAutoUpload,
+    nuvemshopCardMirror,
     qrOffers,
     imageRepair,
     waHealth,
@@ -2353,6 +2356,8 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   // Estoque, gate e limpeza reversivel da Nuvemshop nao dependem dos crons de IA.
   try { startNuvemshopStockCron(); } catch (e) { console.error('[nsStockCron] falha ao iniciar:', e.message); }
   try { require('./services/nuvemshopAutoUpload').startNuvemshopAutoUpload(); } catch (e) { console.error('[nsAutoUpload] falha ao iniciar:', e.message); }
+  // Toda mudança do card publicado vai sozinha pra Nuvemshop (dono 2026-11-18)
+  try { require('./services/nuvemshopCardMirror').startNuvemshopCardMirror(); } catch (e) { console.error('[nsCardMirror] falha ao iniciar:', e.message); }
   try { startQROffersCron(); } catch (e) { console.error('[qrOffersCron] falha ao iniciar:', e.message); }
   try { startImageRepairCron(); } catch (e) { console.error('[imageRepairCron] falha ao iniciar:', e.message); }
 

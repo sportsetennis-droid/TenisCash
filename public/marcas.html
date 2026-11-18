@@ -228,7 +228,8 @@ function detalhe(j) {
       '<tr><td>Bipados e na Nuvemshop</td><td>' + n(cf.bipadosNaNuvemshop) + '</td></tr>' +
       '<tr><td>Na Nuvemshop SEM bipe</td><td>' + n(cf.publicadosNaoBipados) + '</td></tr>' +
       '<tr><td>Bipados e fora da Nuvemshop</td><td>' + n(cf.bipadosForaNuvemshop) + '</td></tr>' +
-      '<tr><td>Comprados e não bipados</td><td>' + n(cf.compradosNaoBipados) + '</td></tr></table>' +
+      '<tr><td>Comprados e não bipados</td><td>' + n(cf.compradosNaoBipados) + '</td></tr>' +
+      '<tr><td>Bipados com menos de 5 fotos</td><td>' + n(cf.bipadosMenosDe5Fotos) + '</td></tr></table>' +
       '<p class="mut" style="margin-top:8px">Bipado por loja:</p>' + linhas(cf.porLoja, function (x) { return n(x) + ' un'; }) +
       (cf.publicadosNaoBipados ? '<p class="mut" style="margin-top:8px">Na Nuvemshop sem bipe:</p>' + lst(cf.itensPublicadosNaoBipados, function (i) { return 'localizado ' + n(i.localizado) + ' / comprado ' + n(i.comprado); }) : '') +
       (cf.bipadosForaNuvemshop ? '<p class="mut" style="margin-top:8px">Bipados fora da Nuvemshop:</p>' + lst(cf.itensBipadosForaNuvemshop, function (i) { return n(i.unidades) + ' un · ' + Object.keys(i.lojas || {}).join(', ') + (i.nasLojasDoSite ? '' : ' (loja que não vende no site)'); }) : '') +
@@ -295,7 +296,7 @@ function demoApi(path, opts) {
       vendas: { d7: { un: 9, rs: 2100 }, d30: { un: 40 - i, rs: 12000 - i * 900, margemPct: 38.5, unSemCusto: 2 }, porCanal30: { LOJA02: { un: 10, rs: 3000 }, LOJA05: { un: 25, rs: 7500 }, SITE: { un: 5, rs: 1500 } } },
       parados: { cards: 12, valorCustoRS: 18450 }, site: { publicados: 30, publicadosSemEstoque: 3, prontosParaSubir: 2, bloqueados: 9, motivos: { 'sem cor (risco de foto da cor errada)': 5, 'sem descricao': 4 } },
       cadastro: { semFoto: 4, menosDe5Fotos: 20, semCor: 11, semCusto: 3, precoAbaixoCusto: i === 0 ? 1 : 0, tamanhoTecnicoComEstoque: 2 },
-      conferencia: { cardsComprados: 100, cardsBipados: 60 - i * 5, compradosBipados: 58 - i * 5, bipadosSemCompra: 2, unidadesBipadas: 240, bipesPendentes: 6, porLoja: { LOJA02: 60, LOJA04: 120, LOJA05: 60 }, bipadosNaNuvemshop: 22, publicadosNaoBipados: 8 - i, bipadosForaNuvemshop: 38, foraNuvemshopNasLojasDoSite: 10, foraNuvemshopSoEmOutrasLojas: 28, compradosNaoBipados: 40, pctCardsBipados: 60 - i * 5,
+      conferencia: { cardsComprados: 100, cardsBipados: 60 - i * 5, compradosBipados: 58 - i * 5, bipadosSemCompra: 2, unidadesBipadas: 240, bipesPendentes: 6, porLoja: { LOJA02: 60, LOJA04: 120, LOJA05: 60 }, bipadosNaNuvemshop: 22, publicadosNaoBipados: 8 - i, bipadosForaNuvemshop: 38, foraNuvemshopNasLojasDoSite: 10, foraNuvemshopSoEmOutrasLojas: 28, compradosNaoBipados: 40, bipadosMenosDe5Fotos: 12, pctCardsBipados: 60 - i * 5,
         conserto: { prontosParaSubir: 3, itensProntos: [{ nome: 'Tênis Exemplo pronto (demo)' }], passos: [
           { titulo: 'Bipado só em loja que não abastece o site', cards: 20, como: 'Liberar a loja para o site ou transferir para uma loja do site (demo).', quem: 'dono', precisaDono: true, itens: [{ nome: 'Chuteira Exemplo (demo)' }] },
           { titulo: 'Cor ausente, abreviada ou crua', cards: 9, como: 'Cor por extenso em português, pela NF-e, caixa ou site oficial (demo).', quem: 'cadastro', precisaDono: false, dicaDaMarca: 'Cor sai da referência oficial (demo).', itens: [] }] },

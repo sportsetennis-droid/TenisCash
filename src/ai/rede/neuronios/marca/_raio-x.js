@@ -40,6 +40,7 @@ function novaMarca(k) {
       publicadosNaoBipados: 0, itensPublicadosNaoBipados: [],
       bipadosForaNuvemshop: 0, foraNuvemshopNasLojasDoSite: 0, foraNuvemshopSoEmOutrasLojas: 0, itensBipadosForaNuvemshop: [],
       compradosNaoBipados: 0, itensCompradosNaoBipados: [],
+      bipadosMenosDe5Fotos: 0, itensMenosDe5Fotos: [],
     },
     cadastro: { semCor: 0, semFoto: 0, menosDe5Fotos: 0, semCusto: 0, precoZerado: 0, precoAbaixoCusto: 0, tamanhoTecnicoComEstoque: 0, itensPreco: [] },
   };
@@ -189,6 +190,8 @@ async function calcular(ler, { agora = new Date(), soMarca = null, diasParado = 
     if (bip > 0) {
       cf.cardsBipados++; cf.unidadesBipadas += bip;
       if (p.comprado > 0) cf.compradosBipados++; else cf.bipadosSemCompra++;
+      // regra do dono: todo produto tem 5 fotos (vale também para o que já está no site)
+      if (p.fotos < 5) { cf.bipadosMenosDe5Fotos++; cf.itensMenosDe5Fotos.push({ productId: p.id, nome: p.name, fotos: p.fotos, noSite: !!p.publicado }); }
       if (p.publicado) cf.bipadosNaNuvemshop++;
       else {
         cf.bipadosForaNuvemshop++;
@@ -209,7 +212,7 @@ async function calcular(ler, { agora = new Date(), soMarca = null, diasParado = 
     });
     for (const prod of lote) {
       const p = P.get(prod.id); const m = M.get(p.k);
-      const a = assessProductForNuvemshop(prod);
+      const a = assessProductForNuvemshop(prod, { isNew: true }); // só avalia o que ainda NÃO está no site
       if (a.eligible) { m.site.prontosParaSubir++; if (p.bipados > 0) conserto(m, p, null); continue; }
       m.site.bloqueados++;
       for (const motivo of a.reasons) { const t = motivo.replace(/^tamanho .+?: fisico.*/, 'físico maior que comprado').replace(/^tamanho .+ sem codigo de barras$/, 'tamanho sem código de barras'); m.site.motivos[t] = (m.site.motivos[t] || 0) + 1; }
@@ -217,6 +220,8 @@ async function calcular(ler, { agora = new Date(), soMarca = null, diasParado = 
       if (p.bipados > 0) conserto(m, p, a.reasons);
     }
   }
+  // regra das 5 fotos para TODO bipado (no site ou não): entra no passo de fotos
+  for (const p of P.values()) if (p.bipados > 0 && p.fotos < 5 && (p.publicado || p.localizadoNS <= 0)) conserto(M.get(p.k), p, ['menos de 5 fotos (' + p.fotos + ')']);
   // bipado só em loja que não abastece o site: o gate nem chega a avaliar
   for (const p of P.values()) if (p.bipados > 0 && !p.publicado && p.localizadoNS <= 0) conserto(M.get(p.k), p, ['so em loja que nao vende no site']);
 
@@ -232,6 +237,7 @@ async function calcular(ler, { agora = new Date(), soMarca = null, diasParado = 
     cf.itensPublicadosNaoBipados = cf.itensPublicadosNaoBipados.sort((a, b) => b.localizado - a.localizado || b.comprado - a.comprado).slice(0, TOP);
     cf.itensBipadosForaNuvemshop = cf.itensBipadosForaNuvemshop.sort((a, b) => (b.nasLojasDoSite - a.nasLojasDoSite) || b.unidades - a.unidades).slice(0, TOP);
     cf.itensCompradosNaoBipados = cf.itensCompradosNaoBipados.sort((a, b) => b.comprado - a.comprado).slice(0, TOP);
+    cf.itensMenosDe5Fotos = cf.itensMenosDe5Fotos.sort((a, b) => (b.noSite - a.noSite) || a.fotos - b.fotos).slice(0, TOP);
     cf.pctCardsBipados = cf.cardsComprados ? r2(100 * cf.compradosBipados / cf.cardsComprados) : null; // % dos cards COMPRADOS (NF-e) que já foram bipados
     const v = m.vendas.d30;
     v.rs = r2(v.rs); v.custoRS = r2(v.custoRS); m.vendas.d7.rs = r2(m.vendas.d7.rs);
@@ -290,6 +296,7 @@ function alertas(m) {
       (cs.prontosParaSubir ? ` — ${cs.prontosParaSubir} já prontos para subir` : '') +
       (top ? `; maior trava: ${top.titulo} (${top.cards})` : '') + ' — ver "Como colocar tudo no site"', { itens: cf.itensBipadosForaNuvemshop });
   }
+  if (cf.bipadosMenosDe5Fotos) add(2, 'fotos', `${cf.bipadosMenosDe5Fotos} card(s) bipados com MENOS DE 5 FOTOS (regra do dono) — ver passo "Menos de 5 fotos" em "Como colocar tudo no site"`, { itens: cf.itensMenosDe5Fotos });
   if (cf.compradosNaoBipados) add(1, 'conferência', `${cf.compradosNaoBipados} card(s) comprados e ainda não bipados em loja nenhuma`, { itens: cf.itensCompradosNaoBipados });
   if (m.site.prontosParaSubir) add(2, 'site', `${m.site.prontosParaSubir} card(s) prontos para subir no site e ainda fora`);
   if (m.site.publicadosSemEstoque) add(1, 'site', `${m.site.publicadosSemEstoque} card(s) publicados sem estoque físico nas lojas do site`);

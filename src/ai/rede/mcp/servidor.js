@@ -340,8 +340,8 @@ function registrarFerramentas(server, ctx) {
       if (ps) p = await ler.product.findUnique(Object.assign({ where: { id: ps.productId } }, sel));
     }
     if (!p) throw erro(`Card "${q}" não encontrado por id, referência ou código.`, 'Ache o card com estoque_por_produto e use o id que ele devolver.');
-    const a = assessProductForNuvemshop(p);
     const mapa = await ler.nuvemshopProductMapping.findUnique({ where: { localProductId: p.id }, select: { nuvemshopProductId: true, syncStatus: true, lastSyncedAt: true } });
+    const a = assessProductForNuvemshop(p, { isNew: !mapa || mapa.syncStatus === 'hidden-invalid' });
     const cls = (a.context && a.context.classification) || {};
     return {
       id: p.id, ref: p.sku, nome: p.name, marca: p.brand,

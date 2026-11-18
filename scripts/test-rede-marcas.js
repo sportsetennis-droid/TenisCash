@@ -192,6 +192,8 @@ async function partB() {
     assert.strictEqual(cf.pctCardsBipados, 75);
     assert.strictEqual(cf.compradosBipados, 3);
     assert.strictEqual(cf.bipadosSemCompra, 0);
+    assert.strictEqual(cf.bipadosMenosDe5Fotos, 3, 'A, F e H têm 1 foto (regra do dono: 5)');
+    assert.ok(R.HOKA.alertas.some((x) => x.area === 'fotos'));
     assert.strictEqual(R.PENALTY.conferencia.cardsBipados, 0, 'bipe de rodada cancelada não vale');
     assert.ok(R.HOKA.alertas.some((a) => a.area === 'conferência' && /NÃO foram bipados/.test(a.texto)));
   });
@@ -202,6 +204,7 @@ async function partB() {
     assert.ok(P.descricao && P.descricao.itens[0].nome === 'Tênis HOKA Bondi 9 Preto', 'F sem descrição');
     assert.ok(P.confirmacao && P.confirmacao.precisaDono, 'confirmação é do dono');
     assert.ok(cs.passos.every((p) => p.como && p.quem), 'todo passo diz como e quem');
+    assert.ok(P['fotos-minimas'] && P['fotos-minimas'].cards === 3, 'todo bipado com < 5 fotos aprende a completar');
     assert.strictEqual(cs.prontosParaSubir, 0);
     const reg = require('../src/ai/rede/regras/conserto-nuvemshop');
     assert.strictEqual(reg.passoDe('cor crua (numero/tamanho na cor)').id, 'cor');

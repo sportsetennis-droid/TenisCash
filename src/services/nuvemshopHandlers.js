@@ -1478,7 +1478,8 @@ async function _pushProductToNuvemshopInner(localProductId, connection) {
   // A single gate controls CREATE and UPDATE. If a previously mapped card
   // becomes invalid, it is actively unpublished instead of remaining frozen
   // and visible in the storefront.
-  const eligibility = assessProductForNuvemshop(product);
+  // produto NOVO na loja também precisa de 5 fotos (regra do dono 2026-11-18)
+  const eligibility = assessProductForNuvemshop(product, { isNew: !existingMapping || existingMapping.syncStatus === 'hidden-invalid' });
   if (!eligibility.eligible) {
     const reason = eligibility.reasons.join('; ');
     console.log('[ns push] DESPUBLICADO/PULADO - gate de qualidade:', localProductId, reason);

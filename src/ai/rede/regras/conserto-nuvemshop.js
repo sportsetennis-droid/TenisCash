@@ -24,6 +24,14 @@ const PASSOS = [
   { id: 'foto', rx: /sem foto valida/, titulo: 'Sem foto válida',
     como: 'Buscar a foto OFICIAL pela referência/código exato da cor (fonte da marca na ficha); conferir a cor olhando cada foto; sem fonte online, a loja fotografa a peça. Nunca foto de outro colorway.',
     quem: 'conteudo.foto-oficial / loja', dono: false, usaFicha: 'foto' },
+  { id: 'fotos-minimas', rx: /menos de \d+ fotos/, titulo: 'Menos de 5 fotos (regra do dono: todo produto tem 5)',
+    como: 'Completar até 5 fotos DA MESMA COR do card, nesta ordem de fonte (todas testadas em 15–18/11/2026): ' +
+      '1) lojas VTEX pelo código de barras exato — /api/catalog_system/pub/products/search?fq=alternateIds_Ean:<EAN> em americanas, paquetaesportes, oscarcalcados, shopcoopera, shopping.sicredi, pittol e nos sites oficiais (penalty, umbro, fila, asics, olympikus, kenner, mizuno, ous, cajubrasil, newbalance, skechers, underarmour); ' +
+      '2) CDN oficial da marca pela referência+cor exata (fonte na ficha da marca); ' +
+      '3) busca pelo nome só com conferência rígida de modelo E cor (na dúvida, não usa); ' +
+      '4) sem fonte online, a loja fotografa a peça real: lateral de fora, lateral de dentro, frente, calcanhar/trás e sola/de cima. ' +
+      'Cada foto é conferida OLHANDO (cor, modelo, gênero) antes de gravar; nada de tabela de medidas, logo ou montagem; grava com backup e no máximo 5.',
+    quem: 'conteudo.foto-oficial / loja', dono: false, usaFicha: 'foto' },
   { id: 'descricao', rx: /sem descricao/, titulo: 'Sem descrição',
     como: 'Gerar descrição técnica só com dados reais do card (marca, modelo, cor, material da NF-e) — o mini agente conteudo.descricao propõe e o dono aprova.',
     quem: 'conteudo.descricao', dono: true },
