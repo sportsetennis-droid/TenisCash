@@ -1594,6 +1594,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       <span class="section-title">Gerenciar Vendedores e Gerentes</span>
       <button class="refresh-btn" onclick="loadSellers(); loadManagers()">↻</button>
     </div>
+    <button type="button" onclick="openSellerSignals()" style="width:100%;margin:0 0 8px;padding:12px;background:#fff;border:1px solid #e5e5ea;border-radius:12px;font-size:14px;font-weight:800;color:#1d1d1f;cursor:pointer">📉 Vendas perdidas e pedidos de transferência</button>
     <button type="button" onclick="openSellerGoals()" style="width:100%;margin:0 0 12px;padding:12px;background:#FFF4EE;border:1px solid #F6C9B3;border-radius:12px;font-size:14px;font-weight:800;color:#C2410C;cursor:pointer">🎯 Metas do mês dos vendedores</button>
 
     <div style="background:rgba(0,0,0,0.02);border:1px solid rgba(0,0,0,0.06);border-radius:14px;padding:16px">
@@ -7717,6 +7718,24 @@ async function loadSellers() {
 // Contrato do vendedor (folha/contracheque) — grava em PayrollEmployeeProfile.
 const PAY_CONTRACTS = [['MENSALISTA','Mensalista (CLT)'],['HORISTA','Horista'],['ESCALA_12X36','Escala 12x36'],['APRENDIZ','Aprendiz'],['PARCIAL','Tempo parcial'],['SEM_REGISTRO','Sem registro']];
 // Metas do mês (dono 17/11/2026): base da "meta de hoje" que vai 1 hora antes do expediente.
+// Sinais dos vendedores pelo WhatsApp: o que o cliente queria e não tinha + transferências pedidas.
+async function openSellerSignals() {
+  let ov = document.getElementById('seller-signals-ov');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'seller-signals-ov'; document.body.appendChild(ov); }
+  ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.innerHTML = '<div style="background:#fff;border-radius:14px;padding:20px;width:100%;max-width:640px;max-height:90vh;overflow:auto;color:#1d1d1f">Carregando…</div>';
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  const box = ov.firstChild;
+  const d = await api('/admin/schedule/sinais-vendedores?dias=30');
+  if (d.error) { box.innerHTML = '<div style="color:#d70015">' + escapeHtml(d.error) + '</div>'; return; }
+  const dt = (v) => v ? new Date(v).toLocaleDateString('pt-BR', { timeZone: 'America/Fortaleza' }) : '';
+  const lost = (d.vendasPerdidas || []).map((l) => '<tr><td style="padding:6px"><b>' + escapeHtml(l.produto) + '</b><div style="font-size:11px;color:#8e8e93">' + escapeHtml(l.motivos) + ' · ' + escapeHtml(l.lojas) + ' · última ' + dt(l.ultima) + '</div></td><td style="padding:6px;text-align:center">' + escapeHtml(l.tamanhos) + '</td><td style="padding:6px;text-align:center;font-weight:800;color:#C2410C">' + l.vezes + '</td></tr>').join('');
+  const tr = (d.transferencias || []).map((t) => '<div style="border:1px solid #eee;border-radius:10px;padding:8px;margin-bottom:6px"><b>' + escapeHtml(t.titulo) + '</b>' + (t.urgente ? ' <span style="color:#d70015;font-size:11px;font-weight:700">URGENTE</span>' : '') + '<div style="font-size:12px;color:#8e8e93">' + escapeHtml(t.vendedor || '') + ' · ' + dt(t.quando) + ' · ' + escapeHtml(t.status) + '</div></div>').join('');
+  box.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center"><div style="font-weight:800;font-size:16px">📉 Últimos 30 dias</div><button type="button" class="btn" onclick="document.getElementById(\'seller-signals-ov\').remove()">Fechar</button></div>' +
+    '<h3 style="margin:14px 0 6px;font-size:14px">Vendas perdidas (o cliente queria e não tinha)</h3>' + (lost ? '<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="color:#8e8e93;text-align:left"><th style="padding:6px">Produto</th><th style="padding:6px;text-align:center">Tamanhos</th><th style="padding:6px;text-align:center">Vezes</th></tr></thead><tbody>' + lost + '</tbody></table>' : '<div style="color:#8e8e93;font-size:13px">Nenhuma registrada ainda. Os vendedores registram pelo WhatsApp: "cliente queria X tamanho Y e não tinha".</div>') +
+    '<h3 style="margin:16px 0 6px;font-size:14px">Pedidos de transferência</h3>' + (tr || '<div style="color:#8e8e93;font-size:13px">Nenhum pedido ainda.</div>');
+}
+
 async function openSellerGoals(month) {
   let ov = document.getElementById('seller-goals-ov');
   if (!ov) { ov = document.createElement('div'); ov.id = 'seller-goals-ov'; document.body.appendChild(ov); }

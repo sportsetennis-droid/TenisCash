@@ -558,6 +558,29 @@ router.post('/escala-link/:userId', async (req, res) => {
   } catch (err) { console.error('[schedule/escala-link]', err); res.status(500).json({ error: err.message }); }
 });
 
+// Sinais dos vendedores (dono 18/11/2026): vendas perdidas e pedidos de transferência feitos pelo WhatsApp.
+router.get('/sinais-vendedores', async (req, res) => {
+  try {
+    await require('../services/sellerPowers').ensureSchema(prisma);
+    const dias = Math.min(90, Math.max(1, parseInt(req.query.dias, 10) || 30));
+    const lost = await prisma.$queryRaw`SELECT lower("product") AS chave, min("product") AS produto, count(*)::int AS vezes,
+        string_agg(DISTINCT coalesce("size", '-'), ', ') AS tamanhos, string_agg(DISTINCT "reason", ', ') AS motivos,
+        string_agg(DISTINCT coalesce("storeId", ''), ',') AS lojas, max("createdAt") AS ultima
+      FROM "LostSale" WHERE "createdAt" > NOW() - make_interval(days => ${dias}::int)
+      GROUP BY lower("product") ORDER BY count(*) DESC, max("createdAt") DESC LIMIT 100`;
+    const stores = await prisma.store.findMany({ select: { id: true, code: true } });
+    const code = Object.fromEntries(stores.map((s) => [s.id, s.code]));
+    const transfers = await prisma.sellerInternalRequest.findMany({
+      where: { title: { startsWith: 'Transferência' }, createdAt: { gte: new Date(Date.now() - dias * 86400000) } },
+      orderBy: { createdAt: 'desc' }, take: 100,
+      select: { id: true, title: true, status: true, urgency: true, createdAt: true, seller: { select: { name: true } } },
+    });
+    res.json({ dias,
+      vendasPerdidas: lost.map((l) => ({ produto: l.produto, vezes: l.vezes, tamanhos: l.tamanhos, motivos: l.motivos, lojas: String(l.lojas || '').split(',').filter(Boolean).map((id) => code[id] || '?').join(', '), ultima: l.ultima })),
+      transferencias: transfers.map((t) => ({ titulo: t.title, status: t.status, urgente: t.urgency !== 'NORMAL', vendedor: t.seller ? t.seller.name : null, quando: t.createdAt })) });
+  } catch (err) { console.error('[schedule/sinais]', err); res.status(500).json({ error: err.message }); }
+});
+
 router.get('/requests', async (req, res) => {
   try {
     const status = ['PENDENTE', 'APROVADO', 'RECUSADO', 'CANCELADO'].includes(req.query.status) ? req.query.status : 'PENDENTE';
