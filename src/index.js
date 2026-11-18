@@ -463,36 +463,6 @@ app.post('/api/_falgen', async (req, res) => {
     return res.json({ ok: false, error: String(e.message).slice(0, 200), ...keys });
   }
 });
-// TEMPORÁRIO (dono 18/11/2026: "leve o link da agenda para cada um"). Manda o link pessoal da escala
-// SÓ para os 11 vendedores que o dono confirmou que estão na empresa. ?dry=1 só lista. Remover depois.
-app.post('/api/_enviar-link-escala', async (req, res) => {
-  if (req.query.g !== '04cb7cb5e0efef0d9079b218') return res.status(404).json({ error: 'not found' });
-  try {
-    const { prisma } = require('./middleware');
-    const selfSchedule = require('./services/selfSchedule');
-    const { validPhone } = require('./services/sellerPulse');
-    const { sendCustomMessage } = require('./whatsapp');
-    const NAMES = ['Istenia Brito Silva', 'REINALDY OLIVEIRA ALEXANDRE', 'Felipe Lima da Silva', 'Joao victor carvalho', 'Roger victor hugo monteiro dos santos',
-      'Miquéias Willian', 'Pedro Ernesto Maul Cardoso', 'Elias Gomes da Rocha Neto', 'Kayê Cunha de Souza', 'Gladson Araujo de Melo', 'Helio Roberto de Freitas Neto'];
-    const users = await prisma.user.findMany({ where: { name: { in: NAMES }, role: 'seller', active: true }, select: { id: true, name: true, phone: true } });
-    const dry = req.query.dry === '1';
-    const out = [];
-    for (const name of NAMES) {
-      const u = users.find((x) => x.name === name);
-      const first = String(name).split(/\s+/)[0].toLowerCase().replace(/^./, (c) => c.toUpperCase());
-      if (!u) { out.push({ nome: first, ok: false, motivo: 'não achei no cadastro' }); continue; }
-      if (!validPhone(u.phone)) { out.push({ nome: first, ok: false, motivo: 'sem WhatsApp no cadastro' }); continue; }
-      if (dry) { out.push({ nome: first, ok: true, motivo: 'dry' }); continue; }
-      const link = selfSchedule.signedLink(u.id, 'https://teniscash.com.br');
-      const msg = 'Oi, ' + first + '! 🧡 Preencha aqui os dias e horários que você vai trabalhar este mês (entrada, saída e intervalo). Leva 2 minutos:\n\n' + link +
-        '\n\nÉ só tocar nos dias, conferir o horário e salvar. Com isso você recebe sua meta e seu resultado 1 hora antes de cada expediente.';
-      const r = await sendCustomMessage(u.phone, msg).catch((e) => ({ ok: false, error: e.message }));
-      out.push({ nome: first, ok: !!(r && r.ok), motivo: r && r.ok ? null : (r && r.error) || 'falhou' });
-    }
-    res.json({ enviados: out.filter((o) => o.ok).length, total: out.length, lista: out });
-  } catch (e) { console.error('[enviar-link-escala]', e); res.status(500).json({ error: e.message }); }
-});
-
 app.use('/api/auth', authRoutes);
 app.use('/api/webauthn', webauthnRoutes);
 app.use('/api/face', faceRoutes);
