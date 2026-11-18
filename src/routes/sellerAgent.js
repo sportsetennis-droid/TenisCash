@@ -2274,27 +2274,21 @@ async function myResultsForAgent(snapshot) {
 async function myScheduleForAgent(snapshot) {
   const sellerId = snapshot.seller.id;
   const today = agendaDaily.todayYmd();
-  const days = Array.from({ length: 14 }, (_, i) => new Date(Date.parse(today + 'T12:00:00Z') + i * 86400000).toISOString().slice(0, 10));
-  const from = new Date(days[0] + 'T00:00:00Z'), to = new Date(days[13] + 'T23:59:59Z');
-  const months = [...new Set(days.map((d) => d.slice(0, 7)))];
-  const [published, monthly, recurring, acts, requests] = await Promise.all([
-    prisma.sellerMonthlySchedule.findMany({ where: { month: { in: months }, status: 'PUBLISHED' }, select: { month: true } }),
-    prisma.sellerMonthlyShift.findMany({ where: { sellerId, workDate: { gte: from, lte: to }, schedule: { status: 'PUBLISHED' } }, include: { store: { select: { name: true } } } }),
-    prisma.sellerSchedule.findMany({ where: { sellerId, active: true }, include: { store: { select: { name: true } } } }),
-    prisma.agendaActivity.findMany({ where: { sellerId, date: { lte: to }, OR: [{ endDate: { gte: from } }, { endDate: null, date: { gte: from } }] }, select: { type: true, title: true, date: true, endDate: true, startTime: true, endTime: true } }),
+  const last = new Date(Date.parse(today + 'T12:00:00Z') + 13 * 86400000).toISOString().slice(0, 10);
+  const from = new Date(today + 'T00:00:00Z'), to = new Date(last + 'T23:59:59Z');
+  const ymdOf = (d) => new Date(d).toISOString().slice(0, 10);
+  const [shifts, acts, requests] = await Promise.all([
+    sellerPulse.shiftsBetween(prisma, sellerId, today, last),
+    prisma.agendaActivity.findMany({ where: { sellerId, date: { lte: to }, OR: [{ endDate: { gte: from } }, { endDate: null, date: { gte: from } }] }, select: { type: true, title: true, date: true, endDate: true } }),
     agendaDaily.listRequests(prisma, { sellerId, fromYmd: today }),
   ]);
-  const pub = new Set(published.map((p) => p.month));
-  const ymdOf = (d) => new Date(d).toISOString().slice(0, 10);
-  const out = days.map((ymd) => {
-    const shift = pub.has(ymd.slice(0, 7))
-      ? monthly.find((m) => ymdOf(m.workDate) === ymd)
-      : recurring.find((r) => r.weekday === new Date(ymd + 'T12:00:00Z').getUTCDay());
-    const dayActs = acts.filter((a) => ymd >= ymdOf(a.date) && ymd <= ymdOf(a.endDate || a.date));
-    const off = dayActs.find((a) => a.type === 'folga' || a.type === 'ferias');
-    return { data: ymd, trabalho: off || !shift ? null : { loja: shift.store ? shift.store.name : null, entrada: shift.startTime, saida: shift.endTime }, folga: off ? off.type : null, compromissos: dayActs.filter((a) => a !== off).map((a) => a.title) };
-  });
-  return { fonte: 'escala publicada do mes quando houver; senao escala fixa', proximos14dias: out, pedidosDeFolga: requests.map((r) => ({ tipo: r.type, data: r.date, ate: r.endDate, status: r.status })), comoPedirFolga: 'App TenisCash > Escala e folgas > + MARCAR (o dono aprova).' };
+  const out = shifts.map((s) => ({
+    data: s.ymd,
+    trabalho: s.start ? { loja: s.store || null, entrada: s.start, saida: s.end, intervalo: s.breakStart ? s.breakStart + '-' + s.breakEnd : null } : null,
+    folga: s.off || null,
+    compromissos: acts.filter((a) => a.type !== 'folga' && a.type !== 'ferias' && s.ymd >= ymdOf(a.date) && s.ymd <= ymdOf(a.endDate || a.date)).map((a) => a.title),
+  }));
+  return { fonte: 'escala publicada do mes; senao a informada pelo vendedor no link; senao a fixa', proximos14dias: out, pedidosDeFolga: requests.map((r) => ({ tipo: r.type, data: r.date, ate: r.endDate, status: r.status })), comoPedirFolga: 'App TenisCash > Escala e folgas > + MARCAR (o dono aprova).', comoInformarEscala: 'Link pessoal recebido no WhatsApp ou app > Escala e folgas > Preencher minha escala.' };
 }
 
 async function askManagerForAgent(input, snapshot) {

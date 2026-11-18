@@ -194,6 +194,17 @@ async function buildDay(prisma, ymd = todayYmd()) {
       where: { active: true, weekday: dow(ymd), seller: { role: 'seller', active: true }, store: { active: true } },
       include: { seller: { select: { id: true, name: true } }, store: { select: { id: true, code: true, name: true } } },
     });
+    // Escala informada pelo próprio vendedor (link do WhatsApp) vence a fixa naquele dia.
+    const self = await require('./selfSchedule').shiftsMap(prisma, ymd, ymd).catch(() => ({}));
+    const ids = Object.keys(self);
+    if (ids.length) {
+      const users = await prisma.user.findMany({ where: { id: { in: ids }, role: 'seller', active: true }, select: { id: true, name: true, store: { select: { id: true, code: true, name: true } } } });
+      shifts = shifts.filter((x) => !self[x.sellerId]);
+      for (const u of users) {
+        const x = self[u.id][ymd];
+        shifts.push({ sellerId: u.id, storeId: u.store ? u.store.id : null, startTime: x.start, endTime: x.end, seller: { id: u.id, name: u.name }, store: u.store });
+      }
+    }
   }
   const todayActs = acts.filter((a) => covers(a, ymd));
   const absentTypes = ['folga', 'ferias'];
