@@ -1501,13 +1501,13 @@ async function prepararFotoParaLoja(buf, type) {
   let sharp;
   try { sharp = require('sharp'); } catch (_) { return { buf, type }; }
   try {
-    const img = sharp(buf, { limitInputPixels: 80e6, failOn: 'none' });
+    const img = sharp(buf, { limitInputPixels: 40e6, failOn: 'none' });
     const meta = await img.metadata();
     if (!meta || !meta.width || !meta.height) return null; // não é imagem de verdade
     const grande = meta.width > NS_IMG_MAX_LADO || meta.height > NS_IMG_MAX_LADO;
     const formatoOk = meta.format === 'jpeg' || meta.format === 'png';
     if (!grande && formatoOk && buf.length <= 4 * 1024 * 1024) return { buf, type: meta.format === 'png' ? 'image/png' : 'image/jpeg' };
-    const out = await sharp(buf, { limitInputPixels: 80e6, failOn: 'none' })
+    const out = await sharp(buf, { limitInputPixels: 40e6, failOn: 'none' })
       .rotate()
       .resize({ width: NS_IMG_MAX_LADO, height: NS_IMG_MAX_LADO, fit: 'inside', withoutEnlargement: true })
       .flatten({ background: '#ffffff' })
@@ -1530,6 +1530,12 @@ async function imagesAsAttachments(images, diag) {
     try {
       const resp = await fetch(url, { signal: AbortSignal.timeout(20000), redirect: 'follow', headers: BROWSER_HEADERS });
       const type = String(resp.headers.get('content-type') || '').toLowerCase();
+      const declarado = Number(resp.headers.get('content-length') || 0);
+      if (resp.ok && declarado > 15 * 1024 * 1024) {
+        try { if (resp.body && resp.body.cancel) await resp.body.cancel(); } catch (_) {}
+        if (Array.isArray(diag)) diag.push({ src: url, status: 'tamanho' });
+        continue;
+      }
       if (!resp.ok || !type.startsWith('image/')) {
         if (Array.isArray(diag)) diag.push({ src: url, status: resp.ok ? 'nao-imagem' : resp.status });
         continue;
@@ -1641,7 +1647,9 @@ async function tirarFotosMortasDoCard(localProduct, mortas, desired) {
   const registro = mortas.map((m) => ({ url: m.url, status: m.status, em: agora }));
   try {
     if (!sobram.length) {
-      await mergeAiContext(prisma, localProduct.id, { fotosMortas: registro, fotosMortasSemSubstituta: true });
+      const ja = ctxOf(localProduct).fotosMortas;
+      const antes0 = (Array.isArray(ja) ? ja : []).filter((x) => !urlsMortas.has(x && x.url));
+      await mergeAiContext(prisma, localProduct.id, { fotosMortas: [...antes0, ...registro].slice(-20), fotosMortasSemSubstituta: true });
       return;
     }
     const atual = await prisma.product.findUnique({ where: { id: localProduct.id }, select: { imageUrl: true, imageUrls: true, aiContext: true } });
@@ -1654,7 +1662,7 @@ async function tirarFotosMortasDoCard(localProduct, mortas, desired) {
     if (capa && urlsMortas.has(String(capa).trim())) capa = sobram[0];
     await prisma.product.update({ where: { id: localProduct.id }, data: { imageUrl: capa, imageUrls: novaGaleria } });
     const ctx = ctxOf(atual);
-    const antes = Array.isArray(ctx.fotosMortas) ? ctx.fotosMortas : [];
+    const antes = (Array.isArray(ctx.fotosMortas) ? ctx.fotosMortas : []).filter((x) => !urlsMortas.has(x && x.url));
     await mergeAiContext(prisma, localProduct.id, { fotosMortas: [...antes, ...registro].slice(-20) }, ['fotosMortasSemSubstituta']);
     console.warn('[ns img] link de foto morto tirado do card:', localProduct.id, mortas.map((m) => m.status + ' ' + m.url.slice(0, 80)).join(' | '));
   } catch (e) {
@@ -1662,14 +1670,17 @@ async function tirarFotosMortasDoCard(localProduct, mortas, desired) {
   }
 }
 
-// PUT deu 404: confere com um GET se o anúncio realmente não existe (não confia num erro só).
+// PUT deu 404: confere com um GET se o anúncio realmente não existe. Exige o STATUS 404 da
+// Nuvemshop nas duas respostas (não basta "not found" no texto: 422 de categoria ou 500 com
+// "not found" no corpo não podem ser lidos como anúncio apagado — auditoria 18/11).
+const NS_404 = /^\[Nuvemshop 404\]/;
 async function anuncioNaoExisteMais(connection, nsProductId, erro) {
-  if (!/404|does not exist|not found/i.test(String(erro && erro.message))) return false;
+  if (!NS_404.test(String(erro && erro.message))) return false;
   try {
     await ns.nuvemshopApi(connection, 'GET', `/products/${nsProductId}`);
     return false; // existe: o 404 era outra coisa
   } catch (e2) {
-    return /404|does not exist|not found/i.test(String(e2 && e2.message));
+    return NS_404.test(String(e2 && e2.message));
   }
 }
 
@@ -1696,6 +1707,15 @@ async function _pushProductToNuvemshopInner(localProductId, connection) {
   const existingMapping = await prisma.nuvemshopProductMapping.findUnique({
     where: { localProductId: product.id },
   });
+
+  // Anúncio deste card foi APAGADO na Nuvemshop (painel do dono ou limpeza da loja): não
+  // atualiza (daria 404 para sempre) nem recria sozinho — recriar desfaria uma exclusão do
+  // dono e poderia repetir produto (auditoria 18/11). Fica marcado e aparece no gerente da
+  // marca como pendência do dono; volta só por ordem dele.
+  const sumiu = existingMapping && ctxOf(product).nsAnuncioSumiu;
+  if (sumiu && String(sumiu.ns) === String(existingMapping.nuvemshopProductId)) {
+    return { skipped: true, action: 'removed-on-store', reason: 'anúncio apagado na Nuvemshop em ' + (sumiu.em || '?') + ' — volta só por ordem do dono', nuvemshopProductId: String(existingMapping.nuvemshopProductId) };
+  }
 
   // A single gate controls CREATE and UPDATE. If a previously mapped card
   // becomes invalid, it is actively unpublished instead of remaining frozen
@@ -1807,17 +1827,16 @@ async function _pushProductToNuvemshopInner(localProductId, connection) {
         payload,
       );
     } catch (e) {
-      // Anúncio apagado na Nuvemshop (ex.: limpeza da loja) e o vínculo ficou: o card tentava
-      // atualizar para sempre. Confirma que não existe e desfaz SÓ o vínculo morto — o card
-      // volta pela subida automática, que tem a trava contra produto repetido (18/11).
+      // Anúncio apagado na Nuvemshop (painel do dono ou limpeza da loja) e o vínculo ficou: o
+      // card tentava atualizar para sempre. Confirmado o 404 (PUT e GET), o vínculo fica como
+      // "fora do site" e o card é MARCADO — não é recriado sozinho (não desfaz exclusão do dono
+      // nem repete produto); aparece no gerente da marca para o dono decidir (auditoria 18/11).
       const sumiu = await anuncioNaoExisteMais(connection, existingMapping.nuvemshopProductId, e);
       if (!sumiu) throw e;
-      await prisma.nuvemshopVariantMapping.deleteMany({ where: { localProductId: product.id, nuvemshopProductId: String(existingMapping.nuvemshopProductId) } });
-      await prisma.nuvemshopProductMapping.deleteMany({ where: { id: existingMapping.id } });
-      await mergeAiContext(prisma, product.id, { nsAnuncioSumiu: { ns: String(existingMapping.nuvemshopProductId), em: new Date().toISOString() } },
-        ['nsImagesSig', 'nsCardSig', 'nsMirrorSig', 'nsPhysicalStockVerifiedSig']).catch(() => {});
-      await logSync('product', 'warning', `Anúncio NS#${existingMapping.nuvemshopProductId} não existe mais na loja — vínculo desfeito: ${product.id} (${product.sku})`);
-      return { skipped: true, action: 'mapping-orphan-removed', reason: 'anúncio não existe mais na Nuvemshop; card volta pela subida automática', nuvemshopProductId: String(existingMapping.nuvemshopProductId) };
+      await prisma.nuvemshopProductMapping.update({ where: { id: existingMapping.id }, data: { syncStatus: 'hidden-invalid', lastSyncedAt: new Date() } }).catch(() => {});
+      await mergeAiContext(prisma, product.id, { nsAnuncioSumiu: { ns: String(existingMapping.nuvemshopProductId), em: new Date().toISOString() } }).catch(() => {});
+      await logSync('product', 'warning', `Anúncio NS#${existingMapping.nuvemshopProductId} não existe mais na loja — card marcado, volta só por ordem do dono: ${product.id} (${product.sku})`);
+      return { skipped: true, action: 'removed-on-store', reason: 'anúncio não existe mais na Nuvemshop; volta só por ordem do dono', nuvemshopProductId: String(existingMapping.nuvemshopProductId) };
     }
     // Atualiza variants separadamente via /products/:id/variants/:vid
     variantSync = await updateNuvemshopVariants(connection, existingMapping.nuvemshopProductId, product, updateSizes);
@@ -2075,6 +2094,7 @@ module.exports = {
   buildNuvemshopProductPayload,
   collectLocalImages,
   imagesAsAttachments,
+  _anuncioNaoExisteMais: anuncioNaoExisteMais,
   imageSignature,
   updateNuvemshopVariants,
 };

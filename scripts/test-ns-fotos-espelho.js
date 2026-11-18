@@ -579,6 +579,10 @@ async function partC() {
         const depois = await prisma.product.findUnique({ where: { id: c.id } });
         assert.strictEqual(depois.imageUrl, mortas[0]); assert.deepStrictEqual(depois.imageUrls, mortas);
         assert.strictEqual(depois.aiContext.fotosMortasSemSubstituta, true);
+        // nova tentativa: o registro não duplica nem se perde
+        await h.syncNuvemshopImages({ id: 'c' }, '9292', depois);
+        const de2 = await prisma.product.findUnique({ where: { id: c.id } });
+        assert.deepStrictEqual(de2.aiContext.fotosMortas.map((x) => x.url).sort(), [...mortas].sort());
       } finally { falharUma = null; }
     });
     await t('falha PASSAGEIRA (rede caiu, 500) NÃO tira a foto do card', async () => {
@@ -597,29 +601,42 @@ async function partC() {
       } finally { falharUma = null; }
     });
   } finally { global.fetch = fetchOriginal; }
-  await t('anúncio que NÃO existe mais na Nuvemshop: desfaz só o vínculo morto (card volta pela subida automática)', async () => {
+  await t('anúncio APAGADO na Nuvemshop: card fica marcado e fora do site, vínculo mantido, NÃO é recriado (nem pela subida automática)', async () => {
     const { c } = await cardValido(2);
     await prisma.product.update({ where: { id: c.id }, data: { name: 'Tênis Válido Azul Sumido' } });
-    await prisma.nuvemshopProductMapping.create({ data: { localProductId: c.id, nuvemshopProductId: '9494' } });
+    const m = await prisma.nuvemshopProductMapping.create({ data: { localProductId: c.id, nuvemshopProductId: '9494' } });
     await prisma.nuvemshopVariantMapping.create({ data: { localInventoryId: 'inv-9494', localProductId: c.id, nuvemshopProductId: '9494', nuvemshopVariantId: '1' } });
     sumido = '9494'; sumidoExisteNoGet = false;
     try {
       const r = await h.pushProductToNuvemshop(c.id, { id: 'c' });
-      assert.strictEqual(r.action, 'mapping-orphan-removed', JSON.stringify(r));
-      assert.strictEqual(await prisma.nuvemshopProductMapping.count({ where: { localProductId: c.id } }), 0);
-      assert.strictEqual(await prisma.nuvemshopVariantMapping.count({ where: { localProductId: c.id } }), 0);
+      assert.strictEqual(r.action, 'removed-on-store', JSON.stringify(r));
+      const m2 = await prisma.nuvemshopProductMapping.findUnique({ where: { id: m.id } });
+      assert.ok(m2, 'vínculo mantido (a subida automática não recria)'); assert.strictEqual(m2.syncStatus, 'hidden-invalid');
+      const ctx = (await prisma.product.findUnique({ where: { id: c.id } })).aiContext;
+      assert.strictEqual(ctx.nsAnuncioSumiu.ns, '9494');
+      // próximas rodadas (espelho / reajuste): não chama a loja, não cria nada
+      chamadas.length = 0;
+      const r2 = await h.pushProductToNuvemshop(c.id, { id: 'c' });
+      assert.strictEqual(r2.action, 'removed-on-store');
+      assert.strictEqual(chamadas.length, 0, 'nenhuma chamada à loja: ' + chamadas.join(' | '));
       assert.ok((await prisma.product.findUnique({ where: { id: c.id } })).active, 'card continua ativo');
     } finally { sumido = null; }
   });
-  await t('PUT deu 404 mas o anúncio EXISTE (GET acha): não desfaz o vínculo, erro segue para nova tentativa', async () => {
+  await t('PUT deu 404 mas o anúncio EXISTE (GET acha): não marca, erro segue para nova tentativa', async () => {
     const { c } = await cardValido(2);
     await prisma.product.update({ where: { id: c.id }, data: { name: 'Tênis Válido Azul Existe' } });
     await prisma.nuvemshopProductMapping.create({ data: { localProductId: c.id, nuvemshopProductId: '9595' } });
     sumido = '9595'; sumidoExisteNoGet = true;
     try {
       await assert.rejects(() => h.pushProductToNuvemshop(c.id, { id: 'c' }), /404/);
-      assert.strictEqual(await prisma.nuvemshopProductMapping.count({ where: { localProductId: c.id } }), 1);
+      assert.strictEqual((await prisma.nuvemshopProductMapping.findFirst({ where: { localProductId: c.id } })).syncStatus, 'synced');
+      assert.ok(!(await prisma.product.findUnique({ where: { id: c.id } })).aiContext.nsAnuncioSumiu);
     } finally { sumido = null; sumidoExisteNoGet = false; }
+  });
+  await t('"not found" no TEXTO de outro erro (422 de categoria, 500) NÃO é anúncio apagado', async () => {
+    const naoExiste = h._anuncioNaoExisteMais;
+    assert.strictEqual(await naoExiste({ id: 'c' }, '1', new Error('[Nuvemshop 422] {"description":"Category 123 not found"}')), false);
+    assert.strictEqual(await naoExiste({ id: 'c' }, '1', new Error('[Nuvemshop 500] upstream not found')), false);
   });
   await t('AUDITORIA 3: foto inválida (Instagram/crawler) não vai para a loja nem trava a troca', () => {
     const lista = h.collectLocalImages({ imageUrl: 'https://lookaside.instagram.com/x', imageUrls: ['https://img/ok1.jpg', 'https://x/crawler/y', 'https://img/ok2.jpg'] });
