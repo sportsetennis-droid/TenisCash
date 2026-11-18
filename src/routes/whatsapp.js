@@ -232,6 +232,7 @@ async function webhookGenuine(body, instance, data) {
   return false;
 }
 router.webhookAuthStats = webhookAuthStats;
+router.webhookGenuine = webhookGenuine;
 
 router.post('/evolution', async (req, res) => {
   res.json({ received: true }); // responde rapido (Evolution nao espera)
