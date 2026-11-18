@@ -80,6 +80,8 @@ async function main() {
   const prod = await prisma.product.create({ data: {
     sku: 'CK09090001', name: 'Tênis Converse Chuck Taylor Side Zip', brand: 'Converse', category: 'Calçados', subcategory: 'Tênis',
     price: 399.9, costPrice: 180, imageUrl: 'https://cdn.example.com/ck.jpg', longDescription: 'Tênis clássico de lona.',
+    // regra do dono 2026-11-18: produto novo no site precisa de 5 fotos
+    imageUrls: ['https://cdn.example.com/ck.jpg', 'https://cdn.example.com/ck2.jpg', 'https://cdn.example.com/ck3.jpg', 'https://cdn.example.com/ck4.jpg', 'https://cdn.example.com/ck5.jpg'],
     aiContext: { color: 'Azul Escuro/Laranja/Branco', classification: { modality: 'Casual', tier: 'Lifestyle' }, confirmedForNuvemshop: true },
     sizes: { create: [
       { size: '38', stock: 3, barcode: '7908341493884', sizeConfirmedAt: new Date() },

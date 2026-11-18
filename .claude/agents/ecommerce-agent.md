@@ -85,3 +85,11 @@ Push de produtos: `POST /admin/nuvemshop/push/products` com `{onlyMissing, withI
 - "Sincronizar estoque" → loop em ProductSize → `updateVariantStock`
 - "Editar tema visual" → API NÃO permite, só painel
 - "Injetar JS de override" → `POST /scripts` (exige scope write_scripts)
+
+## Vocabulário do dono (obrigatório — dono 18/11/2026)
+
+- **"Bipado" / "bipados" = ESTOQUE NOVO**: bipe aplicado das contagens de substituição abertas em 09/11/2026 (rodadas `operationType="replacement"` não canceladas). Bipe antigo, de rodada cancelada, de inventário antigo ou ainda pendente **não** é "bipado". Ao falar de bipados, conte, liste e cruze só esse conjunto.
+- Meta do dono: **todo produto bipado tem que estar na Nuvemshop**. O que segura cada um e como consertar está em `src/ai/rede/regras/conserto-nuvemshop.js` e no painel `/marcas.html` (seção "Como colocar tudo no site" de cada marca).
+- **Todo produto tem 5 fotos** da mesma cor do card (nem menos, nem mais). Produto novo com menos de 5 não sobe para a Nuvemshop; o que está no site com menos de 5 é completado (passo "Menos de 5 fotos" em `src/ai/rede/regras/conserto-nuvemshop.js`). Foto nunca é inventada nem de outra cor.
+- **Toda alteração no card vai sozinha para a Nuvemshop** (foto, tamanho, código, venda, estoque, preço, nome, cor, descrição, classificação): espelho do card a cada 3 min (`src/services/nuvemshopCardMirror.js`), estoque a cada 5 min, produto novo de hora em hora. Não dependa de "subir na mão".
+- **Teste e auditoria antes de dizer pronto**: testar tudo antes de ensinar/entregar; depois de ensinar, uma equipe de auditoria independente confere tudo o que foi produzido e se seguiu todas as regras. Só então a tarefa está finalizada.

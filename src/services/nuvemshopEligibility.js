@@ -57,6 +57,30 @@ function hasUsableImage(product) {
   }
 }
 
+// Quantas fotos VÁLIDAS e DIFERENTES o card tem (principal + galeria, sem repetir).
+function usableImageCount(product) {
+  const valid = (value) => {
+    const s = clean(value);
+    if (!s || /lookaside\.instagram\.com|\/crawler\/|google_widget|\/seo\//i.test(s)) return false;
+    return /^data:image\/[a-z0-9.+-]+;base64,/i.test(s) || /^https?:\/\//i.test(s);
+  };
+  let gallery = [];
+  try {
+    const values = typeof product?.imageUrls === 'string' ? JSON.parse(product.imageUrls) : product?.imageUrls;
+    if (Array.isArray(values)) gallery = values;
+  } catch (_) { gallery = []; }
+  return new Set([product?.imageUrl, ...gallery].filter(valid).map((s) => clean(s))).size;
+}
+
+// REGRA DO DONO (2026-11-18): "produto não pode ter menos de 5 fotos".
+// Vale para todo produto NOVO que sobe para a Nuvemshop. Os já publicados com
+// menos de 5 não são tirados do ar por esta regra (decisão do dono) — o gerente
+// de cada marca aponta e ensina a completar.
+function minPhotos() {
+  const n = Number(process.env.NS_MIN_FOTOS || 5);
+  return Number.isFinite(n) && n > 0 ? n : 5;
+}
+
 // Lojas cujo estoque FÍSICO vale pra loja online (dono 2026-11-12: "tenho produtos
 // corretamente no estoque das lojas 04, 06 e 07. eles podem subir pra Nuvemshop").
 // Só essas entram no estoque publicado e só delas sai a baixa de pedido da Nuvemshop.
@@ -177,6 +201,9 @@ function assessProductForNuvemshop(product, options = {}) {
   if (invalid(classification.tier)) reasons.push('especialidade ausente ou indefinida');
 
   if (!hasUsableImage(product)) reasons.push('sem foto valida');
+  else if (options.isNew === true && usableImageCount(product) < minPhotos()) {
+    reasons.push(`menos de ${minPhotos()} fotos (${usableImageCount(product)})`);
+  }
   if (!clean(product?.longDescription || product?.shortDescription)) reasons.push('sem descricao');
 
   const price = Number(product?.price || 0);
@@ -280,6 +307,8 @@ module.exports = {
   assessRemoteProductForNuvemshop,
   contextOf,
   hasUsableImage,
+  usableImageCount,
+  minPhotos,
   hasRemoteUsableImage,
   isPublicSizeLabel,
   nuvemshopStockStoreIds,

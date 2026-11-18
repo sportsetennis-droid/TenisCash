@@ -11,6 +11,7 @@
 //   whatsapp.mensagem    { empresa, telefoneHash, texto }            (externo: true)
 //   torneio.finalizado   { tournamentId, categoryId }
 //   dono.pergunta        { texto, userId }
+//   marca.pedir          { marca, userId }   (painel /marcas.html: raio-x da marca na hora)
 //   relogio.hora | relogio.diario | relogio.semanal | relogio.mensal  { quando }
 //   relogio.objetivo     { objetivoId }   (emitido por objetivos.pulsar)
 // =====================================================================
@@ -24,6 +25,7 @@ const SENSORES = {
   'whatsapp.mensagem': { origem: 's.whatsapp', forca: 1, externo: true },
   'torneio.finalizado': { origem: 's.club', forca: 1 },
   'dono.pergunta': { origem: 's.dono', forca: 1 },
+  'marca.pedir': { origem: 's.marcas', forca: 1 },
   'relogio.hora': { origem: 's.relogio', forca: 0.6 },
   'relogio.diario': { origem: 's.relogio', forca: 0.8 },
   'relogio.semanal': { origem: 's.relogio', forca: 0.9 },

@@ -5,6 +5,7 @@
 const { callAI } = require('../ai-client');
 const { logAIAction } = require('../logs/ai-log.service');
 const { getAgentSchema } = require('../prompts/agent-schemas');
+const { VOCABULARIO_DO_DONO } = require('../vocabulario-do-dono');
 
 /**
  * runAgent — executa um agente padrão.
@@ -27,7 +28,8 @@ async function runAgent({
   createdById,
 }) {
   const result = await callAI({
-    systemPrompt,
+    // todo agente fala a língua do dono (ex.: "bipado" = estoque novo)
+    systemPrompt: (systemPrompt ? systemPrompt + '\n\n' : '') + VOCABULARIO_DO_DONO,
     userPrompt,
     jsonMode: true,
     maxTokens,

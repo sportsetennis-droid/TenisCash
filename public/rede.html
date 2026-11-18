@@ -414,7 +414,7 @@ function rel(d) {
   return dt(d);
 }
 function badge(map, key) { var m = map[key] || [key || '—', 'gray']; return '<span class="badge ' + m[1] + '">' + esc(m[0]) + '</span>'; }
-function token() { try { return localStorage.getItem('tc_token') || ''; } catch (e) { return ''; } }
+function token() { try { return localStorage.getItem('tc_admin_token') || localStorage.getItem('tc_token') || ''; } catch (e) { return ''; } }
 function toast(msg, bad) {
   var t = $('#toast'); t.innerHTML = '<div class="' + (bad ? 'bad' : '') + '">' + esc(msg) + '</div>';
   clearTimeout(toast.t); toast.t = setTimeout(function () { t.innerHTML = ''; }, 3600);
