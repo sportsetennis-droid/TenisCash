@@ -36,6 +36,47 @@ async function partA() {
     assert.deepStrictEqual(n.emite, ['marca.relatorio']);
     assert.ok(n.escuta.includes('relogio.diario') && n.escuta.includes('marca.pedir'));
   });
+  await t('regra 30 — lugar certo: tipo escrito no nome × categoria, modalidade da chuteira, público; sem chute', () => {
+    const { conferirLocal } = require('../src/ai/rede/regras/local-certo');
+    const { passoDe } = require('../src/ai/rede/regras/conserto-nuvemshop');
+    const card = (name, category, subcategory, modality, tier) => ({ name, category, subcategory, aiContext: { classification: { modality, tier } } });
+    assert.deepStrictEqual(conferirLocal(card('TENIS NIKE PEGASUS 41 MASCULINO PRETO', 'Tênis', 'Homem', 'Corrida', 'Super Amortecimento')), []);
+    assert.ok(/categoria errada \(nome diz acessório, card está em Tênis\)/.test(conferirLocal(card('MEIA PENALTY CANO ALTO', 'Tênis', 'Unissex', 'Meia', 'Básica'))[0]));
+    assert.ok(/categoria errada \(nome diz acessório, card está em Chuteiras\)/.test(conferirLocal(card('BOLA SOCIETY PENALTY 8 X', 'Chuteiras', 'Homem', 'Society', 'Treino'))[0]));
+    assert.ok(/nome diz roupa/.test(conferirLocal(card('Camiseta Dry Fit Athleisure Preta', 'Tênis', 'Homem', 'Camiseta', 'Básica'))[0]));
+    // o 1º tipo escrito manda; "beach tênis" e "tênis de mesa" são o esporte, não o calçado
+    assert.deepStrictEqual(conferirLocal(card('MEIA DE CHUTEIRA PENALTY', 'Acessórios', 'Unissex', 'Meias', 'cano longo')), []);
+    assert.deepStrictEqual(conferirLocal(card('REDE BEACH TENIS 8M', 'Acessórios', 'Unissex', 'Outro', 'Básica')), []);
+    assert.deepStrictEqual(conferirLocal(card('MARCACAO BEACH TENIS VERMELHA', 'Acessórios', 'Unissex', 'Outro', 'Básica')), []);
+    assert.deepStrictEqual(conferirLocal(card('Raquete Tenis De Mesa Gold', 'Acessórios', 'Unissex', 'Outro', 'Básica')), []);
+    assert.deepStrictEqual(conferirLocal(card('PORTA CHUTEIRA ZONA', 'Acessórios', 'Unissex', 'Bolsa', 'Básica')), []);
+    // chuteira: modalidade escrita no nome
+    assert.ok(/modalidade errada \(nome diz futsal, card está em Society\)/.test(conferirLocal(card('CHUTEIRA FUTSAL UMBRO CLASS', 'Chuteiras', 'Homem', 'Society', 'Treino'))[0]));
+    assert.deepStrictEqual(conferirLocal(card('CHUTEIRA UMBRO CLASS', 'Chuteiras', 'Homem', 'Society', 'Treino')), [], 'nome não diz a modalidade: não acusa');
+    // público
+    assert.ok(/público errado \(nome diz infantil, card está em Mulher\)/.test(conferirLocal(card('CHUTEIRA FUTSAL UMBRO CLASS 2.2 JR PTO/BCO', 'Chuteiras', 'Mulher', 'Futsal', 'Treino'))[0]));
+    assert.ok(/público errado \(nome diz feminino, card está em Homem\)/.test(conferirLocal(card('TENIS FILA COMET 2 FEMININO', 'Tênis', 'Homem', 'Corrida', 'Iniciante'))[0]));
+    assert.deepStrictEqual(conferirLocal(card('TENIS FILA COMET 2 MASCULINO', 'Tênis', 'Unissex', 'Corrida', 'Iniciante')), [], 'unissex não acusa');
+    assert.ok(/subcategoria fora da árvore \(Óculos \/ Natação/.test(conferirLocal(card('SPEEDO OCULOS VULCAN AZUL', 'Acessórios', 'Óculos / Natação', 'Óculos', 'Básica'))[0]));
+    // AUDITORIA 18/11: criança nunca vai para adulto; BABY LOOK é adulto; acessório "para tênis/chuteira" não é calçado
+    for (const [nome, cat, sub, mod] of [['TENIS INF MASC', 'Tênis', 'Menino'], ['TENIS INF. FEM', 'Tênis', 'Menina'], ['CHUTEIRA FUTSAL JUNIOR MASCULINA', 'Chuteiras', 'Menino', 'Futsal'],
+      ['TENIS MASC 28', 'Tênis', 'Menino'], ['CAMISETA BABY LOOK DRY FIT', 'Vestuário', 'Mulher'], ['BLUSA BABY LOOK FEMININA', 'Roupas', 'Mulher'],
+      ['PALMILHA PARA TENIS', 'Acessórios', 'Unissex'], ['CADARÇO PARA TÊNIS', 'Acessórios', 'Unissex'], ['KIT LIMPEZA TENIS', 'Acessórios', 'Unissex'], ['OVERGRIP TENIS WILSON', 'Acessórios', 'Unissex'],
+      ['TRAVA PARA CHUTEIRA', 'Acessórios', 'Unissex'], ['CRAVO CHUTEIRA CAMPO', 'Acessórios', 'Unissex'], ['KIT BEACH  TENIS', 'Acessórios', 'Unissex'],
+      ['TENIS ADIDAS', 'Dropper', 'Homem'], ['CHUTEIRA PUMA FUTURE 7 PLAY NEYMAR JR FG', 'Chuteiras', 'Homem', 'Campo'], ['CAMISA PSG NEYMAR JR', 'Vestuário', 'Homem'], ['SKECHERS GO WALK SLIP INS SEM CADARCO', 'Tênis', 'Homem'], ['ASICS GEL DEDICATE GRIP', 'Tênis', 'Homem'], ['GRIP TENIS WILSON PRO', 'Acessórios', 'Unissex'], ['OVERGRIP TENIS', 'Acessórios', 'Unissex'], ['GRIP PARA RAQUETE BEACH TENIS', 'Acessórios', 'Unissex'], ['CHUTEIRA PUMA NEYMAR JUNIOR', 'Chuteiras', 'Homem', 'Campo'], ['TENIS NIKE', 'Tênis', 'Tamanhos'], ['TENIS NIKE FEMININO', 'Tênis', 'Feminino'], ['CHINELO RIDER', 'Sandálias', 'Homem']]) {
+      assert.deepStrictEqual(conferirLocal(card(nome, cat, sub, mod || 'X', 'Y')), [], nome + ' em ' + cat + ' > ' + sub + ' está certo');
+    }
+    assert.ok(/nome diz feminino, card está em Menino/.test(conferirLocal(card('TENIS INFANTIL FEMININO', 'Tênis', 'Menino', 'X', 'Y'))[0]), 'gênero da criança também é conferido');
+    assert.ok(/2ª classificação/.test(conferirLocal({ name: 'TENIS Y', category: 'Tênis', subcategory: 'Homem', aiContext: { classification: { modality: 'Corrida', tier: 'Z' }, classification2: { category: 'Acessórios' } } })[0]), '2ª cadeia do menu também é conferida');
+    // incompleta e INSUMO
+    assert.deepStrictEqual(conferirLocal(card('TENIS HOKA CLIFTON', 'Tênis', null, null, null)), ['local: classificação incompleta']);
+    assert.deepStrictEqual(conferirLocal(card('MEIA ACTVITTA USO COMUM', 'INSUMO', 'Unissex', 'Meia', 'Básica')), [], 'INSUMO é uso interno, fora da conferência');
+    // cada motivo tem passo de conserto (ensinado)
+    assert.strictEqual(passoDe(conferirLocal(card('MEIA X', 'Tênis', 'Unissex', 'Meia', 'Básica'))[0]).id, 'local-categoria');
+    assert.strictEqual(passoDe(conferirLocal(card('CHUTEIRA FUTSAL X', 'Chuteiras', 'Homem', 'Society', 'Treino'))[0]).id, 'local-modalidade');
+    assert.strictEqual(passoDe(conferirLocal(card('CHUTEIRA FUTSAL X JR', 'Chuteiras', 'Mulher', 'Futsal', 'Treino'))[0]).id, 'local-publico');
+    assert.strictEqual(passoDe(conferirLocal(card('SPEEDO OCULOS', 'Acessórios', 'Óculos / Natação', 'Óculos', 'Básica'))[0]).id, 'local-subcategoria');
+  });
   await t('marca: grafias diferentes viram a mesma chave; sem marca fica fora', () => {
     assert.strictEqual(marcas.chave('Hoka'), 'HOKA');
     assert.strictEqual(marcas.chave(' hoka '), 'HOKA');
@@ -135,6 +176,11 @@ async function partB() {
   const K = await prod({ sku: 'P9', name: 'Bola Penalty 5 fotos', brand: 'PENALTY', price: 200, costPrice: 80, imageUrl: 'https://x/k1.jpg', imageUrls: ['https://x/k1.jpg', 'https://x/k2.jpg', 'https://x/k3.jpg', 'https://x/k4.jpg', 'https://x/k5.jpg', 'nada'] }, [{ size: 'U', barcode: '7890000000999', stock: 1 }]);
   await loc(L.LOJA02, K.S.U, 1); await bipe(rNova2, L.LOJA02, K, K.S.U);
 
+  // L: chuteira infantil (JR) classificada em "Mulher" e publicada → no site no lugar errado (regra 30)
+  const Lc = await prod({ sku: 'P10', name: 'CHUTEIRA FUTSAL PENALTY TESTE JR PRETO', brand: 'PENALTY', category: 'Chuteiras', subcategory: 'Mulher', price: 200, costPrice: 80,
+    aiContext: { color: 'Preto', classification: { modality: 'Futsal', tier: 'Treino' } } }, [{ size: '31', barcode: '7890000001001', stock: 0 }]);
+  await prisma.nuvemshopProductMapping.create({ data: { localProductId: Lc.id, nuvemshopProductId: '333' } });
+
   const ler = ferramentas.soLeitura(prisma);
   const sinais = await gerente.disparar({ sinal: { tipo: 'relogio.diario', dados: {} }, ler, agora: new Date(agora) });
   const R = Object.fromEntries(sinais.map((s) => [s.dados.marca, s.dados]));
@@ -215,6 +261,23 @@ async function partB() {
     const reg = require('../src/ai/rede/regras/conserto-nuvemshop');
     assert.strictEqual(reg.passoDe('cor crua (numero/tamanho na cor)').id, 'cor');
     assert.strictEqual(reg.passoDe('motivo que ninguém conhece').id, 'outro');
+  });
+  await t('regra 30 no gerente: cada marca confere o lugar de TODO card dela; o que está no site no lugar errado vem primeiro', () => {
+    const lh = R.HOKA.local, lp = R.PENALTY.local;
+    assert.strictEqual(lh.conferidos, 5);
+    assert.strictEqual(lh.foraDoLugar, 1, 'Meia Hoka em Tênis');
+    assert.strictEqual(lh.incompletos, 5, 'nenhum card HOKA de teste tem as 4 classificações');
+    assert.strictEqual(lp.foraDoLugar, 5, 'Camiseta, Bola, Bermuda e Bola K em Tênis + chuteira JR em Mulher');
+    assert.strictEqual(lp.foraDoLugarNoSite, 1);
+    assert.strictEqual(lp.itens[0].nome, 'CHUTEIRA FUTSAL PENALTY TESTE JR PRETO', 'o que está no site vem primeiro');
+    assert.ok(lp.itens[0].noSite && /público errado/.test(lp.itens[0].motivo));
+    assert.ok(lp.motivos['local: categoria errada'] === 4 && lp.motivos['local: público errado'] === 1, JSON.stringify(lp.motivos));
+    const al = R.PENALTY.alertas.find((a) => a.area === 'lugar' && a.gravidade === 3);
+    assert.ok(al && /NO SITE no lugar errado/.test(al.texto) && al.itens.length === 1, JSON.stringify(R.PENALTY.alertas.map((a) => a.texto)));
+    assert.ok(R.PENALTY.alertas.some((a) => a.area === 'lugar' && a.gravidade === 2 && /4 card\(s\) fora do lugar certo/.test(a.texto)));
+    // bipado no lugar errado entra no manual de conserto (ensina a corrigir)
+    const P = Object.fromEntries(R.PENALTY.conferencia.conserto.passos.map((p) => [p.id, p]));
+    assert.ok(P['local-categoria'] && P['local-categoria'].itens[0].nome === 'Bola Penalty 5 fotos', JSON.stringify(Object.keys(P)));
   });
   await t('pedido sob demanda (marca.pedir "hoka") gera só a HOKA; marca indefinida não inventa relatório', async () => {
     const s = await gerente.disparar({ sinal: { tipo: 'marca.pedir', dados: { marca: 'hoka' } }, ler, agora: new Date(agora) });

@@ -12,6 +12,7 @@
 // =====================================================================
 const { chave, ficha } = require('../../regras/marcas');
 const { passoDe } = require('../../regras/conserto-nuvemshop');
+const { conferirLocal, INCOMPLETA } = require('../../regras/local-certo');
 const { assessProductForNuvemshop, nuvemshopStockStoreIds, nuvemshopStoreStocksQuery } = require('../../../../services/nuvemshopEligibility');
 
 const DIA = 86400000;
@@ -44,6 +45,8 @@ function novaMarca(k) {
       compradosNaoBipados: 0, itensCompradosNaoBipados: [],
       bipadosMenosDe5Fotos: 0, itensMenosDe5Fotos: [],
     },
+    // regra 30 (dono 18/11): cada produto no lugar certo — categoria, subcategoria (público), modalidade, especialidade
+    local: { conferidos: 0, noLugarCerto: 0, foraDoLugar: 0, foraDoLugarNoSite: 0, incompletos: 0, motivos: {}, motivosFora: {}, itens: [], itensNoSite: [], itensFora: [] },
     cadastro: { semCor: 0, semFoto: 0, menosDe5Fotos: 0, semCusto: 0, precoZerado: 0, precoAbaixoCusto: 0, tamanhoTecnicoComEstoque: 0, itensPreco: [] },
   };
 }
@@ -54,7 +57,7 @@ async function calcular(ler, { agora = new Date(), soMarca = null, diasParado = 
 
   // 1) cards ativos (sem carregar imagem: só contagem)
   const prods = await ler.$queryRawUnsafe(
-    'SELECT p.id, p.brand, p.name, p.sku, p.category, p.price, p."costPrice", p."createdAt", ' +
+    'SELECT p.id, p.brand, p.name, p.sku, p.category, p.subcategory, (p."aiContext"->\'classification\') AS cls, (p."aiContext"->\'classification2\') AS cls2, COALESCE(CASE WHEN jsonb_typeof(p."aiContext"->\'nuvemshopMapping\'->\'categoryIds\') = \'array\' THEN jsonb_array_length(p."aiContext"->\'nuvemshopMapping\'->\'categoryIds\') > 0 END, false) AS mapa_ia, p.price, p."costPrice", p."createdAt", ' +
     "  (p.\"aiContext\"->>'color') AS cor, " +
     // anúncio apagado na Nuvemshop: o card não volta sozinho (decisão do dono)
     "  (p.\"aiContext\"->'nsAnuncioSumiu') IS NOT NULL AS anuncio_sumiu, " +
@@ -85,7 +88,23 @@ async function calcular(ler, { agora = new Date(), soMarca = null, diasParado = 
       if (m.cadastro.itensPreco.length < TOP) m.cadastro.itensPreco.push({ productId: p.id, nome: p.name, preco, custo });
     }
     if (p.publicado) m.site.publicados++;
-    P.set(p.id, { ...p, k, fotos, comprado: 0, localizado: 0, localizadoNS: 0, lojas: {}, un30: 0, ultVenda: null });
+    // lugar certo (regra 30): o que está escrito no nome × a classificação que coloca o card no menu do site
+    const lugar = conferirLocal({ name: p.name, category: p.category, subcategory: p.subcategory, aiContext: { classification: p.cls || {}, classification2: p.cls2 || undefined } });
+    const lugarErrado = lugar.filter((x) => x !== INCOMPLETA);
+    m.local.conferidos++;
+    if (!lugar.length) m.local.noLugarCerto++;
+    if (lugar.includes(INCOMPLETA)) m.local.incompletos++;
+    if (lugarErrado.length) {
+      m.local.foraDoLugar++;
+      if (p.publicado) m.local.foraDoLugarNoSite++;
+      for (const x of lugarErrado) { const t = x.replace(/ \(.*$/, ''); m.local.motivos[t] = (m.local.motivos[t] || 0) + 1; }
+      // card com mapeamento antigo da IA: no site vale esse mapeamento, não a classificação do card
+      const mapa = p.publicado && p.mapa_ia ? ' — no site vale o mapeamento antigo da IA (aiContext.nuvemshopMapping.categoryIds): corrigir esses IDs junto' : '';
+      const item = { productId: p.id, nome: p.name, motivo: lugarErrado[0].replace(/^local: /, '') + mapa, noSite: !!p.publicado };
+      if (p.publicado) m.local.itensNoSite.push(item);
+      else { m.local.itensFora.push(item); for (const x of lugarErrado) { const t = x.replace(/ \(.*$/, ''); m.local.motivosFora[t] = (m.local.motivosFora[t] || 0) + 1; } }
+    }
+    P.set(p.id, { ...p, k, fotos, lugar, comprado: 0, localizado: 0, localizadoNS: 0, lojas: {}, un30: 0, ultVenda: null });
   }
   if (!M.size) return [];
   const ids = [...P.keys()];
@@ -227,6 +246,8 @@ async function calcular(ler, { agora = new Date(), soMarca = null, diasParado = 
       if (p.bipados > 0) conserto(m, p, a.reasons);
     }
   }
+  // lugar certo (regra 30): bipado com classificação que põe o card no lugar errado do site
+  for (const p of P.values()) if (p.bipados > 0 && p.lugar && p.lugar.some((x) => x !== INCOMPLETA)) conserto(M.get(p.k), p, p.lugar.filter((x) => x !== INCOMPLETA));
   // anúncio apagado na Nuvemshop: o sistema não recria sozinho — passo do dono
   for (const p of P.values()) if (p.bipados > 0 && !p.publicado && p.anuncio_sumiu) conserto(M.get(p.k), p, ['anuncio apagado na nuvemshop']);
   // regra das 5 fotos para TODO bipado (no site ou não): entra no passo de fotos
@@ -247,6 +268,9 @@ async function calcular(ler, { agora = new Date(), soMarca = null, diasParado = 
     cf.itensBipadosForaNuvemshop = cf.itensBipadosForaNuvemshop.sort((a, b) => (b.nasLojasDoSite - a.nasLojasDoSite) || b.unidades - a.unidades).slice(0, TOP);
     cf.itensCompradosNaoBipados = cf.itensCompradosNaoBipados.sort((a, b) => b.comprado - a.comprado).slice(0, TOP);
     cf.itensMenosDe5Fotos = cf.itensMenosDe5Fotos.sort((a, b) => (b.noSite - a.noSite) || a.fotos - b.fotos).slice(0, TOP);
+    m.local.itensNoSite = m.local.itensNoSite.slice(0, TOP);
+    m.local.itensFora = m.local.itensFora.slice(0, TOP);
+    m.local.itens = [...m.local.itensNoSite, ...m.local.itensFora].slice(0, TOP); // o que está no site vem primeiro
     cf.pctCardsBipados = cf.cardsComprados ? r2(100 * cf.compradosBipados / cf.cardsComprados) : null; // % dos cards COMPRADOS (NF-e) que já foram bipados
     const v = m.vendas.d30;
     v.rs = r2(v.rs); v.custoRS = r2(v.custoRS); m.vendas.d7.rs = r2(m.vendas.d7.rs);
@@ -310,6 +334,10 @@ function alertas(m) {
   if (m.site.prontosParaSubir) add(2, 'site', `${m.site.prontosParaSubir} card(s) prontos para subir no site e ainda fora`);
   if (m.site.publicadosSemEstoque) add(1, 'site', `${m.site.publicadosSemEstoque} card(s) publicados sem estoque físico nas lojas do site`);
   if (m.site.bloqueados) add(1, 'site', `${m.site.bloqueados} card(s) com estoque nas lojas do site mas barrados pelo cadastro`, { motivos: m.site.motivos, itens: m.site.itens });
+  const lc = m.local || {};
+  if (lc.foraDoLugarNoSite) add(3, 'lugar', `${lc.foraDoLugarNoSite} card(s) NO SITE no lugar errado (categoria, público ou modalidade não batem com o que o nome do produto diz) — o cliente acha o produto na seção errada`, { itens: lc.itensNoSite || [] });
+  if (lc.foraDoLugar - (lc.foraDoLugarNoSite || 0) > 0) add(2, 'lugar', `${lc.foraDoLugar - (lc.foraDoLugarNoSite || 0)} card(s) fora do lugar certo (ainda fora do site; se subirem, vão para a seção errada)`, { motivos: lc.motivosFora, itens: lc.itensFora || [] });
+  if (lc.incompletos) add(1, 'lugar', `${lc.incompletos} card(s) sem as 4 classificações (categoria, público, modalidade, especialidade) — não sobem para o site`);
   if (m.cadastro.semFoto) add(1, 'cadastro', `${m.cadastro.semFoto} card(s) sem nenhuma foto`);
   if (m.cadastro.semCor) add(1, 'cadastro', `${m.cadastro.semCor} card(s) sem cor`);
   if (m.cadastro.tamanhoTecnicoComEstoque) add(1, 'cadastro', `${m.cadastro.tamanhoTecnicoComEstoque} card(s) com tamanho técnico (T-) com estoque`);
@@ -327,6 +355,7 @@ function nota(m) {
   s += Math.min(10, m.site.prontosParaSubir * 2);
   s += Math.min(15, ((m.conferencia && m.conferencia.publicadosNaoBipados) || 0) * 2);
   s += Math.min(5, m.cadastro.semFoto);
+  s += Math.min(15, ((m.local && m.local.foraDoLugarNoSite) || 0) * 5);
   return Math.min(100, Math.round(s));
 }
 

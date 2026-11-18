@@ -23,7 +23,7 @@ module.exports = {
   limiar: 0,
   custo: { tipo: 'regra' },
   permissao: 'ler',
-  regras: ['estoque-fisico-storestock', 'comprado-nunca-recalcula', 'nunca-inventar-dado', 'nuvemshop-foto-descricao', 'nuvemshop-4-classificacoes'],
+  regras: ['estoque-fisico-storestock', 'comprado-nunca-recalcula', 'nunca-inventar-dado', 'nuvemshop-foto-descricao', 'nuvemshop-4-classificacoes', 'lugar-certo'],
   tempoMax: 180000,
   async disparar({ sinal, ler, agora }) {
     const quando = agora || new Date();

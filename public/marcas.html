@@ -216,7 +216,7 @@ function detalhe(j) {
   var v = r.vendas || {}, d30 = v.d30 || {}, d7 = v.d7 || {};
   var h = '<p class="mut">Relatório de ' + new Date(r.geradoEm).toLocaleString('pt-BR') + (r.sobDemanda ? ' (pedido agora)' : '') + ' · ' + n(r.cards) + ' cards ativos, ' + n(r.cardsComEstoque) + ' com estoque</p>';
   h += '<div class="sec"><h3>O que precisa de você</h3>' + ((r.alertas || []).length ? r.alertas.map(function (a) {
-    var itens = (a.itens || []).slice(0, 5).map(function (i) { return '<li>' + esc(i.nome) + (i.loja ? ' · ' + esc(loja(i.loja)) : '') + (i.unidades != null ? ' · ' + n(i.unidades) + ' un' : '') + (i.vendidos30 != null ? ' · vendeu ' + n(i.vendidos30) : '') + (i.dias != null ? ' · ' + n(i.dias) + ' dias' : '') + (i.preco != null ? ' · preço ' + rs(i.preco) + ' / custo ' + rs(i.custo) : '') + '</li>'; }).join('');
+    var itens = (a.itens || []).slice(0, 5).map(function (i) { return '<li>' + esc(i.nome) + (i.loja ? ' · ' + esc(loja(i.loja)) : '') + (i.unidades != null ? ' · ' + n(i.unidades) + ' un' : '') + (i.vendidos30 != null ? ' · vendeu ' + n(i.vendidos30) : '') + (i.dias != null ? ' · ' + n(i.dias) + ' dias' : '') + (i.preco != null ? ' · preço ' + rs(i.preco) + ' / custo ' + rs(i.custo) : '') + (i.motivo ? ' · ' + esc(i.motivo) : '') + '</li>'; }).join('');
     return '<div class="al g' + (Number(a.gravidade) || 1) + '">' + esc(a.texto) + (itens ? '<ul>' + itens + '</ul>' : '') + '</div>';
   }).join('') : '<p class="mut">Nada pendente hoje.</p>') + '</div>';
   h += '<div class="sec"><h3>Estoque</h3><table class="tab"><tr><td>Comprado (NF-e de entrada)</td><td>' + n(r.comprado) + '</td></tr><tr><td>Localizado nas lojas</td><td>' + n(r.localizado) + '</td></tr><tr><td>Cobertura (dias de venda)</td><td>' + n(r.coberturaDias) + '</td></tr><tr><td>Parados 90+ dias</td><td>' + n(r.parados && r.parados.cards) + ' cards · ' + rs(r.parados && r.parados.valorCustoRS) + '</td></tr></table>' +
@@ -224,6 +224,18 @@ function detalhe(j) {
   h += '<div class="sec"><h3>Venda — loja física × site</h3><table class="tab"><tr><td>Últimos 7 dias</td><td>' + n(d7.un) + ' un · ' + rs(d7.rs) + '</td></tr><tr><td>Últimos 30 dias</td><td>' + n(d30.un) + ' un · ' + rs(d30.rs) + '</td></tr><tr><td>Margem bruta 30 dias</td><td>' + (d30.margemPct == null ? '—' : n(d30.margemPct) + '%') + '</td></tr></table>' +
     (d30.unSemCusto ? '<p class="mut">' + n(d30.unSemCusto) + ' un vendidas sem custo gravado ficaram fora da margem.</p>' : '') +
     '<p class="mut" style="margin-top:8px">Por canal (30 dias):</p>' + linhas(v.porCanal30, function (x) { return n(x.un) + ' un · ' + rs(x.rs); }) + '</div>';
+  var lc = r.local;
+  if (lc) {
+    var mot = Object.keys(lc.motivos || {}).sort(function (x, y) { return lc.motivos[y] - lc.motivos[x]; });
+    h += '<div class="sec"><h3>Lugar certo no site</h3><table class="tab">' +
+      '<tr><td>Cards conferidos</td><td>' + n(lc.conferidos) + '</td></tr>' +
+      '<tr><td>No lugar certo</td><td>' + n(lc.noLugarCerto) + '</td></tr>' +
+      '<tr><td>Fora do lugar (categoria, público ou modalidade)</td><td>' + n(lc.foraDoLugar) + (lc.foraDoLugarNoSite ? ' · ' + n(lc.foraDoLugarNoSite) + ' já no site' : '') + '</td></tr>' +
+      '<tr><td>Sem as 4 classificações</td><td>' + n(lc.incompletos) + '</td></tr></table>' +
+      (mot.length ? '<p class="mut" style="margin-top:8px">O que está fora do lugar:</p><table class="tab">' + mot.map(function (k) { return '<tr><td>' + esc(k.replace(/^local: /, '')) + '</td><td>' + n(lc.motivos[k]) + '</td></tr>'; }).join('') + '</table>' : '') +
+      ((lc.itens || []).length ? '<ul style="margin:6px 0 0 18px;font-size:12.5px;color:var(--wmut)">' + lc.itens.slice(0, 8).map(function (i) { return '<li>' + esc(i.nome) + ' · ' + esc(i.motivo) + (i.noSite ? ' · <b>no site</b>' : '') + '</li>'; }).join('') + '</ul>' : '') +
+      '<p class="mut" style="margin-top:6px">Regra do dono: cada produto no lugar certo. A classificação do card (categoria, público, modalidade, especialidade) é o endereço dele no menu da loja online; ela tem que bater com o que o nome do produto diz.</p></div>';
+  }
   var cf = r.conferencia;
   if (cf) {
     var lst = function (arr, fmt) { return (arr || []).length ? '<ul style="margin:4px 0 0 18px;font-size:12.5px;color:var(--wmut)">' + arr.slice(0, 6).map(function (i) { return '<li>' + esc(i.nome) + ' · ' + fmt(i) + '</li>'; }).join('') + '</ul>' : ''; };
@@ -315,13 +327,15 @@ function demoApi(path, opts) {
       porLoja: { LOJA02: 40, LOJA04: 120, LOJA05: 90, LOJA06: 20 },
       vendas: { d7: { un: 9, rs: 2100 }, d30: { un: 40 - i, rs: 12000 - i * 900, margemPct: 38.5, unSemCusto: 2 }, porCanal30: { LOJA02: { un: 10, rs: 3000 }, LOJA05: { un: 25, rs: 7500 }, SITE: { un: 5, rs: 1500 } } },
       parados: { cards: 12, valorCustoRS: 18450 }, site: { publicados: 30, publicadosSemEstoque: 3, prontosParaSubir: 2, bloqueados: 9, motivos: { 'sem cor (risco de foto da cor errada)': 5, 'sem descricao': 4 } },
+      local: { conferidos: 120, noLugarCerto: 70, foraDoLugar: 9, foraDoLugarNoSite: 2, incompletos: 41, motivos: { 'local: categoria errada': 5, 'local: publico errado': 3, 'local: modalidade errada': 1 },
+        itens: [{ nome: 'CHUTEIRA FUTSAL EXEMPLO JR (demo)', motivo: 'publico errado (nome diz infantil, card está em Mulher)', noSite: true }, { nome: 'BOLA SOCIETY EXEMPLO (demo)', motivo: 'categoria errada (nome diz acessório, card está em Chuteiras)', noSite: false }] },
       cadastro: { semFoto: 4, menosDe5Fotos: 20, semCor: 11, semCusto: 3, precoAbaixoCusto: i === 0 ? 1 : 0, tamanhoTecnicoComEstoque: 2 },
       conferencia: { cardsComprados: 100, cardsBipados: 60 - i * 5, compradosBipados: 58 - i * 5, bipadosSemCompra: 2, unidadesBipadas: 240, bipesPendentes: 6, porLoja: { LOJA02: 60, LOJA04: 120, LOJA05: 60 }, bipadosNaNuvemshop: 22, publicadosNaoBipados: 8 - i, bipadosForaNuvemshop: 38, foraNuvemshopNasLojasDoSite: 10, foraNuvemshopSoEmOutrasLojas: 28, compradosNaoBipados: 40, bipadosMenosDe5Fotos: 12, pctCardsBipados: 60 - i * 5,
         conserto: { prontosParaSubir: 3, itensProntos: [{ nome: 'Tênis Exemplo pronto (demo)' }], passos: [
           { titulo: 'Bipado só em loja que não abastece o site', cards: 20, como: 'Liberar a loja para o site ou transferir para uma loja do site (demo).', quem: 'dono', precisaDono: true, itens: [{ nome: 'Chuteira Exemplo (demo)' }] },
           { titulo: 'Cor ausente, abreviada ou crua', cards: 9, como: 'Cor por extenso em português, pela NF-e, caixa ou site oficial (demo).', quem: 'cadastro', precisaDono: false, dicaDaMarca: 'Cor sai da referência oficial (demo).', itens: [] }] },
         itensPublicadosNaoBipados: [{ nome: 'Tênis Exemplo no site sem bipe (demo)', localizado: 0, comprado: 6 }], itensBipadosForaNuvemshop: [{ nome: 'Chuteira Exemplo bipada (demo)', unidades: 4, lojas: { LOJA04: 4 }, nasLojasDoSite: true }] },
-      alertas: [{ gravidade: 2, area: 'venda', texto: '5 card(s) venderam nos últimos 30 dias e estão sem estoque localizado — falta repor OU falta contar na loja (demo)', itens: [{ nome: 'Tênis Exemplo Run (demo)', vendidos30: 4 }] }, { gravidade: 2, area: 'estoque', texto: '12 card(s) parados há 90+ dias (demo)', itens: [{ nome: 'Chuteira Exemplo (demo)', unidades: 8, dias: 140 }] }],
+      alertas: [{ gravidade: 3, area: 'lugar', texto: '2 card(s) NO SITE no lugar errado (demo)', itens: [{ nome: 'CHUTEIRA FUTSAL EXEMPLO JR (demo)', motivo: 'publico errado (nome diz infantil, card está em Mulher)', noSite: true }] }, { gravidade: 2, area: 'venda', texto: '5 card(s) venderam nos últimos 30 dias e estão sem estoque localizado — falta repor OU falta contar na loja (demo)', itens: [{ nome: 'Tênis Exemplo Run (demo)', vendidos30: 4 }] }, { gravidade: 2, area: 'estoque', texto: '12 card(s) parados há 90+ dias (demo)', itens: [{ nome: 'Chuteira Exemplo (demo)', unidades: 8, dias: 140 }] }],
       sobDemanda: false };
   }
   return new Promise(function (ok) {
