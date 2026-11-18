@@ -57,7 +57,7 @@ async function calcular(ler, { agora = new Date(), soMarca = null, diasParado = 
 
   // 1) cards ativos (sem carregar imagem: só contagem)
   const prods = await ler.$queryRawUnsafe(
-    'SELECT p.id, p.brand, p.name, p.sku, p.category, p.subcategory, (p."aiContext"->\'classification\') AS cls, (p."aiContext"->\'classification2\') AS cls2, (jsonb_typeof(p."aiContext"->\'nuvemshopMapping\'->\'categoryIds\') = \'array\' AND jsonb_array_length(p."aiContext"->\'nuvemshopMapping\'->\'categoryIds\') > 0) AS mapa_ia, p.price, p."costPrice", p."createdAt", ' +
+    'SELECT p.id, p.brand, p.name, p.sku, p.category, p.subcategory, (p."aiContext"->\'classification\') AS cls, (p."aiContext"->\'classification2\') AS cls2, COALESCE(CASE WHEN jsonb_typeof(p."aiContext"->\'nuvemshopMapping\'->\'categoryIds\') = \'array\' THEN jsonb_array_length(p."aiContext"->\'nuvemshopMapping\'->\'categoryIds\') > 0 END, false) AS mapa_ia, p.price, p."costPrice", p."createdAt", ' +
     "  (p.\"aiContext\"->>'color') AS cor, " +
     // anúncio apagado na Nuvemshop: o card não volta sozinho (decisão do dono)
     "  (p.\"aiContext\"->'nsAnuncioSumiu') IS NOT NULL AS anuncio_sumiu, " +
