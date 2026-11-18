@@ -48,6 +48,11 @@ async function setAgentesSwitch(on) {
   await prisma.config.upsert({ where: { key: 'wa_agentes_vendedores' }, update: { value }, create: { id: 'wa_agentes_vendedores', key: 'wa_agentes_vendedores', value } });
   _agSwitch = !!on; _agAt = Date.now();
 }
+// Só mídia que a pessoa mandou de propósito pede "manda por texto". Reação, figurinha, edição,
+// apagar mensagem, enquete etc. ficam em silêncio.
+function isMediaMessage(m) {
+  return !!(m && (m.audioMessage || m.pttMessage || m.imageMessage || m.videoMessage || m.documentMessage || m.documentWithCaptionMessage));
+}
 function parseAgentesCmd(text) {
   const t = String(text || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[!.]+$/, '').trim();
   if (/^agentes? ?(off|desligar|desliga)$/.test(t)) return 'off';
@@ -331,7 +336,9 @@ router.post('/evolution', async (req, res) => {
     if (!isGroup && !isOwnerPhone(phone)) {
       const seller = await findSellerByPhone(phone);
       if (seller && await agentesOn()) {
-        if (!text) { await sendToClient('Me manda por *texto*, ' + String(seller.name || '').split(' ')[0] + ', que eu te respondo. 🧡').catch(() => {}); return; }
+        // Reação (❤️), figurinha, edição, mensagem apagada etc. NÃO pedem resposta (dono 18/11/2026:
+        // o vendedor reagiu ❤️ e recebeu "me manda por texto"). Só áudio/foto/vídeo/documento.
+        if (!text) { if (isMediaMessage(m)) await sendToClient('Me manda por *texto*, ' + String(seller.name || '').split(' ')[0] + ', que eu te respondo. 🧡').catch(() => {}); return; }
         try {
           const out = await sellerAgentRoute.runSellerAgentChat({ userId: seller.id, userRole: 'seller', query: {}, body: {}, headers: {} }, text.slice(0, 1200), { channel: 'whatsapp' });
           await sendToClient(String(out.reply || '').slice(0, 3500) || 'Não consegui responder agora. Tenta de novo em instantes.').catch(() => {});
@@ -373,7 +380,7 @@ router.post('/evolution', async (req, res) => {
 
     if (!text) {
       // Em grupo, ignora midia em silencio (nao poluir). No privado, pede texto.
-      if (!isGroup && roboOn) {
+      if (!isGroup && roboOn && isMediaMessage(m)) {
         await sendToClient('Oi! No momento consigo te atender por *texto*. Pode escrever o que voce procura? 🙂').catch(() => {});
       }
       return;
