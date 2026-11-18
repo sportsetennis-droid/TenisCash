@@ -2266,7 +2266,7 @@ async function myResultsForAgent(snapshot) {
   return {
     hoje: { data: p.today, vendas: todaySales._count._all, valor: Number(todaySales._sum.totalAmount || 0) },
     ontem: { data: p.yesterday, vendas: p.yesterdayResult.count, valor: p.yesterdayResult.revenue, ticketMedio: p.yesterdayResult.ticket, pecas: p.yesterdayResult.pieces },
-    mesAteOntem: { total: p.month.total, posicaoNaRede: p.month.position, vendedoresComVenda: p.month.sellers, faltaParaPassarOdaFrente: p.month.gapToNext, faltaParaComissao2pct: p.month.tierMissing, faixaComissao: 'comissao do mes inteiro: 1% ate R$ 20 mil; acima disso 2% sobre o mes inteiro', diasRestantesNoMes: p.month.daysLeft },
+    mesAteOntem: { total: p.month.total, posicaoNaRede: p.month.position, vendedoresComVenda: p.month.sellers, pertoDeSubirDePosicao: p.month.gapToNext != null && p.month.gapToNext < 1000, faltaParaComissao2pct: p.month.tierMissing, faixaComissao: 'comissao do mes inteiro: 1% ate R$ 20 mil; acima disso 2% sobre o mes inteiro', diasRestantesNoMes: p.month.daysLeft },
     observacao: 'Somente dados do proprio vendedor. Nunca informe valores de outros vendedores.',
   };
 }
@@ -2438,9 +2438,9 @@ const TOOLS = [
 async function execTool(name, input, snapshot) {
   const powers = require('../services/sellerPowers');
   const sellerOf = () => ({ id: snapshot.seller.id, name: snapshot.seller.name, storeId: snapshot.seller.storeId || (snapshot.seller.store && snapshot.seller.store.id) || null });
-  if (name === 'ficha_do_cliente') return powers.clientFile(prisma, input && input.telefone);
+  if (name === 'ficha_do_cliente') return powers.clientFile(prisma, input && input.telefone, { sellerId: snapshot.seller.id });
   if (name === 'tenis_cash_do_cliente') {
-    const f = await powers.clientFile(prisma, input && input.telefone);
+    const f = await powers.clientFile(prisma, input && input.telefone, { sellerId: snapshot.seller.id });
     if (!f.encontrado) return f;
     return { nome: f.nome, saldoTenisCash: f.saldoTenisCash, comoUsar: f.comoUsarTenisCash, mensagemProntaParaOVendedorEnviar: powers.tenisCashDraft(f.nome, f.saldoTenisCash) || 'Cliente sem saldo de TenisCash no momento.' };
   }
@@ -2742,7 +2742,7 @@ async function runSellerAgentChat(req, text, { channel = 'app' } = {}) {
   snapshot.channel = channel;
   snapshot.outbox = [];
   snapshot.ownerAnswersPrompt = await agentManager.knowledgePrompt(prisma);
-  const whatsappDraft = sellerAssistant.parseWhatsappDraft(text);
+  const whatsappDraft = channel === 'whatsapp' ? null : sellerAssistant.parseWhatsappDraft(text);
   if (whatsappDraft) {
     const reply = 'Preparei o telefone e a mensagem no formulario de WhatsApp. Confira os dados, confirme que a pessoa autorizou o contato ou ja esta em atendimento e toque em Abrir WhatsApp. O envio so acontece quando voce confirmar no WhatsApp.';
     const conversationId = await persistSellerAgentTurn(req, text, reply, {
