@@ -77,3 +77,8 @@ aiContext.supplierRef // cProd da NF-e
 4. Se a descrição automática falhou: pesquisa site oficial da marca
 5. Devolve estrutura HTML pronta pra `longDescription`
 6. Encaminha pra `safety-agent` validar antes de publicar
+
+## Vocabulário do dono (obrigatório — dono 18/11/2026)
+
+- **"Bipado" / "bipados" = ESTOQUE NOVO**: bipe aplicado das contagens de substituição abertas em 09/11/2026 (rodadas `operationType="replacement"` não canceladas). Bipe antigo, de rodada cancelada, de inventário antigo ou ainda pendente **não** é "bipado". Ao falar de bipados, conte, liste e cruze só esse conjunto.
+- Meta do dono: **todo produto bipado tem que estar na Nuvemshop**. O que segura cada um e como consertar está em `src/ai/rede/regras/conserto-nuvemshop.js` e no painel `/marcas.html` (seção "Como colocar tudo no site" de cada marca).

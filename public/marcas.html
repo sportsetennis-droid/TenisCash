@@ -232,7 +232,19 @@ function detalhe(j) {
       '<p class="mut" style="margin-top:8px">Bipado por loja:</p>' + linhas(cf.porLoja, function (x) { return n(x) + ' un'; }) +
       (cf.publicadosNaoBipados ? '<p class="mut" style="margin-top:8px">Na Nuvemshop sem bipe:</p>' + lst(cf.itensPublicadosNaoBipados, function (i) { return 'localizado ' + n(i.localizado) + ' / comprado ' + n(i.comprado); }) : '') +
       (cf.bipadosForaNuvemshop ? '<p class="mut" style="margin-top:8px">Bipados fora da Nuvemshop:</p>' + lst(cf.itensBipadosForaNuvemshop, function (i) { return n(i.unidades) + ' un · ' + Object.keys(i.lojas || {}).join(', ') + (i.nasLojasDoSite ? '' : ' (loja que não vende no site)'); }) : '') +
-      '<p class="mut" style="margin-top:6px">Estoque novo = bipes das contagens abertas em 09/11 (rodadas canceladas não contam). Lojas que vendem no site: regra atual do sistema.</p></div>';
+      '<p class="mut" style="margin-top:6px">Bipado = estoque novo: bipes das contagens abertas em 09/11 (rodada cancelada, bipe antigo e bipe pendente não contam). Lojas que vendem no site: regra atual do sistema.</p></div>';
+    var cs = cf.conserto;
+    if (cs && (cs.prontosParaSubir || (cs.passos || []).length)) {
+      h += '<div class="sec"><h3>Como colocar tudo no site</h3>' +
+        (cs.prontosParaSubir ? '<div class="al g1"><b>' + n(cs.prontosParaSubir) + ' pronto(s) para subir</b> — já passam no gate; sobem na próxima subida automática.' + lst(cs.itensProntos, function () { return 'pronto'; }) + '</div>' : '') +
+        (cs.passos || []).map(function (p, i) {
+          return '<div class="al ' + (p.precisaDono ? 'g2' : 'g1') + '"><b>' + (i + 1) + '. ' + esc(p.titulo) + ' — ' + n(p.cards) + ' card(s)</b>' +
+            '<div style="margin-top:4px">' + esc(p.como) + '</div>' +
+            '<div class="mut" style="margin-top:4px">Quem resolve: ' + esc(p.quem) + (p.precisaDono ? ' · precisa de você' : '') + '</div>' +
+            (p.dicaDaMarca ? '<div class="mut" style="margin-top:4px">Nesta marca: ' + esc(p.dicaDaMarca) + '</div>' : '') +
+            lst(p.itens, function () { return 'travado aqui'; }) + '</div>';
+        }).join('') + '</div>';
+    }
   }
   var s = r.site || {};
   h += '<div class="sec"><h3>Site (Nuvemshop)</h3><table class="tab"><tr><td>Publicados</td><td>' + n(s.publicados) + '</td></tr><tr><td>Publicados sem estoque físico</td><td>' + n(s.publicadosSemEstoque) + '</td></tr><tr><td>Prontos para subir</td><td>' + n(s.prontosParaSubir) + '</td></tr><tr><td>Com estoque e barrados pelo cadastro</td><td>' + n(s.bloqueados) + '</td></tr></table>' +
@@ -284,6 +296,9 @@ function demoApi(path, opts) {
       parados: { cards: 12, valorCustoRS: 18450 }, site: { publicados: 30, publicadosSemEstoque: 3, prontosParaSubir: 2, bloqueados: 9, motivos: { 'sem cor (risco de foto da cor errada)': 5, 'sem descricao': 4 } },
       cadastro: { semFoto: 4, menosDe5Fotos: 20, semCor: 11, semCusto: 3, precoAbaixoCusto: i === 0 ? 1 : 0, tamanhoTecnicoComEstoque: 2 },
       conferencia: { cardsComprados: 100, cardsBipados: 60 - i * 5, compradosBipados: 58 - i * 5, bipadosSemCompra: 2, unidadesBipadas: 240, bipesPendentes: 6, porLoja: { LOJA02: 60, LOJA04: 120, LOJA05: 60 }, bipadosNaNuvemshop: 22, publicadosNaoBipados: 8 - i, bipadosForaNuvemshop: 38, foraNuvemshopNasLojasDoSite: 10, foraNuvemshopSoEmOutrasLojas: 28, compradosNaoBipados: 40, pctCardsBipados: 60 - i * 5,
+        conserto: { prontosParaSubir: 3, itensProntos: [{ nome: 'Tênis Exemplo pronto (demo)' }], passos: [
+          { titulo: 'Bipado só em loja que não abastece o site', cards: 20, como: 'Liberar a loja para o site ou transferir para uma loja do site (demo).', quem: 'dono', precisaDono: true, itens: [{ nome: 'Chuteira Exemplo (demo)' }] },
+          { titulo: 'Cor ausente, abreviada ou crua', cards: 9, como: 'Cor por extenso em português, pela NF-e, caixa ou site oficial (demo).', quem: 'cadastro', precisaDono: false, dicaDaMarca: 'Cor sai da referência oficial (demo).', itens: [] }] },
         itensPublicadosNaoBipados: [{ nome: 'Tênis Exemplo no site sem bipe (demo)', localizado: 0, comprado: 6 }], itensBipadosForaNuvemshop: [{ nome: 'Chuteira Exemplo bipada (demo)', unidades: 4, lojas: { LOJA04: 4 }, nasLojasDoSite: true }] },
       alertas: [{ gravidade: 2, area: 'venda', texto: '5 card(s) venderam nos últimos 30 dias e estão sem estoque localizado — falta repor OU falta contar na loja (demo)', itens: [{ nome: 'Tênis Exemplo Run (demo)', vendidos30: 4 }] }, { gravidade: 2, area: 'estoque', texto: '12 card(s) parados há 90+ dias (demo)', itens: [{ nome: 'Chuteira Exemplo (demo)', unidades: 8, dias: 140 }] }],
       sobDemanda: false };

@@ -11,6 +11,7 @@
 //   · Loja online respeita o físico das lojas da Nuvemshop (gate oficial).
 // =====================================================================
 const { chave, ficha } = require('../../regras/marcas');
+const { passoDe } = require('../../regras/conserto-nuvemshop');
 const { assessProductForNuvemshop, nuvemshopStockStoreIds, nuvemshopStoreStocksQuery } = require('../../../../services/nuvemshopEligibility');
 
 const DIA = 86400000;
@@ -209,12 +210,15 @@ async function calcular(ler, { agora = new Date(), soMarca = null, diasParado = 
     for (const prod of lote) {
       const p = P.get(prod.id); const m = M.get(p.k);
       const a = assessProductForNuvemshop(prod);
-      if (a.eligible) { m.site.prontosParaSubir++; continue; }
+      if (a.eligible) { m.site.prontosParaSubir++; if (p.bipados > 0) conserto(m, p, null); continue; }
       m.site.bloqueados++;
       for (const motivo of a.reasons) { const t = motivo.replace(/^tamanho .+?: fisico.*/, 'físico maior que comprado').replace(/^tamanho .+ sem codigo de barras$/, 'tamanho sem código de barras'); m.site.motivos[t] = (m.site.motivos[t] || 0) + 1; }
       if (m.site.itens.length < TOP) m.site.itens.push({ productId: p.id, nome: p.name, motivos: a.reasons.slice(0, 4) });
+      if (p.bipados > 0) conserto(m, p, a.reasons);
     }
   }
+  // bipado só em loja que não abastece o site: o gate nem chega a avaliar
+  for (const p of P.values()) if (p.bipados > 0 && !p.publicado && p.localizadoNS <= 0) conserto(M.get(p.k), p, ['so em loja que nao vende no site']);
 
   // 7) fecha cada marca: ordena listas, margem, cobertura, alertas e nota de atenção
   const out = [];
@@ -236,14 +240,37 @@ async function calcular(ler, { agora = new Date(), soMarca = null, diasParado = 
     v.rsComCusto = r2(v.rsComCusto || 0);
     v.margemPct = v.rsComCusto > 0 ? r2(100 * (1 - v.custoRS / v.rsComCusto)) : null;
     m.coberturaDias = v.un > 0 ? Math.round(m.localizado / (v.un / 30)) : null;
-    m.alertas = alertas(m);
-    m.atencao = nota(m);
     m.nomes = [...m.nomes];
     m.ficha = ficha(m.marca);
+    fecharConserto(m);
+    m.alertas = alertas(m);
+    m.atencao = nota(m);
     out.push(m);
   }
   out.sort((a, b) => b.atencao - a.atencao || b.vendas.d30.rs - a.vendas.d30.rs);
   return out;
+}
+
+// MANUAL DE CONSERTO por marca: cada card BIPADO (estoque novo) fora da Nuvemshop
+// entra no passo de cada motivo que o segura (regras/conserto-nuvemshop). reasons=null = já está pronto (só falta subir).
+function conserto(m, p, reasons) {
+  const c = m.conferencia.conserto || (m.conferencia.conserto = { prontosParaSubir: 0, itensProntos: [], passos: {} });
+  if (!reasons) { c.prontosParaSubir++; if (c.itensProntos.length < TOP) c.itensProntos.push({ productId: p.id, nome: p.name }); return; }
+  const vistos = new Set();
+  for (const r of reasons) {
+    const ps = passoDe(r);
+    if (vistos.has(ps.id)) continue; vistos.add(ps.id);
+    const reg = c.passos[ps.id] || (c.passos[ps.id] = { id: ps.id, titulo: ps.titulo, como: ps.como, quem: ps.quem, precisaDono: !!ps.dono, usaFicha: ps.usaFicha || null, cards: 0, itens: [] });
+    reg.cards++;
+    if (reg.itens.length < TOP) reg.itens.push({ productId: p.id, nome: p.name });
+  }
+}
+
+function fecharConserto(m) {
+  const c = m.conferencia.conserto;
+  if (!c) { m.conferencia.conserto = { prontosParaSubir: 0, itensProntos: [], passos: [] }; return; }
+  const f = m.ficha || {};
+  c.passos = Object.values(c.passos).map((x) => Object.assign(x, { dicaDaMarca: x.usaFicha && f[x.usaFicha] ? f[x.usaFicha] : null })).sort((a, b) => b.cards - a.cards);
 }
 
 // Alertas em linguagem do dono, do mais grave pro menos grave.
@@ -256,7 +283,13 @@ function alertas(m) {
   if (m.parados.cards) add(2, 'estoque', `${m.parados.cards} card(s) parados há 90+ dias (${m.parados.unidades} un${m.parados.valorCustoRS ? ', R$ ' + m.parados.valorCustoRS.toLocaleString('pt-BR') + ' a custo' : ''})`, { itens: m.parados.itens });
   const cf = m.conferencia || {};
   if (cf.publicadosNaoBipados) add(2, 'conferência', `${cf.publicadosNaoBipados} card(s) estão na Nuvemshop e NÃO foram bipados no estoque novo — o site pode vender o que não foi conferido`, { itens: cf.itensPublicadosNaoBipados });
-  if (cf.bipadosForaNuvemshop) add(1, 'conferência', `${cf.bipadosForaNuvemshop} card(s) bipados no estoque novo e fora da Nuvemshop (${cf.foraNuvemshopNasLojasDoSite} nas lojas que vendem no site, ${cf.foraNuvemshopSoEmOutrasLojas} só em outras lojas)`, { itens: cf.itensBipadosForaNuvemshop });
+  if (cf.bipadosForaNuvemshop) {
+    const cs = cf.conserto || { passos: [] };
+    const top = (cs.passos || [])[0];
+    add(2, 'conferência', `${cf.bipadosForaNuvemshop} card(s) bipados no estoque novo e FORA da Nuvemshop` +
+      (cs.prontosParaSubir ? ` — ${cs.prontosParaSubir} já prontos para subir` : '') +
+      (top ? `; maior trava: ${top.titulo} (${top.cards})` : '') + ' — ver "Como colocar tudo no site"', { itens: cf.itensBipadosForaNuvemshop });
+  }
   if (cf.compradosNaoBipados) add(1, 'conferência', `${cf.compradosNaoBipados} card(s) comprados e ainda não bipados em loja nenhuma`, { itens: cf.itensCompradosNaoBipados });
   if (m.site.prontosParaSubir) add(2, 'site', `${m.site.prontosParaSubir} card(s) prontos para subir no site e ainda fora`);
   if (m.site.publicadosSemEstoque) add(1, 'site', `${m.site.publicadosSemEstoque} card(s) publicados sem estoque físico nas lojas do site`);

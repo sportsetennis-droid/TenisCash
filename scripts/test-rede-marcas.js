@@ -125,21 +125,25 @@ async function partB() {
   await bipe(rCanc, L.LOJA02, C, C.S.M);                                                // rodada cancelada: não vale
   const G = await prod({ sku: 'H4', name: 'Tênis HOKA no site sem bipe', brand: 'HOKA', price: 900, costPrice: 400, aiContext: { color: 'Branco' }, imageUrl: 'https://x/g.jpg' }, [{ size: '39', barcode: '0196565000039', stock: 2 }]);
   await prisma.nuvemshopProductMapping.create({ data: { localProductId: G.id, nuvemshopProductId: '222' } });
+  // H: bipado só na LOJA02 (loja que não abastece o site neste teste)
+  const rNova2 = await prisma.stocktakeRound.create({ data: { name: 'Substituição LOJA02', storeId: L.LOJA02.id, status: 'counting', operationType: 'replacement', baseline: {} } });
+  const H = await prod({ sku: 'H5', name: 'Tênis HOKA só na Bessa', brand: 'HOKA', price: 900, costPrice: 400, aiContext: { color: 'Verde' }, imageUrl: 'https://x/h.jpg' }, [{ size: '43', barcode: '0196565000043', stock: 1 }]);
+  await loc(L.LOJA02, H.S['43'], 1); await bipe(rNova2, L.LOJA02, H, H.S['43']);
 
   const ler = ferramentas.soLeitura(prisma);
   const sinais = await gerente.disparar({ sinal: { tipo: 'relogio.diario', dados: {} }, ler, agora: new Date(agora) });
   const R = Object.fromEntries(sinais.map((s) => [s.dados.marca, s.dados]));
 
-  await t('1 relatório por marca: HOKA (3 grafias juntas, 4 cards) e PENALTY; sem marca e inativo ficam fora', () => {
+  await t('1 relatório por marca: HOKA (3 grafias juntas, 5 cards) e PENALTY; sem marca e inativo ficam fora', () => {
     assert.deepStrictEqual(Object.keys(R).sort(), ['HOKA', 'PENALTY']);
     assert.ok(sinais.every((s) => s.tipo === 'marca.relatorio' && s.dados.chave.startsWith('marca|')));
-    assert.strictEqual(R.HOKA.cards, 4);
+    assert.strictEqual(R.HOKA.cards, 5);
     assert.deepStrictEqual(R.HOKA.nomes.sort(), ['HOKA', 'Hoka', 'hoka']);
   });
   await t('estoque: comprado = Σ ProductSize.stock; localizado = StoreStock > 0 por loja; negativo à parte', () => {
-    assert.strictEqual(R.HOKA.comprado, 9);
-    assert.strictEqual(R.HOKA.localizado, 4);
-    assert.deepStrictEqual(R.HOKA.porLoja, { LOJA02: 1, LOJA04: 3 });
+    assert.strictEqual(R.HOKA.comprado, 10);
+    assert.strictEqual(R.HOKA.localizado, 5);
+    assert.deepStrictEqual(R.HOKA.porLoja, { LOJA02: 2, LOJA04: 3 });
     assert.strictEqual(R.PENALTY.localizado, 10, 'o -1 não desconta do localizado');
     assert.strictEqual(R.PENALTY.negativos.linhas, 1);
     assert.strictEqual(R.PENALTY.negativos.unidades, -1);
@@ -174,22 +178,34 @@ async function partB() {
   });
   await t('conferência: bipado no estoque novo × Nuvemshop (rodada cancelada e bipe pendente não contam)', () => {
     const cf = R.HOKA.conferencia;
-    assert.strictEqual(cf.cardsComprados, 3, 'A, F e G têm comprado');
-    assert.strictEqual(cf.cardsBipados, 2, 'A e F');
-    assert.strictEqual(cf.unidadesBipadas, 3, '2 do A + 1 do F (o pendente fica fora)');
+    assert.strictEqual(cf.cardsComprados, 4, 'A, F, G e H têm comprado');
+    assert.strictEqual(cf.cardsBipados, 3, 'A, F e H');
+    assert.strictEqual(cf.unidadesBipadas, 4, '2 do A + 1 do F + 1 do H (o pendente fica fora)');
     assert.strictEqual(cf.bipesPendentes, 1);
-    assert.deepStrictEqual(cf.porLoja, { LOJA04: 3 });
+    assert.deepStrictEqual(cf.porLoja, { LOJA04: 3, LOJA02: 1 });
     assert.strictEqual(cf.bipadosNaNuvemshop, 1, 'A');
     assert.strictEqual(cf.publicadosNaoBipados, 1, 'G está no site sem bipe');
     assert.strictEqual(cf.itensPublicadosNaoBipados[0].nome, 'Tênis HOKA no site sem bipe');
-    assert.strictEqual(cf.bipadosForaNuvemshop, 1, 'F');
+    assert.strictEqual(cf.bipadosForaNuvemshop, 2, 'F e H');
     assert.strictEqual(cf.foraNuvemshopNasLojasDoSite, 1);
     assert.strictEqual(cf.compradosNaoBipados, 1, 'G');
-    assert.strictEqual(cf.pctCardsBipados, 66.67);
-    assert.strictEqual(cf.compradosBipados, 2);
+    assert.strictEqual(cf.pctCardsBipados, 75);
+    assert.strictEqual(cf.compradosBipados, 3);
     assert.strictEqual(cf.bipadosSemCompra, 0);
     assert.strictEqual(R.PENALTY.conferencia.cardsBipados, 0, 'bipe de rodada cancelada não vale');
     assert.ok(R.HOKA.alertas.some((a) => a.area === 'conferência' && /NÃO foram bipados/.test(a.texto)));
+  });
+  await t('manual de conserto: cada card bipado fora do site cai no passo do motivo que o segura', () => {
+    const cs = R.HOKA.conferencia.conserto;
+    const P = Object.fromEntries(cs.passos.map((p) => [p.id, p]));
+    assert.ok(P['loja-fora-do-site'] && P['loja-fora-do-site'].cards === 1 && P['loja-fora-do-site'].itens[0].nome === 'Tênis HOKA só na Bessa', JSON.stringify(cs.passos.map((p) => p.id)));
+    assert.ok(P.descricao && P.descricao.itens[0].nome === 'Tênis HOKA Bondi 9 Preto', 'F sem descrição');
+    assert.ok(P.confirmacao && P.confirmacao.precisaDono, 'confirmação é do dono');
+    assert.ok(cs.passos.every((p) => p.como && p.quem), 'todo passo diz como e quem');
+    assert.strictEqual(cs.prontosParaSubir, 0);
+    const reg = require('../src/ai/rede/regras/conserto-nuvemshop');
+    assert.strictEqual(reg.passoDe('cor crua (numero/tamanho na cor)').id, 'cor');
+    assert.strictEqual(reg.passoDe('motivo que ninguém conhece').id, 'outro');
   });
   await t('pedido sob demanda (marca.pedir "hoka") gera só a HOKA; marca indefinida não inventa relatório', async () => {
     const s = await gerente.disparar({ sinal: { tipo: 'marca.pedir', dados: { marca: 'hoka' } }, ler, agora: new Date(agora) });

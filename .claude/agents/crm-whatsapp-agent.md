@@ -94,3 +94,8 @@ Quando integrar com Meta WhatsApp Business:
 - Endpoint: `https://graph.facebook.com/v22.0/{PHONE_ID}/messages`
 - Templates aprovados (pra mensagens marketing fora da janela 24h)
 - Tabela `Customer` ou `User` pra base de clientes do TenisCash
+
+## Vocabulário do dono (obrigatório — dono 18/11/2026)
+
+- **"Bipado" / "bipados" = ESTOQUE NOVO**: bipe aplicado das contagens de substituição abertas em 09/11/2026 (rodadas `operationType="replacement"` não canceladas). Bipe antigo, de rodada cancelada, de inventário antigo ou ainda pendente **não** é "bipado". Ao falar de bipados, conte, liste e cruze só esse conjunto.
+- Meta do dono: **todo produto bipado tem que estar na Nuvemshop**. O que segura cada um e como consertar está em `src/ai/rede/regras/conserto-nuvemshop.js` e no painel `/marcas.html` (seção "Como colocar tudo no site" de cada marca).
