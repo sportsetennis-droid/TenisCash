@@ -69,7 +69,8 @@ async function pedirReenvioDoCard(card, forcar) {
   try { ctx = (typeof card.aiContext === 'string' ? JSON.parse(card.aiContext) : card.aiContext) || {}; } catch (_) { ctx = {}; }
   const ultimo = Date.parse(ctx.nsReenvioPedidoAt || '') || 0;
   if (!forcar && Date.now() - ultimo < REENVIO_IRMAO_MS) return false;
-  await mergeAiContext(prisma, card.id, { nsReenvioPedidoAt: new Date().toISOString() }, ['nsMirrorSig', 'nsCardSig']);
+  // nsImagesSig também: o anúncio pode estar com as FOTOS do outro card (auditoria 7)
+  await mergeAiContext(prisma, card.id, { nsReenvioPedidoAt: new Date().toISOString() }, ['nsMirrorSig', 'nsCardSig', 'nsImagesSig']);
   return true;
 }
 
@@ -114,7 +115,9 @@ async function unpublishMappedProduct(localProductId, connection, reason, mappin
     // O anúncio pode estar com o estoque/dados DESTE card (último a enviar). Pede UM reenvio
     // do card irmão válido pelo espelho (sem enviar daqui: sem espera circular entre envios,
     // sem eco a cada rodada — auditorias 5 e 6, 18/11). Repete no máximo a cada 6 h.
-    const pedido = await pedirReenvioDoCard(irmaoValido, transicao);
+    // força o pedido só quando ESTE card acabou de sair (muda a situação); card válido com a
+    // cópia da loja errada respeita o limite de 6 h (senão vira envio a cada rodada).
+    const pedido = await pedirReenvioDoCard(irmaoValido, !selfValido && transicao);
     console.warn('[ns] NS# compartilhado — loja NÃO despublicada por este card:', localProductId, 'NS#' + mapping.nuvemshopProductId, reason, pedido ? '(reenvio do irmão pedido)' : '');
     return { unpublished: false, shared: true, irmao: irmaoValido.id, reenvioPedido: pedido, reason: 'produto da loja compartilhado com outro card; ' + (reason || '') };
   }
@@ -1385,12 +1388,17 @@ async function updateNuvemshopVariants(connection, nsProductId, localProduct, si
     const payload = { stock_management: true, stock: desiredStock };
     if (!stockOnly || !nsVar) {
       payload.price = price;
-      if (promo != null) payload.promotional_price = promo;
+      // sem promoção no card → limpa a promoção da loja (tirar promoção também é alteração do card)
+      payload.promotional_price = promo != null ? promo : null;
     }
     try {
       if (nsVar) {
         keepIds.add(String(nsVar.id));
-        if (nsVar.stock_management === true && Number(nsVar.stock || 0) === desiredStock) {
+        // "sem mudança" só se estoque E (quando este envio leva preço) preço e promoção também batem —
+        // senão mudança de preço com o mesmo estoque nunca chegava à loja (auditoria 7, 18/11).
+        const precoIgual = stockOnly || (Number(nsVar.price || 0) === Number(payload.price || 0)
+          && Number(nsVar.promotional_price || 0) === Number(payload.promotional_price || 0));
+        if (nsVar.stock_management === true && Number(nsVar.stock || 0) === desiredStock && precoIgual) {
           result.unchanged++;
         } else {
           await ns.nuvemshopApi(connection, 'PUT', `/products/${nsProductId}/variants/${nsVar.id}`, payload);

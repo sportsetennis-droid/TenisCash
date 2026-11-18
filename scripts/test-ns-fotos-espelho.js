@@ -214,7 +214,7 @@ async function partB() {
 async function partC() {
   // stub da API da Nuvemshop ANTES de carregar os handlers (nada sai para a loja)
   const nsPath = require.resolve('../src/services/nuvemshop');
-  const chamadas = []; const corpos = []; let falharPost = false; let falharUma = null; let falharGet = false; let falharDelete = false; let seq = 800;
+  const chamadas = []; const corpos = []; let falharPost = false; let falharUma = null; let falharGet = false; let falharDelete = false; let seq = 800; let variantesRemotas = null;
   require.cache[nsPath] = { id: nsPath, filename: nsPath, loaded: true, exports: { fetchAllPages: async () => [], nuvemshopApi: async (conn, metodo, url, corpo) => {
     chamadas.push(metodo + ' ' + url + (corpo && corpo.published === false ? ' DESPUBLICA' : ''));
     corpos.push({ metodo, url, corpo });
@@ -223,6 +223,7 @@ async function partC() {
     if (metodo === 'POST' && (falharPost || (falharUma && JSON.stringify(corpo || {}).includes(falharUma)))) throw new Error('falhou');
     if (metodo === 'POST' && url === '/products') return { id: ++seq, images: (corpo.images || []).map((x, i) => ({ id: 700 + i })), variants: [] };
     if (metodo === 'POST') return { id: ++seq };
+    if (metodo === 'GET' && /variants$/.test(url) && variantesRemotas) return variantesRemotas;
     if (metodo === 'GET' && /^\/products\/\d+$/.test(url)) return { id: Number(url.split('/').pop()), variants: [] };
     return {};
   } } };
@@ -361,7 +362,7 @@ async function partC() {
     assert.ok(r.shared && r.irmao === a.id && r.reenvioPedido, JSON.stringify(r));
     assert.ok(!chamadas.some((c) => c.startsWith('PUT')), 'não envia daqui (sem espera circular): ' + chamadas.join(' | '));
     const ctxA = (await prisma.product.findUnique({ where: { id: a.id } })).aiContext;
-    assert.ok(ctxA.nsReenvioPedidoAt && !ctxA.nsMirrorSig && !ctxA.nsCardSig, 'espelho vai reenviar A');
+    assert.ok(ctxA.nsReenvioPedidoAt && !ctxA.nsMirrorSig && !ctxA.nsCardSig && !ctxA.nsImagesSig, 'espelho vai reenviar A, fotos inclusive');
     // rodada seguinte do reajuste: não pede de novo (sem envio a cada 5 min)
     const r2 = await h.unpublishMappedProduct(b.id, { id: 'c' }, 'sem estoque', await prisma.nuvemshopProductMapping.findUnique({ where: { id: mb.id } }));
     assert.ok(r2.shared && !r2.reenvioPedido, 'não repete o pedido');
@@ -375,6 +376,9 @@ async function partC() {
     const r = await h.unpublishMappedProduct(a.id, { id: 'c' }, 'copia remota invalida: marca', ma);
     assert.ok(r.shared); assert.strictEqual(chamadas.length, 0);
     assert.strictEqual((await prisma.nuvemshopProductMapping.findUnique({ where: { id: ma.id } })).syncStatus, 'synced');
+    const r2 = await h.unpublishMappedProduct(a.id, { id: 'c' }, 'copia remota invalida: marca', ma);
+    const r3 = await h.unpublishMappedProduct(a.id, { id: 'c' }, 'copia remota invalida: marca', ma);
+    assert.ok(r.reenvioPedido && !r2.reenvioPedido && !r3.reenvioPedido, 'card válido: pede uma vez e respeita o limite de 6 h');
   });
   await t('AUDITORIA 6: dois caminhos ao mesmo tempo (reajuste + espelho) não despublicam o card válido nem travam', async () => {
     const { c: valido } = await cardValido(1);
@@ -419,6 +423,21 @@ async function partC() {
       const ctx = (await prisma.product.findUnique({ where: { id: c.id } })).aiContext;
       assert.ok(!ctx.nsImagesSig, 'não gravou a assinatura');
     } finally { falharDelete = false; }
+  });
+  await t('AUDITORIA 7: preço ou promoção mudou com o MESMO estoque → chega à loja', async () => {
+    const { c, ps } = await cardValido(2);
+    const card = await prisma.product.update({ where: { id: c.id }, data: { price: 799 } });
+    variantesRemotas = [{ id: 71, values: [{ pt: '40' }], sku: ps.barcode, barcode: ps.barcode, stock_management: true, stock: 2, price: '900.00', promotional_price: '850.00' }];
+    corpos.length = 0;
+    const r = await h.updateNuvemshopVariants({ id: 'c' }, '7171', card, [{ size: '40', barcode: ps.barcode, stock: 2 }]);
+    const put = corpos.find((x) => x.metodo === 'PUT' && x.url === '/products/7171/variants/71');
+    assert.ok(put && put.corpo.price === '799.00' && put.corpo.promotional_price === null, JSON.stringify(r) + ' ' + JSON.stringify(put));
+    // tudo igual → não manda nada
+    variantesRemotas = [{ id: 71, values: [{ pt: '40' }], sku: ps.barcode, barcode: ps.barcode, stock_management: true, stock: 2, price: '799.00', promotional_price: null }];
+    corpos.length = 0;
+    await h.updateNuvemshopVariants({ id: 'c' }, '7171', card, [{ size: '40', barcode: ps.barcode, stock: 2 }]);
+    assert.ok(!corpos.some((x) => x.metodo === 'PUT'), 'sem mudança: nenhum envio');
+    variantesRemotas = null;
   });
   await t('AUDITORIA 3: foto inválida (Instagram/crawler) não vai para a loja nem trava a troca', () => {
     const lista = h.collectLocalImages({ imageUrl: 'https://lookaside.instagram.com/x', imageUrls: ['https://img/ok1.jpg', 'https://x/crawler/y', 'https://img/ok2.jpg'] });
