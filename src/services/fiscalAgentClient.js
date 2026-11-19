@@ -80,6 +80,8 @@ async function agentVersion(url) {
 // >=2.1 — troca/devolução (payments[]/finNFe) e QUALQUER operação em chave modelo 55
 //         (o 2.0 aponta NFe 55 pro host morto nfe.sefaz.pb.gov.br).
 function minVersionFor(path, body) {
+  // >=2.5 — distribuição de NF-e (notas emitidas contra a loja) e Ciência da Operação.
+  if (path === '/distdfe' || path === '/ciencia') return 2.5;
   if (path === '/emit-nfce' && body) {
     const d = String((body.customer && (body.customer.cpfCnpj || body.customer.cpf)) || '').replace(/\D/g, '');
     if (d.length === 11 || d.length === 14) return 2.2;
@@ -213,4 +215,10 @@ async function emitNFe55(store, payload) { return callAgent(store, '/emit-nfe55'
 function cancel(store, payload) { return callAgent(store, '/cancel', payload); }
 function correction(store, payload) { return callAgent(store, '/correction', payload); }
 
-module.exports = { ping, emitNFCe, emitNFe55, cancel, correction };
+// Distribuição de NF-e: qualquer agente 2.5+ serve (todos assinam com o certificado do grupo).
+function callAgentPublic(store, path, body) {
+  if (!['/distdfe', '/ciencia'].includes(path)) throw new Error('rota de agente não liberada: ' + path);
+  return callAgent(store, path, body);
+}
+
+module.exports = { ping, emitNFCe, emitNFe55, cancel, correction, callAgentPublic };

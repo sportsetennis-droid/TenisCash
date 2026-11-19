@@ -827,3 +827,98 @@ export async function emitNFe55({ issuer, pfxPath, pfxSenha, items, payment, pay
 
   return { ok, accessKey, protocol, status: protStat, motivo, xmlSigned, rawResponse: resp.body };
 }
+
+// =====================================================================
+// DISTRIBUIÇÃO DE NF-e (dono 18/11/2026: "NF-e de compra baixando sozinha")
+// Consulta no Ambiente Nacional as NF-e emitidas CONTRA o CNPJ (compras de
+// fornecedor e transferências) e devolve os documentos já descompactados.
+// Regra da SEFAZ: sem documento novo (cStat 137) só consultar de novo após 1h
+// — o central controla o intervalo. Só lê; não muda nada na SEFAZ.
+// =====================================================================
+const DIST_URLS = {
+  production: 'https://www1.nfe.fazenda.gov.br/NFeDistribuicaoDFe/NFeDistribuicaoDFe.asmx',
+  homologation: 'https://hom1.nfe.fazenda.gov.br/NFeDistribuicaoDFe/NFeDistribuicaoDFe.asmx',
+};
+const AN_EVENT_URLS = {
+  production: 'https://www.nfe.fazenda.gov.br/NFeRecepcaoEvento4/NFeRecepcaoEvento4.asmx',
+  homologation: 'https://hom1.nfe.fazenda.gov.br/NFeRecepcaoEvento4/NFeRecepcaoEvento4.asmx',
+};
+
+export function parseDistResponse(body, gunzip) {
+  const ret = (String(body || '').match(/<retDistDFeInt[\s\S]*<\/retDistDFeInt>/) || [String(body || '')])[0];
+  const pick = (tag) => (ret.match(new RegExp('<' + tag + '>([^<]*)</' + tag + '>')) || [])[1] || null;
+  const docs = [];
+  const re = /<docZip\s+NSU="(\d+)"\s+schema="([^"]+)"\s*>([^<]+)<\/docZip>/g;
+  let m;
+  while ((m = re.exec(ret))) {
+    let xml = null;
+    try { xml = gunzip(Buffer.from(m[3], 'base64')).toString('utf8'); } catch (e) { xml = null; }
+    docs.push({ nsu: m[1], schema: m[2], xml });
+  }
+  return { status: pick('cStat'), motivo: pick('xMotivo'), ultNSU: pick('ultNSU'), maxNSU: pick('maxNSU'), docs };
+}
+
+export async function distDFe({ cnpj, environment, ultNSU, chNFe, pfxPath, pfxSenha }) {
+  const doc = String(cnpj || '').replace(/\D/g, '');
+  if (doc.length !== 14) throw new Error('CNPJ inválido');
+  const tpAmb = environment === 'homologation' ? 2 : 1;
+  let pedido;
+  if (chNFe) {
+    if (!/^\d{44}$/.test(String(chNFe))) throw new Error('Chave deve ter 44 dígitos');
+    pedido = '<consChNFe><chNFe>' + chNFe + '</chNFe></consChNFe>';
+  } else {
+    pedido = '<distNSU><ultNSU>' + String(ultNSU || '0').replace(/\D/g, '').padStart(15, '0').slice(-15) + '</ultNSU></distNSU>';
+  }
+  const soap =
+    '<?xml version="1.0" encoding="utf-8"?>' +
+    '<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"><soap:Body>' +
+    '<nfeDistDFeInteresse xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeDistribuicaoDFe"><nfeDadosMsg>' +
+    '<distDFeInt xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.01">' +
+    '<tpAmb>' + tpAmb + '</tpAmb><cUFAutor>25</cUFAutor><CNPJ>' + doc + '</CNPJ>' + pedido +
+    '</distDFeInt></nfeDadosMsg></nfeDistDFeInteresse></soap:Body></soap:Envelope>';
+  const pemPair = extractPem(pfxPath, pfxSenha, doc.slice(0, 8));
+  const resp = await _sefazPost(new URL(DIST_URLS[tpAmb === 1 ? 'production' : 'homologation']), soap, pemPair);
+  const { gunzipSync } = await import('node:zlib');
+  const parsed = parseDistResponse(resp.body, gunzipSync);
+  return { ok: true, ...parsed, httpStatus: resp.status };
+}
+
+// Manifestação do destinatário — SÓ "Ciência da Operação" (210210): informa à SEFAZ
+// que a empresa sabe da nota e libera o XML completo. Não confirma nem recusa a compra.
+export async function manifestarCiencia({ cnpj, environment, chNFe, pfxPath, pfxSenha }) {
+  const doc = String(cnpj || '').replace(/\D/g, '');
+  if (doc.length !== 14) throw new Error('CNPJ inválido');
+  if (!/^\d{44}$/.test(String(chNFe || ''))) throw new Error('Chave deve ter 44 dígitos');
+  const tpAmb = environment === 'homologation' ? 2 : 1;
+  const tools = new Tools({ mod: 55, tpAmb, UF: 'PB', versao: '4.00', timeout: 30000, CNPJ: doc }, { pfx: pfxPath, senha: pfxSenha });
+  const dhEvento = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().replace(/\.\d+Z$/, '-03:00');
+  const envEventoObj = {
+    envEvento: {
+      '@xmlns': 'http://www.portalfiscal.inf.br/nfe', '@versao': '1.00', idLote: String(Date.now()).slice(-15),
+      evento: {
+        '@xmlns': 'http://www.portalfiscal.inf.br/nfe', '@versao': '1.00',
+        infEvento: {
+          '@Id': 'ID210210' + chNFe + '01',
+          cOrgao: '91', tpAmb, CNPJ: doc, chNFe, dhEvento, tpEvento: '210210', nSeqEvento: 1, verEvento: '1.00',
+          detEvento: { '@versao': '1.00', descEvento: 'Ciencia da Operacao' },
+        },
+      },
+    },
+  };
+  const xmlEvento = await tools.json2xml(envEventoObj);
+  const xmlSigned = await tools.xmlSign(xmlEvento, { tag: 'infEvento' });
+  const inner = xmlSigned.replace(/^<\?xml[^>]*\?>\s*/, '').replace(/>\s+</g, '><').trim();
+  const soap =
+    '<?xml version="1.0" encoding="utf-8"?>' +
+    '<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"><soap:Body>' +
+    '<nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4">' + inner +
+    '</nfeDadosMsg></soap:Body></soap:Envelope>';
+  const pemPair = extractPem(pfxPath, pfxSenha, doc.slice(0, 8));
+  const resp = await _sefazPost(new URL(AN_EVENT_URLS[tpAmb === 1 ? 'production' : 'homologation']), soap, pemPair);
+  const body = resp.body || '';
+  const ret = (body.match(/<retEvento[\s\S]*?<\/retEvento>/) || [body])[0];
+  const cStat = (ret.match(/<cStat>(\d+)<\/cStat>/) || [])[1] || null;
+  const motivo = (ret.match(/<xMotivo>([^<]+)<\/xMotivo>/) || [])[1] || null;
+  // 135 registrado · 136 registrado sem vínculo · 573 duplicidade (já tinha ciência)
+  return { ok: ['135', '136', '573'].includes(cStat), status: cStat, motivo, chNFe };
+}
