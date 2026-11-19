@@ -24,6 +24,9 @@ incerta('BC-AZ-PR', 'PENALTY');
 incerta('MR/VM', 'PENALTY');
 incerta('RO', '');
 ok('BR/PR', 'POKER', 'Branco/Prata'); // Poker tem evidência
+incerta('PTA', ''); // PTA é Prata na Umbro/FILA, não Preto
+ok('PTO/PTA/LRJF', 'UMBRO', 'Preto/Prata/Laranja Fluorescente');
+ok('CZ/PTO/PTA', 'FILA', 'Cinza/Preto/Prata');
 
 // Skechers: código de cor da marca (mesmo em todos os estilos)
 ok('BKRD', 'SKECHERS', 'Preto/Vermelho');

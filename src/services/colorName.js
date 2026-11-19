@@ -41,10 +41,10 @@ const PORTUGUESE = [
 const CONNECTORS = new Map(Object.entries({ e: 'e', com: 'com', de: 'de' }));
 
 // Siglas/grafias CERTAS (sem ambiguidade) e palavras em inglês → português.
-// ⚠️ NÃO colocar aqui sigla ambígua: pr, ro, mr, ca, co, dr, vi, fl, cy, ve.
+// ⚠️ NÃO colocar aqui sigla ambígua: pr, ro, mr, ca, co, dr, vi, fl, cy, ve, pta.
 const GLOBAL_ALIASES = {
   // preto
-  preta: 'Preto', pt: 'Preto', pto: 'Preto', pta: 'Preto', ptr: 'Preto', blk: 'Preto', black: 'Preto',
+  preta: 'Preto', pt: 'Preto', pto: 'Preto', ptr: 'Preto', // pta NÃO: na Umbro/FILA PTA = Prata (ver BRAND_ALIASES) blk: 'Preto', black: 'Preto',
   // branco
   branca: 'Branco', bc: 'Branco', bco: 'Branco', bca: 'Branco', br: 'Branco', white: 'Branco', wht: 'Branco', blanc: 'Branco',
   // azul
@@ -110,7 +110,13 @@ const PHRASES = [
 //   BKRD = Black/Red (216516_BKRD) · CCRD = Charcoal/Red (216777, 220581) · SLT = Slate (117483_SLT, 220509-SLT)
 //   PKCL = Pink/Coral (187025_PKCL) · WMLT = White/Multi (150510_WMLT) · LMBK = Lime/Black (220509_LMBK)
 //   RUST = Rust (150020_RUST). ⚠️ LBPK NÃO entra: no site BR aparece como Lilás num estilo e Azul em outro.
+// UMBRO (umbro.com.br pelo código de barras, 18/11/2026): PTO/PTA/VRM = Preto/Prata/Vermelho (Attak Eternal),
+//   ROYAL/MAR/PTA = Royal/Marinho/Prata (Chrome), AZL/PRE/RSAF = Azul/Preto/Rosa Flúor (Action 1251632),
+//   GRF/PRE/VRDL = Grafite/Preto/Verde Limão (Mutant 1212317); LRJF = Laranja Flúor (Ultimate Jr DLM).
+// FILA (fila.com.br pelo cProd): CZ/PTO/PTA = Cinza/Preto/Prata (Fastpace 1321051), PRE/VERM/GRF = Preto/Vermelho/Grafite (1242063).
 const BRAND_ALIASES = {
+  umbro: { pta: 'Prata', pre: 'Preto', rsaf: 'Rosa Fluorescente', vrdl: 'Verde Limão', lrjf: 'Laranja Fluorescente' },
+  fila: { pta: 'Prata', pre: 'Preto', vrdl: 'Verde Limão', larj: 'Laranja' },
   skechers: {
     bkrd: 'Preto/Vermelho', ccrd: 'Grafite/Vermelho', slt: 'Ardósia', pkcl: 'Rosa/Coral',
     wmlt: 'Branco/Multicolorido', lmbk: 'Verde Limão/Preto', rust: 'Ferrugem',
