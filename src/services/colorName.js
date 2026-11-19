@@ -31,6 +31,10 @@ const PORTUGUESE = [
   'Petróleo', 'Cobalto', 'Índigo', 'Jeans', 'Malva', 'Uva', 'Fumê', 'Transparente',
   'Sortida', 'Sortido', 'Multicolorido', 'Estampado', 'Mescla',
   'Claro', 'Escuro', 'Fluorescente', 'Neon', 'Metálico', 'Choque', 'Bebê',
+  // nomes de cor em português usados pelas marcas (conferidos no site oficial, 18/11/2026)
+  'Goma', 'Carmesim', 'Platina', 'Antracite', 'Baunilha', 'Ocre', 'Noturno', 'Chantilly', 'Ardósia', 'Ferrugem',
+  // nomes oficiais de cor FILA/Umbro (páginas do cProd, 18/11/2026)
+  'Roxeado', 'Rosê', 'Azaleia', 'Canário', 'Abeto', 'Granito', 'Papaya', 'Vibrante', 'Cinzento', 'Avermelhado', 'Borgonha', 'Elétrico',
 ];
 
 // Palavras de ligação que podem aparecer dentro de uma cor ("Verde e Preto").
@@ -102,7 +106,15 @@ const PHRASES = [
 //   LAR = Laranja · CEL = Celeste · DOU = Dourado
 //   AMC / LAC / VDC / ROC = versões neon (foto oficial). Nome DEFINIDO PELO DONO 14/11/2026
 //   (opção "Neon / Choque"): Amarelo Neon · Laranja Neon · Verde Neon · Rosa Choque.
+// SKECHERS: o código de cor é o mesmo em todos os estilos (skechers.com, conferido 18/11/2026):
+//   BKRD = Black/Red (216516_BKRD) · CCRD = Charcoal/Red (216777, 220581) · SLT = Slate (117483_SLT, 220509-SLT)
+//   PKCL = Pink/Coral (187025_PKCL) · WMLT = White/Multi (150510_WMLT) · LMBK = Lime/Black (220509_LMBK)
+//   RUST = Rust (150020_RUST). ⚠️ LBPK NÃO entra: no site BR aparece como Lilás num estilo e Azul em outro.
 const BRAND_ALIASES = {
+  skechers: {
+    bkrd: 'Preto/Vermelho', ccrd: 'Grafite/Vermelho', slt: 'Ardósia', pkcl: 'Rosa/Coral',
+    wmlt: 'Branco/Multicolorido', lmbk: 'Verde Limão/Preto', rust: 'Ferrugem',
+  },
   poker: {
     pr: 'Prata', ro: 'Rosa', ros: 'Rosa', mr: 'Marinho', lar: 'Laranja',
     cel: 'Celeste', dou: 'Dourado', ch: 'Chumbo',
