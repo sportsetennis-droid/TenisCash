@@ -190,9 +190,28 @@ async function rulesForMatch(db, matchId) {
 }
 
 // Todos os tipos que marcam ponto em algum esporte (pra placar ao vivo genérico).
+// Liga F4 — produção PESSOAL do atleta (painel, medalha, arte, aviso de fim de jogo):
+// gol = 1; basquete: cestas de 1/2/3 pontos. Mesma conta do histórico (athleteHistory).
+// SET não entra (é do time, não de um jogador).
+const PLAYER_POINT_VALUES = Object.freeze({ GOAL: 1, PT1: 1, PT2: 2, PT3: 3 });
+const PLAYER_POINT_TYPES = Object.freeze(Object.keys(PLAYER_POINT_VALUES));
+
+// Nome do que soma no placar/produção, pela regra (scoring) ou pelo esporte.
+// → { one, many, short } — 'gol/gols/GOLS' · 'ponto/pontos/PTS' (basquete) · 'set/sets/SETS'.
+function scoreUnit(rulesOrSport) {
+  let keys;
+  if (rulesOrSport && typeof rulesOrSport === 'object' && rulesOrSport.scoring) keys = Object.keys(rulesOrSport.scoring);
+  else keys = (sportDefaults(rulesOrSport).events || []).filter((k) => EVENT_CATALOG[k] && EVENT_CATALOG[k].score);
+  if (keys.some((k) => /^PT[123]$/.test(k))) return { one: 'ponto', many: 'pontos', short: 'PTS' };
+  if (keys.includes('SET') && !keys.includes('GOAL')) return { one: 'set', many: 'sets', short: 'SETS' };
+  return { one: 'gol', many: 'gols', short: 'GOLS' };
+}
+function plural(n, unit) { return n + ' ' + (n === 1 ? unit.one : unit.many); }
+
 const SCORE_VALUES = Object.freeze(Object.fromEntries(EVENT_TYPES.filter((k) => EVENT_CATALOG[k].score).map((k) => [k, EVENT_CATALOG[k].score])));
 
 module.exports = {
   EVENT_CATALOG, EVENT_TYPES, FUTSAL_EVENTS, LEGACY_RULES, SPORT_DEFAULTS, SCORE_VALUES,
   normalizeGameRules, defaultsFor, sportDefaults, resolveRules, scoreFromEvents, rulesForMatch,
+  PLAYER_POINT_VALUES, PLAYER_POINT_TYPES, scoreUnit, plural,
 };

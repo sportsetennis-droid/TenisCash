@@ -30,18 +30,43 @@ const PREF_TYPES = {
 };
 const TYPE_MAP = { team: 'invite', club_invite: 'invite', club: 'invite' };
 
+// Liga Aberta F4 — WhatsApp por TIPO (opt-in). O atleta liga só o que quer receber;
+// padrão DESLIGADO (regra do projeto: nada de mensagem a cliente sem ele pedir).
+// 'organizer' = avisos de quem ORGANIZA o campeonato (pedido de inscrição, reembolso,
+// PIX sem vaga, torneio transferido): padrão ligado só para conta da EQUIPE
+// (admin/gerente/vendedor) — é aviso operacional de quem trabalha; cliente liga se quiser.
+const WA_TYPES = { ...PREF_TYPES, organizer: 'Organização do meu campeonato (pedidos de inscrição, reembolso)' };
+const STAFF_ROLES = new Set(['admin', 'superadmin', 'manager', 'gerente', 'seller', 'assistant', 'store']);
+function isStaffRole(role) { return STAFF_ROLES.has(String(role || '')); }
+function waDefault(key, role) { return key === 'organizer' && isStaffRole(role); }
+function waCategory(type, explicit) {
+  if (explicit && WA_TYPES[explicit]) return explicit;
+  return category(type);
+}
+
 function category(type) {
   const t = String(type || 'info');
   if (PREF_TYPES[t]) return t;
   return TYPE_MAP[t] || 'info';
 }
 
-async function getPrefs(userId) {
+async function userRole(userId) {
+  const u = await prisma.user.findUnique({ where: { id: String(userId) }, select: { role: true } }).catch(() => null);
+  return u ? u.role : null;
+}
+
+// role opcional (evita consulta quando quem chama já tem). WhatsApp: valor salvo vence;
+// sem valor salvo = padrão (desligado; 'organizer' ligado só para a equipe).
+async function getPrefs(userId, { role } = {}) {
   const row = await prisma.clubNotifyPref.findUnique({ where: { userId } }).catch(() => null);
   const types = {};
   const saved = (row && row.types && typeof row.types === 'object') ? row.types : {};
   for (const k of Object.keys(PREF_TYPES)) types[k] = saved[k] !== false;
-  return { push: row ? row.push !== false : true, types, labels: PREF_TYPES };
+  const r = role === undefined ? await userRole(userId) : role;
+  const savedWa = (row && row.whatsapp && typeof row.whatsapp === 'object' && !Array.isArray(row.whatsapp)) ? row.whatsapp : {};
+  const whatsapp = {};
+  for (const k of Object.keys(WA_TYPES)) whatsapp[k] = typeof savedWa[k] === 'boolean' ? savedWa[k] : waDefault(k, r);
+  return { push: row ? row.push !== false : true, types, labels: PREF_TYPES, whatsapp, whatsappLabels: WA_TYPES };
 }
 
 async function setPrefs(userId, input = {}) {
@@ -51,12 +76,24 @@ async function setPrefs(userId, input = {}) {
     for (const [k, v] of Object.entries(input.types)) if (PREF_TYPES[k]) types[k] = !!v;
   }
   const push = input.push === undefined ? cur.push : !!input.push;
+  const data = { push, types };
+  if (input.whatsapp && typeof input.whatsapp === 'object' && !Array.isArray(input.whatsapp)) {
+    const wa = { ...cur.whatsapp };
+    for (const [k, v] of Object.entries(input.whatsapp)) if (WA_TYPES[k]) wa[k] = !!v;
+    data.whatsapp = wa; // grava a escolha explícita (todas as chaves) — o padrão não muda mais por baixo
+  }
   await prisma.clubNotifyPref.upsert({
     where: { userId },
-    update: { push, types },
-    create: { userId, push, types },
+    update: data,
+    create: { userId, ...data },
   });
   return getPrefs(userId);
+}
+
+// Liga F4: o atleta ligou WhatsApp para esta categoria? (notify.js chama antes de enfileirar)
+async function whatsappAllowed(userId, cat, { role } = {}) {
+  const p = await getPrefs(userId, { role });
+  return p.whatsapp[cat] === true;
 }
 
 // Link do aviso → URL que o toque na notificação abre
@@ -98,7 +135,7 @@ async function flush() { while (pending.size) await Promise.allSettled([...pendi
 
 async function sendPushNow(userId, { type, title, body, link } = {}) {
   if (!userId) return { sent: 0, failed: 0, skipped: 'sem usuário' };
-  const prefs = await getPrefs(userId);
+  const prefs = await getPrefs(userId, { role: null }); // push não depende do papel
   const cat = category(type);
   if (!prefs.push) return { sent: 0, failed: 0, skipped: 'push desligado' };
   if (prefs.types[cat] === false) return { sent: 0, failed: 0, skipped: 'tipo desligado: ' + cat };
@@ -202,7 +239,7 @@ function startClubPushCron() {
 }
 
 module.exports = {
-  setPrisma, APP, PREF_TYPES, category, toUrl,
+  setPrisma, APP, PREF_TYPES, WA_TYPES, category, waCategory, isStaffRole, whatsappAllowed, toUrl,
   getPrefs, setPrefs, subscribe, unsubscribe, status,
   sendPush, sendPushNow, flush, runGameSoon, matchAudience, startClubPushCron,
 };

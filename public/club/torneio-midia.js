@@ -15,13 +15,13 @@
     '.cm-grab{width:44px;height:5px;border-radius:9px;background:rgba(255,255,255,.25);margin:0 auto 10px}' +
     '.cm-h{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}' +
     '.cm-h b{font-weight:900;font-style:italic;font-size:22px;text-transform:uppercase;letter-spacing:.3px}' +
-    '.cm-x{background:rgba(255,255,255,.1);border:0;color:#fff;width:40px;height:40px;border-radius:12px;font-size:20px;cursor:pointer}' +
+    '.cm-x{background:rgba(255,255,255,.1);border:0;color:#fff;width:44px;height:44px;border-radius:12px;font-size:20px;cursor:pointer}' +
     '.cm-seg{display:flex;gap:6px;background:rgba(255,255,255,.06);border-radius:12px;padding:4px;margin:6px 0 12px}' +
-    '.cm-seg button{flex:1;min-height:40px;border:0;border-radius:9px;background:transparent;color:#c9c9d1;font:700 15px "Barlow Condensed",sans-serif;text-transform:uppercase;cursor:pointer}' +
+    '.cm-seg button{flex:1;min-height:44px;border:0;border-radius:9px;background:transparent;color:#c9c9d1;font:700 15px "Barlow Condensed",sans-serif;text-transform:uppercase;cursor:pointer}' +
     '.cm-seg button.on{background:' + ORANGE + ';color:#fff}' +
     '.cm-types{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:6px;-webkit-overflow-scrolling:touch}' +
     '.cm-types::-webkit-scrollbar{display:none}' +
-    '.cm-types button{flex-shrink:0;min-height:40px;padding:0 14px;border-radius:999px;border:1px solid rgba(255,255,255,.14);background:transparent;color:#fff;font:700 15px "Barlow Condensed",sans-serif;cursor:pointer}' +
+    '.cm-types button{flex-shrink:0;min-height:44px;padding:0 14px;border-radius:999px;border:1px solid rgba(255,255,255,.14);background:transparent;color:#fff;font:700 15px "Barlow Condensed",sans-serif;cursor:pointer}' +
     '.cm-types button.on{background:#fff;color:#0B0B0D;border-color:#fff}' +
     '.cm-prev{position:relative;background:#0B0B0D;border-radius:14px;display:flex;align-items:center;justify-content:center;min-height:220px;overflow:hidden;border:1px solid rgba(255,255,255,.08)}' +
     '.cm-prev img{display:block;max-width:100%;max-height:52vh;object-fit:contain}' +
@@ -36,7 +36,22 @@
     '.cm-code{width:100%;min-height:120px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:#0B0B0D;color:#e4e4e7;padding:10px;font:12px ui-monospace,Menlo,monospace}' +
     '.cm-lbl{color:#a1a1aa;font-size:13px;text-transform:uppercase;letter-spacing:.5px;margin:10px 0 4px;font-weight:700}' +
     '.cm-toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#fff;color:#0B0B0D;padding:10px 16px;border-radius:12px;font:700 15px "Barlow Condensed",sans-serif;z-index:10000;opacity:0;transition:opacity .2s;pointer-events:none}' +
-    '.cm-toast.on{opacity:1}';
+    '.cm-toast.on{opacity:1}' +
+    /* Liga F4 — folha "Compartilhar" (imagens prontas + link) */
+    '.cm-link{display:flex;gap:8px;align-items:center}' +
+    '.cm-link input{flex:1;min-width:0;min-height:46px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:#0B0B0D;color:#fff;padding:0 12px;font:600 14px "Inter",system-ui,sans-serif}' +
+    '.cm-link button{min-height:46px;min-width:88px;border:0;border-radius:12px;background:#fff;color:#0B0B0D;font:800 15px "Barlow Condensed",sans-serif;text-transform:uppercase;cursor:pointer}' +
+    '.cm-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px}' +
+    '.cm-card{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:8px;display:flex;flex-direction:column;gap:6px;min-width:0}' +
+    '.cm-th{position:relative;border-radius:10px;overflow:hidden;background:#0B0B0D;aspect-ratio:4/5}' +
+    '.cm-th.st{aspect-ratio:9/16}' +
+    '.cm-th img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}' +
+    '.cm-th span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#a1a1aa;font:600 12px "Inter",system-ui,sans-serif;text-align:center;padding:6px}' +
+    '.cm-card b{font:800 15px "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+    '.cm-card .cm-btn{min-height:44px;font-size:15px;border-radius:12px;flex:none}' +
+    '.cm-list .jrow{display:flex;flex-direction:column;justify-content:center;min-height:52px;padding:6px 14px;margin-bottom:8px;border-radius:14px;background:rgba(255,255,255,.03);border:1px dashed rgba(255,255,255,.14)}' +
+    '.cm-list .jrow b{font:700 17px "Barlow Condensed",sans-serif}' +
+    '.cm-card .cm-dl{min-height:44px;border:0;background:transparent;color:#c9c9d1;font:700 14px "Barlow Condensed",sans-serif;text-transform:uppercase;cursor:pointer}';
   var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
   var bg = document.createElement('div'); bg.className = 'cm-bg';
   var sh = document.createElement('div'); sh.className = 'cm-sh'; sh.setAttribute('role', 'dialog'); sh.setAttribute('aria-modal', 'true');
@@ -60,8 +75,21 @@
     var a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click();
     setTimeout(function () { URL.revokeObjectURL(u); a.remove(); }, 1500);
   }
+  function legacyCopy(t) {
+    try {
+      var ta = document.createElement('textarea'); ta.value = t; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select(); var ok = document.execCommand('copy'); ta.remove(); return ok;
+    } catch (e) { return false; }
+  }
+  function copyText(t) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(t).then(function () { return true; }, function () { return legacyCopy(t); });
+    } catch (e) { /* cai no antigo */ }
+    return Promise.resolve(legacyCopy(t));
+  }
   // Compartilha a ARTE como arquivo (Web Share Level 2) → Instagram/WhatsApp; senão baixa.
-  function shareArt(url, name, title, forceDownload) {
+  // extra (Liga F4): { text, link } — vai junto no compartilhamento; no "baixar" o link é copiado.
+  function shareArt(url, name, title, forceDownload, extra) {
     name = (name || 'arte') + '.png';
     toast('Gerando arte…');
     return fetch(url, { cache: 'no-store' }).then(function (r) {
@@ -71,13 +99,16 @@
       var file = null;
       try { file = new File([blob], name, { type: 'image/png' }); } catch (e) { file = null; }
       if (!forceDownload && file && navigator.canShare && navigator.canShare({ files: [file] })) {
-        return navigator.share({ files: [file], title: title || 'Club Sports & Tennis' }).catch(function (e) {
+        var data = { files: [file], title: title || 'Club Sports & Tennis' };
+        if (extra && extra.text) data.text = extra.text;
+        return navigator.share(data).catch(function (e) {
           if (e && e.name === 'AbortError') return;
           downloadBlob(blob, name);
         });
       }
       downloadBlob(blob, name);
-      toast('Arte baixada');
+      if (extra && extra.link) copyText(extra.link).then(function (ok) { toast(ok ? 'Arte baixada — link copiado' : 'Arte baixada'); });
+      else toast('Arte baixada');
     }).catch(function (e) { toast(e.message || 'Erro ao gerar a arte'); });
   }
 
@@ -122,6 +153,58 @@
   }
 
   function origin() { return location.protocol + '//' + location.host; }
+
+  // Liga F4 — folha "Compartilhar": imagens prontas (feed/story) + o link.
+  // o: { title, link, text, shareTitle, slug, images:[{ key, label, src: function(formato) }] }
+  // Imagem: navigator.share com o ARQUIVO quando o celular deixa; senão baixa e copia o link.
+  function openShareSheet(o) {
+    var fmt = 'feed';
+    var link = o.link || location.href;
+    var text = o.text || ((o.shareTitle || document.title) + ': ' + link);
+    var imgs = o.images || [];
+    var html = '<div data-testid="share-sheet"></div>' +
+      '<div class="cm-lbl">Link</div>' +
+      '<div class="cm-link"><input readonly data-testid="share-link" value="' + esc(link) + '" aria-label="Link"><button type="button" data-a="copy" data-testid="share-copy">Copiar</button></div>' +
+      '<div class="cm-row"><a class="cm-btn cm-p" data-testid="share-wa" target="_blank" rel="noopener" href="https://wa.me/?text=' + encodeURIComponent(text) + '">WhatsApp</a>' +
+      '<button class="cm-btn cm-s" type="button" data-a="native">Mais opções</button></div>' +
+      (imgs.length ? '<div class="cm-lbl" style="margin-top:16px">Imagens prontas</div>' +
+        '<div class="cm-seg"><button type="button" data-f="feed" class="on" data-testid="share-fmt-feed">Feed</button><button type="button" data-f="story" data-testid="share-fmt-story">Story</button></div>' +
+        '<div class="cm-grid">' + imgs.map(function (im, i) {
+          return '<div class="cm-card" data-testid="share-img-' + esc(im.key) + '"><div class="cm-th"><img alt="' + esc(im.label) + '"><span>Gerando…</span></div><b>' + esc(im.label) + '</b>' +
+            '<button class="cm-btn cm-p" type="button" data-a="ishare" data-i="' + i + '">Compartilhar</button>' +
+            '<button class="cm-dl" type="button" data-a="idl" data-i="' + i + '">Baixar</button></div>';
+        }).join('') + '</div>' : '') +
+      '<div class="cm-note">Feed 1080×1350 · Story 1080×1920 — cada imagem leva o link da página.</div>';
+    var body = open(o.title || 'Compartilhar', html);
+    function thumbs() {
+      [].forEach.call(body.querySelectorAll('.cm-card'), function (card, i) {
+        var th = card.querySelector('.cm-th'), im = th.querySelector('img'), sp = th.querySelector('span');
+        th.classList.toggle('st', fmt === 'story');
+        sp.style.display = 'flex'; sp.textContent = 'Gerando…';
+        im.style.opacity = '0';
+        im.onload = function () { sp.style.display = 'none'; im.style.opacity = '1'; };
+        im.onerror = function () { sp.textContent = 'Ainda não disponível'; };
+        im.src = imgs[i].src(fmt);
+      });
+    }
+    function fname(i) { return [(o.slug || 'club'), imgs[i].key, fmt].join('-'); }
+    body.addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('button') : null; if (!b) return;
+      var a = b.getAttribute('data-a');
+      if (b.getAttribute('data-f')) { fmt = b.getAttribute('data-f'); [].forEach.call(body.querySelectorAll('[data-f]'), function (x) { x.classList.toggle('on', x === b); }); thumbs(); return; }
+      if (a === 'copy') { copyText(link).then(function (ok) { toast(ok ? 'Link copiado' : 'Copie o link acima'); }); return; }
+      if (a === 'native') {
+        if (navigator.share) navigator.share({ title: o.shareTitle || document.title, text: text, url: link }).catch(function () {});
+        else copyText(link).then(function (ok) { toast(ok ? 'Link copiado' : 'Copie o link acima'); });
+        return;
+      }
+      var i = Number(b.getAttribute('data-i'));
+      if (a === 'ishare') shareArt(imgs[i].src(fmt), fname(i), o.shareTitle || o.title, false, { text: text, link: link });
+      if (a === 'idl') shareArt(imgs[i].src(fmt), fname(i), o.shareTitle || o.title, true, { text: text, link: link });
+    });
+    if (imgs.length) thumbs();
+    return body;
+  }
   function sharePage(o) {
     var url = origin() + '/t/' + o.slug;
     var txt = 'Acompanhe ' + (o.name || 'o torneio') + ' ao vivo: ' + url;
@@ -174,8 +257,11 @@
     });
   }
 
-  // SSE com fallback: onFail é chamado se o navegador não suporta ou a conexão cai.
+  // SSE com fallback: onState(false) se o navegador não suporta ou a conexão cai.
+  // Liga F4: com /club/live-sse.js carregado, reconecta sozinho com espera crescente.
   function connectLive(tid, onMsg, onState) {
+    var url = '/api/tournaments/' + encodeURIComponent(tid) + '/live';
+    if (window.ClubLiveSSE) return window.ClubLiveSSE.connect(url, { onMessage: onMsg, onState: onState });
     if (!window.EventSource) { if (onState) onState(false); return null; }
     var es = new EventSource('/api/tournaments/' + encodeURIComponent(tid) + '/live');
     es.onopen = function () { if (onState) onState(true); };
@@ -184,5 +270,5 @@
     return es;
   }
 
-  window.ClubMidia = { openArtSheet: openArtSheet, shareArt: shareArt, openQr: openQr, openCalendar: openCalendar, openEmbed: openEmbed, sharePage: sharePage, connectLive: connectLive, toast: toast, close: close };
+  window.ClubMidia = { openSheet: open, openShareSheet: openShareSheet, copyText: copyText, openArtSheet: openArtSheet, shareArt: shareArt, openQr: openQr, openCalendar: openCalendar, openEmbed: openEmbed, sharePage: sharePage, connectLive: connectLive, toast: toast, close: close };
 })();

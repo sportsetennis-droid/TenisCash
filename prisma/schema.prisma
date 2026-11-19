@@ -3142,6 +3142,8 @@ model ClubNotifyPref {
   userId    String   @id
   push      Boolean  @default(true)
   types     Json?
+  // Liga F4: WhatsApp por tipo de aviso do Club/torneio ({ result: true, ... }). Padrão = desligado.
+  whatsapp  Json?
   updatedAt DateTime @updatedAt
 }
 
@@ -4194,6 +4196,8 @@ model RosterInvite {
   usedByUserId    String?
   revokedAt       DateTime?
   createdAt       DateTime  @default(now())
+  // Liga F4: convite gerado pela súmula fechada — o link pode ser recuperado (HMAC do id)
+  recoverable     Boolean   @default(false)
 
   @@index([rosterPlayerId])
   @@index([tournamentId])
@@ -4212,6 +4216,8 @@ model TeamInvite {
   uses            Int       @default(0)
   lastUsedAt      DateTime?
   createdAt       DateTime  @default(now())
+  // Liga F4: o time escolheu mostrar o link na página pública ("Entrar neste time")
+  publicToken     String?
 
   @@index([entryId])
   @@index([tournamentId])

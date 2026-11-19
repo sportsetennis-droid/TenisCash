@@ -66,6 +66,62 @@ async function createInvite({ playerId, userId, userRole, days }) {
   };
 }
 
+// ---------------------------------------------------------------------
+// Liga Aberta F4 — convite pela SÚMULA FECHADA ("jogadores sem conta — enviar convite")
+// O organizador/árbitro vê a lista e manda pelo PRÓPRIO WhatsApp (o sistema não envia).
+// Para a lista poder ser aberta de novo sem invalidar o link já mandado, o token deste
+// convite é DERIVADO do id (HMAC com a chave do servidor) e pode ser recuperado: no banco
+// continua só o hash; o servidor recalcula o token pelo id. Uso único e validade iguais
+// aos do convite da F2. Não revoga o convite manual (F2) que já exista para a vaga.
+// Chave: env ROSTER_INVITE_KEY (senão o JWT_SECRET). Trocar a chave = os links antigos
+// continuam valendo no claim (hash), mas a lista passa a gerar um link novo.
+// ---------------------------------------------------------------------
+const SHEET_DAYS = 14;
+function inviteKey() { return process.env.ROSTER_INVITE_KEY || require('../middleware').JWT_SECRET; }
+function derivedToken(id) { return crypto.createHmac('sha256', String(inviteKey())).update('roster-invite-sheet:' + String(id)).digest('base64url'); }
+
+// Convite recuperável ainda válido desta vaga → { inv, token } | null. Só lê.
+async function recoverSheetInvite(playerId) {
+  const inv = await prisma.rosterInvite.findFirst({
+    where: { rosterPlayerId: String(playerId), recoverable: true, usedAt: null, revokedAt: null, expiresAt: { gt: new Date() } },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (!inv) return null;
+  const token = derivedToken(inv.id);
+  if (hashToken(token) !== inv.tokenHash) return null; // chave trocada: não dá pra recuperar
+  return { inv, token };
+}
+
+function sheetText({ playerName, teamName, tournamentName, matchLine, url }) {
+  return `Fala, ${playerName}! Você jogou ${matchLine ? matchLine + ' ' : ''}pelo ${teamName} em "${tournamentName}". `
+    + `Toque no link para entrar com a sua conta e guardar seus jogos, gols e títulos no seu histórico: ${url}`;
+}
+
+// Recupera (ou, com create:true, gera) o convite recuperável de uma vaga SEM conta.
+// Permissão: quem chama (rota) já conferiu arbitragem/organização do jogo.
+// → { url, whatsappText, whatsappUrl, expiresAt, created } | null (vaga já tem conta / sem convite)
+async function sheetInvite({ playerId, actorUserId, context = {}, create = false }) {
+  const p = await prisma.rosterPlayer.findUnique({ where: { id: String(playerId) }, select: { id: true, entryId: true, name: true, userId: true } });
+  if (!p || p.userId) return null;
+  let r = await recoverSheetInvite(p.id);
+  let created = false;
+  if (!r && create) {
+    const entry = await prisma.tournamentEntry.findUnique({ where: { id: p.entryId }, select: { id: true, tournamentId: true } });
+    if (!entry) return null;
+    const id = 'rs' + crypto.randomBytes(12).toString('hex');
+    const token = derivedToken(id);
+    const expiresAt = new Date(Date.now() + SHEET_DAYS * 24 * 3600 * 1000);
+    const inv = await prisma.rosterInvite.create({ data: { id, tokenHash: hashToken(token), rosterPlayerId: p.id, entryId: entry.id, tournamentId: entry.tournamentId, createdByUserId: String(actorUserId), expiresAt, recoverable: true } });
+    await audit.record({ tournamentId: entry.tournamentId, userId: actorUserId, action: 'roster.invite', entity: 'RosterPlayer', entityId: p.id, after: { expiresAt, days: SHEET_DAYS, fromSheet: true, matchId: context.matchId || null } });
+    r = { inv, token };
+    created = true;
+  }
+  if (!r) return null;
+  const url = baseUrl() + '/convite-elenco/' + r.token;
+  const whatsappText = sheetText({ playerName: p.name, teamName: context.teamName || 'time', tournamentName: context.tournamentName || 'campeonato', matchLine: context.matchLine || '', url });
+  return { url, whatsappText, whatsappUrl: 'https://wa.me/?text=' + encodeURIComponent(whatsappText), expiresAt: r.inv.expiresAt, created };
+}
+
 // Estado do convite (público, sem login): o que o jogador vê ao abrir o link.
 async function inviteInfo(token) {
   if (!validTokenShape(token)) return { status: 'invalid' };
@@ -164,4 +220,4 @@ async function unlink({ playerId, userId, userRole, reason }) {
   return { ok: true, unlinked: r.count, reverted };
 }
 
-module.exports = { InviteError, createInvite, inviteInfo, claim, unlink, hashToken, DEFAULT_DAYS };
+module.exports = { InviteError, createInvite, inviteInfo, claim, unlink, hashToken, DEFAULT_DAYS, sheetInvite, recoverSheetInvite, SHEET_DAYS };

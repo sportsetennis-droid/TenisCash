@@ -5,6 +5,7 @@
 // Só LÊ. Reaproveita as regras de trainingSession (forUser/prontuario).
 // =====================================================================
 const { prisma } = require('../middleware');
+const { PLAYER_POINT_VALUES, PLAYER_POINT_TYPES } = require('./tournamentRules');
 const training = require('./trainingSession');
 const clubIdentity = require('./clubIdentity');
 
@@ -153,13 +154,14 @@ async function gameProduction(uid, tById) {
   const doneIds = matches.map((m) => m.id);
   if (doneIds.length) {
     const evs = await prisma.matchEvent.findMany({
-      where: { playerId: { in: players.map((p) => p.id) }, matchId: { in: doneIds }, type: { in: ['GOAL', 'ASSIST', 'YELLOW', 'RED'] } },
+      where: { playerId: { in: players.map((p) => p.id) }, matchId: { in: doneIds }, type: { in: ['ASSIST', 'YELLOW', 'RED', ...PLAYER_POINT_TYPES] } },
       select: { type: true, entryId: true },
     });
-    const key = { GOAL: 'gols', ASSIST: 'assistencias', YELLOW: 'amarelos', RED: 'vermelhos' };
+    // Liga F4: no basquete "gols" = pontos das cestas (PT1/PT2/PT3 = 1/2/3), como no histórico
+    const key = { GOAL: 'gols', PT1: 'gols', PT2: 'gols', PT3: 'gols', ASSIST: 'assistencias', YELLOW: 'amarelos', RED: 'vermelhos' };
     for (const e of evs) {
-      const k = key[e.type]; out[k]++;
-      const tid = tOfEntry[e.entryId]; if (tid) bucket(tid)[k]++;
+      const k = key[e.type]; const n = PLAYER_POINT_VALUES[e.type] || 1; out[k] += n;
+      const tid = tOfEntry[e.entryId]; if (tid) bucket(tid)[k] += n;
     }
   }
   out.byTournament = Object.values(per);
@@ -229,7 +231,7 @@ async function sportScorers(sport, { limit = 50 } = {}) {
   if (!matches.length) return { sport, scorers: [] };
   const gamesByEntry = {};
   matches.forEach((m) => { [m.homeEntryId, m.awayEntryId].forEach((e) => { if (e) gamesByEntry[e] = (gamesByEntry[e] || 0) + 1; }); });
-  const evs = await prisma.matchEvent.findMany({ where: { matchId: { in: matches.map((m) => m.id) }, type: { in: ['GOAL', 'ASSIST', 'YELLOW', 'RED'] }, playerId: { not: null } }, select: { type: true, playerId: true } });
+  const evs = await prisma.matchEvent.findMany({ where: { matchId: { in: matches.map((m) => m.id) }, type: { in: ['ASSIST', 'YELLOW', 'RED', ...PLAYER_POINT_TYPES] }, playerId: { not: null } }, select: { type: true, playerId: true } });
   const pids = [...new Set(evs.map((e) => e.playerId))];
   if (!pids.length) return { sport, scorers: [] };
   const players = await prisma.rosterPlayer.findMany({ where: { id: { in: pids } }, select: { id: true, name: true, entryId: true, userId: true } });
@@ -244,7 +246,7 @@ async function sportScorers(sport, { limit = 50 } = {}) {
     const k = keyOf(p);
     const a = agg[k] = agg[k] || { name: p.name, team: eName[p.entryId] || '', userId: p.userId || null, goals: 0, assists: 0, yellow: 0, red: 0, games: 0 };
     if (!seenEntry[k + '#' + p.entryId]) { seenEntry[k + '#' + p.entryId] = 1; a.games += gamesByEntry[p.entryId] || 0; }
-    if (e.type === 'GOAL') a.goals++; else if (e.type === 'ASSIST') a.assists++; else if (e.type === 'YELLOW') a.yellow++; else if (e.type === 'RED') a.red++;
+    if (PLAYER_POINT_VALUES[e.type]) a.goals += PLAYER_POINT_VALUES[e.type]; else if (e.type === 'ASSIST') a.assists++; else if (e.type === 'YELLOW') a.yellow++; else if (e.type === 'RED') a.red++;
   }
   const uids = Object.values(agg).map((a) => a.userId).filter(Boolean);
   const users = uids.length ? await prisma.user.findMany({ where: { id: { in: uids } }, select: { id: true, username: true } }) : [];

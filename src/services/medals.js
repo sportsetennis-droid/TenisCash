@@ -174,10 +174,15 @@ async function recipientsOf(entry) {
 async function topScorers(categoryId, matches) {
   const ids = matches.filter((m) => DONE.includes(m.status)).map((m) => m.id);
   if (!ids.length) return [];
-  const goals = await prisma.matchEvent.groupBy({ by: ['playerId'], where: { matchId: { in: ids }, type: 'GOAL', playerId: { not: null } }, _count: { _all: true } }).catch(() => []);
+  // Liga F4: artilharia em PONTOS — gol = 1; basquete: cestas de 1/2/3 (mesma conta do histórico)
+  const { PLAYER_POINT_VALUES, PLAYER_POINT_TYPES } = require('./tournamentRules');
+  const rows = await prisma.matchEvent.groupBy({ by: ['playerId', 'type'], where: { matchId: { in: ids }, type: { in: PLAYER_POINT_TYPES }, playerId: { not: null } }, _count: { _all: true } }).catch(() => []);
+  const byPlayer = new Map();
+  for (const r of rows) byPlayer.set(r.playerId, (byPlayer.get(r.playerId) || 0) + r._count._all * (PLAYER_POINT_VALUES[r.type] || 1));
+  const goals = [...byPlayer.entries()].map(([playerId, pts]) => ({ playerId, pts }));
   if (!goals.length) return [];
-  const max = Math.max(...goals.map((g) => g._count._all));
-  const top = goals.filter((g) => g._count._all === max);
+  const max = Math.max(...goals.map((g) => g.pts));
+  const top = goals.filter((g) => g.pts === max);
   const players = await prisma.rosterPlayer.findMany({ where: { id: { in: top.map((t) => t.playerId) } } });
   return players.map((p) => ({ playerId: p.id, userId: p.userId, name: p.name, entryId: p.entryId, goals: max }));
 }
@@ -210,12 +215,14 @@ async function previewTournament(tournamentId, user) {
           c.medals.push({ userId: u.id, athlete: u.name, entryId: e.id, entry: e.name, tier: p.tier, placement: p.placement, edition: p.edition, achievement: 'PLACEMENT', distinctions: p.placement === 1 && r.unbeaten ? ['UNBEATEN'] : [], result: p.result || null, issued: already ? already.serial : null });
         }
       }
+      const rulesMod = require('./tournamentRules');
+      const unit = rulesMod.scoreUnit(rulesMod.resolveRules(cat, t.sport)); // basquete: pontos; futsal: gols
       for (const s of await topScorers(cat.id, r.matches)) {
         if (!s.userId) { c.blocked.push({ athlete: s.name, reason: 'Artilheiro sem conta ligada no elenco' }); continue; }
         const u = await prisma.user.findUnique({ where: { id: s.userId }, select: { id: true, name: true, cpf: true } });
         if (!u || !validCpf(u.cpf)) { c.blocked.push({ athlete: s.name, reason: 'Artilheiro sem CPF no cadastro' }); continue; }
         const already = await prisma.medal.findFirst({ where: { tournamentId, categoryId: cat.id, userId: u.id, achievement: 'TOP_SCORER' }, select: { serial: true } });
-        c.medals.push({ userId: u.id, athlete: u.name, entryId: s.entryId, tier: 'SPECIAL', placement: null, edition: { n: 1, total: 1 }, achievement: 'TOP_SCORER', distinctions: [], goals: s.goals, issued: already ? already.serial : null });
+        c.medals.push({ userId: u.id, athlete: u.name, entryId: s.entryId, tier: 'SPECIAL', placement: null, edition: { n: 1, total: 1 }, achievement: 'TOP_SCORER', distinctions: [], goals: s.goals, goalsText: rulesMod.plural(s.goals, unit), issued: already ? already.serial : null });
       }
     }
     cats.push(c);
@@ -255,7 +262,7 @@ async function issueTournament(tournamentId, user, opts = {}) {
           sport: t.sport, eventName: t.name, categoryName: c.name, gender: c.gender, achievement: m.achievement, tier: m.tier,
           placement: m.placement, distinctions: dist, edition: m.edition,
           eventDate: t.endDate || t.startDate || new Date(), location: opts.location || [t.city, t.state].filter(Boolean).join('/') || null,
-          result: m.goals ? { score: m.goals + ' gols', note: 'Artilharia oficial da categoria' } : (m.result ? { score: m.result.score, opponent: m.result.opponent, note: m.result.note } : null),
+          result: m.goals ? { score: m.goalsText || (m.goals + ' gols'), note: 'Artilharia oficial da categoria' } : (m.result ? { score: m.result.score, opponent: m.result.opponent, note: m.result.note } : null),
         });
         issued.push({ serial: medal.serial, athlete: m.athlete, tier: medal.tier, achievement: medal.achievement });
       } catch (e) {

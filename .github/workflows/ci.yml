@@ -130,7 +130,7 @@ jobs:
       - run: npx prisma generate
       - name: Bancos descartáveis (um por suíte)
         run: |
-          for d in t_db t_f2 t_f3 t_f4 t_f5 t_f6 t_rem t_f0 t_f1 t_f2id t_f3c; do
+          for d in t_db t_f2 t_f3 t_f4 t_f5 t_f6 t_rem t_f0 t_f1 t_f2id t_f3c t_f4c; do
             psql -c "create database $d" postgres
             DATABASE_URL=postgresql://postgres@localhost:55331/$d npx prisma db push --skip-generate
           done
@@ -148,6 +148,9 @@ jobs:
       - name: Liga Aberta F3 — criação em 2 minutos (assistente /quick numa transação, modelos prontos, racha com sorteio equilibrado, link do time, regras por categoria, duplicar)
         env: { DATABASE_URL: postgresql://postgres@localhost:55331/t_f3c }
         run: npm run test:liga-f3
+      - name: Liga Aberta F4 — compartilhar e voltar (artes feed/story com link e privado 404, basquete por pontos, aviso de fim de jogo idempotente, convite de quem jogou sem conta, WhatsApp só por preferência, Entrar neste time, SSE com volta)
+        env: { DATABASE_URL: postgresql://postgres@localhost:55331/t_f4c }
+        run: npm run test:liga-f4
       - name: Campeonato no banco — fluxos, HTTP e schema aditivo
         env: { DATABASE_URL: postgresql://postgres@localhost:55331/t_db }
         run: node scripts/test-tournament-db.js

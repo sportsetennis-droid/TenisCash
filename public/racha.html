@@ -95,6 +95,7 @@
   </div></nav>
 </div>
 <div class="sheet-bg" id="sheetbg"><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+<script src="/club/live-sse.js"></script>
 <script>
 (function(){
   'use strict';
@@ -126,6 +127,7 @@
       }
       document.getElementById('nav').classList.remove('hidden');
       V=r.json;document.getElementById('title').textContent=V.tournament.name;
+      startLive();if(LIVE_DOWN&&!POLL)poll();
       var p=V.session.dayKey.split('-');document.getElementById('day').textContent='Dia '+p[2]+'/'+p[1]+'/'+p[0]+' · '+V.confirmed+' confirmado(s)';
       render();
     }).catch(function(){app.innerHTML='<p class="muted">Sem conexão. Puxe para atualizar.</p>';});
@@ -259,6 +261,21 @@
     [].forEach.call(document.querySelectorAll('nav.bottom button'),function(b){b.classList.toggle('on',b.getAttribute('data-tab')===TAB);});
     if(!V)return;
     if(TAB==='times')times();else if(TAB==='placar')placar();else if(TAB==='artilharia')artilharia();else presenca();
+  }
+  // ---------- Liga F4: AO VIVO por SSE (placar de quem não está apitando atualiza sozinho) ----------
+  // Consulta de 20 s SÓ com o SSE caído e jogo em andamento. Não recarrega com campo em edição.
+  var LIVE=null,LIVE_DOWN=false,POLL=null,RT=null;
+  function hasLiveGame(){return !!(V&&V.games&&V.games.some(function(g){return g.status!=='FINISHED';}));}
+  function busy(){var a=document.activeElement;return !!(a&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName))||document.getElementById('sheetbg').classList.contains('on');}
+  function softLoad(){clearTimeout(RT);RT=setTimeout(function(){if(busy())return softLoad();load();},700);}
+  function poll(){clearTimeout(POLL);POLL=null;if(LIVE_DOWN&&hasLiveGame())POLL=setTimeout(function(){POLL=null;if(!busy())load();poll();},20000);}
+  function startLive(){
+    if(LIVE||!V||!V.tournament)return;
+    if(!window.ClubLiveSSE){LIVE_DOWN=true;poll();return;}
+    LIVE=window.ClubLiveSSE.connect(BASE+encodeURIComponent(V.tournament.id)+'/live',{
+      onMessage:function(m){if(m&&m.type!=='hello')softLoad();},
+      onState:function(ok){LIVE_DOWN=!ok;if(ok){clearTimeout(POLL);POLL=null;}else poll();}
+    });
   }
   load();
 })();

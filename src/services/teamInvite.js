@@ -41,7 +41,7 @@ async function rulesOfEntry(db, entry) {
 }
 
 // Gera o link do time (revoga o anterior ainda ativo). Coordenação ou admin do PRÓPRIO time.
-async function createInvite({ entryId, userId, userRole, days }) {
+async function createInvite({ entryId, userId, userRole, days, public: isPublic = false }) {
   const entry = await loadEntry(prisma, entryId);
   if (!(await roles.can(userId, userRole, entry.tournamentId, 'MANAGE_TEAM', { entryId: entry.id }))) {
     fail(403, 'só a organização ou o administrador deste time gera o link do time');
@@ -55,7 +55,8 @@ async function createInvite({ entryId, userId, userRole, days }) {
   const now = new Date();
   const [revoked] = await prisma.$transaction([
     prisma.teamInvite.updateMany({ where: { entryId: entry.id, revokedAt: null, expiresAt: { gt: now } }, data: { revokedAt: now } }),
-    prisma.teamInvite.create({ data: { tokenHash: hashToken(token), entryId: entry.id, tournamentId: entry.tournamentId, createdByUserId: userId, expiresAt } }),
+    prisma.teamInvite.updateMany({ where: { entryId: entry.id, publicToken: { not: null } }, data: { publicToken: null } }),
+    prisma.teamInvite.create({ data: { tokenHash: hashToken(token), entryId: entry.id, tournamentId: entry.tournamentId, createdByUserId: userId, expiresAt, publicToken: isPublic ? token : null } }),
   ]);
   const club = await require('./clubIdentity').clubOfEntry(entry.id);
   const teamName = club ? club.name : entry.name;
@@ -63,7 +64,73 @@ async function createInvite({ entryId, userId, userRole, days }) {
   const whatsappText = `Bora completar o elenco do ${teamName} em "${t.name}"! `
     + `Toque no link, entre com a sua conta e você entra no time — seus jogos e gols vão pro seu histórico: ${url}`;
   await audit.record({ tournamentId: entry.tournamentId, userId, action: 'team.invite.create', entity: 'TournamentEntry', entityId: entry.id, after: { expiresAt, days: d, revokedPrevious: revoked.count } });
-  return { ok: true, token, url, expiresAt, days: d, whatsappText, whatsappUrl: 'https://wa.me/?text=' + encodeURIComponent(whatsappText), team: { id: entry.id, name: teamName } };
+  return { ok: true, token, url, expiresAt, days: d, public: !!isPublic, whatsappText, whatsappUrl: 'https://wa.me/?text=' + encodeURIComponent(whatsappText), team: { id: entry.id, name: teamName } };
+}
+
+// Liga Aberta F4 — "Entrar neste time" na página pública. O time ESCOLHE mostrar o link
+// ativo: com public:true, quem tem permissão manda o token do link ativo (o servidor confere
+// pelo hash e guarda o token SÓ deste link público, para a página poder abrir); public:false
+// esconde. Gerar um link novo ou revogar também esconde o anterior.
+async function setPublic({ entryId, userId, userRole, token, public: isPublic }) {
+  const entry = await loadEntry(prisma, entryId);
+  if (!(await roles.can(userId, userRole, entry.tournamentId, 'MANAGE_TEAM', { entryId: entry.id }))) {
+    fail(403, 'só a organização ou o administrador deste time decide se o link aparece na página');
+  }
+  if (!isPublic) {
+    const r = await prisma.teamInvite.updateMany({ where: { entryId: entry.id, publicToken: { not: null } }, data: { publicToken: null } });
+    await audit.record({ tournamentId: entry.tournamentId, userId, action: 'team.invite.public', entity: 'TournamentEntry', entityId: entry.id, after: { public: false, cleared: r.count } });
+    return { ok: true, public: false };
+  }
+  if (!validTokenShape(token)) fail(400, 'informe o link ativo do time');
+  const inv = await prisma.teamInvite.findUnique({ where: { tokenHash: hashToken(token) } });
+  if (!inv || inv.entryId !== entry.id) fail(404, 'link não encontrado para este time');
+  if (statusOf(inv) !== 'valid') fail(410, 'este link não está mais ativo — gere um novo', { status: statusOf(inv) });
+  await prisma.$transaction([
+    prisma.teamInvite.updateMany({ where: { entryId: entry.id, publicToken: { not: null }, NOT: { id: inv.id } }, data: { publicToken: null } }),
+    prisma.teamInvite.update({ where: { id: inv.id }, data: { publicToken: token } }),
+  ]);
+  await audit.record({ tournamentId: entry.tournamentId, userId, action: 'team.invite.public', entity: 'TournamentEntry', entityId: entry.id, after: { public: true, expiresAt: inv.expiresAt } });
+  return { ok: true, public: true, url: publicBaseUrl() + '/convite-time/' + token, expiresAt: inv.expiresAt };
+}
+
+// O link PÚBLICO ativo deste time (permissão MANAGE_TEAM) → { active: {...} | null }. Só lê.
+async function currentPublic({ entryId, userId, userRole }) {
+  const entry = await loadEntry(prisma, entryId);
+  if (!(await roles.can(userId, userRole, entry.tournamentId, 'MANAGE_TEAM', { entryId: entry.id }))) {
+    fail(403, 'só a organização ou o administrador deste time vê o link do time');
+  }
+  const inv = await prisma.teamInvite.findFirst({
+    where: { entryId: entry.id, publicToken: { not: null }, revokedAt: null, expiresAt: { gt: new Date() } },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (!inv || hashToken(inv.publicToken) !== inv.tokenHash) return { active: null };
+  const t = await prisma.tournament.findUnique({ where: { id: entry.tournamentId }, select: { name: true } });
+  const club = await require('./clubIdentity').clubOfEntry(entry.id);
+  const teamName = club ? club.name : entry.name;
+  const url = publicBaseUrl() + '/convite-time/' + inv.publicToken;
+  const whatsappText = `Bora completar o elenco do ${teamName} em "${t ? t.name : 'campeonato'}"! `
+    + `Toque no link, entre com a sua conta e você entra no time — seus jogos e gols vão pro seu histórico: ${url}`;
+  return { active: { token: inv.publicToken, url, expiresAt: inv.expiresAt, public: true, whatsappText, whatsappUrl: 'https://wa.me/?text=' + encodeURIComponent(whatsappText), team: { id: entry.id, name: teamName } } };
+}
+
+// Links públicos ativos do torneio → { [entryId]: { url, expiresAt, full } }. Só lê.
+async function publicJoinLinks(tournamentId) {
+  const now = new Date();
+  const list = await prisma.teamInvite.findMany({
+    where: { tournamentId: String(tournamentId), publicToken: { not: null }, revokedAt: null, expiresAt: { gt: now } },
+    orderBy: { createdAt: 'desc' },
+    select: { entryId: true, publicToken: true, expiresAt: true, tokenHash: true },
+  });
+  const out = {};
+  for (const inv of list) {
+    if (out[inv.entryId] || hashToken(inv.publicToken) !== inv.tokenHash) continue;
+    const entry = await prisma.tournamentEntry.findUnique({ where: { id: inv.entryId }, select: { id: true, tournamentId: true, categoryId: true } });
+    if (!entry) continue;
+    const rules = await rulesOfEntry(prisma, entry);
+    const n = rules.maxRoster ? await prisma.rosterPlayer.count({ where: { entryId: entry.id, role: 'PLAYER' } }) : 0;
+    out[inv.entryId] = { url: '/convite-time/' + inv.publicToken, expiresAt: inv.expiresAt, full: !!(rules.maxRoster && n >= rules.maxRoster) };
+  }
+  return out;
 }
 
 // Revoga o link ativo do time.
@@ -72,7 +139,7 @@ async function revokeInvite({ entryId, userId, userRole }) {
   if (!(await roles.can(userId, userRole, entry.tournamentId, 'MANAGE_TEAM', { entryId: entry.id }))) {
     fail(403, 'só a organização ou o administrador deste time revoga o link');
   }
-  const r = await prisma.teamInvite.updateMany({ where: { entryId: entry.id, revokedAt: null }, data: { revokedAt: new Date() } });
+  const r = await prisma.teamInvite.updateMany({ where: { entryId: entry.id, revokedAt: null }, data: { revokedAt: new Date(), publicToken: null } });
   await audit.record({ tournamentId: entry.tournamentId, userId, action: 'team.invite.revoke', entity: 'TournamentEntry', entityId: entry.id, after: { revoked: r.count } });
   return { ok: true, revoked: r.count };
 }
@@ -146,4 +213,4 @@ async function join(token, { userId }) {
   return { ok: true, playerId: out.player.id, entryId: out.entry.id, tournamentId: out.entry.tournamentId, name: out.player.name };
 }
 
-module.exports = { TeamInviteError, createInvite, revokeInvite, inviteInfo, join, hashToken, DEFAULT_DAYS };
+module.exports = { TeamInviteError, createInvite, revokeInvite, setPublic, currentPublic, publicJoinLinks, inviteInfo, join, hashToken, DEFAULT_DAYS };

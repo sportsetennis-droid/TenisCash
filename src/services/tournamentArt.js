@@ -19,6 +19,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { prisma } = require('../middleware');
 const { publicDomain } = require('../config/publicUrl');
+const gameRules = require('./tournamentRules');
 
 const ORANGE = '#E5571E';
 const BLACK = '#0B0B0D';
@@ -174,16 +175,20 @@ function crest(entry, size) {
     return div({ width: size, height: size, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }, img(entry.logo, size, size));
   }
   const name = entry ? entry.name : '?';
+  // Liga F2/F4: time com clube e sem escudo usa as CORES do clube no selo
+  const pc = entry && HEX.test(entry.primaryColor || '') ? entry.primaryColor : '';
+  const sc = entry && HEX.test(entry.secondaryColor || '') ? entry.secondaryColor : WHITE;
   return div(
     {
       width: size, height: size, borderRadius: Math.round(size * 0.24), flexShrink: 0,
       alignItems: 'center', justifyContent: 'center',
-      backgroundColor: entry ? `hsl(${hue(name)}, 45%, 32%)` : PANEL2,
+      backgroundColor: pc || (entry ? `hsl(${hue(name)}, 45%, 32%)` : PANEL2),
       border: `${Math.max(2, Math.round(size * 0.025))}px solid rgba(255,255,255,0.18)`,
     },
-    text({ ...H, color: WHITE, fontSize: Math.round(size * 0.4) }, entry ? initials(name) : '?')
+    text({ ...H, color: pc ? sc : WHITE, fontSize: Math.round(size * 0.4) }, entry ? initials(name) : '?')
   );
 }
+const HEX = /^#[0-9A-Fa-f]{6}$/;
 
 function fmtWhen(d, opts) {
   try {
@@ -296,16 +301,20 @@ function tplResultado(fmt, d) {
     : null;
   // artilheiros do jogo (lance a lance)
   const maxList = fmt.rows.scorersList;
-  const goals = (m.timeline || []).filter((t) => t.type === 'GOAL');
+  // Liga F4: lance que marca ponto pela regra da categoria (futsal: gol; basquete: cestas
+  // de 1/2/3 com o valor; vôlei: set é do time → sem lista de autores)
+  const scoring = m.scoring || { GOAL: 1 };
+  const unit = m.unit || { one: 'gol', many: 'gols', short: 'GOLS' };
+  const goals = unit.short === 'SETS' ? [] : (m.timeline || []).filter((t) => scoring[t.type]);
   const listSide = (sideKey) => {
     const g = goals.filter((x) => x.side === sideKey);
     const rows = g.slice(0, maxList).map((x) =>
       div({ alignItems: 'center', gap: px(12, fmt), justifyContent: sideKey === 'home' ? 'flex-start' : 'flex-end' },
         div({ width: px(16, fmt), height: px(16, fmt), borderRadius: 999, backgroundColor: ORANGE }),
-        text({ ...B, color: WHITE, fontSize: px(36, fmt) }, cut(x.player || 'Gol', 22) + (x.minute != null ? `  ${x.minute}'` : ''))
+        text({ ...B, color: WHITE, fontSize: px(36, fmt) }, cut(x.player || (unit.short === 'GOLS' ? 'Gol' : 'Cesta'), 22) + (unit.short === 'PTS' ? `  +${scoring[x.type]}` : '') + (x.minute != null ? `  ${x.minute}'` : ''))
       )
     );
-    if (g.length > maxList) rows.push(text({ ...R, color: MUTED, fontSize: px(30, fmt) }, `+${g.length - maxList} gol(s)`));
+    if (g.length > maxList) rows.push(text({ ...R, color: MUTED, fontSize: px(30, fmt) }, unit.short === 'PTS' ? `+${g.length - maxList} cesta(s)` : `+${g.length - maxList} gol(s)`));
     return div({ flexDirection: 'column', gap: px(10, fmt), width: '48%', alignItems: sideKey === 'home' ? 'flex-start' : 'flex-end' }, rows);
   };
   const scorers = maxList && goals.length
@@ -410,18 +419,19 @@ function tplClassificacao(fmt, d) {
 }
 
 function tplArtilharia(fmt, d) {
+  const unitA = d.unit || { one: 'gol', many: 'gols', short: 'GOLS' };
   const rows = d.ranking.slice(0, fmt.rows.scorers);
   const first = rows[0];
   const big = first && fmt !== FORMATS.og
     ? div({ alignItems: 'center', gap: px(30, fmt), padding: px(34, fmt), borderRadius: px(28, fmt), backgroundColor: ORANGE, marginBottom: px(26, fmt) },
         crest(first.entry, px(150, fmt)),
         div({ flexDirection: 'column', flexGrow: 1 },
-          text({ ...B, fontSize: px(32, fmt), color: 'rgba(255,255,255,0.85)', letterSpacing: 2 }, 'ARTILHEIRO'),
+          text({ ...B, fontSize: px(32, fmt), color: 'rgba(255,255,255,0.85)', letterSpacing: 2 }, unitA.short === 'PTS' ? 'CESTINHA' : 'ARTILHEIRO'),
           text({ ...H, fontSize: px(74, fmt), color: WHITE, lineHeight: 1 }, up(cut((first.number != null ? first.number + ' ' : '') + first.name, 22))),
           text({ ...B, fontSize: px(34, fmt), color: WHITE, opacity: 0.9 }, up(cut(first.team, 30)))),
         div({ flexDirection: 'column', alignItems: 'center' },
           text({ ...H, fontSize: px(150, fmt), color: WHITE, lineHeight: 1 }, first.goals),
-          text({ ...B, fontSize: px(30, fmt), color: WHITE }, first.goals === 1 ? 'GOL' : 'GOLS')))
+          text({ ...B, fontSize: px(30, fmt), color: WHITE }, up(first.goals === 1 ? unitA.one : unitA.many))))
     : null;
   const rest = (big ? rows.slice(1) : rows).map((r, i) => {
     const pos = (big ? i + 2 : i + 1);
@@ -433,8 +443,8 @@ function tplArtilharia(fmt, d) {
         text({ ...R, fontSize: px(28, fmt), color: MUTED }, cut(r.team, 34))),
       text({ ...H, fontSize: px(64, fmt), color: WHITE }, r.goals));
   });
-  return frame(fmt, d, { eyebrow: 'Artilharia', title: d.tournamentName, subtitle: d.categoryName || 'Todas as categorias' }, [
-    rows.length ? div({ flexDirection: 'column' }, big, rest) : div({ flexGrow: 1, alignItems: 'center', justifyContent: 'center' }, text({ ...H, fontSize: px(60, fmt), color: MUTED }, 'SEM GOLS AINDA')),
+  return frame(fmt, d, { eyebrow: unitA.short === 'PTS' ? 'Cestinhas (pontos)' : 'Artilharia', title: d.tournamentName, subtitle: d.categoryName || 'Todas as categorias' }, [
+    rows.length ? div({ flexDirection: 'column' }, big, rest) : div({ flexGrow: 1, alignItems: 'center', justifyContent: 'center' }, text({ ...H, fontSize: px(60, fmt), color: MUTED }, 'SEM ' + up(unitA.many) + ' AINDA')),
   ]);
 }
 
@@ -533,7 +543,7 @@ async function entryView(e) {
   if (!e) return null;
   // Liga F2: nome e escudo do CLUBE quando o time tem clube (fallback: campos da inscrição)
   if (e.id && e.entryName === undefined) await require('./clubIdentity').brand(e);
-  return { id: e.id, name: e.name, logo: e.logoUrl ? await loadImage(e.logoUrl, 300) : '' };
+  return { id: e.id, name: e.name, logo: e.logoUrl ? await loadImage(e.logoUrl, 300) : '', primaryColor: e.primaryColor || null, secondaryColor: e.secondaryColor || null };
 }
 
 const MATCH_SELECT = {
@@ -543,14 +553,16 @@ const MATCH_SELECT = {
   homeSourceLabel: true, awaySourceLabel: true,
   homeEntry: { select: { id: true, name: true, logoUrl: true } },
   awayEntry: { select: { id: true, name: true, logoUrl: true } },
-  category: { select: { name: true } },
+  category: { select: { name: true, gameRules: true } },
 };
 
-async function matchView(m) {
+async function matchView(m, sport) {
   const live = require('./tournamentLive');
   const ld = (await live.liveDataFor([m]))[m.id];
+  const rules = gameRules.resolveRules(m.category, sport);
   return {
     ...m,
+    scoring: rules.scoring, unit: gameRules.scoreUnit(rules),
     categoryName: m.category ? m.category.name : '',
     homeEntry: await entryView(m.homeEntry),
     awayEntry: await entryView(m.awayEntry),
@@ -577,7 +589,7 @@ async function buildData(t, tipo, q) {
   const catId = q.categoryId || q.categoria || null;
   let category = null;
   if (catId) {
-    category = await prisma.tournamentCategory.findFirst({ where: { id: String(catId), tournamentId: t.id }, select: { id: true, name: true } });
+    category = await prisma.tournamentCategory.findFirst({ where: { id: String(catId), tournamentId: t.id }, select: { id: true, name: true, gameRules: true } });
     if (!category) throw new ArtError(404, 'categoria não encontrada');
   }
 
@@ -594,7 +606,7 @@ async function buildData(t, tipo, q) {
     } else {
       throw new ArtError(400, 'informe matchId');
     }
-    const mv = await matchView(m);
+    const mv = await matchView(m, t.sport);
     return { ...base, match: mv, categoryName: mv.categoryName };
   }
 
@@ -614,7 +626,7 @@ async function buildData(t, tipo, q) {
     }
     const ms = await prisma.tournamentMatch.findMany({ where, orderBy: [{ scheduledAt: 'asc' }, { ordering: 'asc' }], take: 30, select: MATCH_SELECT });
     const matches = [];
-    for (const m of ms.slice(0, 12)) matches.push(await matchView(m));
+    for (const m of ms.slice(0, 12)) matches.push(await matchView(m, t.sport));
     // os que ficaram de fora só contam (sem carregar escudo)
     for (const m of ms.slice(12)) matches.push({ ...m, categoryName: m.category ? m.category.name : '' });
     return { ...base, matches, agendaTitle: title, agendaSubtitle: [subtitle, category && category.name].filter(Boolean).join(' · '), multiDay };
@@ -640,6 +652,8 @@ async function buildData(t, tipo, q) {
       byG.get(g).push(s);
     }
     await require('./clubIdentity').brandNested(standings, ['entry']); // Liga F2: nome do clube
+    // Liga F4: escudo (do clube, quando tem) na tabela; sem escudo o selo usa as cores do clube
+    for (const r of standings.slice(0, 24)) if (r.entry && r.entry.logoUrl && !r.entry.logo) r.entry.logo = await loadImage(r.entry.logoUrl, 160);
     let groups = [...byG.entries()].map(([name, rows]) => ({ name, rows }));
     if (q.grupo) groups = groups.filter((g) => g.name.toLowerCase() === String(q.grupo).toLowerCase());
     if (!groups.length) throw new ArtError(404, 'grupo não encontrado');
@@ -654,7 +668,10 @@ async function buildData(t, tipo, q) {
     const ents = await prisma.tournamentEntry.findMany({ where: { id: { in: eids } }, select: { id: true, name: true, logoUrl: true } });
     const eMap = {};
     for (const e of ents) eMap[e.id] = await entryView(e);
-    return { ...base, categoryName: category ? category.name : '', ranking: top.map((r) => ({ name: r.name, number: r.number, team: r.team, goals: r.goals, entry: eMap[r.entryId] || { name: r.team } })) };
+    // unidade pela regra da categoria (sem categoria: a 1ª do torneio; legado = gols)
+    const catForUnit = category || await prisma.tournamentCategory.findFirst({ where: { tournamentId: t.id }, select: { gameRules: true } }).catch(() => null);
+    const unit = gameRules.scoreUnit(gameRules.resolveRules(catForUnit, t.sport));
+    return { ...base, unit, categoryName: category ? category.name : '', ranking: top.map((r) => ({ name: r.name, number: r.number, team: r.team, goals: r.goals, entry: eMap[r.entryId] || { name: r.team } })) };
   }
 
   if (tipo === 'campeao') {
@@ -662,7 +679,7 @@ async function buildData(t, tipo, q) {
     const fin = await prisma.tournamentMatch.findFirst({ where: { categoryId: category.id, stage: 'FINAL' }, orderBy: { ordering: 'asc' }, select: MATCH_SELECT });
     let champion = null; let runnerUp = null; let finalV = null;
     if (fin && ['FINISHED', 'WALKOVER'].includes(fin.status) && fin.winnerEntryId) {
-      finalV = await matchView(fin);
+      finalV = await matchView(fin, t.sport);
       champion = finalV.homeEntry && finalV.homeEntry.id === fin.winnerEntryId ? finalV.homeEntry : finalV.awayEntry;
       runnerUp = champion === finalV.homeEntry ? finalV.awayEntry : finalV.homeEntry;
     } else if (!fin) {
