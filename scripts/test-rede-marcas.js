@@ -13,6 +13,7 @@
 process.env.DATABASE_URL = process.env.RNA_TEST_DATABASE_URL || 'postgresql://postgres@localhost:55432/rede_marcas';
 if (!/@(localhost|127\.0\.0\.1)(:\d+)?\//.test(process.env.DATABASE_URL)) { console.error('Recusado: use só banco DESCARTÁVEL local.'); process.exit(2); }
 process.env.RNA_RELOGIO = '0';
+process.env.CUIDADOR_COR_OFICIAL = '0'; // sem rede no teste: a busca no site da marca é injetada onde é testada
 delete process.env.RNA_ATIVA;
 const assert = require('assert');
 const registro = require('../src/ai/rede/registro');
@@ -352,10 +353,10 @@ async function partB() {
     assert.deepStrictEqual(pl('CAMISETA BOTAFOGO MASCULINA 10/12', 'A CLASSIFICAR', null, { tamanhos: ['10', '12'] }), { category: 'Vestuário' });
     assert.deepStrictEqual(pl('TENIS NIKE MASCULINO', 'Tênis', null, { tamanhos: ['T-7891234567890'] }), {}, 'grade só com placeholder não prova adulto');
     assert.deepStrictEqual(pl('TENIS NIKE PEGASUS 41 MASCULINO', 'Tênis', null, { tamanhos: ['39', '40'] }), { subcategory: 'Homem' }, 'número de modelo no nome não é grade');
-    assert.deepStrictEqual(pl('CAMISETA INFANTIL 8A MASCULINA', 'Vestuário', null, { tamanhos: ['8A'] }), { subcategory: 'Menino' });
-    assert.deepStrictEqual(pl('TENIS CROCS MASCULINO', 'Tênis', null, { tamanhos: ['27/28', '29/30'] }), {}, 'faixa infantil na grade não prova adulto');
-    assert.deepStrictEqual(pl('MEIA LUPO CANO CURTO MASCULINA', 'Acessórios', null, { tamanhos: ['19/22', '23/26'] }), {}, 'meia usa a numeração do pé');
-    assert.deepStrictEqual(pl('MEIA LUPO MASCULINA 23/26', 'Acessórios', null, { tamanhos: ['U'] }), {});
+    assert.deepStrictEqual(pl('CAMISETA INFANTIL 8A MASCULINA', 'Vestuário', null, { tamanhos: ['8A'] }), { subcategory: 'Menino' });
+    assert.deepStrictEqual(pl('TENIS CROCS MASCULINO', 'Tênis', null, { tamanhos: ['27/28', '29/30'] }), {}, 'faixa infantil na grade não prova adulto');
+    assert.deepStrictEqual(pl('MEIA LUPO CANO CURTO MASCULINA', 'Acessórios', null, { tamanhos: ['19/22', '23/26'] }), {}, 'meia usa a numeração do pé');
+    assert.deepStrictEqual(pl('MEIA LUPO MASCULINA 23/26', 'Acessórios', null, { tamanhos: ['U'] }), {});
     assert.deepStrictEqual(pl('MEIA LUPO MASCULINA', 'Acessórios', null, { tamanhos: ['39/43'] }), { subcategory: 'Homem' }, 'meia adulta 39/43 preenche');
     // o que preenche não é acusado pela régua do lugar certo (regra 30)
     const { conferirLocal } = require('../src/ai/rede/regras/local-certo');
@@ -408,6 +409,52 @@ async function partB() {
     const r = await desc.disparar({ sinal: f, ler, pensar });
     assert.deepStrictEqual(r, []); assert.strictEqual(chamou, 0, 'cota do dia cheia: não chama IA');
     await prisma.aIApproval.deleteMany({ where: { type: 'rna_descricao' } });
+  });
+  await t('cor pelo site da marca (dono 18/11): busca só o código exato, item vence produto, conflito e palavra desconhecida não gravam', async () => {
+    const { buscarCorOficial } = require('../src/services/corOficialMarca');
+    const site = (lista) => async () => ({ ok: true, json: async () => lista });
+    const prod = (ean, corItem, corProd) => ({ productName: 'X', link: 'https://www.fila.com.br/x/p', ...(corProd ? { Cor: [corProd] } : {}), items: [{ ean, ...(corItem ? { Cor: [corItem] } : {}) }] });
+    let r = await buscarCorOficial({ marca: 'FILA', eans: ['7909946138507'] }, { fetchFn: site([prod('7909946138507', null, 'Cinza Gelo/Preto/Cinza')]) });
+    assert.ok(r.ok); assert.strictEqual(r.cor, 'Cinza Gelo/Preto/Cinza');
+    r = await buscarCorOficial({ marca: 'PENALTY', eans: ['7909342615794'] }, { fetchFn: site([{ ...prod('7909342615794', 'Azul', null), 'Cor predominante': ['Branco'] }]) });
+    assert.strictEqual(r.cor, 'Azul', 'cor do item (código) vence; cor predominante nunca é usada');
+    r = await buscarCorOficial({ marca: 'FILA', eans: ['7909946138507'] }, { fetchFn: site([prod('7909946999999', null, 'Azul')]) });
+    assert.ok(!r.ok, 'item com OUTRO código não vale');
+    let n = 0; r = await buscarCorOficial({ marca: 'FILA', eans: ['7909946138507', '7909946138521'] }, { fetchFn: async () => ({ ok: true, json: async () => [prod(n++ ? '7909946138521' : '7909946138507', null, n > 1 ? 'Azul' : 'Preto')] }) });
+    assert.ok(!r.ok && /conflito/.test(r.motivo), 'tamanhos com cores diferentes no site = conflito');
+    r = await buscarCorOficial({ marca: 'PUMA', eans: ['4099686000001'] }, { fetchFn: site([prod('4099686000001', 'Fizzy Apple', null)]) });
+    assert.ok(!r.ok && /fora do dicionário/.test(r.motivo), 'nome comercial sem cor em português não grava');
+    r = await buscarCorOficial({ marca: 'MARCA SEM SITE', eans: ['7909946138507'] }, { fetchFn: site([]) });
+    assert.ok(!r.ok);
+    r = await buscarCorOficial({ marca: 'FILA', eans: ['7909946138507'] }, { fetchFn: async () => { throw new Error('rede'); } });
+    assert.ok(!r.ok, 'site fora do ar: não grava nada');
+  });
+  await t('cor pelo site da marca: o gerente troca só cor vazia ou sigla, guarda a antiga, não repete busca e não atropela edição', async () => {
+    const cuidador = require('../src/services/cuidadorDeMarca');
+    const A = await prod({ sku: 'C1', name: 'TENIS FILA FASTNESS MASCULINO', brand: 'FILA', category: 'Tênis', subcategory: 'Homem', price: 300, costPrice: 150, aiContext: { color: 'PTO/VE' } }, [{ size: '39', barcode: '7909946138538', stock: 1 }]);
+    await loc(L.LOJA04, A.S['39'], 1);
+    const B2 = await prod({ sku: 'C2', name: 'TENIS FILA COMET 2 FEMININO', brand: 'FILA', category: 'Tênis', subcategory: 'Feminino', price: 300, costPrice: 150, aiContext: { color: 'Azul' } }, [{ size: '37', barcode: '7909946168320', stock: 1 }]);
+    await loc(L.LOJA04, B2.S['37'], 1);
+    const C = await prod({ sku: 'C3', name: 'TENIS FILA RACER', brand: 'FILA', category: 'Tênis', subcategory: 'Homem', price: 300, costPrice: 150, aiContext: {} }, [{ size: '40', barcode: '7909946134608', stock: 1 }]);
+    await loc(L.LOJA04, C.S['40'], 1);
+    const chamados = [];
+    const buscarCor = async ({ eans }) => { chamados.push(eans[0]); return eans.includes('7909946138538') ? { ok: true, cor: 'Cinza Gelo/Preto/Cinza', bruto: 'Cinza Gelo/Preto/Cinza', fonte: 'https://www.fila.com.br/x/p', ean: '7909946138538' } : { ok: false, motivo: 'código não encontrado no site oficial' }; };
+    const r = await cuidador.cuidar(prisma, { marca: 'FILA', buscarCor });
+    const a = await prisma.product.findUnique({ where: { id: A.id } });
+    assert.strictEqual(a.aiContext.color, 'Cinza Gelo/Preto/Cinza'); assert.strictEqual(a.aiContext.colorRaw, 'PTO/VE', 'guarda a cor antiga');
+    assert.ok(a.aiContext.colorEvidencia && /fila\.com\.br/.test(a.aiContext.colorEvidencia.fonte), 'registra a fonte');
+    assert.ok(!chamados.includes('7909946168320'), 'cor já por extenso: não busca nem troca');
+    assert.strictEqual((await prisma.product.findUnique({ where: { id: B2.id } })).aiContext.color, 'Azul');
+    const c = await prisma.product.findUnique({ where: { id: C.id } });
+    assert.ok(!c.aiContext.color && c.aiContext.corOficialTentativa, 'sem resposta: não inventa, registra a tentativa');
+    assert.ok(r.cores >= 1);
+    chamados.length = 0; await cuidador.cuidar(prisma, { marca: 'FILA', buscarCor });
+    assert.ok(!chamados.includes('7909946134608'), 'não repete a mesma busca sem resposta por 7 dias');
+    // corrida: o dono edita a cor durante a busca → a busca não atropela
+    const D = await prod({ sku: 'C4', name: 'TENIS FILA DAILY', brand: 'FILA', category: 'Tênis', subcategory: 'Homem', price: 300, costPrice: 150, aiContext: { color: 'BCO/VERA' } }, [{ size: '41', barcode: '7909946140001', stock: 1 }]);
+    await loc(L.LOJA04, D.S['41'], 1);
+    await cuidador.cuidar(prisma, { marca: 'FILA', buscarCor: async () => { await prisma.product.update({ where: { id: D.id }, data: { aiContext: { color: 'Branco/Verde Abeto' } } }); return { ok: true, cor: 'Branco/Verde', bruto: 'x', fonte: 'f', ean: '7909946140001' }; } });
+    assert.strictEqual((await prisma.product.findUnique({ where: { id: D.id } })).aiContext.color, 'Branco/Verde Abeto', 'edição do meio vence');
   });
   await limpar();
   await prisma.$disconnect();

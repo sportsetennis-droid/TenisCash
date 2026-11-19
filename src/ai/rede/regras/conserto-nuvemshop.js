@@ -49,7 +49,10 @@ const PASSOS = [
     como: 'Gerar descrição técnica só com dados reais do card (marca, modelo, cor, material da NF-e) — o mini agente conteudo.descricao propõe e o dono aprova.',
     quem: 'conteudo.descricao', dono: true },
   { id: 'cor', rx: /sem cor|cor abreviada|cor crua/, titulo: 'Cor ausente, abreviada ou crua',
-    como: 'Escrever a cor POR EXTENSO e em português (Branco/Rosa, nunca BR/RO). Fonte: NF-e literal, etiqueta da caixa ou página oficial da referência. Sigla sem evidência fica pendente (colorReview), não se chuta.',
+    como: 'Escrever a cor POR EXTENSO e em português (Branco/Rosa, nunca BR/RO). Ordem: 1) NF-e literal (palavra inteira ou sigla certa do dicionário); ' +
+      '2) SE A NF-E NÃO TRAZ, PESQUISAR NO SITE OFICIAL DA MARCA pelo código de barras exato (/api/catalog_system/pub/products/search?fq=alternateIds_Ean:<EAN13>; FILA/Umbro fq=productId:<cProd>; ' +
+      'Puma/Asics na Drastosa; Adidas na página da REF; fora de linha no web.archive.org) — só o item do MESMO código, a cor do item, nunca "cor predominante"; o gerente de marca já faz isso sozinho ' +
+      'de hora em hora (src/services/corOficialMarca.js); 3) etiqueta da caixa (loja). Sigla confirmada no site entra no dicionário da marca (src/services/colorName.js, com a fonte). Sem evidência fica pendente (colorReview), não se chuta.',
     quem: 'cadastro', dono: false, usaFicha: 'cor' },
   { id: 'classificacao', rx: /(categoria|subcategoria|modalidade|especialidade) ausente/, titulo: 'Falta uma das 4 classificações',
     como: 'Preencher Categoria + Sub + Modalidade + Especialidade (regra inquebrável: sem as 4 não sobe).',
