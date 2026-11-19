@@ -24,10 +24,10 @@ async function cadastroIncompleto(ler, marcasDoRelatorio, quando) {
   if (!lojas.length) return [];
   const rows = await ler.$queryRawUnsafe(
     'SELECT p.id, p.name, p.brand, ' +
-    "  (coalesce(regexp_replace(p.\"longDescription\", '\s', '', 'g'), '') = '' AND coalesce(regexp_replace(p.\"shortDescription\", '\s', '', 'g'), '') = '') AS sem_descricao, " +
+    "  (coalesce(regexp_replace(p.\"longDescription\", '\\s', '', 'g'), '') = '' AND coalesce(regexp_replace(p.\"shortDescription\", '\\s', '', 'g'), '') = '') AS sem_descricao, " +
     // mesma conta do portão (usableImageCount): principal + galeria, válidas, sem repetir, sem Instagram/crawler
     "  (SELECT count(DISTINCT md5(btrim(x))) FROM (SELECT p.\"imageUrl\" AS x UNION ALL SELECT jsonb_array_elements_text(CASE WHEN jsonb_typeof(p.\"imageUrls\"::jsonb) = 'array' THEN p.\"imageUrls\"::jsonb ELSE '[]'::jsonb END)) t " +
-    "     WHERE btrim(x) ~* '^(https?://|data:image/[a-z0-9.+-]+.base64,)' AND btrim(x) !~* '(lookaside\.instagram\.com|/crawler/|google_widget|/seo/)') AS n_fotos " +
+    "     WHERE btrim(x) ~* '^(https?://|data:image/[a-z0-9.+-]+.base64,)' AND btrim(x) !~* '(lookaside\\.instagram\\.com|/crawler/|google_widget|/seo/)') AS n_fotos " +
     'FROM "Product" p WHERE p.active = true ' +
     ' AND EXISTS (SELECT 1 FROM "StoreStock" ss JOIN "ProductSize" ps ON ps.id = ss."productSizeId" WHERE ps."productId" = p.id AND ss.stock > 0 AND ss."storeId" = ANY($1::text[])) ' +
     ' AND NOT EXISTS (SELECT 1 FROM "NuvemshopProductMapping" m WHERE m."localProductId" = p.id AND m."syncStatus" <> \'hidden-invalid\')', lojas);

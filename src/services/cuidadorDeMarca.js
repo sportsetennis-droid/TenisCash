@@ -35,10 +35,24 @@ const PUBLICO_DA_ARVORE = {
 const MODALIDADE = { FUTSAL: 'Futsal', SOCIETY: 'Society', CAMPO: 'Campo' };
 
 // numeração infantil escrita no nome ("28/33") ou na grade do card (calçado < 34): nunca vira adulto
-function temNumeracaoInfantil(p) {
-  const nums = [...norm(p.name).matchAll(/(?<![\d.,])(\d{2})(?:\s*[/-]\s*(\d{2}))?(?![\d.,])/g)].flatMap((m) => [m[1], m[2]]).filter(Boolean).map(Number);
-  if (nums.some((n) => n >= 15 && n <= 33)) return true;
-  return (p.tamanhos || []).some((t) => { const n = Number(String(t).replace(',', '.')); return Number.isFinite(n) && n >= 15 && n < 34; });
+// Numeração infantil: calçado 15–33; roupa/acessório 1–16 ou idade ("10A"). Vale no nome e na grade.
+function temNumeracaoInfantil(p, cat = norm(p.category)) {
+  const calcado = cat === 'TENIS' || cat === 'CHUTEIRAS';
+  const infantilNum = (n) => (calcado ? n >= 15 && n <= 33 : n >= 1 && n <= 16);
+  const nome = norm(p.name);
+  if (/(?<![A-Z0-9])\d{1,2}\s?A(?![A-Z0-9])/.test(nome)) return true; // "10A", "7A/14A"
+  const nums = [...nome.matchAll(/(?<![\d.,])(\d{1,2})(?:\s*[/-]\s*(\d{1,2}))?(?![\d.,])/g)].flatMap((m) => [m[1], m[2]]).filter(Boolean).map(Number);
+  // no nome, só faixa "a/b" conta como grade (número solto pode ser modelo: "PEGASUS 41", "GEL 27")
+  const faixas = [...nome.matchAll(/(?<![\d.,])(\d{1,2})\s*[/-]\s*(\d{1,2})(?![\d.,])/g)].flatMap((m) => [Number(m[1]), Number(m[2])]);
+  if (faixas.some(infantilNum)) return true;
+  if (calcado && nums.some((n) => n >= 15 && n <= 33)) return true;
+  return (p.tamanhos || []).some((t) => { const s = String(t).trim().toUpperCase(); if (/^\d{1,2}A$/.test(s)) return true; const n = Number(s.replace(',', '.')); return Number.isFinite(n) && infantilNum(n); });
+}
+// Prova de ADULTO pela grade: pelo menos um tamanho real legível (não placeholder T-/Único-) e nenhum infantil.
+function gradeProvaAdulto(p, cat = norm(p.category)) {
+  const reais = (p.tamanhos || []).map((t) => String(t || '').trim()).filter((t) => t && !/^T-/i.test(t) && !/^(U|UN|UNICO|ÚNICO|UNICA)$/i.test(t) && !/^[uú]nico-/i.test(t));
+  if (!(p.tamanhos || []).length) return !(cat === 'TENIS' || cat === 'CHUTEIRAS' || cat === 'VESTUARIO'); // acessório sem grade: ok
+  return reais.length > 0 && !temNumeracaoInfantil(p, cat);
 }
 
 // O que dá para preencher deste card, só com prova escrita. Devolve { mudancas, provas }.
@@ -57,7 +71,7 @@ function planejar(p) {
     const pub = publicoDoNome(p.name);
     let chaveArv = null;
     if (pub.infantil) chaveArv = pub.genero ? 'infantil_' + pub.genero : 'infantil_sem_genero';
-    else if (pub.genero && !temNumeracaoInfantil(p)) chaveArv = pub.genero;
+    else if (pub.genero && gradeProvaAdulto(p, cat)) chaveArv = pub.genero; // adulto só com grade real e sem numeração infantil
     const sub = chaveArv ? arvore[chaveArv] : null; // sem nó na árvore (ex.: chuteira feminina) = não preenche
     if (sub) { mudancas.subcategory = sub; provas.push(`público ${sub}: nome diz ${pub.infantil ? 'infantil' + (pub.genero ? ' ' + pub.genero : '') : pub.genero}`); }
   }
@@ -140,4 +154,4 @@ function iniciarCuidadorDeMarca(db) {
 }
 function estadoCuidadorDeMarca() { return JSON.parse(JSON.stringify(state)); }
 
-module.exports = { temNumeracaoInfantil, planejar, pendencias, candidatos, cuidar, iniciarCuidadorDeMarca, estadoCuidadorDeMarca };
+module.exports = { temNumeracaoInfantil, gradeProvaAdulto, planejar, pendencias, candidatos, cuidar, iniciarCuidadorDeMarca, estadoCuidadorDeMarca };

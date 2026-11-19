@@ -80,8 +80,15 @@ module.exports = {
     }
 
     // não gasta IA se já existe proposta pendente (ou recusada há pouco) para este card (auditoria 18/11)
-    const jaTem = await ler.aIApproval.findFirst({ where: { type: 'rna_descricao', status: { in: ['pending', 'rejected'] }, payload: { path: ['rna', 'chave'], equals: 'descricao:' + p.id } }, select: { id: true } }).catch(() => null);
+    const diasRecusa = Number(process.env.RNA_ESPERA_REJEITADA_DIAS || 14);
+    const jaTem = await ler.aIApproval.findFirst({ where: { type: 'rna_descricao', payload: { path: ['rna', 'chave'], equals: 'descricao:' + p.id },
+      OR: [{ status: 'pending' }, { status: 'rejected', decidedAt: { gte: new Date(Date.now() - diasRecusa * 86400000) } }] }, select: { id: true } }).catch(() => null);
     if (jaTem) return [];
+    // cota do dia deste agente cheia: a proposta não seria criada — não gasta IA à toa
+    const inicioDia = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Fortaleza' })); inicioDia.setHours(0, 0, 0, 0);
+    const desdeHoje = new Date(Date.now() - (new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Fortaleza' })) - inicioDia));
+    const feitasHoje = await ler.aIApproval.count({ where: { type: { startsWith: 'rna_' }, createdAt: { gte: desdeHoje }, payload: { path: ['rna', 'neuronio'], equals: 'conteudo.descricao' } } }).catch(() => 0);
+    if (feitasHoje >= Number(process.env.RNA_PROPOSTAS_DIA_NEURONIO || 20)) return [];
     let textoFinal = null; let origem = 'modelo-fixo'; let recusado = null;
     if (pensar) {
       const r = await pensar({
