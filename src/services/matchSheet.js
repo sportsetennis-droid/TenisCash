@@ -180,12 +180,19 @@ async function setOfficials(matchId, body = {}) {
 // Fecha a súmula: conta os gols (eventos GOAL) e aplica o placar pelo engine
 // (vira FINISHED, recalcula classificação e avança a chave). Se vier empate no
 // mata-mata, o desempate por PÊNALTIS define o vencedor (sem contar como gol).
+// Liga F1: jogo JÁ ENCERRADO não é regravado sem opts.allowCorrection (a rota só
+// liga isso para quem tem CORRECT_RESULT = fundador/coordenador/admin, e audita).
+const isClosedStatus = (st) => st === 'FINISHED' || st === 'WALKOVER';
+
 async function finalizeMatch(matchId, opts = {}) {
   const match = await prisma.tournamentMatch.findUnique({
     where: { id: matchId },
-    select: { id: true, homeEntryId: true, awayEntryId: true, stage: true },
+    select: { id: true, homeEntryId: true, awayEntryId: true, stage: true, status: true },
   });
   if (!match) return { ok: false, error: 'partida não encontrada' };
+  if (isClosedStatus(match.status) && !opts.allowCorrection) {
+    return { ok: false, code: 409, error: 'súmula já fechada — só a coordenação corrige (fica registrado na auditoria)' };
+  }
   if (!match.homeEntryId || !match.awayEntryId) return { ok: false, error: 'partida sem os dois times definidos' };
 
   // Arbitragem opcional junto do fechamento
@@ -305,4 +312,4 @@ async function playerStats(tournamentId, opts = {}) {
   return rows;
 }
 
-module.exports = { buildSheet, addEvent, deleteEvent, finalizeMatch, setOfficials, setLineup, playerStats };
+module.exports = { buildSheet, addEvent, deleteEvent, finalizeMatch, setOfficials, setLineup, playerStats, isClosedStatus };

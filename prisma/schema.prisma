@@ -3854,7 +3854,13 @@ model Tournament {
   seriesName String? // ex: "Futsal Master Cup"
   edition    String? // ex: "2026" | "II"
 
+  // Liga Aberta F1: public (vitrine + link) | unlisted (só por link) | private (só membros)
   visibility String   @default("public")
+  // Arquivamento reversível (excluir = arquivar; fundador/admin restaura em até 30 dias)
+  archivedAt DateTime?
+  archivedBy String?
+  // Exigir árbitro escalado em cada jogo (false = qualquer árbitro do torneio apita jogo sem escala)
+  requireRefereeAssignment Boolean @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -4194,6 +4200,24 @@ model SuspensionOverride {
   @@index([tournamentId])
   @@index([matchId])
   @@index([playerId])
+}
+
+// Liga Aberta F1 — auditoria do torneio: quem, quando, o quê, antes e depois.
+// action: result.set | result.correct | sheet.finalize | sheet.correct | bracket.generate |
+// bracket.knockout | role.add | role.remove | official.add | official.remove |
+// tournament.archive | tournament.restore | tournament.transfer | tournament.visibility
+model TournamentAudit {
+  id           String   @id @default(cuid())
+  tournamentId String
+  userId       String?
+  action       String
+  entity       String?
+  entityId     String?
+  before       Json?
+  after        Json?
+  createdAt    DateTime @default(now())
+
+  @@index([tournamentId, createdAt])
 }
 
 // Contas/papéis do torneio (genérico pra TODO torneio).

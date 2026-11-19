@@ -44,38 +44,87 @@ async function rolesFor(userId, tournamentId) {
   return roles;
 }
 
-// Pode executar `action` neste torneio? opts: { entryId, matchId }
-// actions: MANAGE_TOURNAMENT | ASSIGN_ROLES | MANAGE_TEAM | SET_LINEUP | REFEREE | VIEW
-async function can(userId, userRole, tournamentId, action, opts = {}) {
-  if (isGlobalAdmin(userRole)) return true;
-  if (!userId) return false;
-  const roles = await rolesFor(userId, tournamentId);
-  const isFounder = roles.some((r) => r.role === 'FOUNDER');
-  const isCoord = isFounder || roles.some((r) => r.role === 'COORDINATOR');
-  const teamAdminOf = (eid) => roles.some((r) => r.role === 'TEAM_ADMIN' && r.entryId === eid);
-  const coachOf = (eid) => roles.some((r) => r.role === 'COACH' && r.entryId === eid);
-  const isReferee = roles.some((r) => r.role === 'REFEREE');
+// ---------------------------------------------------------------------
+// MATRIZ DE PERMISSÃO (Liga Aberta F1) — can() é a ÚNICA porta de escrita.
+//   FOUNDER      tudo, inclusive excluir/arquivar, restaurar, transferir e dinheiro
+//   COORDINATOR  tudo menos excluir/arquivar, restaurar, transferir e dinheiro
+//   REFEREE      súmula, resultado e ao vivo SÓ dos jogos em que está escalado
+//                (jogo sem ninguém escalado = só fundador/coordenador)
+//   TEAM_ADMIN   elenco, logo e treinos do PRÓPRIO time · COACH: elenco/treinos
+//   PLAYER       o próprio perfil
+//   admin global (admin/superadmin/manager) passa em tudo.
+// Torneio ARQUIVADO: nenhuma escrita (só restaurar e ler a auditoria).
+// ---------------------------------------------------------------------
+const ACTIONS = [
+  'VIEW', 'MANAGE_TOURNAMENT', 'ASSIGN_ROLES', 'ASSIGN_LEAD_ROLES', 'MANAGE_TEAM', 'SET_LINEUP', 'TRAIN',
+  'REFEREE', 'RESULT', 'LIVE', 'CORRECT_RESULT', 'POST', 'VIEW_AUDIT',
+  'MONEY', 'DELETE_TOURNAMENT', 'RESTORE', 'TRANSFER', 'REGENERATE_FORCE', 'SELF',
+];
+const FOUNDER_ONLY = new Set(['ASSIGN_LEAD_ROLES', 'MONEY', 'DELETE_TOURNAMENT', 'RESTORE', 'TRANSFER', 'REGENERATE_FORCE']);
+const COORD = new Set(['MANAGE_TOURNAMENT', 'ASSIGN_ROLES', 'CORRECT_RESULT', 'POST', 'VIEW_AUDIT']);
+const MATCH_SCOPED = new Set(['REFEREE', 'RESULT', 'LIVE']);
+const ARCHIVED_OK = new Set(['VIEW', 'RESTORE', 'VIEW_AUDIT']);
 
+// ESCALA DE ARBITRAGEM (Liga F1 — flag EXPLÍCITA Tournament.requireRefereeAssignment):
+//  - jogo COM escala de árbitro (MatchOfficial REF1/REF2/REF3) → só quem está escalado
+//    nele (+ fundador/coordenador/admin)
+//  - jogo SEM escala de árbitro:
+//      flag false (padrão, comportamento antigo) → qualquer REFEREE do torneio
+//      flag true → só fundador/coordenador/admin
+// Escalar só a mesa (SCORER/TIMEKEEPER) não transforma o jogo em "com escala".
+const REF_OFFICIAL_ROLES = ['REF1', 'REF2', 'REF3'];
+async function matchHasRefereeAssigned(matchId) {
+  const one = await prisma.matchOfficial.findFirst({ where: { matchId: String(matchId), role: { in: REF_OFFICIAL_ROLES } }, select: { id: true } });
+  return !!one;
+}
+
+// Árbitro está ESCALADO (MatchOfficial) neste jogo?
+async function isNominated(userId, matchId) {
+  if (!userId || !matchId) return false;
+  const mine = await prisma.matchOfficial.findFirst({ where: { matchId: String(matchId), userId }, select: { id: true } });
+  return !!mine;
+}
+
+// Pode executar `action` neste torneio? opts: { entryId, matchId, targetUserId }
+async function can(userId, userRole, tournamentId, action, opts = {}) {
+  if (!tournamentId) return false;
+  const t = await prisma.tournament.findUnique({ where: { id: String(tournamentId) }, select: { id: true, ownerId: true, archivedAt: true, requireRefereeAssignment: true } });
+  if (!t) return false;
+  if (t.archivedAt && !ARCHIVED_OK.has(action)) return false;
+  if (action === 'VIEW') return true;
+  if (isGlobalAdmin(userRole)) return ACTIONS.includes(action);
+  if (!userId) return false;
+  if (action === 'SELF') return !!opts.targetUserId && opts.targetUserId === userId;
+  const rows = await prisma.tournamentRole.findMany({ where: { tournamentId: t.id, userId }, select: { role: true, entryId: true } });
+  const isFounder = t.ownerId === userId || rows.some((r) => r.role === 'FOUNDER');
+  const isCoord = isFounder || rows.some((r) => r.role === 'COORDINATOR');
+  const teamAdminOf = (eid) => !!eid && rows.some((r) => r.role === 'TEAM_ADMIN' && r.entryId === eid);
+  const coachOf = (eid) => !!eid && rows.some((r) => r.role === 'COACH' && r.entryId === eid);
+  const isReferee = rows.some((r) => r.role === 'REFEREE');
+
+  // Transferir: só o DONO atual (ownerId) — fundador nomeado não transfere o torneio.
+  if (action === 'TRANSFER') return t.ownerId === userId;
+  if (FOUNDER_ONLY.has(action)) return isFounder;
+  if (COORD.has(action)) return isCoord;
   switch (action) {
-    case 'VIEW':
-      return true;
-    case 'MANAGE_TOURNAMENT':
-    case 'ASSIGN_ROLES':
-      return isCoord; // fundador ou coordenador
     case 'MANAGE_TEAM':
       return isCoord || teamAdminOf(opts.entryId);
     case 'SET_LINEUP':
-    case 'TRAIN': // criar/gerir treino: coordenador/fundador/admin OU admin/treinador do time
+    case 'TRAIN': // elenco/treino: coordenação OU admin/treinador do PRÓPRIO time
       return isCoord || teamAdminOf(opts.entryId) || coachOf(opts.entryId);
-    case 'REFEREE': {
+    case 'REFEREE':
+    case 'RESULT':
+    case 'LIVE': {
       if (isCoord) return true;
       if (!isReferee) return false;
-      if (!opts.matchId) return true;
-      // Árbitro nomeado pro jogo manda; se ninguém foi nomeado, qualquer árbitro do torneio pode.
-      const mine = await prisma.matchOfficial.findFirst({ where: { matchId: opts.matchId, userId } });
-      if (mine) return true;
-      const total = await prisma.matchOfficial.count({ where: { matchId: opts.matchId } });
-      return total === 0;
+      // Sem jogo (mesa de check-in do torneio): basta ser arbitragem do torneio.
+      if (!opts.matchId) return action === 'REFEREE';
+      // Com jogo: o escalado manda; jogo sem escala de árbitro segue a flag do torneio.
+      const m = await prisma.tournamentMatch.findUnique({ where: { id: String(opts.matchId) }, select: { tournamentId: true } });
+      if (!m || m.tournamentId !== t.id) return false;
+      if (await isNominated(userId, opts.matchId)) return true;
+      if (await matchHasRefereeAssigned(opts.matchId)) return false;
+      return !t.requireRefereeAssignment;
     }
     default:
       return false;
@@ -84,14 +133,16 @@ async function can(userId, userRole, tournamentId, action, opts = {}) {
 
 // Resolve um usuário por id | username(@handle) | telefone.
 async function resolveUser({ userId, username, phone }) {
-  if (userId) return prisma.user.findUnique({ where: { id: String(userId) }, select: { id: true, name: true, phone: true, username: true } });
+  // Liga F1: só conta ATIVA pode receber papel/escala/torneio transferido.
+  const sel = { id: true, name: true, phone: true, username: true };
+  if (userId) return prisma.user.findFirst({ where: { id: String(userId), active: true }, select: sel });
   if (username) {
     const h = String(username).replace(/^@/, '').trim();
-    if (h) return prisma.user.findFirst({ where: { username: { equals: h, mode: 'insensitive' } }, select: { id: true, name: true, phone: true, username: true } });
+    if (h) return prisma.user.findFirst({ where: { username: { equals: h, mode: 'insensitive' }, active: true }, select: sel });
   }
   if (phone) {
     const p = String(phone).replace(/\D/g, '');
-    if (p) return prisma.user.findUnique({ where: { phone: p }, select: { id: true, name: true, phone: true, username: true } });
+    if (p) return prisma.user.findFirst({ where: { phone: p, active: true }, select: sel });
   }
   return null;
 }
@@ -189,7 +240,12 @@ async function eventContext(eventId) {
 }
 
 // Jogos que EU devo apitar neste torneio (pra tela da arbitragem).
-// Coordenador/fundador/admin → todos. Árbitro → os que foi nomeado + os sem árbitro definido.
+// Coordenador/fundador/admin → todos. Árbitro → os jogos em que foi escalado + os jogos
+// sem escala de árbitro quando o torneio NÃO exige escala (flag requireRefereeAssignment).
+async function tournamentRequiresAssignment(tournamentId) {
+  const t = await prisma.tournament.findUnique({ where: { id: String(tournamentId) }, select: { requireRefereeAssignment: true } });
+  return !!(t && t.requireRefereeAssignment);
+}
 async function myMatches(userId, userRole, tournamentId) {
   const rs = await rolesFor(userId, tournamentId);
   const admin = isGlobalAdmin(userRole);
@@ -206,9 +262,10 @@ async function myMatches(userId, userRole, tournamentId) {
     },
   });
   if (!matches.length) return [];
-  const officials = await prisma.matchOfficial.findMany({ where: { matchId: { in: matches.map((m) => m.id) } }, select: { matchId: true, userId: true } });
-  const nominatedMine = {}; const hasOfficial = {};
-  officials.forEach((o) => { hasOfficial[o.matchId] = true; if (o.userId === userId) nominatedMine[o.matchId] = true; });
+  const officials = await prisma.matchOfficial.findMany({ where: { matchId: { in: matches.map((m) => m.id) } }, select: { matchId: true, userId: true, role: true } });
+  const nominatedMine = {}; const hasRef = {};
+  officials.forEach((o) => { if (REF_OFFICIAL_ROLES.includes(o.role)) hasRef[o.matchId] = true; if (o.userId === userId) nominatedMine[o.matchId] = true; });
+  const requireAssign = await tournamentRequiresAssignment(tournamentId);
   const entryIds = [...new Set(matches.flatMap((m) => [m.homeEntryId, m.awayEntryId]).filter(Boolean))];
   const catIds = [...new Set(matches.map((m) => m.categoryId).filter(Boolean))];
   const [entries, cats] = await Promise.all([
@@ -220,8 +277,8 @@ async function myMatches(userId, userRole, tournamentId) {
   const out = [];
   for (const m of matches) {
     const nominated = !!nominatedMine[m.id];
-    const open = !hasOfficial[m.id];
-    if (!isCoord && !nominated && !open) continue; // árbitro só vê os seus + os livres
+    // árbitro vê os jogos dele + (flag desligada) os jogos sem escala de árbitro
+    if (!isCoord && !nominated && (hasRef[m.id] || requireAssign)) continue;
     out.push({
       id: m.id, tournamentId: m.tournamentId, categoryId: m.categoryId, category: cById[m.categoryId] || '',
       stage: m.stage, round: m.round, groupName: m.groupName, status: m.status,
@@ -265,17 +322,28 @@ async function myTeam(userId, userRole, tournamentId) {
 async function myRoles(userId, userRole, tournamentId) {
   const roles = await rolesFor(userId, tournamentId);
   const admin = isGlobalAdmin(userRole);
+  const c = (a) => can(userId, userRole, tournamentId, a);
   const caps = {
-    manageTournament: admin || (await can(userId, userRole, tournamentId, 'MANAGE_TOURNAMENT')),
-    assignRoles: admin || (await can(userId, userRole, tournamentId, 'ASSIGN_ROLES')),
-    referee: admin || (await can(userId, userRole, tournamentId, 'REFEREE')),
+    manageTournament: await c('MANAGE_TOURNAMENT'),
+    assignRoles: await c('ASSIGN_ROLES'),
+    assignLeadRoles: await c('ASSIGN_LEAD_ROLES'),
+    referee: await c('REFEREE'),
+    post: await c('POST'),
+    correctResult: await c('CORRECT_RESULT'),
+    viewAudit: await c('VIEW_AUDIT'),
+    money: await c('MONEY'),
+    archive: await c('DELETE_TOURNAMENT'),
+    restore: await c('RESTORE'),
+    transfer: await c('TRANSFER'),
+    regenerateForce: await c('REGENERATE_FORCE'),
   };
   const teams = roles.filter((r) => TEAM_SCOPED.includes(r.role) && r.entryId);
-  return { roles: roles.map((r) => ({ role: r.role, roleLabel: ROLE_LABEL[r.role] || r.role, entryId: r.entryId })), caps, teams, isGlobalAdmin: admin };
+  const refereeAssignment = (await tournamentRequiresAssignment(tournamentId)) ? 'required' : 'open';
+  return { roles: roles.map((r) => ({ role: r.role, roleLabel: ROLE_LABEL[r.role] || r.role, entryId: r.entryId })), caps, teams, isGlobalAdmin: admin, refereeAssignment };
 }
 
 module.exports = {
-  ROLES, ROLE_LABEL, TEAM_SCOPED, OFFICIAL_ROLES, isGlobalAdmin,
-  rolesFor, can, resolveUser, assignRole, removeRole, listRoles, myRoles,
+  ROLES, ROLE_LABEL, TEAM_SCOPED, OFFICIAL_ROLES, ACTIONS, isGlobalAdmin,
+  rolesFor, can, isNominated, matchHasRefereeAssigned, tournamentRequiresAssignment, REF_OFFICIAL_ROLES, resolveUser, assignRole, removeRole, listRoles, myRoles,
   entryContext, matchContext, playerContext, eventContext, myMatches, myTeam,
 };

@@ -28,6 +28,7 @@ const sheet = require('../services/matchSheet');
 const { publicBaseUrl } = require('../config/publicUrl');
 const { limits, onlyWhen } = require('../services/ligaRateLimit');
 const { guardImageField, ImageGuardError } = require('../services/imageGuard');
+const access = require('../services/tournamentAccess');
 
 const apiRouter = express.Router();
 const publicRouter = express.Router();
@@ -37,12 +38,18 @@ const TZ = 'America/Fortaleza';
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const jsonForScript = (v) => JSON.stringify(v).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 
+const T_SELECT = { id: true, slug: true, name: true, sport: true, status: true, format: true, bannerUrl: true, city: true, state: true, startDate: true, endDate: true, prizeDescription: true, visibility: true, ownerId: true, description: true, archivedAt: true };
+
+// Sem checar visibilidade (uso interno: escrita, que passa por roles.can()).
 async function findTournament(key) {
   if (!key) return null;
-  return prisma.tournament.findFirst({
-    where: { OR: [{ id: String(key) }, { slug: String(key) }] },
-    select: { id: true, slug: true, name: true, sport: true, status: true, format: true, bannerUrl: true, city: true, state: true, startDate: true, endDate: true, prizeDescription: true, visibility: true, ownerId: true, description: true },
-  });
+  return prisma.tournament.findFirst({ where: { OR: [{ id: String(key) }, { slug: String(key) }] }, select: T_SELECT });
+}
+
+// Liga F1 — leitura: só devolve se quem pede pode VER (público/não listado: todos;
+// privado: membros; arquivado: ninguém). null = mesmo 404 de "não existe".
+function findVisible(req, key) {
+  return access.loadVisibleTournament(req, key, { select: T_SELECT });
 }
 
 function originOf(req) {
@@ -55,8 +62,8 @@ function originOf(req) {
 // --------------------------------------------------------------------
 apiRouter.get('/:id/live', async (req, res) => {
   try {
-    const t = await findTournament(req.params.id);
-    if (!t || t.visibility === 'private') return res.status(404).json({ error: 'torneio não encontrado' });
+    const t = await findVisible(req, req.params.id);
+    if (!t) return access.sendNotFound(res);
     if (!live.subscribe(t.id, req, res)) return;
     // estado inicial: jogos AO VIVO agora (o cliente sincroniza sem esperar o próximo lance)
     const lives = await prisma.tournamentMatch.findMany({ where: { tournamentId: t.id, status: 'LIVE' }, select: { id: true } });
@@ -76,10 +83,19 @@ apiRouter.get('/:id/arte/:file', async (req, res) => {
   try {
     const m = /^([a-z]+)\.png$/i.exec(req.params.file || '');
     if (!m) return res.status(400).json({ error: 'use /arte/<tipo>.png' });
-    const out = await art.buildArt(req.params.id, m[1].toLowerCase(), req.query || {});
+    const tipo = m[1].toLowerCase();
+    // card do atleta sem torneio ('club' / '-') não depende de torneio; o resto passa pela visibilidade
+    const semTorneio = tipo === 'atleta' && (req.params.id === 'club' || req.params.id === '-');
+    let allowPrivate = false;
+    if (!semTorneio) {
+      const t = await findVisible(req, req.params.id);
+      if (!t) return access.sendNotFound(res);
+      allowPrivate = true; // já conferido acima (membro de torneio privado vê a arte)
+    }
+    const out = await art.buildArt(req.params.id, tipo, req.query || {}, { allowPrivate });
     const etag = '"' + out.hash + '"';
     res.set('ETag', etag);
-    res.set('Cache-Control', 'public, max-age=60');
+    res.set('Cache-Control', out.private ? 'private, no-store' : 'public, max-age=60');
     if (req.headers['if-none-match'] === etag) return res.status(304).end();
     res.type('png');
     if (req.query.download) {
@@ -99,8 +115,8 @@ apiRouter.get('/:id/arte/:file', async (req, res) => {
 // --------------------------------------------------------------------
 apiRouter.get('/:id/qr.png', async (req, res) => {
   try {
-    const t = await findTournament(req.params.id);
-    if (!t || t.visibility === 'private') return res.status(404).json({ error: 'torneio não encontrado' });
+    const t = await findVisible(req, req.params.id);
+    if (!t) return access.sendNotFound(res);
     let url = `${publicBaseUrl()}/t/${t.slug}`;
     const jogo = req.query.jogo || req.query.matchId;
     if (jogo) {
@@ -170,6 +186,7 @@ async function listSponsors(tournamentId, origin, all) {
 
 async function canManage(req, res, t) {
   if (!(await roles.can(req.userId, req.userRole, t.id, 'MANAGE_TOURNAMENT'))) {
+    if (!(await access.canSee({ userId: req.userId, userRole: req.userRole }, t))) { access.sendNotFound(res); return false; }
     res.status(403).json({ error: 'só a organização do torneio gerencia patrocinadores' });
     return false;
   }
@@ -179,8 +196,8 @@ async function canManage(req, res, t) {
 apiRouter.get('/:id/sponsors', async (req, res) => {
   try {
     res.set('Cache-Control', 'no-store');
-    const t = await findTournament(req.params.id);
-    if (!t) return res.status(404).json({ error: 'torneio não encontrado' });
+    const t = await findVisible(req, req.params.id);
+    if (!t) return access.sendNotFound(res);
     res.json({ sponsors: await listSponsors(t.id, originOf(req), req.query.all === '1') });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -188,7 +205,7 @@ apiRouter.get('/:id/sponsors', async (req, res) => {
 apiRouter.post('/:id/sponsors', authMiddleware, limits.upload, async (req, res) => {
   try {
     const t = await findTournament(req.params.id);
-    if (!t) return res.status(404).json({ error: 'torneio não encontrado' });
+    if (!t || t.archivedAt) return access.sendNotFound(res);
     if (!(await canManage(req, res, t))) return;
     const c = await cleanSponsor(req.body || {}, false);
     if (c.error) return res.status(c.status || 400).json({ error: c.error });
@@ -203,7 +220,7 @@ apiRouter.post('/:id/sponsors', authMiddleware, limits.upload, async (req, res) 
 apiRouter.patch('/:id/sponsors/:sid', authMiddleware, onlyWhen((req) => !!(req.body && Object.prototype.hasOwnProperty.call(req.body, 'logoUrl')), limits.upload), async (req, res) => {
   try {
     const t = await findTournament(req.params.id);
-    if (!t) return res.status(404).json({ error: 'torneio não encontrado' });
+    if (!t || t.archivedAt) return access.sendNotFound(res);
     if (!(await canManage(req, res, t))) return;
     const cur = await prisma.tournamentSponsor.findFirst({ where: { id: req.params.sid, tournamentId: t.id } });
     if (!cur) return res.status(404).json({ error: 'patrocinador não encontrado' });
@@ -217,7 +234,7 @@ apiRouter.patch('/:id/sponsors/:sid', authMiddleware, onlyWhen((req) => !!(req.b
 apiRouter.delete('/:id/sponsors/:sid', authMiddleware, async (req, res) => {
   try {
     const t = await findTournament(req.params.id);
-    if (!t) return res.status(404).json({ error: 'torneio não encontrado' });
+    if (!t || t.archivedAt) return access.sendNotFound(res);
     if (!(await canManage(req, res, t))) return;
     const r = await prisma.tournamentSponsor.deleteMany({ where: { id: req.params.sid, tournamentId: t.id } });
     res.json({ ok: true, removed: r.count });
@@ -319,8 +336,8 @@ async function publicSnapshot(t, origin) {
 publicRouter.get('/tournaments/:slug', async (req, res) => {
   try {
     res.set('Cache-Control', 'no-store');
-    const t = await findTournament(req.params.slug);
-    if (!t || t.visibility === 'private') return res.status(404).json({ error: 'torneio não encontrado' });
+    const t = await findVisible(req, req.params.slug);
+    if (!t) return access.sendNotFound(res);
     res.json(await publicSnapshot(t, originOf(req)));
   } catch (err) {
     console.error('[public api] torneio', err);
@@ -343,16 +360,16 @@ function sendDataUri(res, uri) {
 }
 publicRouter.get('/entries/:id/logo', async (req, res) => {
   try {
-    const e = await prisma.tournamentEntry.findUnique({ where: { id: req.params.id }, select: { logoUrl: true } });
-    if (!e || !e.logoUrl) return res.status(404).json({ error: 'sem escudo' });
+    const e = await prisma.tournamentEntry.findUnique({ where: { id: req.params.id }, select: { logoUrl: true, tournamentId: true } });
+    if (!e || !e.logoUrl || !(await access.canSeeTournamentId(req, e.tournamentId))) return res.status(404).json({ error: 'sem escudo' });
     if (!e.logoUrl.startsWith('data:')) return res.redirect(302, e.logoUrl);
     sendDataUri(res, e.logoUrl);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 publicRouter.get('/sponsors/:id/logo', async (req, res) => {
   try {
-    const s = await prisma.tournamentSponsor.findUnique({ where: { id: req.params.id }, select: { logoUrl: true } });
-    if (!s || !s.logoUrl) return res.status(404).json({ error: 'sem logo' });
+    const s = await prisma.tournamentSponsor.findUnique({ where: { id: req.params.id }, select: { logoUrl: true, tournamentId: true } });
+    if (!s || !s.logoUrl || !(await access.canSeeTournamentId(req, s.tournamentId))) return res.status(404).json({ error: 'sem logo' });
     if (!s.logoUrl.startsWith('data:')) return res.redirect(302, s.logoUrl);
     sendDataUri(res, s.logoUrl);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -376,8 +393,8 @@ function norm(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '
 
 pageRouter.get('/:slug/calendario.ics', async (req, res) => {
   try {
-    const t = await findTournament(req.params.slug);
-    if (!t || t.visibility === 'private') return res.status(404).type('text').send('torneio não encontrado');
+    const t = await findVisible(req, req.params.slug);
+    if (!t) return access.sendNotFound(res, 'text');
     const ical = require('ical-generator').default;
     const { paraParede } = require('../services/icsTz');
     const cats = await prisma.tournamentCategory.findMany({ where: { tournamentId: t.id }, select: { id: true, name: true } });
@@ -447,8 +464,8 @@ pageRouter.get('/:slug/calendario.ics', async (req, res) => {
 pageRouter.get('/:slug/telao', async (req, res) => {
   try {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
-    const t = await findTournament(req.params.slug);
-    if (!t || t.visibility === 'private') return res.status(404).send('Torneio não encontrado');
+    const t = await findVisible(req, req.params.slug);
+    if (!t) return access.sendNotFound(res, 'html');
     const cfg = { tid: t.id, slug: t.slug, name: t.name, logo: t.bannerUrl || null, categoria: req.query.categoria ? String(req.query.categoria) : null, tempo: Math.min(Math.max(Number(req.query.tempo) || 12, 6), 60) };
     res.type('html').send(require('../services/tournamentPages').telaoHtml(cfg));
   } catch (err) {
@@ -460,8 +477,8 @@ pageRouter.get('/:slug/telao', async (req, res) => {
 pageRouter.get('/:slug/embed', async (req, res) => {
   try {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
-    const t = await findTournament(req.params.slug);
-    if (!t || t.visibility === 'private') return res.status(404).send('Torneio não encontrado');
+    const t = await findVisible(req, req.params.slug);
+    if (!t) return access.sendNotFound(res, 'html');
     // iframe em qualquer site: tira o X-Frame-Options do helmet e libera frame-ancestors
     res.removeHeader('X-Frame-Options');
     res.set('Content-Security-Policy', 'frame-ancestors *');
@@ -474,4 +491,4 @@ pageRouter.get('/:slug/embed', async (req, res) => {
   }
 });
 
-module.exports = { apiRouter, publicRouter, pageRouter, publicSnapshot, findTournament, listSponsors, jsonForScript, esc };
+module.exports = { apiRouter, publicRouter, pageRouter, publicSnapshot, findTournament, findVisible, listSponsors, jsonForScript, esc };

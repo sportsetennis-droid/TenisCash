@@ -623,7 +623,9 @@ async function main() {
       assert.ok(!a.json.ranking.some((x) => x.partial));
     });
     await ok('GET matches do Americano mostra as duplas ("Ana & Bia")', async () => {
-      const r = await call('GET', `/x/categories/${amCat.id}/matches`);
+      // Liga F1: a categoria tem que ser do torneio da URL (antes /x/... passava por baixo de qualquer id)
+      const r = await call('GET', `/${amCat.tournamentId}/categories/${amCat.id}/matches`);
+      assert.strictEqual((await call('GET', `/x/categories/${amCat.id}/matches`)).status, 404, 'id de torneio errado = 404');
       assert.strictEqual(r.status, 200);
       assert.ok(r.json.matches.every((m) => m.homeEntry.name.includes(' & ') && m.awayEntry.name.includes(' & ')));
     });

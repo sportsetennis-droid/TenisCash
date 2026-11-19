@@ -27,8 +27,70 @@ const ftz = require('../services/fortalezaTime');
 const { limits, onlyWhen } = require('../services/ligaRateLimit');
 const { guardImageField, guardImageDataUri, ImageGuardError } = require('../services/imageGuard');
 const signupCode = require('../services/athleteSignupCode');
+const access = require('../services/tournamentAccess');
+const audit = require('../services/tournamentAudit');
 
 const router = express.Router();
+
+// =====================================================================
+// Liga F1 (M9) — quem NÃO pode ver o torneio (privado sem ser membro, ou
+// arquivado) recebe o MESMO 404 de "não existe" em QUALQUER rota que traga o
+// torneio (ou algo dele) na URL — antes de qualquer 403. Roda antes do login
+// (router.param), então anônimo em torneio privado também vê 404.
+// Para cada parâmetro: como achar o torneio + a resposta de "não existe" da rota.
+// =====================================================================
+const NOT_TOURNAMENT_ID = /^\/(challenges|notifications)\//; // usam :id mas não são torneio
+const ARCHIVED_ALLOWED = /^\/[^/]+\/(restore|audit)$/;        // fundador ainda restaura/lê auditoria
+const PARAM_GUARDS = {
+  id: {
+    tid: async (v) => v,
+    gone: (req, res) => access.sendNotFound(res),
+  },
+  entryId: {
+    tid: async (v) => (await prisma.tournamentEntry.findUnique({ where: { id: String(v) }, select: { tournamentId: true } }))?.tournamentId,
+    gone: (req, res) => res.status(404).json({ error: /\/(players|logo)$/.test(req.path) ? 'time não encontrado' : 'inscrição não encontrada' }),
+  },
+  matchId: {
+    tid: async (v) => (await prisma.tournamentMatch.findUnique({ where: { id: String(v) }, select: { tournamentId: true } }))?.tournamentId,
+    gone: (req, res) => res.status(404).json({ error: /\/(events|lineup|officials|finalize|referees(\/[^/]+)?)$/.test(req.path) ? 'jogo não encontrado' : 'partida não encontrada' }),
+  },
+  eventId: {
+    tid: async (v) => {
+      const ev = await prisma.matchEvent.findUnique({ where: { id: String(v) }, select: { matchId: true } });
+      return ev ? (await prisma.tournamentMatch.findUnique({ where: { id: ev.matchId }, select: { tournamentId: true } }))?.tournamentId : null;
+    },
+    gone: (req, res) => res.json({ ok: true }), // apagar evento que "não existe" responde ok
+  },
+  playerId: {
+    tid: async (v) => {
+      const p = await prisma.rosterPlayer.findUnique({ where: { id: String(v) }, select: { entryId: true } });
+      return p ? (await prisma.tournamentEntry.findUnique({ where: { id: p.entryId }, select: { tournamentId: true } }))?.tournamentId : null;
+    },
+    gone: (req, res) => (req.method === 'DELETE' ? res.json({ ok: true }) : res.status(404).json({ error: 'jogador não encontrado' })),
+  },
+  postId: {
+    tid: async (v) => (await prisma.tournamentPost.findUnique({ where: { id: String(v) }, select: { tournamentId: true } }))?.tournamentId,
+    gone: (req, res) => res.status(404).json({ error: 'aviso não encontrado' }),
+  },
+  sid: {
+    tid: async (v) => (await prisma.trainingSession.findUnique({ where: { id: String(v) }, select: { tournamentId: true } }))?.tournamentId,
+    gone: (req, res) => (/\/remove$/.test(req.path) ? res.json({ ok: true }) : res.status(404).json({ error: 'treino não encontrado' })),
+  },
+};
+for (const [name, g] of Object.entries(PARAM_GUARDS)) {
+  router.param(name, async (req, res, next, value) => {
+    try {
+      if (name === 'id' && NOT_TOURNAMENT_ID.test(req.path)) return next();
+      const tid = await g.tid(value);
+      if (!tid) return name === 'id' ? g.gone(req, res) : next(); // entidade inexistente: a rota responde
+      const t = await prisma.tournament.findUnique({ where: { id: String(tid) }, select: { id: true, ownerId: true, visibility: true, archivedAt: true } });
+      if (!t) return g.gone(req, res);
+      if (t.archivedAt && name === 'id' && ARCHIVED_ALLOWED.test(req.path)) return next();
+      if (await access.canSee(await access.viewer(req), t)) return next();
+      return g.gone(req, res);
+    } catch (e) { return next(e); }
+  });
+}
 
 // =====================================================================
 // CONTAS / PAPÉIS do torneio (genérico pra todo torneio) — login real.
@@ -68,13 +130,17 @@ router.get('/:id/my-team', authMiddleware, async (req, res) => {
 router.get('/:id/teams', authMiddleware, async (req, res) => {
   try {
     res.set('Cache-Control', 'no-store');
-    res.json({ teams: await membership.listTeams(req.params.id) });
+    const t = await access.loadVisibleTournament(req, req.params.id, { select: { id: true } });
+    if (!t) return access.sendNotFound(res);
+    res.json({ teams: await membership.listTeams(t.id) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ATLETA pede pra entrar num time (entryId identifica o clube).
 router.post('/:id/teams/:entryId/join', authMiddleware, async (req, res) => {
   try {
+    const t = await access.loadVisibleTournament(req, req.params.id, { select: { id: true } });
+    if (!t || t.id !== req.params.id) return access.sendNotFound(res);
     const r = await membership.requestJoin({ tournamentId: req.params.id, entryId: req.params.entryId, userId: req.userId });
     if (!r.ok) return res.status(r.code || 400).json(r);
     res.json(r);
@@ -409,14 +475,14 @@ router.post('/:id/roles', authMiddleware, async (req, res) => {
     if (!user) return res.status(404).json({ error: 'usuário não encontrado — peça pra ele se cadastrar primeiro (telefone/@)' });
     // Coordenador não nomeia FOUNDER/COORDINATOR (só o fundador/admin global faz).
     const roleUp = String(body.role || '').toUpperCase();
-    if ((roleUp === 'FOUNDER' || roleUp === 'COORDINATOR')) {
-      const isFounder = await roles.can(req.userId, req.userRole, tournamentId, 'MANAGE_TOURNAMENT');
-      const amFounder = roles.isGlobalAdmin(req.userRole) || (await roles.rolesFor(req.userId, tournamentId)).some((x) => x.role === 'FOUNDER');
-      if (!amFounder && !roles.isGlobalAdmin(req.userRole)) return res.status(403).json({ error: 'só o fundador nomeia fundador/coordenador' });
-      void isFounder;
+    if ((roleUp === 'FOUNDER' || roleUp === 'COORDINATOR') && !(await roles.can(req.userId, req.userRole, tournamentId, 'ASSIGN_LEAD_ROLES'))) {
+      return res.status(403).json({ error: 'só o fundador nomeia fundador/coordenador' });
     }
     const r = await roles.assignRole(tournamentId, { userId: user.id, role: body.role, entryId: body.entryId });
     if (!r.ok) return res.status(400).json(r);
+    if (!r.already) {
+      await audit.record({ tournamentId, userId: req.userId, action: 'role.add', entity: 'TournamentRole', entityId: r.role && r.role.id, before: null, after: { userId: user.id, role: roleUp, entryId: body.entryId || null, count: r.count || 1 } });
+    }
     res.status(201).json({ ok: true, user, role: r.role, already: !!r.already });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -427,7 +493,15 @@ router.delete('/:id/roles/:roleId', authMiddleware, async (req, res) => {
     if (!(await roles.can(req.userId, req.userRole, req.params.id, 'ASSIGN_ROLES'))) {
       return res.status(403).json({ error: 'sem permissão (só fundador/coordenador)' });
     }
-    res.json(await roles.removeRole(req.params.id, req.params.roleId));
+    const row = await prisma.tournamentRole.findFirst({ where: { id: req.params.roleId, tournamentId: req.params.id } });
+    if (!row) return res.json({ ok: true, removed: 0 });
+    // Tirar fundador/coordenador é decisão do fundador (coordenador não derruba outro coordenador).
+    if ((row.role === 'FOUNDER' || row.role === 'COORDINATOR') && !(await roles.can(req.userId, req.userRole, req.params.id, 'ASSIGN_LEAD_ROLES'))) {
+      return res.status(403).json({ error: 'só o fundador tira fundador/coordenador' });
+    }
+    const out = await roles.removeRole(req.params.id, req.params.roleId);
+    await audit.record({ tournamentId: req.params.id, userId: req.userId, action: 'role.remove', entity: 'TournamentRole', entityId: row.id, before: { userId: row.userId, role: row.role, entryId: row.entryId }, after: { removed: out.removed } });
+    res.json(out);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -494,7 +568,7 @@ router.get('/my-tournaments', authMiddleware, async (req, res) => {
     const owned = await prisma.tournament.findMany({ where: { ownerId: req.userId }, select: { id: true } });
     const ids = [...new Set(roleRows.map((r) => r.tournamentId).concat(owned.map((o) => o.id)))];
     if (!ids.length) return res.json({ tournaments: [] });
-    const ts = await prisma.tournament.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, slug: true, sport: true, status: true, ownerId: true } });
+    const ts = await prisma.tournament.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, slug: true, sport: true, status: true, ownerId: true, visibility: true, archivedAt: true } });
     const byId = {};
     roleRows.forEach((r) => { (byId[r.tournamentId] = byId[r.tournamentId] || []).push({ role: r.role, entryId: r.entryId }); });
     const out = ts.map((t) => ({ ...t, myRoles: (t.ownerId === req.userId ? [{ role: 'FOUNDER' }] : []).concat(byId[t.id] || []) }));
@@ -509,7 +583,9 @@ router.get('/:id/matches/:matchId/referees', authMiddleware, async (req, res) =>
     if (!(await roles.can(req.userId, req.userRole, req.params.id, 'MANAGE_TOURNAMENT'))) {
       return res.status(403).json({ error: 'sem permissão' });
     }
-    const officials = await prisma.matchOfficial.findMany({ where: { matchId: req.params.matchId }, orderBy: { createdAt: 'asc' } });
+    const match = await prisma.tournamentMatch.findFirst({ where: { id: req.params.matchId, tournamentId: req.params.id }, select: { id: true } });
+    if (!match) return res.status(404).json({ error: 'jogo não encontrado' });
+    const officials = await prisma.matchOfficial.findMany({ where: { matchId: match.id }, orderBy: { createdAt: 'asc' } });
     const users = await prisma.user.findMany({ where: { id: { in: officials.map((o) => o.userId) } }, select: { id: true, name: true, phone: true } });
     const uById = Object.fromEntries(users.map((u) => [u.id, u]));
     res.json({ officials: officials.map((o) => ({ id: o.id, role: o.role, user: uById[o.userId] || { id: o.userId } })) });
@@ -531,6 +607,7 @@ router.post('/:id/matches/:matchId/referees', authMiddleware, async (req, res) =
     if (!match) return res.status(404).json({ error: 'jogo não encontrado' });
     const existing = await prisma.matchOfficial.findFirst({ where: { matchId: match.id, userId: user.id, role } });
     const official = existing || (await prisma.matchOfficial.create({ data: { matchId: match.id, userId: user.id, role } }));
+    if (!existing) await audit.record({ tournamentId: req.params.id, userId: req.userId, action: 'official.add', entity: 'MatchOfficial', entityId: official.id, after: { matchId: match.id, userId: user.id, role } });
     res.status(201).json({ ok: true, user, official });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -539,7 +616,14 @@ router.delete('/:id/matches/:matchId/referees/:officialId', authMiddleware, asyn
     if (!(await roles.can(req.userId, req.userRole, req.params.id, 'MANAGE_TOURNAMENT'))) {
       return res.status(403).json({ error: 'sem permissão' });
     }
-    await prisma.matchOfficial.deleteMany({ where: { id: req.params.officialId, matchId: req.params.matchId } });
+    // o jogo tem que ser DESTE torneio (antes dava pra tirar árbitro de jogo de outro torneio)
+    const match = await prisma.tournamentMatch.findFirst({ where: { id: req.params.matchId, tournamentId: req.params.id }, select: { id: true } });
+    if (!match) return res.status(404).json({ error: 'jogo não encontrado' });
+    const row = await prisma.matchOfficial.findFirst({ where: { id: req.params.officialId, matchId: match.id } });
+    if (row) {
+      await prisma.matchOfficial.delete({ where: { id: row.id } });
+      await audit.record({ tournamentId: req.params.id, userId: req.userId, action: 'official.remove', entity: 'MatchOfficial', entityId: row.id, before: { matchId: row.matchId, userId: row.userId, role: row.role } });
+    }
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -648,19 +732,21 @@ async function entryLimitUnlessManager(req, res, next) {
   return limits.entry(req, res, next);
 }
 
-// Carrega torneio garantindo que req.userId é dono (ou admin)
-async function loadOwned(req, res, tournamentId) {
-  const t = await prisma.tournament.findUnique({ where: { id: tournamentId } });
-  if (!t) {
-    res.status(404).json({ error: 'torneio não encontrado' });
-    return null;
-  }
-  const isAdmin = ['admin', 'superadmin', 'manager'].includes(req.userRole);
-  if (t.ownerId !== req.userId && !isAdmin) {
-    res.status(403).json({ error: 'só o organizador pode gerenciar este torneio' });
+// Liga F1 — PORTA ÚNICA DE ESCRITA. Carrega o torneio e passa por roles.can().
+// Não existe / arquivado → 404 (igual a "não existe"); sem permissão → 403.
+async function loadForAction(req, res, tournamentId, action, opts = {}, denyMsg) {
+  const t = tournamentId ? await prisma.tournament.findUnique({ where: { id: String(tournamentId) } }) : null;
+  if (!t || t.archivedAt) { access.sendNotFound(res); return null; }
+  if (!(await roles.can(req.userId, req.userRole, t.id, action, opts))) {
+    if (!(await access.canSee({ userId: req.userId, userRole: req.userRole }, t))) { access.sendNotFound(res); return null; }
+    res.status(403).json({ error: denyMsg || 'sem permissão neste torneio' });
     return null;
   }
   return t;
+}
+// Mesma porta quando a rota já tem o tournamentId (entry/jogo/post). true = pode seguir.
+async function allow(req, res, tournamentId, action, opts = {}, denyMsg) {
+  return !!(await loadForAction(req, res, tournamentId, action, opts, denyMsg));
 }
 
 // =====================================================================
@@ -710,7 +796,7 @@ router.post('/', authMiddleware, limits.createTournament, async (req, res) => {
         entryFeeCash,
         prizeCash,
         prizeDescription: b.prizeDescription || null,
-        visibility: b.visibility === 'private' ? 'private' : 'public',
+        visibility: access.normalizeVisibility(b.visibility),
         ...seriesData(b),
       },
     });
@@ -741,8 +827,10 @@ router.post('/import/futsal-master-cup', authMiddleware, async (req, res) => {
 // Meus torneios (que eu organizo)
 router.get('/mine', authMiddleware, async (req, res) => {
   try {
+    // ?archived=1 + admin global: todos os torneios arquivados (pra restaurar). Senão, os que eu organizo.
+    const adminArchived = req.query.archived === '1' && roles.isGlobalAdmin(req.userRole);
     const list = await prisma.tournament.findMany({
-      where: { ownerId: req.userId },
+      where: adminArchived ? { archivedAt: { not: null } } : { ownerId: req.userId },
       orderBy: { createdAt: 'desc' },
       include: { _count: { select: { entries: true, categories: true } } },
     });
@@ -769,7 +857,7 @@ router.get('/series/:slug/champions', async (req, res) => {
 // Lista pública (vitrine) — torneios públicos abertos/em andamento
 router.get('/', async (req, res) => {
   try {
-    const where = { visibility: 'public' };
+    const where = { ...access.LISTED_WHERE }; // só público e não arquivado (não listado/privado fora)
     if (req.query.sport) where.sport = req.query.sport;
     if (req.query.status) where.status = req.query.status;
     if (req.query.storeId) where.storeId = req.query.storeId;
@@ -788,15 +876,13 @@ router.get('/', async (req, res) => {
 // Detalhe público do torneio (por slug ou id)
 router.get('/:idOrSlug', async (req, res) => {
   try {
-    const key = req.params.idOrSlug;
-    const t = await prisma.tournament.findFirst({
-      where: { OR: [{ id: key }, { slug: key }] },
+    const t = await access.loadVisibleTournament(req, req.params.idOrSlug, {
       include: {
         categories: { include: { _count: { select: { entries: true } } } },
         _count: { select: { entries: true, matches: true } },
       },
     });
-    if (!t) return res.status(404).json({ error: 'torneio não encontrado' });
+    if (!t) return access.sendNotFound(res); // não existe, arquivado ou privado sem acesso: MESMO 404
     res.json(t);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -806,7 +892,7 @@ router.get('/:idOrSlug', async (req, res) => {
 // Edita torneio (só dono)
 router.patch('/:id', authMiddleware, onlyWhen(hasBody('bannerUrl'), limits.upload), async (req, res) => {
   try {
-    const t = await loadOwned(req, res, req.params.id);
+    const t = await loadForAction(req, res, req.params.id, 'MANAGE_TOURNAMENT', {}, 'só a organização (fundador/coordenador) edita este torneio');
     if (!t) return;
     const b = req.body || {};
     const data = {};
@@ -823,7 +909,13 @@ router.patch('/:id', authMiddleware, onlyWhen(hasBody('bannerUrl'), limits.uploa
     for (const f of ['startDate', 'endDate', 'registrationCloseAt']) {
       if (b[f] !== undefined) data[f] = b[f] ? new Date(b[f]) : null;
     }
-    if (b.visibility) data.visibility = b.visibility === 'private' ? 'private' : 'public';
+    // Exigir árbitro escalado em cada jogo (fundador/coordenador/admin — já passou no MANAGE_TOURNAMENT)
+    if (b.requireRefereeAssignment !== undefined) data.requireRefereeAssignment = b.requireRefereeAssignment === true || b.requireRefereeAssignment === 'true';
+    if (b.visibility !== undefined) {
+      const v = access.normalizeVisibility(b.visibility, null);
+      if (!v) return res.status(400).json({ error: 'visibilidade inválida (public | unlisted | private)' });
+      data.visibility = v;
+    }
     Object.assign(data, seriesData(b));
 
     // Campos de TenisCash real: só admin/gerente altera (antifraude).
@@ -839,19 +931,29 @@ router.patch('/:id', authMiddleware, onlyWhen(hasBody('bannerUrl'), limits.uploa
     }
 
     const updated = await prisma.tournament.update({ where: { id: t.id }, data });
+    if (data.requireRefereeAssignment !== undefined && data.requireRefereeAssignment !== !!t.requireRefereeAssignment) {
+      await audit.record({ tournamentId: t.id, userId: req.userId, action: 'tournament.refereeRule', entity: 'Tournament', entityId: t.id, before: { requireRefereeAssignment: !!t.requireRefereeAssignment }, after: { requireRefereeAssignment: data.requireRefereeAssignment } });
+    }
+    if (data.visibility && data.visibility !== (t.visibility || 'public')) {
+      await audit.record({ tournamentId: t.id, userId: req.userId, action: 'tournament.visibility', entity: 'Tournament', entityId: t.id, before: { visibility: t.visibility || 'public' }, after: { visibility: data.visibility } });
+    }
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Muda status do torneio (só dono)
+// Muda status do torneio (fundador/coordenador; cancelar com TenisCash = dinheiro → fundador)
 router.post('/:id/status', authMiddleware, async (req, res) => {
   try {
-    const t = await loadOwned(req, res, req.params.id);
+    const t = await loadForAction(req, res, req.params.id, 'MANAGE_TOURNAMENT', {}, 'só a organização (fundador/coordenador) muda a situação');
     if (!t) return;
     const status = req.body?.status;
     if (!TOURNAMENT_STATUS.has(status)) return res.status(400).json({ error: 'status inválido' });
+    // Cancelar torneio com TenisCash estorna inscrições = movimento de dinheiro → só fundador/admin.
+    if (status === 'CANCELED' && t.cashEnabled && !(await roles.can(req.userId, req.userRole, t.id, 'MONEY'))) {
+      return res.status(403).json({ error: 'cancelar torneio com TenisCash (estorno) é só do fundador' });
+    }
     const updated = await prisma.tournament.update({ where: { id: t.id }, data: { status } });
 
     // Torneio cancelado → estorna 100% das inscrições pagas em TenisCash.
@@ -872,11 +974,9 @@ router.post('/:id/status', authMiddleware, async (req, res) => {
 // Paga o prêmio em TenisCash ao campeão (só dono/admin). Idempotente + teto.
 router.post('/:id/pay-prize', authMiddleware, async (req, res) => {
   try {
-    const t = await loadOwned(req, res, req.params.id);
+    // Dinheiro = só fundador (ou admin global). Coordenador não paga prêmio.
+    const t = await loadForAction(req, res, req.params.id, 'MONEY', {}, 'só o fundador paga o prêmio');
     if (!t) return;
-    if (!cash.isAdmin(req.userRole) && t.ownerId !== req.userId) {
-      return res.status(403).json({ error: 'sem permissão' });
-    }
     const r = await cash.payPrize(t.id);
     if (!r.ok) return res.status(400).json(r);
     res.json(r);
@@ -893,7 +993,7 @@ router.post('/:id/pay-prize', authMiddleware, async (req, res) => {
 // Cria categoria (só dono)
 router.post('/:id/categories', authMiddleware, async (req, res) => {
   try {
-    const t = await loadOwned(req, res, req.params.id);
+    const t = await loadForAction(req, res, req.params.id, 'MANAGE_TOURNAMENT', {}, 'só a organização cria categoria');
     if (!t) return;
     const b = req.body || {};
     if (!b.name) return res.status(400).json({ error: 'name obrigatório' });
@@ -921,8 +1021,10 @@ router.post('/:id/categories', authMiddleware, async (req, res) => {
 // Lista categorias (público)
 router.get('/:id/categories', async (req, res) => {
   try {
+    const t = await access.loadVisibleTournament(req, req.params.id, { select: { id: true } });
+    if (!t) return access.sendNotFound(res);
     const list = await prisma.tournamentCategory.findMany({
-      where: { tournamentId: req.params.id },
+      where: { tournamentId: t.id },
       include: { _count: { select: { entries: true, matches: true } } },
     });
     res.json({ categories: list });
@@ -936,7 +1038,7 @@ router.get('/:id/categories', async (req, res) => {
 // dupla eliminação). Mudar desempate recalcula a classificação na hora.
 router.patch('/:id/categories/:catId', authMiddleware, async (req, res) => {
   try {
-    const t = await loadOwned(req, res, req.params.id);
+    const t = await loadForAction(req, res, req.params.id, 'MANAGE_TOURNAMENT', {}, 'só a organização edita a categoria');
     if (!t) return;
     const cat = await prisma.tournamentCategory.findFirst({ where: { id: req.params.catId, tournamentId: t.id } });
     if (!cat) return res.status(404).json({ error: 'categoria não encontrada' });
@@ -986,8 +1088,9 @@ router.patch('/:id/categories/:catId', authMiddleware, async (req, res) => {
 //    TenisCash, se houver, acontece na aprovação). Dupla: usar /entries/request.
 router.post('/:id/entries', authMiddleware, entryLimitUnlessManager, async (req, res) => {
   try {
-    const t = await prisma.tournament.findUnique({ where: { id: req.params.id } });
-    if (!t) return res.status(404).json({ error: 'torneio não encontrado' });
+    // privado: só membro (ou organização) chega aqui; arquivado/inexistente = 404
+    const t = await access.loadVisibleTournament(req, req.params.id);
+    if (!t || t.id !== req.params.id) return access.sendNotFound(res);
     const b = req.body || {};
     if (!b.categoryId) return res.status(400).json({ error: 'categoryId obrigatório' });
 
@@ -1076,6 +1179,9 @@ router.post('/:id/entries', authMiddleware, entryLimitUnlessManager, async (req,
       if (!memberIds.includes(uid)) memberIds.push(uid);
     }
 
+    if (manager && t.cashEnabled && t.entryFeeCash > 0 && !(await roles.can(req.userId, req.userRole, t.id, 'MONEY'))) {
+      return res.status(403).json({ error: 'inscrever com cobrança em TenisCash é só do fundador' });
+    }
     if (!manager && memberIds.some((id) => id !== req.userId)) {
       return res.status(403).json({ error: 'você só pode inscrever a si mesmo — para dupla, use "Pedir inscrição" (o organizador aprova)' });
     }
@@ -1128,6 +1234,7 @@ router.post('/:id/entries', authMiddleware, entryLimitUnlessManager, async (req,
 
     // Torneio com TenisCash real → cobra a inscrição na hora (entry nasce CONFIRMED).
     // Se o saldo não cobre, desfaz a inscrição e avisa (nada fica pela metade).
+    // Cobrar é DINHEIRO: só fundador/admin (Liga F1). A trava vem antes de criar (abaixo).
     if (t.cashEnabled && t.entryFeeCash > 0) {
       const c = await cash.chargeEntry(entry.id);
       if (!c.ok) {
@@ -1147,7 +1254,9 @@ router.post('/:id/entries', authMiddleware, entryLimitUnlessManager, async (req,
 // Lista inscritos (público)
 router.get('/:id/entries', async (req, res) => {
   try {
-    const where = { tournamentId: req.params.id };
+    const t = await access.loadVisibleTournament(req, req.params.id, { select: { id: true } });
+    if (!t) return access.sendNotFound(res);
+    const where = { tournamentId: t.id };
     if (req.query.categoryId) where.categoryId = req.query.categoryId;
     const list = await prisma.tournamentEntry.findMany({
       where,
@@ -1168,13 +1277,18 @@ router.delete('/entries/:entryId', authMiddleware, async (req, res) => {
   try {
     const entry = await prisma.tournamentEntry.findUnique({
       where: { id: req.params.entryId },
-      include: { members: true, tournament: { select: { ownerId: true, status: true, cashEnabled: true } } },
+      include: { members: true, tournament: { select: { ownerId: true, status: true, cashEnabled: true, archivedAt: true } } },
     });
-    if (!entry) return res.status(404).json({ error: 'inscrição não encontrada' });
-    const isOwner = entry.tournament.ownerId === req.userId;
+    if (!entry || entry.tournament.archivedAt) return res.status(404).json({ error: 'inscrição não encontrada' });
+    // organização (fundador/coordenador/admin) OU o próprio atleta da inscrição.
+    // Torneio com TenisCash: a organização tirar a inscrição (estorno) é DINHEIRO → fundador.
     const isSelf = entry.members.some((m) => m.userId === req.userId);
-    const isAdmin = ['admin', 'superadmin', 'manager'].includes(req.userRole);
-    if (!isOwner && !isSelf && !isAdmin) return res.status(403).json({ error: 'sem permissão' });
+    if (!isSelf && !(await roles.can(req.userId, req.userRole, entry.tournamentId, 'MANAGE_TOURNAMENT'))) {
+      return res.status(403).json({ error: 'sem permissão' });
+    }
+    if (!isSelf && entry.tournament.cashEnabled && !(await roles.can(req.userId, req.userRole, entry.tournamentId, 'MONEY'))) {
+      return res.status(403).json({ error: 'remover inscrição de torneio com TenisCash (estorno) é só do fundador' });
+    }
 
     // Estorno 100% da inscrição em TenisCash SE ainda não começou (DRAFT/OPEN).
     // Depois de começar (ONGOING/FINISHED) não há estorno (política padrão).
@@ -1203,8 +1317,8 @@ router.delete('/entries/:entryId', authMiddleware, async (req, res) => {
 // vaga e a inscrição entra como PENDING até o organizador aprovar.
 router.post('/:id/entries/request', authMiddleware, entryLimitUnlessManager, async (req, res) => {
   try {
-    const t = await prisma.tournament.findUnique({ where: { id: req.params.id } });
-    if (!t) return res.status(404).json({ error: 'torneio não encontrado' });
+    const t = await access.loadVisibleTournament(req, req.params.id);
+    if (!t || t.id !== req.params.id) return access.sendNotFound(res);
     if (!['OPEN', 'ONGOING'].includes(t.status)) {
       return res.status(409).json({ error: 'as inscrições não estão abertas' });
     }
@@ -1275,9 +1389,10 @@ router.post('/entries/:entryId/approve', authMiddleware, async (req, res) => {
       include: { tournament: { select: { ownerId: true, cashEnabled: true, entryFeeCash: true } }, _count: { select: { members: true } } },
     });
     if (!entry) return res.status(404).json({ error: 'inscrição não encontrada' });
-    const isAdmin = ['admin', 'superadmin', 'manager'].includes(req.userRole);
-    if (entry.tournament.ownerId !== req.userId && !isAdmin) {
-      return res.status(403).json({ error: 'só o organizador aprova' });
+    if (!(await allow(req, res, entry.tournamentId, 'MANAGE_TOURNAMENT', {}, 'só a organização (fundador/coordenador) aprova'))) return;
+    // aprovar em torneio com TenisCash COBRA a inscrição = dinheiro → só fundador/admin
+    if (entry.tournament.cashEnabled && !(await roles.can(req.userId, req.userRole, entry.tournamentId, 'MONEY'))) {
+      return res.status(403).json({ error: 'aprovar inscrição de torneio com TenisCash (cobrança) é só do fundador' });
     }
 
     // Torneio com TenisCash real → cobra ANTES de confirmar. Saldo insuficiente
@@ -1317,10 +1432,7 @@ router.post('/entries/:entryId/group', authMiddleware, async (req, res) => {
       include: { tournament: { select: { ownerId: true } } },
     });
     if (!entry) return res.status(404).json({ error: 'inscrição não encontrada' });
-    const isAdmin = ['admin', 'superadmin', 'manager'].includes(req.userRole);
-    if (entry.tournament.ownerId !== req.userId && !isAdmin) {
-      return res.status(403).json({ error: 'só o organizador define os grupos' });
-    }
+    if (!(await allow(req, res, entry.tournamentId, 'MANAGE_TOURNAMENT', {}, 'só a organização define os grupos'))) return;
     const groupName = req.body?.groupName ? String(req.body.groupName).trim().slice(0, 8) : null;
     const updated = await prisma.tournamentEntry.update({
       where: { id: entry.id },
@@ -1336,18 +1448,54 @@ router.post('/entries/:entryId/group', authMiddleware, async (req, res) => {
 // CHAVEAMENTO / PARTIDAS
 // =====================================================================
 
-// Gera o chaveamento de uma categoria (só dono)
+// Regerar chave APAGA jogos (e resultados). Liga F1:
+//  - já existe jogo → exige body.confirm === true (senão 409 CONFIRM_REQUIRED)
+//  - já existe jogo ENCERRADO → bloqueia (409 HAS_RESULTS), a não ser com a
+//    confirmação reforçada do fundador: body.confirm === 'APAGAR RESULTADOS'
+//    + ação REGENERATE_FORCE (fundador/admin). Tudo vai pra auditoria.
+const FORCE_PHRASE = 'APAGAR RESULTADOS';
+async function regenGuard(req, res, t, where) {
+  const b = req.body || {};
+  const existing = await prisma.tournamentMatch.count({ where });
+  const finished = existing ? await prisma.tournamentMatch.count({ where: { ...where, status: { in: ['FINISHED', 'WALKOVER'] } } }) : 0;
+  if (!existing) return { existing, finished, forced: false };
+  if (b.confirm !== true && b.confirm !== FORCE_PHRASE) {
+    res.status(409).json({ code: 'CONFIRM_REQUIRED', existingMatches: existing, finishedMatches: finished, error: `isso apaga os ${existing} jogo(s) já gerados — confirme para gerar de novo` });
+    return null;
+  }
+  if (finished > 0) {
+    if (b.confirm !== FORCE_PHRASE) {
+      res.status(409).json({ code: 'HAS_RESULTS', existingMatches: existing, finishedMatches: finished, error: `já existem ${finished} jogo(s) encerrado(s) — gerar de novo apaga os resultados. Só o fundador pode, digitando "${FORCE_PHRASE}"` });
+      return null;
+    }
+    if (!(await roles.can(req.userId, req.userRole, t.id, 'REGENERATE_FORCE'))) {
+      res.status(403).json({ code: 'FOUNDER_ONLY', error: 'só o fundador pode apagar resultados e gerar a chave de novo' });
+      return null;
+    }
+    return { existing, finished, forced: true };
+  }
+  return { existing, finished, forced: false };
+}
+
+// Gera o chaveamento de uma categoria (fundador/coordenador). Regerar exige confirmação.
 router.post('/:id/categories/:catId/generate', authMiddleware, async (req, res) => {
   try {
-    const t = await loadOwned(req, res, req.params.id);
+    const t = await loadForAction(req, res, req.params.id, 'MANAGE_TOURNAMENT', {}, 'só a organização gera a chave');
     if (!t) return;
     const cat = await prisma.tournamentCategory.findFirst({
       where: { id: req.params.catId, tournamentId: t.id },
     });
     if (!cat) return res.status(404).json({ error: 'categoria não encontrada' });
 
+    const g = await regenGuard(req, res, t, { categoryId: cat.id });
+    if (!g) return;
     const r = await engine.generateFixtures(cat.id, { groupCount: req.body?.groupCount });
     if (!r.ok) return res.status(400).json(r);
+    await audit.record({
+      tournamentId: t.id, userId: req.userId, action: 'bracket.generate', entity: 'TournamentCategory', entityId: cat.id,
+      before: { matches: g.existing, finishedMatches: g.finished },
+      after: { matchesCreated: r.matchesCreated ?? null, deletedMatches: g.existing, deletedFinished: g.finished, forced: g.forced, groupCount: r.groupCount ?? null },
+    });
 
     // ao gerar a primeira chave, marca torneio como ONGOING
     if (t.status === 'DRAFT' || t.status === 'OPEN') {
@@ -1364,15 +1512,23 @@ router.post('/:id/categories/:catId/generate', authMiddleware, async (req, res) 
 // fase de grupos (só dono). Exige a fase de grupos concluída.
 router.post('/:id/categories/:catId/knockout', authMiddleware, async (req, res) => {
   try {
-    const t = await loadOwned(req, res, req.params.id);
+    const t = await loadForAction(req, res, req.params.id, 'MANAGE_TOURNAMENT', {}, 'só a organização monta o mata-mata');
     if (!t) return;
     const cat = await prisma.tournamentCategory.findFirst({
       where: { id: req.params.catId, tournamentId: t.id },
     });
     if (!cat) return res.status(404).json({ error: 'categoria não encontrada' });
 
+    // remontar o mata-mata apaga o mata-mata anterior → mesma trava da chave
+    const g = await regenGuard(req, res, t, { categoryId: cat.id, stage: { notIn: ['GROUP'] } });
+    if (!g) return;
     const r = await engine.generateKnockoutFromGroups(cat.id, req.body?.qualifiersPerGroup || 2);
     if (!r.ok) return res.status(400).json(r);
+    await audit.record({
+      tournamentId: t.id, userId: req.userId, action: 'bracket.knockout', entity: 'TournamentCategory', entityId: cat.id,
+      before: { matches: g.existing, finishedMatches: g.finished },
+      after: { matchesCreated: r.matchesCreated ?? null, deletedMatches: g.existing, deletedFinished: g.finished, forced: g.forced, qualifiers: r.qualifiers ?? null },
+    });
     res.json(r);
   } catch (err) {
     console.error('[tournaments] knockout', err);
@@ -1383,7 +1539,7 @@ router.post('/:id/categories/:catId/knockout', authMiddleware, async (req, res) 
 // SUÍÇO — gera a próxima rodada (pareamento por pontuação, sem repetir confronto).
 router.post('/:id/categories/:catId/swiss-next', authMiddleware, async (req, res) => {
   try {
-    const t = await loadOwned(req, res, req.params.id);
+    const t = await loadForAction(req, res, req.params.id, 'MANAGE_TOURNAMENT', {}, 'só a organização gera a rodada');
     if (!t) return;
     const cat = await prisma.tournamentCategory.findFirst({ where: { id: req.params.catId, tournamentId: t.id } });
     if (!cat) return res.status(404).json({ error: 'categoria não encontrada' });
@@ -1397,11 +1553,23 @@ router.post('/:id/categories/:catId/swiss-next', authMiddleware, async (req, res
 });
 
 // Partidas da categoria (público) — agrupadas por rodada
+// Categoria tem que ser DESTE torneio e o torneio visível (antes: id de categoria de
+// torneio privado vazava por baixo de qualquer torneio público).
+async function visibleCategory(req, res) {
+  const t = await access.loadVisibleTournament(req, req.params.id, { select: { id: true } });
+  if (!t) { access.sendNotFound(res); return null; }
+  const cat = await prisma.tournamentCategory.findFirst({ where: { id: req.params.catId, tournamentId: t.id }, select: { id: true } });
+  if (!cat) { res.status(404).json({ error: 'categoria não encontrada' }); return null; }
+  return cat;
+}
+
 router.get('/:id/categories/:catId/matches', async (req, res) => {
   try {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    const vc = await visibleCategory(req, res);
+    if (!vc) return;
     const matches = await prisma.tournamentMatch.findMany({
-      where: { categoryId: req.params.catId },
+      where: { categoryId: vc.id },
       orderBy: [{ round: 'asc' }, { ordering: 'asc' }],
       include: {
         homeEntry: { select: { id: true, name: true, seed: true, logoUrl: true } },
@@ -1437,7 +1605,9 @@ router.get('/:id/categories/:catId/matches', async (req, res) => {
 router.get('/:id/categories/:catId/standings', async (req, res) => {
   try {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
-    const catId = req.params.catId;
+    const vc = await visibleCategory(req, res);
+    if (!vc) return;
+    const catId = vc.id;
     // Critérios de desempate usados (pra exibir junto da tabela).
     const catRow = await prisma.tournamentCategory.findUnique({
       where: { id: catId },
@@ -1490,7 +1660,8 @@ router.get('/:id/categories/:catId/standings', async (req, res) => {
 // RESULTADO / PLACAR
 // =====================================================================
 
-// Registra resultado de partida (só dono). Aciona avanço de chave + rating.
+// Registra resultado de partida. Fundador/coordenador OU o árbitro ESCALADO no jogo.
+// Jogo já encerrado: só quem tem CORRECT_RESULT (fundador/coordenador) corrige — auditado.
 router.post('/matches/:matchId/result', authMiddleware, async (req, res) => {
   try {
     const match = await prisma.tournamentMatch.findUnique({
@@ -1498,12 +1669,16 @@ router.post('/matches/:matchId/result', authMiddleware, async (req, res) => {
       include: { tournament: { select: { id: true, ownerId: true, name: true } } },
     });
     if (!match) return res.status(404).json({ error: 'partida não encontrada' });
-    const isAdmin = ['admin', 'superadmin', 'manager'].includes(req.userRole);
-    if (match.tournament.ownerId !== req.userId && !isAdmin) {
-      return res.status(403).json({ error: 'só o organizador registra resultado' });
+    if (!(await allow(req, res, match.tournamentId, 'RESULT', { matchId: match.id }, 'só a organização ou o árbitro escalado neste jogo registra o resultado'))) return;
+    const closed = sheet.isClosedStatus(match.status);
+    if (closed && !(await roles.can(req.userId, req.userRole, match.tournamentId, 'CORRECT_RESULT'))) {
+      return res.status(409).json({ code: 'ALREADY_FINISHED', error: 'jogo já encerrado — só a coordenação corrige o resultado' });
     }
+    const before = audit.matchSnap(match);
     const r = await engine.applyMatchResult(match.id, req.body || {});
     if (!r.ok) return res.status(400).json(r);
+    const after = await prisma.tournamentMatch.findUnique({ where: { id: match.id } });
+    await audit.record({ tournamentId: match.tournamentId, userId: req.userId, action: closed ? 'result.correct' : 'result.set', entity: 'TournamentMatch', entityId: match.id, before, after: audit.matchSnap(after) });
     live.emitMatch(match.id, 'end');
 
     // avisa os atletas das duas entries (menos quem lançou o placar)
@@ -1531,22 +1706,29 @@ router.post('/matches/:matchId/result', authMiddleware, async (req, res) => {
   }
 });
 
-// Placar ao vivo (texto, sem câmera) — atualiza liveState (só dono)
+// Placar ao vivo (texto, sem câmera) — atualiza liveState. Organização OU árbitro escalado.
+// Não encerra jogo (isso é /result ou /finalize) e não reabre jogo encerrado sem CORRECT_RESULT.
+const LIVE_STATUSES = new Set(['LIVE', 'SCHEDULED']);
 router.post('/matches/:matchId/live', authMiddleware, async (req, res) => {
   try {
     const match = await prisma.tournamentMatch.findUnique({
       where: { id: req.params.matchId },
-      include: { tournament: { select: { ownerId: true } } },
+      select: { id: true, tournamentId: true, status: true },
     });
     if (!match) return res.status(404).json({ error: 'partida não encontrada' });
-    const isAdmin = ['admin', 'superadmin', 'manager'].includes(req.userRole);
-    if (match.tournament.ownerId !== req.userId && !isAdmin) {
-      return res.status(403).json({ error: 'sem permissão' });
+    if (!(await allow(req, res, match.tournamentId, 'LIVE', { matchId: match.id }, 'só a organização ou o árbitro escalado neste jogo mexe no ao vivo'))) return;
+    const status = req.body?.status || 'LIVE';
+    if (!LIVE_STATUSES.has(status)) return res.status(400).json({ error: 'status do ao vivo inválido (LIVE | SCHEDULED) — para encerrar use o resultado/súmula' });
+    if (sheet.isClosedStatus(match.status) && !(await roles.can(req.userId, req.userRole, match.tournamentId, 'CORRECT_RESULT'))) {
+      return res.status(409).json({ code: 'ALREADY_FINISHED', error: 'jogo já encerrado — só a coordenação reabre' });
     }
     const updated = await prisma.tournamentMatch.update({
       where: { id: match.id },
-      data: { liveState: req.body?.liveState ?? null, status: req.body?.status || 'LIVE' },
+      data: { liveState: req.body?.liveState ?? null, status },
     });
+    if (sheet.isClosedStatus(match.status)) {
+      await audit.record({ tournamentId: match.tournamentId, userId: req.userId, action: 'result.reopen', entity: 'TournamentMatch', entityId: match.id, before: { status: match.status }, after: { status } });
+    }
     live.emitMatch(match.id, 'update');
     res.json(updated);
   } catch (err) {
@@ -1562,10 +1744,7 @@ router.post('/matches/:matchId/schedule', authMiddleware, async (req, res) => {
       include: { tournament: { select: { id: true, ownerId: true, name: true } } },
     });
     if (!match) return res.status(404).json({ error: 'partida não encontrada' });
-    const isAdmin = ['admin', 'superadmin', 'manager'].includes(req.userRole);
-    if (match.tournament.ownerId !== req.userId && !isAdmin) {
-      return res.status(403).json({ error: 'só o organizador agenda' });
-    }
+    if (!(await allow(req, res, match.tournamentId, 'MANAGE_TOURNAMENT', {}, 'só a organização agenda'))) return;
     const b = req.body || {};
     const data = {};
     if (b.scheduledAt !== undefined) data.scheduledAt = ftz.parseLocal(b.scheduledAt);
@@ -1613,10 +1792,9 @@ router.post('/matches/:matchId/teams', authMiddleware, async (req, res) => {
       include: { tournament: { select: { ownerId: true } } },
     });
     if (!match) return res.status(404).json({ error: 'partida não encontrada' });
-    const isAdmin = ['admin', 'superadmin', 'manager'].includes(req.userRole);
-    if (match.tournament.ownerId !== req.userId && !isAdmin) {
-      return res.status(403).json({ error: 'só o organizador define os times' });
-    }
+    if (!(await allow(req, res, match.tournamentId, 'MANAGE_TOURNAMENT', {}, 'só a organização define os times'))) return;
+    const stTeams = await sheetOpenOrCorrector(req, res, { id: match.id, tournamentId: match.tournamentId });
+    if (!stTeams) return;
     const b = req.body || {};
     const data = {};
     for (const [field, key] of [['homeEntryId', 'home'], ['awayEntryId', 'away']]) {
@@ -1631,6 +1809,7 @@ router.post('/matches/:matchId/teams', authMiddleware, async (req, res) => {
     }
     if (!Object.keys(data).length) return res.status(400).json({ error: 'informe homeEntryId e/ou awayEntryId' });
     const updated = await prisma.tournamentMatch.update({ where: { id: match.id }, data });
+    await audit.record({ tournamentId: match.tournamentId, userId: req.userId, action: stTeams === 'closed' ? 'match.teams.correct' : 'match.teams', entity: 'TournamentMatch', entityId: match.id, before: { homeEntryId: match.homeEntryId, awayEntryId: match.awayEntryId, status: match.status }, after: { homeEntryId: updated.homeEntryId, awayEntryId: updated.awayEntryId } });
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1646,8 +1825,10 @@ router.post('/matches/:matchId/teams', authMiddleware, async (req, res) => {
 // Elenco de um time (lista) — público
 router.get('/entries/:entryId/players', async (req, res) => {
   try {
+    const entry = await prisma.tournamentEntry.findUnique({ where: { id: req.params.entryId }, select: { id: true, tournamentId: true } });
+    if (!entry || !(await access.canSeeTournamentId(req, entry.tournamentId))) return res.status(404).json({ error: 'time não encontrado' });
     const players = await prisma.rosterPlayer.findMany({
-      where: { entryId: req.params.entryId },
+      where: { entryId: entry.id },
       orderBy: [{ number: 'asc' }, { name: 'asc' }],
     });
     res.json({ players });
@@ -1757,6 +1938,8 @@ router.delete('/players/:playerId', authMiddleware, async (req, res) => {
 // Súmula completa de uma partida (elenco + eventos + placar) — público
 router.get('/matches/:matchId/sheet', async (req, res) => {
   try {
+    const mc = await roles.matchContext(req.params.matchId);
+    if (!mc || !(await access.canSeeTournamentId(req, mc.tournamentId))) return res.status(404).json({ error: 'partida não encontrada' });
     const s = await sheet.buildSheet(req.params.matchId);
     if (!s) return res.status(404).json({ error: 'partida não encontrada' });
     res.json(s);
@@ -1765,18 +1948,33 @@ router.get('/matches/:matchId/sheet', async (req, res) => {
   }
 });
 
+// Súmula FECHADA (jogo encerrado) só muda com CORRECT_RESULT (fundador/coordenador).
+// Devolve false (já respondeu 409), 'open' ou 'closed' (correção autorizada → auditar).
+async function sheetOpenOrCorrector(req, res, m) {
+  const row = await prisma.tournamentMatch.findUnique({ where: { id: m.id }, select: { status: true } });
+  const closed = !!(row && sheet.isClosedStatus(row.status));
+  if (closed && !(await roles.can(req.userId, req.userRole, m.tournamentId, 'CORRECT_RESULT'))) {
+    res.status(409).json({ code: 'ALREADY_FINISHED', error: 'súmula já fechada — só a coordenação corrige' });
+    return false;
+  }
+  return closed ? 'closed' : 'open';
+}
+
 // Registra um evento da súmula (gol, assistência, cartão, falta, tempo).
 // Permissão: árbitro nomeado pro jogo, árbitro do torneio, coordenador/fundador/admin.
 router.post('/matches/:matchId/events', authMiddleware, async (req, res) => {
   try {
     const m = await roles.matchContext(req.params.matchId);
     if (!m) return res.status(404).json({ error: 'jogo não encontrado' });
-    if (!(await roles.can(req.userId, req.userRole, m.tournamentId, 'REFEREE', { matchId: m.id }))) {
-      return res.status(403).json({ error: 'sem permissão (arbitragem do jogo)' });
-    }
+    if (!(await allow(req, res, m.tournamentId, 'REFEREE', { matchId: m.id }, 'sem permissão (árbitro escalado no jogo ou coordenação)'))) return;
+    const stEv = await sheetOpenOrCorrector(req, res, m);
+    if (!stEv) return;
     // Quem lança evento já é arbitragem/coordenação → pode liberar suspenso (com motivo auditado).
     const r = await sheet.addEvent(req.params.matchId, req.body || {}, { userId: req.userId, canOverride: true });
     if (!r.ok) return res.status(r.code ? 409 : 400).json(r);
+    if (stEv === 'closed') {
+      await audit.record({ tournamentId: m.tournamentId, userId: req.userId, action: 'sheet.event.add', entity: 'MatchEvent', entityId: r.event.id, before: null, after: { matchId: m.id, type: r.event.type, entryId: r.event.entryId, playerId: r.event.playerId || null, minute: r.event.minute ?? null } });
+    }
     live.emitMatch(req.params.matchId, r.wentLive ? 'start' : 'event', { eventId: r.event.id });
     res.status(201).json(r.event);
   } catch (err) {
@@ -1794,6 +1992,7 @@ router.post('/matches/:matchId/lineup', authMiddleware, async (req, res) => {
     const isRef = await roles.can(req.userId, req.userRole, m.tournamentId, 'REFEREE', { matchId: m.id });
     const isTeam = await roles.can(req.userId, req.userRole, m.tournamentId, 'SET_LINEUP', { entryId });
     if (!isRef && !isTeam) return res.status(403).json({ error: 'sem permissão (treinador do time ou arbitragem)' });
+    if (!(await sheetOpenOrCorrector(req, res, m))) return;
     const r = await sheet.setLineup(req.params.matchId, req.body || {}, { userId: req.userId, canOverride: isRef });
     if (!r.ok) return res.status(r.code ? 409 : 400).json(r);
     res.json(r);
@@ -1807,10 +2006,14 @@ router.delete('/events/:eventId', authMiddleware, async (req, res) => {
   try {
     const ctx = await roles.eventContext(req.params.eventId);
     if (!ctx || !ctx.match) return res.json({ ok: true }); // já não existe
-    if (!(await roles.can(req.userId, req.userRole, ctx.match.tournamentId, 'REFEREE', { matchId: ctx.match.id }))) {
-      return res.status(403).json({ error: 'sem permissão (arbitragem do jogo)' });
-    }
+    if (!(await allow(req, res, ctx.match.tournamentId, 'REFEREE', { matchId: ctx.match.id }, 'sem permissão (árbitro escalado no jogo ou coordenação)'))) return;
+    const stDel = await sheetOpenOrCorrector(req, res, ctx.match);
+    if (!stDel) return;
+    const evBefore = stDel === 'closed' ? await prisma.matchEvent.findUnique({ where: { id: req.params.eventId } }) : null;
     await sheet.deleteEvent(req.params.eventId);
+    if (stDel === 'closed') {
+      await audit.record({ tournamentId: ctx.match.tournamentId, userId: req.userId, action: 'sheet.event.remove', entity: 'MatchEvent', entityId: req.params.eventId, before: evBefore && { matchId: evBefore.matchId, type: evBefore.type, entryId: evBefore.entryId, playerId: evBefore.playerId || null, minute: evBefore.minute ?? null }, after: null });
+    }
     live.emitMatch(ctx.match.id, 'event_removed', { removedEventId: req.params.eventId });
     res.json({ ok: true });
   } catch (err) {
@@ -1823,9 +2026,8 @@ router.post('/matches/:matchId/officials', authMiddleware, async (req, res) => {
   try {
     const m = await roles.matchContext(req.params.matchId);
     if (!m) return res.status(404).json({ error: 'jogo não encontrado' });
-    if (!(await roles.can(req.userId, req.userRole, m.tournamentId, 'REFEREE', { matchId: m.id }))) {
-      return res.status(403).json({ error: 'sem permissão (arbitragem do jogo)' });
-    }
+    if (!(await allow(req, res, m.tournamentId, 'REFEREE', { matchId: m.id }, 'sem permissão (árbitro escalado no jogo ou coordenação)'))) return;
+    if (!(await sheetOpenOrCorrector(req, res, m))) return;
     const r = await sheet.setOfficials(req.params.matchId, req.body || {});
     if (!r.ok) return res.status(400).json(r);
     res.json(r);
@@ -1840,11 +2042,14 @@ router.post('/matches/:matchId/finalize', authMiddleware, async (req, res) => {
   try {
     const m = await roles.matchContext(req.params.matchId);
     if (!m) return res.status(404).json({ error: 'jogo não encontrado' });
-    if (!(await roles.can(req.userId, req.userRole, m.tournamentId, 'REFEREE', { matchId: m.id }))) {
-      return res.status(403).json({ error: 'sem permissão (arbitragem do jogo)' });
-    }
-    const r = await sheet.finalizeMatch(req.params.matchId, req.body || {});
-    if (!r.ok) return res.status(400).json(r);
+    if (!(await allow(req, res, m.tournamentId, 'REFEREE', { matchId: m.id }, 'sem permissão (árbitro escalado no jogo ou coordenação)'))) return;
+    const prev = await prisma.tournamentMatch.findUnique({ where: { id: m.id } });
+    const closed = sheet.isClosedStatus(prev && prev.status);
+    const corrector = closed && (await roles.can(req.userId, req.userRole, m.tournamentId, 'CORRECT_RESULT'));
+    const r = await sheet.finalizeMatch(req.params.matchId, { ...(req.body || {}), allowCorrection: !!corrector });
+    if (!r.ok) return res.status(r.code === 409 ? 409 : 400).json(r);
+    const after = await prisma.tournamentMatch.findUnique({ where: { id: m.id } });
+    await audit.record({ tournamentId: m.tournamentId, userId: req.userId, action: closed ? 'sheet.correct' : 'sheet.finalize', entity: 'TournamentMatch', entityId: m.id, before: audit.matchSnap(prev), after: audit.matchSnap(after) });
     live.emitMatch(req.params.matchId, 'end');
     require('../ai/rede/ganchos').jogoFinalizado(req.params.matchId);
     res.json(r);
@@ -1858,7 +2063,9 @@ router.post('/matches/:matchId/finalize', authMiddleware, async (req, res) => {
 router.get('/:id/suspensions', async (req, res) => {
   try {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
-    const r = await discipline.tournamentSuspensions(req.params.id, req.query.categoryId || null);
+    const t = await access.loadVisibleTournament(req, req.params.id, { select: { id: true } });
+    if (!t) return access.sendNotFound(res);
+    const r = await discipline.tournamentSuspensions(t.id, req.query.categoryId || null);
     res.json(r);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1873,7 +2080,9 @@ router.get('/:id/stats/:kind', async (req, res) => {
     const kind = ['scorers', 'assists', 'cards'].includes(req.params.kind) ? req.params.kind : 'scorers';
     // scope=official (padrão): só jogos ENCERRADOS. scope=live: inclui jogos em andamento (linhas marcadas partial).
     const scope = req.query.scope === 'live' ? 'live' : 'official';
-    const rows = await sheet.playerStats(req.params.id, { kind, scope, categoryId: req.query.categoryId || null });
+    const t = await access.loadVisibleTournament(req, req.params.id, { select: { id: true } });
+    if (!t) return access.sendNotFound(res);
+    const rows = await sheet.playerStats(t.id, { kind, scope, categoryId: req.query.categoryId || null });
     res.json({ kind, scope, ranking: rows });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2251,11 +2460,8 @@ router.post('/challenges/:id/result', authMiddleware, async (req, res) => {
 // Lista avisos (público) por id ou slug
 router.get('/:idOrSlug/posts', async (req, res) => {
   try {
-    const t = await prisma.tournament.findFirst({
-      where: { OR: [{ id: req.params.idOrSlug }, { slug: req.params.idOrSlug }] },
-      select: { id: true },
-    });
-    if (!t) return res.status(404).json({ error: 'torneio não encontrado' });
+    const t = await access.loadVisibleTournament(req, req.params.idOrSlug, { select: { id: true } });
+    if (!t) return access.sendNotFound(res);
     const posts = await prisma.tournamentPost.findMany({
       where: { tournamentId: t.id },
       orderBy: [{ pinned: 'desc' }, { createdAt: 'desc' }],
@@ -2267,10 +2473,10 @@ router.get('/:idOrSlug/posts', async (req, res) => {
   }
 });
 
-// Publica um aviso (só dono)
+// Publica um aviso (fundador/coordenador)
 router.post('/:id/posts', authMiddleware, limits.post, async (req, res) => {
   try {
-    const t = await loadOwned(req, res, req.params.id);
+    const t = await loadForAction(req, res, req.params.id, 'POST', {}, 'só a organização publica no mural');
     if (!t) return;
     const b = req.body || {};
     const body = String(b.body || '').trim();
@@ -2290,20 +2496,108 @@ router.post('/:id/posts', authMiddleware, limits.post, async (req, res) => {
   }
 });
 
-// Remove um aviso (só dono)
+// Remove um aviso (fundador/coordenador)
 router.delete('/posts/:postId', authMiddleware, async (req, res) => {
   try {
     const post = await prisma.tournamentPost.findUnique({
       where: { id: req.params.postId },
-      include: { tournament: { select: { ownerId: true } } },
+      select: { id: true, tournamentId: true },
     });
     if (!post) return res.status(404).json({ error: 'aviso não encontrado' });
-    const isAdmin = ['admin', 'superadmin', 'manager'].includes(req.userRole);
-    if (post.tournament.ownerId !== req.userId && !isAdmin) {
-      return res.status(403).json({ error: 'sem permissão' });
-    }
+    if (!(await allow(req, res, post.tournamentId, 'POST', {}, 'só a organização remove aviso'))) return;
     await prisma.tournamentPost.delete({ where: { id: post.id } });
     res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =====================================================================
+// LIGA ABERTA F1 — ARQUIVAR (excluir reversível), RESTAURAR, TRANSFERIR, AUDITORIA
+// =====================================================================
+const RESTORE_DAYS = 30;
+
+// Excluir = ARQUIVAR (some de todas as rotas públicas; reversível por 30 dias).
+// Só fundador/admin. body { confirm: true }. Nada é apagado fisicamente.
+async function archiveHandler(req, res) {
+  try {
+    const t = await loadForAction(req, res, req.params.id, 'DELETE_TOURNAMENT', {}, 'só o fundador exclui (arquiva) o torneio');
+    if (!t) return;
+    if ((req.body || {}).confirm !== true) {
+      return res.status(409).json({ code: 'CONFIRM_REQUIRED', error: `confirme para excluir — o torneio sai do ar e pode ser restaurado em até ${RESTORE_DAYS} dias` });
+    }
+    const at = new Date();
+    await prisma.tournament.update({ where: { id: t.id }, data: { archivedAt: at, archivedBy: req.userId } });
+    await audit.record({ tournamentId: t.id, userId: req.userId, action: 'tournament.archive', entity: 'Tournament', entityId: t.id, before: { archivedAt: null, status: t.status }, after: { archivedAt: at } });
+    const restoreUntil = new Date(at.getTime() + RESTORE_DAYS * 86400000);
+    res.json({ ok: true, archivedAt: at, restoreUntil });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+router.post('/:id/archive', authMiddleware, archiveHandler);
+router.delete('/:id', authMiddleware, archiveHandler);
+
+// Restaura um torneio arquivado (fundador/admin, até 30 dias depois de arquivar).
+router.post('/:id/restore', authMiddleware, async (req, res) => {
+  try {
+    const t = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    if (!t) return access.sendNotFound(res);
+    if (!(await roles.can(req.userId, req.userRole, t.id, 'RESTORE'))) {
+      // não arquivado + sem acesso → mesmo 404; arquivado sem ser fundador → 404 também (não vaza)
+      if (!t.archivedAt || !(await access.isMember(req.userId, t))) return access.sendNotFound(res);
+      return res.status(403).json({ error: 'só o fundador restaura o torneio' });
+    }
+    if (!t.archivedAt) return res.status(409).json({ error: 'o torneio não está arquivado' });
+    const limit = new Date(new Date(t.archivedAt).getTime() + RESTORE_DAYS * 86400000);
+    if (Date.now() > limit.getTime()) {
+      return res.status(410).json({ code: 'RESTORE_EXPIRED', error: `prazo de restauração (${RESTORE_DAYS} dias) encerrado — o torneio continua arquivado` });
+    }
+    await prisma.tournament.update({ where: { id: t.id }, data: { archivedAt: null, archivedBy: null } });
+    await audit.record({ tournamentId: t.id, userId: req.userId, action: 'tournament.restore', entity: 'Tournament', entityId: t.id, before: { archivedAt: t.archivedAt, archivedBy: t.archivedBy }, after: { archivedAt: null } });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Transfere o torneio para outro dono (fundador/admin). body { userId | username | phone }.
+// O dono antigo vira COORDENADOR. Auditado.
+router.post('/:id/transfer', authMiddleware, async (req, res) => {
+  try {
+    const t = await loadForAction(req, res, req.params.id, 'TRANSFER', {}, 'só o dono atual do torneio transfere');
+    if (!t) return;
+    const b = req.body || {};
+    const user = await roles.resolveUser({ userId: b.userId, username: b.username, phone: b.phone });
+    if (!user) return res.status(404).json({ error: 'usuário não encontrado — a pessoa precisa ter conta (telefone/@)' });
+    if (user.id === t.ownerId) return res.status(409).json({ error: 'essa pessoa já é a dona do torneio' });
+    const oldOwner = t.ownerId;
+    await prisma.$transaction(async (tx) => {
+      await tx.tournament.update({ where: { id: t.id }, data: { ownerId: user.id } });
+      // fundador explícito do dono antigo sai (senão ele continuaria fundador)
+      await tx.tournamentRole.deleteMany({ where: { tournamentId: t.id, userId: oldOwner, role: 'FOUNDER' } });
+      const hasCoord = await tx.tournamentRole.findFirst({ where: { tournamentId: t.id, userId: oldOwner, role: 'COORDINATOR', entryId: null } });
+      if (!hasCoord) await tx.tournamentRole.create({ data: { tournamentId: t.id, userId: oldOwner, role: 'COORDINATOR', entryId: null } });
+    });
+    await audit.record({ tournamentId: t.id, userId: req.userId, action: 'tournament.transfer', entity: 'Tournament', entityId: t.id, before: { ownerId: oldOwner }, after: { ownerId: user.id, previousOwnerRole: 'COORDINATOR' } });
+    try { await notify(user.id, { type: 'role', title: 'Torneio transferido para você', body: `Agora você é o fundador de "${t.name}".`, link: '#/t/' + t.id }); } catch (_) {}
+    res.json({ ok: true, owner: user, previousOwnerId: oldOwner });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Auditoria do torneio (fundador/coordenador/admin). Paginado: ?limit=50&cursor=<id>&action=
+router.get('/:id/audit', authMiddleware, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const t = await prisma.tournament.findUnique({ where: { id: req.params.id }, select: { id: true, ownerId: true, visibility: true, archivedAt: true } });
+    if (!t) return access.sendNotFound(res);
+    if (!(await roles.can(req.userId, req.userRole, t.id, 'VIEW_AUDIT'))) {
+      if (!(await access.canSee({ userId: req.userId, userRole: req.userRole }, t))) return access.sendNotFound(res);
+      return res.status(403).json({ error: 'só fundador/coordenador vê a auditoria' });
+    }
+    res.json(await audit.list(t.id, { limit: req.query.limit, cursor: req.query.cursor || null, action: req.query.action || null }));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

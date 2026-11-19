@@ -16,6 +16,7 @@ const { prisma, authMiddleware, JWT_SECRET } = require('../middleware');
 const roles = require('../services/tournamentRoles');
 const reg = require('../services/tournamentRegistration');
 const { limits } = require('../services/ligaRateLimit');
+const access = require('../services/tournamentAccess');
 
 const router = express.Router();
 const BASE = '/api/tournament-registration';
@@ -53,13 +54,17 @@ function clientIp(req) {
   return xf || req.ip || (req.socket && req.socket.remoteAddress) || '';
 }
 
-// Papel no torneio (padrão tournamentRoles): MANAGE_TOURNAMENT | REFEREE
+// Papel no torneio (Liga F1: roles.can é a porta única): MANAGE_TOURNAMENT | REFEREE | MONEY
 function requireCan(action) {
   return async (req, res, next) => {
     try {
-      const t = await prisma.tournament.findUnique({ where: { id: req.params.tid }, select: { id: true } });
-      if (!t) return res.status(404).json({ error: 'torneio não encontrado' });
-      if (!(await roles.can(req.userId, req.userRole, t.id, action))) return res.status(403).json({ error: 'sem permissão neste torneio' });
+      const t = await prisma.tournament.findUnique({ where: { id: req.params.tid }, select: { id: true, ownerId: true, visibility: true, archivedAt: true } });
+      if (!t || t.archivedAt) return access.sendNotFound(res);
+      if (!(await roles.can(req.userId, req.userRole, t.id, action))) {
+        // privado sem acesso = mesmo 404 de "não existe" (M9)
+        if (!(await access.canSee({ userId: req.userId, userRole: req.userRole }, t))) return access.sendNotFound(res);
+        return res.status(403).json({ error: 'sem permissão neste torneio' });
+      }
       next();
     } catch (e) {
       res.status(500).json({ error: 'erro interno' });
@@ -67,6 +72,14 @@ function requireCan(action) {
   };
 }
 const manage = [authMiddleware, requireCan('MANAGE_TOURNAMENT')];
+const money = [authMiddleware, requireCan('MONEY')]; // dinheiro (baixa manual/estorno): só fundador/admin
+
+// Inscrição pública respeita a visibilidade: privado = só membro; arquivado = 404 igual.
+function visibleSlug(req, res, next) {
+  access.loadVisibleTournament(req, req.params.slug, { select: { id: true } })
+    .then((t) => (t ? next() : access.sendNotFound(res)))
+    .catch(() => res.status(500).json({ error: 'erro interno' }));
+}
 const desk = [authMiddleware, requireCan('REFEREE')]; // mesa/arbitragem também faz check-in
 
 // ---------------------------------------------------------------------
@@ -80,12 +93,12 @@ router.get('/t/:slug/inscricao', (req, res) => {
 // ---------------------------------------------------------------------
 // público (sem login)
 // ---------------------------------------------------------------------
-router.get(BASE + '/public/:slug', async (req, res) => {
+router.get(BASE + '/public/:slug', visibleSlug, async (req, res) => {
   res.set('Cache-Control', 'no-store');
   send(res, async () => reg.publicTournament(req.params.slug, await optionalUser(req)));
 });
 
-router.post(BASE + '/public/:slug/coupon', (req, res) =>
+router.post(BASE + '/public/:slug/coupon', visibleSlug, (req, res) =>
   send(res, () => reg.checkCoupon(req.params.slug, (req.body || {}).code, (req.body || {}).categoryId)));
 
 // Liga Aberta F0: limitador próprio (por usuário logado, senão por IP).
@@ -93,7 +106,7 @@ async function attachOptionalUser(req, _res, next) {
   try { const u = await optionalUser(req); req.optionalUser = u; if (u) req.userId = u.id; } catch (_) { req.optionalUser = null; }
   next();
 }
-router.post(BASE + '/public/:slug/register', attachOptionalUser, limits.publicRegister, async (req, res) => {
+router.post(BASE + '/public/:slug/register', attachOptionalUser, visibleSlug, limits.publicRegister, async (req, res) => {
   try {
     const user = req.optionalUser || null;
     const r = await reg.register(req.params.slug, req.body || {}, user, { ip: clientIp(req), userAgent: req.headers['user-agent'] });
@@ -110,8 +123,18 @@ router.get(BASE + '/r/:token', async (req, res) => {
   send(res, async () => reg.publicStatus(req.params.token, await optionalUser(req)));
 });
 
+// Liga F1: inscrição de torneio ARQUIVADO não gera cobrança nova.
+async function tokenOfArchived(token) {
+  const r = await prisma.tournamentRegistration.findUnique({ where: { publicToken: String(token || '') }, select: { tournamentId: true } });
+  if (!r) return false;
+  const t = await prisma.tournament.findUnique({ where: { id: r.tournamentId }, select: { archivedAt: true } });
+  return !t || !!t.archivedAt;
+}
 router.post(BASE + '/r/:token/pay', async (req, res) =>
-  send(res, async () => reg.startPayment(req.params.token, req.body || {}, await optionalUser(req))));
+  send(res, async () => {
+    if (await tokenOfArchived(req.params.token)) throw new reg.RegError(404, 'inscrição não encontrada');
+    return reg.startPayment(req.params.token, req.body || {}, await optionalUser(req));
+  }));
 
 router.post(BASE + '/r/:token/cancel', async (req, res) =>
   send(res, async () => reg.cancelByToken(req.params.token, await optionalUser(req))));
@@ -178,10 +201,10 @@ async function ownReg(req) {
   return r;
 }
 
-router.post(BASE + '/manage/:tid/registrations/:rid/mark-paid', ...manage, (req, res) =>
+router.post(BASE + '/manage/:tid/registrations/:rid/mark-paid', ...money, (req, res) =>
   send(res, async () => { await ownReg(req); return reg.markPaidOnsite(req.params.rid, req.body || {}, req.userId); }));
 
-router.post(BASE + '/manage/:tid/registrations/:rid/refund', ...manage, (req, res) =>
+router.post(BASE + '/manage/:tid/registrations/:rid/refund', ...money, (req, res) =>
   send(res, async () => { await ownReg(req); return reg.registerRefund(req.params.rid, req.body || {}, req.userId); }));
 
 router.post(BASE + '/manage/:tid/registrations/:rid/cancel', ...manage, (req, res) =>

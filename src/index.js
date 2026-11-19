@@ -1386,19 +1386,18 @@ app.get('/t/:slug', async (req, res) => {
   try {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
     const { prisma } = require('./middleware');
-    const slug = req.params.slug;
-    const t = await prisma.tournament.findFirst({
-      where: { OR: [{ slug }, { id: slug }] },
+    const tAccess = require('./services/tournamentAccess');
+    // Liga F1: público e não listado abrem pelo link; privado (página sem login) e
+    // arquivado dão o MESMO 404 de "não existe".
+    const t = await tAccess.loadVisibleTournament(req, req.params.slug, {
       include: {
         categories: { include: { _count: { select: { entries: true } } } },
         _count: { select: { entries: true } },
       },
     });
-    if (!t) {
-      return res
-        .status(404)
-        .send('<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h1>Torneio não encontrado</h1></body></html>');
-    }
+    if (!t) return tAccess.sendNotFound(res, 'html');
+    // não listado: fora de buscadores
+    if (t.visibility === 'unlisted') res.set('X-Robots-Tag', 'noindex, nofollow');
 
     const STATUS = {
       DRAFT: ['Rascunho', '#8e8e93'], OPEN: ['Inscrições abertas', '#0a843d'],
