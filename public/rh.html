@@ -77,9 +77,10 @@ async function api(p, method = 'GET', body = null, form = false) {
   return d;
 }
 async function openFile(p) {
+  const w = window.open('', '_blank'); // abre antes do await (o iPhone bloqueia pop-up depois)
   const r = await fetch('/api/rh/admin' + p, { headers: { Authorization: 'Bearer ' + TOKEN } });
-  if (!r.ok) return alert('Arquivo não encontrado.');
-  window.open(URL.createObjectURL(await r.blob()), '_blank');
+  if (!r.ok) { if (w) w.close(); return alert('Arquivo não encontrado.'); }
+  const u = URL.createObjectURL(await r.blob()); if (w) w.location = u; else location.href = u;
 }
 const STAGE_LABEL = { NOVO: 'Novos', TRIAGEM: 'Triagem', ENTREVISTA: 'Entrevista', PROPOSTA: 'Proposta', CONTRATADO: 'Contratados', REPROVADO: 'Reprovados' };
 let META = null, DASH = null, TAB = 'painel';
@@ -91,7 +92,7 @@ function nav() {
   document.getElementById('nav').innerHTML = TABS.map(([k, l]) => '<button data-t="' + k + '" class="' + (TAB === k ? 'on' : '') + '">' + l + (badge[k] ? '<span class="b">' + badge[k] + '</span>' : '') + '</button>').join('');
   document.querySelectorAll('#nav button').forEach((b) => b.onclick = () => go(b.dataset.t));
 }
-async function go(t) { TAB = t; location.hash = t; nav(); $m().innerHTML = '<div class="muted">Carregando…</div>'; try { await VIEWS[t](); } catch (e) { $m().innerHTML = '<div class="card msg bad">' + esc(e.message) + '</div>'; } }
+async function go(t) { TAB = t; if ((location.hash || '').slice(1).split('?')[0] !== t) location.hash = t; nav(); $m().innerHTML = '<div class="muted">Carregando…</div>'; try { await VIEWS[t](); } catch (e) { $m().innerHTML = '<div class="card msg bad">' + esc(e.message) + '</div>'; } }
 function drawer(html) { document.getElementById('dp').innerHTML = '<button class="btn g x" onclick="closeDrawer()">Fechar</button>' + html; document.getElementById('drawer').style.display = 'block'; }
 function closeDrawer() { document.getElementById('drawer').style.display = 'none'; }
 document.getElementById('drawer').onclick = (e) => { if (e.target.id === 'drawer') closeDrawer(); };
@@ -202,6 +203,17 @@ function jobForm(j) {
   };
 }
 
+// Entrevista por vídeo (Jitsi Meet, grátis): o candidato entra pelo celular sem conta; quem entrevista
+// abre a sala antes (o meet.jit.si pede login Google uma vez para virar moderador).
+function interviewCard(c, wa) {
+  const when = c.interviewAt ? new Date(c.interviewAt).toLocaleString('pt-BR', { timeZone: 'America/Fortaleza', dateStyle: 'short', timeStyle: 'short' }) : '';
+  const msg = 'Olá, ' + c.name.split(' ')[0] + '! Aqui é da Sports & Tennis 🧡 Gostamos do seu perfil para a vaga de ' + c.jobTitleText + '. Sua entrevista por vídeo é ' + when +
+    '. É só entrar neste link pelo celular, sem instalar nada: ' + c.interviewUrl + ' . Se precisar remarcar, responda aqui.';
+  return '<div class="card"><b>🎥 Entrevista por vídeo</b>' + (when ? ' · ' + when : '') + '<div style="margin-top:6px;word-break:break-all"><a href="' + esc(c.interviewUrl) + '" target="_blank">' + esc(c.interviewUrl) + '</a></div>' +
+    '<a class="btn" style="display:inline-block;margin-top:8px;text-decoration:none" target="_blank" href="' + wa + '?text=' + encodeURIComponent(msg) + '">Mandar convite no WhatsApp</a>' +
+    '<div class="muted" style="margin-top:6px">Entre no link uns minutos antes para abrir a sala (na 1ª vez o site pede login com Google).</div></div>';
+}
+
 async function candidate(id) {
   const c = await api('/candidates/' + id);
   const ans = Object.entries(c.answers || {}).map(([q, a]) => '<div style="margin-top:8px"><b>' + esc(q) + '</b><div>' + esc(a || '—') + '</div></div>').join('');
@@ -209,15 +221,18 @@ async function candidate(id) {
   drawer('<h2>' + esc(c.name) + '</h2><div class="muted">' + esc(c.jobTitleText) + ' · ' + br(c.createdAt) + ' · <span class="pill p-brand">' + STAGE_LABEL[c.stage] + '</span></div>' +
     '<div class="card"><div>📱 <a href="' + wa + '" target="_blank">' + esc(c.phone) + '</a>' + (c.email ? ' · ✉️ ' + esc(c.email) : '') + '</div>' + (c.city ? '<div>📍 ' + esc(c.city) + '</div>' : '') + (c.birthDate ? '<div>🎂 ' + br(c.birthDate) + '</div>' : '') +
     (c.resumeFile ? '<button class="btn g" style="margin-top:10px" id="cv">📎 Abrir currículo</button>' : '<div class="muted" style="margin-top:6px">Sem currículo anexado.</div>') + '</div>' +
+    (c.interviewUrl ? interviewCard(c, wa) : '') +
     (c.experience ? '<div class="card"><b>Experiência</b><div style="white-space:pre-wrap">' + esc(c.experience) + '</div></div>' : '') + (ans ? '<div class="card">' + ans + '</div>' : '') +
     (c.stage === 'CONTRATADO' ? '<div class="card msg ok">Contratado. A ficha está na aba Equipe.</div>' :
     '<div class="card"><b>Mover no processo</b><div class="row"><label>Etapa<select id="cs">' + META.stages.filter((s) => s !== 'CONTRATADO').map((s) => '<option value="' + s + '"' + (s === c.stage ? ' selected' : '') + '>' + STAGE_LABEL[s] + '</option>').join('') + '</select></label>' +
-    '<label>Nota (1–5)<select id="cr"><option value="">—</option>' + [1, 2, 3, 4, 5].map((n) => '<option' + (c.rating === n ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></label><label>Entrevista em<input id="ci" type="datetime-local"></label></div>' +
+    '<label>Nota (1–5)<select id="cr"><option value="">—</option>' + [1, 2, 3, 4, 5].map((n) => '<option' + (c.rating === n ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></label><label>Entrevista em (gera o link de vídeo)<input id="ci" type="datetime-local"></label></div>' +
     '<label>Anotação<textarea id="cnote" placeholder="Como foi a conversa, pontos fortes, dúvidas…"></textarea></label><label id="rrl" style="display:none">Motivo da reprovação<input id="rr"></label><div class="msg" id="cmm"></div><button class="btn" style="margin-top:10px" id="cgo">Salvar</button></div>' +
     '<div class="card"><b>Contratar</b><div class="row"><label>Loja<select id="hs">' + storeOpts(c.storeId) + '</select></label><label>Admissão<input id="ha" type="date"></label><label>Salário (R$)<input id="hsal" value="1790,00"></label></div>' +
     '<div class="muted" style="margin-top:6px">Cria o funcionário (vendedor, loja, salário, admissão) e abre o checklist de admissão. Ele entra no app pelo "esqueci a senha" com código no WhatsApp.</div><button class="btn ok" style="margin-top:10px" id="hgo">Contratar ' + esc(c.name.split(' ')[0]) + '</button><div class="msg" id="hm"></div></div>') +
     '<div class="card"><b>Histórico</b>' + c.events.map((e) => '<div class="ev"><small class="muted">' + new Date(e.createdAt).toLocaleString('pt-BR', { timeZone: 'America/Fortaleza' }) + '</small><div>' + esc(e.kind.replace('_', ' ').toLowerCase()) +
-      (e.toStage && e.fromStage && e.toStage !== e.fromStage ? ': ' + STAGE_LABEL[e.fromStage] + ' → ' + STAGE_LABEL[e.toStage] : '') + (e.scheduledAt ? ' · ' + new Date(e.scheduledAt).toLocaleString('pt-BR', { timeZone: 'America/Fortaleza' }) : '') + (e.note ? '<div>' + esc(e.note) + '</div>' : '') + '</div></div>').join('') + '</div>');
+      (e.toStage && e.fromStage && e.toStage !== e.fromStage ? ': ' + STAGE_LABEL[e.fromStage] + ' → ' + STAGE_LABEL[e.toStage] : '') + (e.scheduledAt ? ' · ' + new Date(e.scheduledAt).toLocaleString('pt-BR', { timeZone: 'America/Fortaleza' }) : '') + (e.note ? '<div>' + esc(e.note) + '</div>' : '') + '</div></div>').join('') + '</div>' +
+    '<button class="btn r" style="margin-top:6px" id="cdel">Excluir candidato e currículo (LGPD)</button>');
+  document.getElementById('cdel').onclick = async () => { if (!confirm('Apagar ' + c.name + ' e o currículo de vez? Não dá para desfazer.')) return; try { await api('/candidates/' + id, 'DELETE'); closeDrawer(); go('candidatos'); } catch (e) { alert(e.message); } };
   const cv = document.getElementById('cv'); if (cv) cv.onclick = () => openFile('/candidates/' + id + '/resume');
   const cs = document.getElementById('cs'); if (cs) cs.onchange = () => { document.getElementById('rrl').style.display = cs.value === 'REPROVADO' ? 'block' : 'none'; };
   const g = document.getElementById('cgo'); if (g) g.onclick = async () => { try { await api('/candidates/' + id + '/move', 'POST', { stage: cs.value, rating: cr.value, note: cnote.value, rejectReason: rr.value, scheduledAt: ci.value ? new Date(ci.value).toISOString() : null }); candidate(id); } catch (e) { cmm.className = 'msg bad'; cmm.textContent = e.message; } };
@@ -225,7 +240,13 @@ async function candidate(id) {
     const cents = Math.round(Number(String(hsal.value).replace(/\./g, '').replace(',', '.')) * 100);
     if (!confirm('Contratar ' + c.name + '? Cria o cadastro de funcionário.')) return;
     h.disabled = true;
-    try { const r = await api('/candidates/' + id + '/hire', 'POST', { storeId: hs.value, admissionDate: ha.value, salaryCents: cents }); closeDrawer(); alert('Contratado para ' + r.store + '. Admissão aberta no checklist.'); go('check'); } catch (e) { hm.className = 'msg bad'; hm.textContent = e.message; h.disabled = false; }
+    const body = { storeId: hs.value, admissionDate: ha.value, salaryCents: cents };
+    const doHire = async () => { const r = await api('/candidates/' + id + '/hire', 'POST', body); closeDrawer(); alert('Contratado para ' + r.store + '. Admissão aberta no checklist.'); go('check'); };
+    try { await doHire(); } catch (e) {
+      let err = e;
+      if (/Confirme para/.test(e.message) && confirm(e.message)) { body.confirmExisting = true; try { await doHire(); return; } catch (e2) { err = e2; } }
+      hm.className = 'msg bad'; hm.textContent = err.message; h.disabled = false;
+    }
   };
 }
 
@@ -248,7 +269,7 @@ async function employee(id, tab = 'dados') {
     check: f.checklists.map((c) => '<div class="card"><b>' + (c.kind === 'ADMISSAO' ? 'Admissão' : 'Desligamento') + '</b> ' + c.done + '/' + c.total + ' <button class="btn g" data-cl="' + c.id + '">Abrir</button></div>').join('') +
       '<div class="card"><button class="btn g" id="sa">Abrir checklist de admissão</button> <button class="btn r" id="so">Iniciar desligamento</button></div>',
     aval: f.reviews.map((r) => '<div class="card"><b>' + esc(r.cycleName) + '</b> · nota ' + (r.score != null ? r.score.toFixed(1) : '—') + ' · autoavaliação ' + (r.selfScore != null ? r.selfScore.toFixed(1) : '—') + (r.goals ? '<div class="muted">Metas: ' + esc(r.goals) + '</div>' : '') + '</div>').join('') || '<div class="card muted">Nenhuma avaliação.</div>',
-    ocorr: '<div class="card"><b>Ocorrências</b>' + (f.incidents.map((i) => '<div class="ev"><small class="muted">' + br(i.createdAt) + '</small><div>' + esc(i.type || i.kind || '') + ' ' + esc(i.description || i.title || '') + '</div></div>').join('') || '<div class="muted">Nenhuma.</div>') +
+    ocorr: '<div class="card"><b>Ocorrências</b>' + (f.incidents.map((i) => '<div class="ev"><small class="muted">' + br(i.createdAt) + '</small><div>' + esc(i.summary || '') + ' <span class="pill p-mute">' + esc(String(i.decision || i.status || '').toLowerCase().replace(/_/g, ' ')) + '</span></div></div>').join('') || '<div class="muted">Nenhuma.</div>') +
       '</div><div class="card"><b>Treinamentos</b>' + (f.trainings.map((t) => '<div class="ev"><small class="muted">' + br(t.completedAt) + '</small><div>' + esc(t.topic) + (t.certified ? ' ✅' : '') + '</div></div>').join('') || '<div class="muted">Nenhum.</div>') + '</div>',
   };
   drawer('<h2>' + esc(u.name) + '</h2><div class="tabs2">' + T.map(([k, l]) => '<button data-et="' + k + '" class="' + (k === tab ? 'on' : '') + '">' + l + '</button>').join('') + '</div>' + body[tab]);
@@ -270,7 +291,10 @@ function checklist(c, backTo) {
   drawer('<h2>' + (c.kind === 'ADMISSAO' ? '🟢 Admissão' : '🔴 Desligamento') + ' · ' + esc(c.userName) + '</h2>' + (c.note ? '<div class="muted">' + esc(c.note) + '</div>' : '') + (c.dueDate ? '<div class="muted">Prazo: ' + br(c.dueDate) + '</div>' : '') +
     '<div class="card">' + c.items.map((it) => '<label style="display:flex;gap:10px;align-items:center;font-size:14px;font-weight:500;min-height:40px"><input type="checkbox" style="width:20px;min-height:20px;margin:0" data-i="' + it.i + '"' + (it.done ? ' checked' : '') + '>' + esc(it.label) +
       (it.doneAt ? ' <small class="muted">· ' + br(it.doneAt) + '</small>' : '') + '</label>').join('') + '</div>' + (backTo ? '<button class="btn g" onclick="employee(\'' + backTo + '\',\'check\')">← Ficha</button>' : ''));
-  document.querySelectorAll('[data-i]').forEach((x) => x.onchange = async () => { try { const r = await api('/checklists/' + c.id + '/items/' + x.dataset.i, 'POST', { done: x.checked }); c.items = r.items; c.status = r.status; if (r.status === 'CONCLUIDO') alert('Checklist concluído ✅'); } catch (e) { alert(e.message); x.checked = !x.checked; } });
+  document.querySelectorAll('[data-i]').forEach((x) => x.onchange = async () => {
+    if (x.checked && c.kind === 'DESLIGAMENTO' && c.items.filter((it) => !it.done).length === 1 &&
+      !confirm('Último item: ao concluir, ' + c.userName + ' sai da equipe (perde o acesso de vendedor) e o fim do contrato vai para a folha. Confirmar?')) { x.checked = false; return; }
+    try { const r = await api('/checklists/' + c.id + '/items/' + x.dataset.i, 'POST', { done: x.checked }); c.items = r.items; c.status = r.status; if (r.desligado) alert(c.userName + ' desligado(a): saiu da equipe.'); else if (r.status === 'CONCLUIDO') alert('Checklist concluído ✅'); } catch (e) { alert(e.message); x.checked = !x.checked; } });
 }
 
 async function cycle(id) {

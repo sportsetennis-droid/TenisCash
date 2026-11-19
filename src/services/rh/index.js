@@ -52,6 +52,8 @@ const addMonths = (s, n) => { const d = new Date(s + 'T12:00:00Z'); const day = 
 const diffDays = (a, b) => Math.round((Date.parse(b + 'T12:00:00Z') - Date.parse(a + 'T12:00:00Z')) / 86400000);
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 const httpErr = (status, message) => Object.assign(new Error(message), { status });
+const normPhone = (v) => { let p = String(v || '').replace(/\D/g, ''); if (p.length >= 12 && p.startsWith('55')) p = p.slice(2); return p.slice(0, 11); };
+const CONSENT_V = 'v1-2026-11-18: uso dos dados só para o processo seletivo e contato por WhatsApp; pedido de exclusão a qualquer momento; reprovados apagados em 12 meses';
 const clean = (v, n = 200) => (v == null ? null : String(v).trim().slice(0, n) || null);
 const id = () => crypto.randomUUID();
 
@@ -67,6 +69,10 @@ function ensureSchema(prisma) {
         "stage" TEXT NOT NULL DEFAULT 'NOVO', "rating" INT, "source" TEXT, "consentAt" TIMESTAMP(3) NOT NULL, "hiredUserId" TEXT, "rejectReason" TEXT,
         "createdAt" TIMESTAMP(3) NOT NULL DEFAULT NOW(), "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT NOW())`,
       `CREATE INDEX IF NOT EXISTS "HrCandidate_job_idx" ON "HrCandidate" ("jobId", "stage")`,
+      `ALTER TABLE "HrCandidate" ADD COLUMN IF NOT EXISTS "interviewUrl" TEXT`,
+      `ALTER TABLE "HrCandidate" ADD COLUMN IF NOT EXISTS "interviewAt" TIMESTAMP(3)`,
+      `ALTER TABLE "HrCandidate" ADD COLUMN IF NOT EXISTS "consentText" TEXT`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS "HrCandidate_job_phone_uq" ON "HrCandidate" ("jobId", "phone")`,
       `CREATE TABLE IF NOT EXISTS "HrCandidateEvent" ("id" SERIAL PRIMARY KEY, "candidateId" TEXT NOT NULL, "kind" TEXT NOT NULL, "fromStage" TEXT, "toStage" TEXT,
         "note" TEXT, "scheduledAt" TIMESTAMP(3), "actorId" TEXT, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT NOW())`,
       `CREATE INDEX IF NOT EXISTS "HrCandidateEvent_c_idx" ON "HrCandidateEvent" ("candidateId", "createdAt")`,
@@ -163,7 +169,7 @@ async function apply(prisma, slug, body, file) {
   const job = await getJob(prisma, slug);
   if (!job || job.status !== 'ABERTA') throw httpErr(404, 'Esta vaga não está mais aberta.');
   if (body.website) throw httpErr(400, 'Envio inválido.'); // armadilha anti-robô
-  const name = clean(body.name, 120); const phone = String(body.phone || '').replace(/\D/g, '').slice(0, 13);
+  const name = clean(body.name, 120); const phone = normPhone(body.phone);
   if (!name || name.length < 3) throw httpErr(400, 'Informe seu nome completo.');
   if (phone.length < 10) throw httpErr(400, 'Informe um WhatsApp com DDD.');
   if (!(body.consent === true || body.consent === 'true' || body.consent === 'on')) throw httpErr(400, 'É preciso autorizar o uso dos seus dados para o processo seletivo.');
@@ -178,17 +184,24 @@ async function apply(prisma, slug, body, file) {
   let saved = null;
   if (file) saved = require('./store').save(file);
   const cid = id();
-  await prisma.$executeRaw`INSERT INTO "HrCandidate" ("id","jobId","name","phone","email","city","birthDate","linkedin","experience","answers","resumeFile","resumeName","resumeMime","source","consentAt")
-    VALUES (${cid}, ${job.id}, ${name}, ${phone}, ${email}, ${clean(body.city, 80)}, ${YMD.test(String(body.birthDate || '')) ? body.birthDate : null}, ${clean(body.linkedin, 200)},
-      ${clean(body.experience, 3000)}, ${JSON.stringify(cleanAnswers)}::jsonb, ${saved && saved.storedName}, ${saved && saved.originalName}, ${saved && saved.mimeType}, ${clean(body.source, 40) || 'site'}, NOW())`;
+  try {
+    await prisma.$executeRaw`INSERT INTO "HrCandidate" ("id","jobId","name","phone","email","city","linkedin","experience","answers","resumeFile","resumeName","resumeMime","source","consentAt","consentText")
+      VALUES (${cid}, ${job.id}, ${name}, ${phone}, ${email}, ${clean(body.city, 80)}, ${clean(body.linkedin, 200)},
+        ${clean(body.experience, 3000)}, ${JSON.stringify(cleanAnswers)}::jsonb, ${saved && saved.storedName}, ${saved && saved.originalName}, ${saved && saved.mimeType}, ${clean(body.source, 40) || 'site'}, NOW(), ${CONSENT_V})`;
+  } catch (e) {
+    if (saved) require('./store').remove(saved.storedName);
+    if (/unique|duplicate/i.test(e.message)) throw httpErr(409, 'Você já se candidatou a esta vaga. Boa sorte! 🧡');
+    throw e;
+  }
   await prisma.$executeRaw`INSERT INTO "HrCandidateEvent" ("candidateId","kind","toStage","note") VALUES (${cid}, 'CANDIDATURA', 'NOVO', ${'Candidatura pelo site: ' + job.title})`;
   return { ok: true, candidateId: cid, job: job.title };
 }
 
 async function listCandidates(prisma, { jobId = null, stage = null, q = null } = {}) {
   await ensureSchema(prisma);
-  let rows = await prisma.$queryRaw`SELECT c.*, j."title" AS "jobTitleText", j."storeId" FROM "HrCandidate" c JOIN "HrJob" j ON j."id"=c."jobId" ORDER BY c."createdAt" DESC LIMIT 500`;
-  if (jobId) rows = rows.filter((r) => r.jobId === jobId);
+  let rows = jobId
+    ? await prisma.$queryRaw`SELECT c.*, j."title" AS "jobTitleText", j."storeId" FROM "HrCandidate" c JOIN "HrJob" j ON j."id"=c."jobId" WHERE c."jobId"=${jobId} ORDER BY c."createdAt" DESC`
+    : await prisma.$queryRaw`SELECT c.*, j."title" AS "jobTitleText", j."storeId" FROM "HrCandidate" c JOIN "HrJob" j ON j."id"=c."jobId" ORDER BY c."createdAt" DESC LIMIT 1000`;
   if (stage) rows = rows.filter((r) => r.stage === stage);
   if (q) { const t = String(q).toLowerCase(); rows = rows.filter((r) => (r.name + ' ' + r.phone + ' ' + (r.city || '')).toLowerCase().includes(t)); }
   return rows.map((r) => ({ ...r, resumeFile: r.resumeFile ? true : false }));
@@ -211,7 +224,9 @@ async function moveCandidate(prisma, cid, { stage, note, rating, rejectReason, s
   if (stage && !STAGES.includes(stage)) throw httpErr(400, 'Etapa inválida.');
   const r = rating != null && rating !== '' ? Math.max(1, Math.min(5, parseInt(rating, 10) || 0)) || null : c.rating;
   const sched = scheduledAt && !isNaN(Date.parse(scheduledAt)) ? new Date(scheduledAt) : null;
-  await prisma.$executeRaw`UPDATE "HrCandidate" SET "stage"=${stage || c.stage}, "rating"=${r}, "rejectReason"=${stage === 'REPROVADO' ? clean(rejectReason, 300) : c.rejectReason}, "updatedAt"=NOW() WHERE "id"=${cid}`;
+  const url = sched ? (c.interviewUrl || 'https://meet.jit.si/SportsTennis-Entrevista-' + crypto.randomBytes(6).toString('hex')) : c.interviewUrl;
+  await prisma.$executeRaw`UPDATE "HrCandidate" SET "stage"=${stage || c.stage}, "rating"=${r}, "rejectReason"=${stage === 'REPROVADO' ? clean(rejectReason, 300) : c.rejectReason},
+    "interviewUrl"=${url}, "interviewAt"=${sched || c.interviewAt}, "updatedAt"=NOW() WHERE "id"=${cid}`;
   if ((stage && stage !== c.stage) || note || sched) {
     await prisma.$executeRaw`INSERT INTO "HrCandidateEvent" ("candidateId","kind","fromStage","toStage","note","scheduledAt","actorId")
       VALUES (${cid}, ${sched ? 'ENTREVISTA_MARCADA' : (stage && stage !== c.stage ? 'ETAPA' : 'NOTA')}, ${c.stage}, ${stage || c.stage}, ${clean(note, 2000)}, ${sched}, ${actorId || null})`;
@@ -219,8 +234,26 @@ async function moveCandidate(prisma, cid, { stage, note, rating, rejectReason, s
   return getCandidate(prisma, cid);
 }
 
+async function deleteCandidate(prisma, cid, actorId) {
+  await ensureSchema(prisma);
+  const [c] = await prisma.$queryRaw`SELECT "id","resumeFile","stage" FROM "HrCandidate" WHERE "id"=${cid}`;
+  if (!c) throw httpErr(404, 'Candidato não encontrado.');
+  if (c.resumeFile) require('./store').remove(c.resumeFile);
+  await prisma.$executeRaw`DELETE FROM "HrCandidateEvent" WHERE "candidateId"=${cid}`;
+  await prisma.$executeRaw`DELETE FROM "HrCandidate" WHERE "id"=${cid}`;
+  await audit(prisma, 'HrCandidate', cid, 'DELETE_LGPD', actorId, { stage: c.stage });
+  return { ok: true };
+}
+
+async function purgeOldCandidates(prisma) {
+  await ensureSchema(prisma);
+  const old = await prisma.$queryRaw`SELECT "id" FROM "HrCandidate" WHERE "stage"='REPROVADO' AND "updatedAt" < NOW() - INTERVAL '12 months'`;
+  for (const o of old) await deleteCandidate(prisma, o.id, 'expurgo-12-meses').catch(() => {});
+  return { apagados: old.length };
+}
+
 // Contratar: cria (ou promove) o usuário vendedor, loja, cargo, admissão, salário e checklist de admissão.
-async function hire(prisma, cid, { storeId, admissionDate, salaryCents, jobTitle }, actorId) {
+async function hire(prisma, cid, { storeId, admissionDate, salaryCents, jobTitle, confirmExisting }, actorId) {
   await ensureSchema(prisma);
   const c = await getCandidate(prisma, cid);
   if (!c) throw httpErr(404, 'Candidato não encontrado.');
@@ -231,23 +264,25 @@ async function hire(prisma, cid, { storeId, admissionDate, salaryCents, jobTitle
   if (!store) throw httpErr(400, 'Loja inválida.');
   const adm = YMD.test(String(admissionDate || '')) ? admissionDate : todayYmd();
   const cents = salaryCents != null && salaryCents !== '' ? Math.round(Number(salaryCents)) : 179000; // salário único do dono (18/11/2026)
-  if (!(cents > 0)) throw httpErr(400, 'Salário inválido.');
+  if (!(cents > 0) || cents > 5000000) throw httpErr(400, 'Salário inválido (confira o valor: ex. 1790,00).');
   const role = ['VENDEDOR', 'LOGISTICA', 'SUPERVISOR'].includes(jobTitle) ? jobTitle : (['VENDEDOR', 'LOGISTICA', 'SUPERVISOR'].includes(c.jobRole) ? c.jobRole : 'VENDEDOR');
-  const phone = c.phone;
-  let user = await prisma.user.findUnique({ where: { phone }, select: { id: true, role: true, active: true } });
-  if (user && ['admin', 'superadmin', 'manager', 'partner'].includes(user.role)) throw httpErr(409, 'Esse telefone já é de uma conta da administração.');
+  const phone = normPhone(c.phone);
+  let user = await prisma.user.findFirst({ where: { phone: { in: [phone, '55' + phone] } }, select: { id: true, role: true, active: true, name: true } });
+  if (user && !['user', 'seller'].includes(user.role)) throw httpErr(409, 'Esse telefone já é de uma conta da empresa (' + user.role + '). Confira o número do candidato.');
+  if (user && user.role === 'seller' && user.active) throw httpErr(409, 'Esse telefone já é de um vendedor ativo (' + user.name + ').');
+  if (user && !confirmExisting) throw Object.assign(httpErr(409, 'Já existe uma conta de cliente com esse telefone (' + user.name + '). Confirme para transformá-la em funcionário.'), { needsConfirm: true });
   const hireDate = new Date(adm + 'T12:00:00Z');
   if (user) {
-    await prisma.user.update({ where: { id: user.id }, data: { role: 'seller', active: true, storeId: store.id, storeIds: [store.id], hireDate, baseSalary: cents / 100, name: c.name } });
+    await prisma.user.update({ where: { id: user.id }, data: { role: 'seller', active: true, storeId: store.id, storeIds: [store.id], hireDate, baseSalary: cents / 100 } });
   } else {
     const bcrypt = require('bcryptjs');
     const pin = await bcrypt.hash(crypto.randomBytes(16).toString('hex'), 10); // sem senha conhecida: entra pelo "esqueci a senha" com código no WhatsApp
     user = await prisma.user.create({ data: { name: c.name, phone, email: c.email || null, pin, role: 'seller', active: true, storeId: store.id, storeIds: [store.id], hireDate, baseSalary: cents / 100 }, select: { id: true } });
   }
   // contrato da folha (salário + admissão)
-  const prof = await prisma.payrollEmployeeProfile.findUnique({ where: { userId: user.id } }).catch(() => null);
-  if (prof) await prisma.payrollEmployeeProfile.update({ where: { userId: user.id }, data: { baseSalaryCents: cents, admissionDate: adm, storeId: store.id, active: true } }).catch(() => {});
-  else await prisma.payrollEmployeeProfile.create({ data: { userId: user.id, baseSalaryCents: cents, admissionDate: adm, storeId: store.id, createdById: actorId || 'rh' } }).catch(() => {});
+  const prof = await prisma.payrollEmployeeProfile.findUnique({ where: { userId: user.id } });
+  if (prof) await prisma.payrollEmployeeProfile.update({ where: { userId: user.id }, data: { baseSalaryCents: cents, admissionDate: adm, storeId: store.id, active: true, terminationDate: null } });
+  else await prisma.payrollEmployeeProfile.create({ data: { userId: user.id, baseSalaryCents: cents, admissionDate: adm, storeId: store.id, createdById: actorId || 'rh' } });
   try { await require('../jobTitle').set(prisma, user.id, role, actorId); } catch (_) {}
   await prisma.$executeRaw`UPDATE "HrCandidate" SET "stage"='CONTRATADO', "hiredUserId"=${user.id}, "updatedAt"=NOW() WHERE "id"=${cid}`;
   await prisma.$executeRaw`INSERT INTO "HrCandidateEvent" ("candidateId","kind","fromStage","toStage","note","actorId") VALUES (${cid}, 'CONTRATADO', ${c.stage}, 'CONTRATADO', ${'Contratado para ' + store.name + ' em ' + adm}, ${actorId || null})`;
@@ -311,16 +346,24 @@ async function validateVacation(prisma, userId, { periodStart, startDate, days, 
   const d = parseInt(days, 10) || 0; const sold = parseInt(soldDays, 10) || 0;
   if (!YMD.test(String(startDate || ''))) errors.push('Informe a data de início.');
   if (d < 5) errors.push('Cada período de férias tem no mínimo 5 dias (CLT art. 134).');
-  if (sold < 0 || sold > 10) errors.push('Só é possível vender até 10 dias (abono, CLT art. 143).');
   const others = (bal.vacations || []).filter((v) => v.periodStart === p.periodStart && v.id !== ignoreId);
   const usedOthers = others.reduce((s, v) => s + v.days + v.soldDays, 0);
+  // Abono (art. 143): até 1/3 do direito do período, somando todas as partes.
+  const soldTotal = others.reduce((s, v) => s + v.soldDays, 0) + sold;
+  const maxSold = Math.floor(p.rightDays / 3);
+  if (sold < 0) errors.push('Dias vendidos inválidos.');
+  else if (soldTotal > maxSold) errors.push('Só é possível vender até 1/3 do direito: ' + maxSold + ' dias neste período (abono, CLT art. 143).');
   if (d + sold > p.rightDays - usedOthers) errors.push('Passa do saldo: restam ' + Math.max(0, p.rightDays - usedOthers) + ' dias neste período.');
   if (others.length >= 3) errors.push('As férias podem ser divididas em no máximo 3 períodos (CLT art. 134).');
-  // um dos períodos tem que ter pelo menos 14 dias
-  const all = [...others.map((v) => v.days), d];
+  // Fracionamento (art. 134 §1º): até 3 partes, uma com 14+ dias e as outras com 5+.
+  // Com direito reduzido (faltas, art. 130) o mínimo da parte maior é o próprio saldo de gozo.
+  const parts = others.length + 1;
   const remaining = p.rightDays - usedOthers - d - sold;
-  if (!all.some((x) => x >= 14) && remaining < 14) errors.push('Um dos períodos precisa ter pelo menos 14 dias corridos (CLT art. 134).');
-  if (remaining > 0 && remaining < 5 && others.length + 1 >= 3) errors.push('Sobram ' + remaining + ' dias sem poder virar outro período: ajuste a divisão.');
+  const minBig = Math.min(14, p.rightDays - soldTotal);
+  const hasBig = [...others.map((v) => v.days), d].some((x) => x >= minBig);
+  if (remaining > 0 && remaining < 5) errors.push('Sobrariam ' + remaining + ' dia(s), que não formam outra parte (mínimo 5): ajuste a divisão.');
+  else if (parts >= 3 && remaining > 0) errors.push('Esta é a 3ª parte: ela precisa usar todo o saldo (restariam ' + remaining + ' dias).');
+  if (!hasBig && (parts >= 3 || remaining < minBig)) errors.push('Um dos períodos precisa ter pelo menos ' + minBig + ' dias corridos (CLT art. 134).');
   if (YMD.test(String(startDate || ''))) {
     const hol = await holidaysSet(prisma);
     const dow = new Date(startDate + 'T12:00:00Z').getUTCDay();
@@ -331,8 +374,8 @@ async function validateVacation(prisma, userId, { periodStart, startDate, days, 
     else if (ahead < 30) warnings.push('Aviso com menos de 30 dias de antecedência (CLT art. 135): combine com o funcionário.');
     const end = addDays(startDate, d - 1);
     if (end > p.concessiveEnd) warnings.push('Termina depois do prazo do período (' + p.concessiveEnd.split('-').reverse().join('/') + '): os dias fora do prazo são pagos em dobro (CLT art. 137).');
-    // conflito com outras férias da mesma pessoa
-    if (others.some((v) => !(addDays(v.startDate, v.days - 1) < startDate || v.startDate > end))) errors.push('Já existe férias nesse intervalo.');
+    // conflito com QUALQUER férias da pessoa (de qualquer período), pendente ou aprovada
+    if ((bal.vacations || []).some((v) => v.id !== ignoreId && !(v.endDate < startDate || v.startDate > end))) errors.push('Já existe férias nesse intervalo.');
   }
   return { errors, warnings, period: p, endDate: YMD.test(String(startDate || '')) ? addDays(startDate, d - 1) : null };
 }
@@ -417,9 +460,10 @@ async function addDocument(prisma, userId, { type, title, issuedAt, expiresAt },
   if (!file) throw httpErr(400, 'Anexe o arquivo (PDF ou foto).');
   const u = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
   if (!u) throw httpErr(404, 'Funcionário não encontrado.');
-  const saved = require('./store').save(file);
-  let exp = YMD.test(String(expiresAt || '')) ? expiresAt : null;
   const iss = YMD.test(String(issuedAt || '')) ? issuedAt : null;
+  if (iss && iss > todayYmd()) throw httpErr(400, 'A data do documento não pode ser no futuro.');
+  const saved = require('./store').save(file);
+  let exp = !bySelf && YMD.test(String(expiresAt || '')) ? expiresAt : null;
   if (!exp && DOC_TYPES[type].months) exp = addMonths(iss || todayYmd(), DOC_TYPES[type].months);
   const did = id();
   await prisma.$executeRaw`INSERT INTO "HrDocument" ("id","userId","type","title","storedName","originalName","mimeType","bytes","issuedAt","expiresAt","uploadedById","uploadedBySelf")
@@ -432,7 +476,8 @@ async function listDocuments(prisma, userId) {
   await ensureSchema(prisma);
   const rows = await prisma.$queryRaw`SELECT "id","userId","type","title","originalName","mimeType","bytes","issuedAt","expiresAt","uploadedBySelf","createdAt" FROM "HrDocument"
     WHERE "userId"=${userId} AND "status"='ATIVO' ORDER BY "createdAt" DESC`;
-  const docs = rows.map((d) => ({ ...d, typeLabel: DOC_TYPES[d.type] ? DOC_TYPES[d.type].label : d.type, situation: docStatus(d) }));
+  const seen = new Set();
+  const docs = rows.map((d) => { const latest = !seen.has(d.type); seen.add(d.type); return { ...d, latest, typeLabel: DOC_TYPES[d.type] ? DOC_TYPES[d.type].label : d.type, situation: latest ? docStatus(d) : 'SUBSTITUIDO' }; });
   const have = new Set(docs.map((d) => d.type));
   return { documents: docs, missing: REQUIRED_DOCS.filter((t) => !have.has(t)).map((t) => ({ type: t, label: DOC_TYPES[t].label })) };
 }
@@ -455,9 +500,9 @@ async function removeDocument(prisma, docId, actorId) {
 async function expiringDocuments(prisma) {
   await ensureSchema(prisma);
   const today = todayYmd();
-  const rows = await prisma.$queryRaw`SELECT d."id",d."userId",d."type",d."expiresAt",u."name" AS "userName" FROM "HrDocument" d JOIN "User" u ON u."id"=d."userId"
-    WHERE d."status"='ATIVO' AND d."expiresAt" IS NOT NULL AND u."active"=true ORDER BY d."expiresAt"`;
-  return rows.map((d) => ({ ...d, typeLabel: DOC_TYPES[d.type] ? DOC_TYPES[d.type].label : d.type, situation: docStatus(d, today) })).filter((d) => d.situation !== 'OK');
+  const rows = await prisma.$queryRaw`SELECT DISTINCT ON (d."userId", d."type") d."id",d."userId",d."type",d."expiresAt",u."name" AS "userName" FROM "HrDocument" d JOIN "User" u ON u."id"=d."userId"
+    WHERE d."status"='ATIVO' AND u."active"=true AND u."role"='seller' ORDER BY d."userId", d."type", d."createdAt" DESC`;
+  return rows.filter((d) => d.expiresAt).map((d) => ({ ...d, typeLabel: DOC_TYPES[d.type] ? DOC_TYPES[d.type].label : d.type, situation: docStatus(d, today) })).filter((d) => d.situation !== 'OK').sort((a, b) => a.expiresAt.localeCompare(b.expiresAt));
 }
 
 // ───────────────────────── 4. ADMISSÃO / DESLIGAMENTO ─────────────────────────
@@ -483,7 +528,15 @@ async function toggleChecklistItem(prisma, checklistId, index, done, actorId) {
   it.done = !!done; it.doneAt = it.done ? new Date().toISOString() : null; it.doneBy = it.done ? actorId : null;
   const status = items.every((x) => x.done) ? 'CONCLUIDO' : 'ABERTO';
   await prisma.$executeRaw`UPDATE "HrChecklist" SET "items"=${JSON.stringify(items)}::jsonb, "status"=${status}, "updatedAt"=NOW() WHERE "id"=${checklistId}`;
-  return { ok: true, status, items };
+  let desligado = false;
+  if (status === 'CONCLUIDO' && c.status !== 'CONCLUIDO' && c.kind === 'DESLIGAMENTO') {
+    const last = c.dueDate || todayYmd();
+    await prisma.user.update({ where: { id: c.userId }, data: { role: 'user', storeId: null, storeIds: [] } });
+    await prisma.payrollEmployeeProfile.update({ where: { userId: c.userId }, data: { terminationDate: last, active: false } }).catch(() => {});
+    await audit(prisma, 'HrChecklist', checklistId, 'OFFBOARD_DONE', actorId, { userId: c.userId, lastDay: last });
+    desligado = true;
+  }
+  return { ok: true, status, items, desligado };
 }
 
 async function listChecklists(prisma, { userId = null, status = null } = {}) {
@@ -569,7 +622,7 @@ async function team(prisma) {
   await ensureSchema(prisma);
   const users = await prisma.user.findMany({ where: { role: 'seller', active: true }, select: { id: true, name: true, phone: true, storeId: true, hireDate: true }, orderBy: { name: 'asc' } });
   const stores = Object.fromEntries((await prisma.store.findMany({ select: { id: true, name: true } })).map((s) => [s.id, s.name]));
-  const docsRows = await prisma.$queryRaw`SELECT "userId","type","expiresAt" FROM "HrDocument" WHERE "status"='ATIVO'`;
+  const docsRows = await prisma.$queryRaw`SELECT DISTINCT ON ("userId","type") "userId","type","expiresAt" FROM "HrDocument" WHERE "status"='ATIVO' ORDER BY "userId","type","createdAt" DESC`;
   const out = [];
   for (const u of users) {
     const bal = await vacationBalance(prisma, u.id).catch(() => ({ periods: [] }));
@@ -623,7 +676,7 @@ function userFromLink(k) {
 
 module.exports = {
   STAGES, DOC_TYPES, REQUIRED_DOCS, CHECKLISTS, REVIEW_CRITERIA, ensureSchema,
-  saveJob, getJob, listJobs, publicJob, apply, listCandidates, getCandidate, moveCandidate, hire,
+  saveJob, getJob, listJobs, publicJob, apply, listCandidates, getCandidate, moveCandidate, hire, deleteCandidate, purgeOldCandidates,
   vacationBalance, validateVacation, requestVacation, decideVacation, cancelVacation, adjustVacationRight, listVacations,
   addDocument, listDocuments, getDocumentFile, removeDocument, expiringDocuments,
   startChecklist, toggleChecklistItem, listChecklists, startOffboarding,

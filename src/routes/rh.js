@@ -15,7 +15,7 @@ const applyLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 8, standardHeade
 
 const send = (res, p) => p.then((data) => res.json(data)).catch((e) => {
   if (!e.status) console.error('[rh]', e);
-  res.status(e.status || 500).json({ error: e.status ? e.message : 'Erro no RH. Tente de novo.' });
+  res.status(e.status || 500).json({ error: e.status ? e.message : 'Erro no RH. Tente de novo.', ...(e.needsConfirm ? { needsConfirm: true } : {}) });
 });
 function withFile(field) {
   return (req, res, next) => upload.single(field)(req, res, (err) => {
@@ -85,7 +85,8 @@ router.use('/me', me);
 
 // ───────── Admin ─────────
 const admin = express.Router();
-admin.use(authMiddleware, adminMiddleware);
+// Dados de RH (salário, documentos, currículos): só dono/administração, não gerente.
+admin.use(authMiddleware, adminMiddleware, (req, res, next) => (['admin', 'superadmin'].includes(req.userRole) ? next() : res.status(403).json({ error: 'RH restrito ao dono e à administração.' })));
 admin.get('/dashboard', (req, res) => send(res, rh.dashboard(prisma)));
 admin.get('/meta', async (req, res) => send(res, (async () => ({
   stages: rh.STAGES, docTypes: rh.DOC_TYPES, requiredDocs: rh.REQUIRED_DOCS, checklists: rh.CHECKLISTS, criteria: rh.REVIEW_CRITERIA,
@@ -103,6 +104,7 @@ admin.get('/candidates/:id/resume', async (req, res) => {
   sendFile(res, store.resolve(c.resumeFile), c.resumeName, c.resumeMime);
 });
 admin.post('/candidates/:id/move', (req, res) => send(res, rh.moveCandidate(prisma, req.params.id, req.body || {}, req.userId)));
+admin.delete('/candidates/:id', (req, res) => send(res, rh.deleteCandidate(prisma, req.params.id, req.userId)));
 admin.post('/candidates/:id/hire', (req, res) => send(res, rh.hire(prisma, req.params.id, req.body || {}, req.userId)));
 // equipe e ficha
 admin.get('/team', (req, res) => send(res, rh.team(prisma)));

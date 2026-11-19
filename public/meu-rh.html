@@ -121,7 +121,7 @@ function docsHtml() {
   const miss = d.missing.length ? '<div class="card"><h2>Faltam ' + d.missing.length + '</h2>' + d.missing.map((m) => '<span class="pill p-warn" style="margin:4px 4px 0 0">' + esc(m.label) + '</span>').join('') + '</div>' : '';
   const opts = Object.entries(D.docTypes).map(([k, v]) => '<option value="' + k + '"' + (d.missing[0] && d.missing[0].type === k ? ' selected' : '') + '>' + esc(v.label) + '</option>').join('');
   return miss + '<div class="card"><h2>Enviar documento</h2><label>Qual documento<select id="dt">' + opts + '</select></label>' +
-    '<label>Foto ou PDF<input id="df" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" capture="environment"></label>' +
+    '<label>Foto ou PDF<input id="df" type="file" accept="application/pdf,image/jpeg,image/png,image/webp"></label>' +
     '<label>Data do documento (opcional)<input id="di" type="date"></label>' +
     '<div class="msg" id="dm"></div><button class="btn" id="dgo">Enviar</button></div><div class="card"><h2>Meus documentos</h2>' + list + '</div>';
 }
@@ -153,13 +153,14 @@ function bind() {
     vgo.onclick = async () => {
       vgo.disabled = true;
       try { const r = await api('/vacations', 'POST', { periodStart: $('vp').value, startDate: $('vs').value, days: $('vd').value, soldDays: $('vv').value, note: $('vn').value });
-        $('vm').className = 'msg ok'; $('vm').textContent = 'Pedido enviado! O Douglas aprova e você recebe na agenda.'; await load();
+        await load(); TAB = 'ferias'; render(); alert('Pedido enviado! O Douglas aprova e as férias entram na sua agenda.');
       } catch (e) { $('vm').className = 'msg bad'; $('vm').textContent = e.message; vgo.disabled = false; }
     };
   }
   document.querySelectorAll('[data-cancel]').forEach((b) => b.onclick = async () => { if (!confirm('Cancelar este pedido de férias?')) return; try { await api('/vacations/' + b.dataset.cancel + '/cancel', 'POST', {}); await load(); } catch (e) { alert(e.message); } });
   document.querySelectorAll('[data-open]').forEach((b) => b.onclick = async () => {
-    try { const r = await fetch(url('/documents/' + b.dataset.open + '/file'), { headers: headers() }); if (!r.ok) throw new Error('Não abriu.'); const blob = await r.blob(); window.open(URL.createObjectURL(blob), '_blank'); } catch (e) { alert(e.message); }
+    const w = window.open('', '_blank');
+    try { const r = await fetch(url('/documents/' + b.dataset.open + '/file'), { headers: headers() }); if (!r.ok) throw new Error('Não abriu.'); const blob = await r.blob(); const u = URL.createObjectURL(blob); if (w) w.location = u; else location.href = u; } catch (e) { if (w) w.close(); alert(e.message); }
   });
   const dgo = $('dgo');
   if (dgo) dgo.onclick = async () => {
@@ -179,7 +180,7 @@ function bind() {
     const m = $('am');
     if (Object.keys(SELF).length < D.criteria.length) { m.className = 'msg bad'; m.textContent = 'Dê nota em todos os pontos.'; return; }
     ago.disabled = true;
-    try { await api('/reviews/' + ago.dataset.id + '/self', 'POST', { scores: SELF, comment: $('ac').value }); m.className = 'msg ok'; m.textContent = 'Salvo! Obrigado.'; await load(); TAB = 'aval'; render(); }
+    try { await api('/reviews/' + ago.dataset.id + '/self', 'POST', { scores: SELF, comment: $('ac').value }); await load(); TAB = 'aval'; render(); const m2 = $('am'); if (m2) { m2.className = 'msg ok'; m2.textContent = 'Salvo! Obrigado.'; } }
     catch (e) { m.className = 'msg bad'; m.textContent = e.message; ago.disabled = false; }
   };
 }

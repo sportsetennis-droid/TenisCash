@@ -92,11 +92,10 @@ async function jobView(slug) {
     '<label>WhatsApp com DDD<input name="phone" required inputmode="tel" autocomplete="tel" placeholder="(83) 9 9999-9999"></label>' +
     '<label>E-mail (opcional)<input name="email" type="email" inputmode="email" autocomplete="email"></label>' +
     '<label>Cidade / bairro<input name="city" maxlength="80"></label>' +
-    '<label>Data de nascimento<input name="birthDate" type="date"></label>' +
     '<label>Sua experiência (onde trabalhou, quanto tempo, o que fazia)<textarea name="experience" maxlength="3000"></textarea></label>' + qs +
-    '<label>Currículo (PDF ou foto, opcional)<div class="file" id="fl"><span>📎</span><span id="fn">Toque para anexar</span><input type="file" name="resume" accept="application/pdf,image/jpeg,image/png,image/webp"></div></label>' +
+    '<div style="margin-top:12px;font-size:13px;font-weight:700;color:#3a3a3c">Currículo (PDF ou foto, opcional)</div><div class="file" id="fl"><span>📎</span><span id="fn">Toque para anexar</span><input type="file" name="resume" accept="application/pdf,image/jpeg,image/png,image/webp"></div>' +
     '<div class="hp" aria-hidden="true"><label>Site<input name="website" tabindex="-1" autocomplete="off"></label></div>' +
-    '<label class="chk"><input type="checkbox" name="consent"><span>Autorizo a Sports &amp; Tennis a usar meus dados só para este processo seletivo e a falar comigo pelo WhatsApp. Posso pedir para apagar quando quiser.</span></label>' +
+    '<label class="chk"><input type="checkbox" name="consent"><span>Autorizo a Sports &amp; Tennis a usar meus dados só para este processo seletivo e a falar comigo pelo WhatsApp. Posso pedir para apagar quando quiser; se eu não for chamado, meus dados são apagados em 12 meses.</span></label>' +
     '<button class="btn" id="send" type="submit">Enviar candidatura</button><div class="msg" id="m"></div></form>' +
     '<div class="foot">Sports &amp; Tennis · Seus dados são protegidos pela LGPD.</div>';
   document.getElementById('bk').onclick = goList;
@@ -113,7 +112,7 @@ async function jobView(slug) {
     if (!f.consent.checked) { m.className = 'msg bad'; m.textContent = 'Marque a autorização para enviar.'; return; }
     if (fileInput.files[0] && fileInput.files[0].size > 8 * 1024 * 1024) { m.className = 'msg bad'; m.textContent = 'Currículo grande demais (máx. 8 MB).'; return; }
     const fd = new FormData();
-    ['name', 'phone', 'email', 'city', 'birthDate', 'experience', 'website'].forEach((k) => fd.append(k, f[k].value));
+    ['name', 'phone', 'email', 'city', 'experience', 'website'].forEach((k) => fd.append(k, f[k].value));
     fd.append('consent', 'true');
     fd.append('answers', JSON.stringify((j.questions || []).map((_, i) => f['q' + i].value)));
     const src = new URLSearchParams(location.search).get('src'); if (src) fd.append('source', src);
