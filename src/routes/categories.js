@@ -158,7 +158,7 @@ router.get('/:id/products', async (req, res) => {
 function mapTypeFromCategory(catName) {
   if (catName === 'Tênis') return 'Tênis';
   if (catName === 'Chuteiras') return 'Chuteira';
-  if (catName === 'Vestuário' || catName === 'Acessórios') return 'Outro';
+  if (catName === 'Vestuário' || catName === 'Roupas' || catName === 'Acessórios') return 'Outro';
   return null;
 }
 

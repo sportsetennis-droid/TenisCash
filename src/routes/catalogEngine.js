@@ -167,7 +167,7 @@ router.post('/approve-bulk', async (req, res) => {
         if (!cat || !sub || !mod || !tier) { results.push({ id: it.id, ok: false, err: 'faltam campos' }); continue; }
         let ctx = {}; try { ctx = typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); } catch (_) {}
         ctx.classification = { ...(ctx.classification || {}), modality: mod, tier,
-          type: cat === 'Calçados' ? 'Calçado' : (cat === 'Vestuário' ? 'Roupa' : (cat === 'INSUMO' ? 'Insumo' : 'Acessório')),
+          type: cat === 'Calçados' ? 'Calçado' : ((cat === 'Vestuário' || cat === 'Roupas') ? 'Roupa' : (cat === 'INSUMO' ? 'Insumo' : 'Acessório')),
           gender: sub, source: 'regra-aprovada', classifiedAt: new Date().toISOString() };
         const plan = ctx.catalogPlan || {};
         if (plan.classification) { plan.classification.classified = true; }

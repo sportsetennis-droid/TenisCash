@@ -89,7 +89,7 @@ async function marketAgent(p, useMarket = false) {
 }
 
 // ---- Agente CLASSIFICAÇÃO: SUGERE as 4 (não aplica — dono aprova) ----
-const CAT = ['Calçados', 'Vestuário', 'Acessórios'];
+const CAT = ['Calçados', 'Roupas', 'Acessórios']; // dono 19/11: "Roupas", não "Vestuário"
 const GEN = ['Homem', 'Mulher', 'Menino', 'Menina', 'Unissex'];
 async function classifyAgent(p, ctx, alreadyClassified) {
   if (alreadyClassified) return { needed: false, suggestion: null };
