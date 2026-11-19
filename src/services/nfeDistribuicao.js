@@ -118,8 +118,15 @@ async function runStore(prisma, store, agent) {
 
 // Ciência + busca do XML completo pela chave, para resumos ainda sem XML (limite por rodada).
 async function completarResumos(prisma, storesByCnpj, agent, limit = 20) {
+  // A SEFAZ só aceita a Ciência até ~10 dias da autorização (rejeição 596 = fora do prazo).
+  // Nota mais antiga que isso não é tentada (fica só o resumo: o XML vem do fornecedor).
+  const dias = Math.max(1, Number(process.env.NFE_CIENCIA_DIAS || 10));
+  await prisma.$executeRaw`UPDATE "NfeDistDoc" SET "cienciaStatus" = 'fora-do-prazo', "updatedAt" = NOW()
+    WHERE "kind" = 'resumo' AND "cienciaAt" IS NULL AND ("cienciaStatus" IS NULL OR "cienciaStatus" = '596')
+      AND ("cienciaStatus" = '596' OR "dhEmi" < NOW() - make_interval(days => ${dias}::int))`;
   const pend = await prisma.$queryRaw`SELECT "chNFe","cnpjDest","cienciaAt" FROM "NfeDistDoc"
-    WHERE "kind" = 'resumo' AND COALESCE("situacao",'1') = '1' ORDER BY "createdAt" ASC LIMIT ${limit}`;
+    WHERE "kind" = 'resumo' AND COALESCE("situacao",'1') = '1' AND COALESCE("cienciaStatus",'') <> 'fora-do-prazo'
+    ORDER BY "dhEmi" DESC NULLS LAST LIMIT ${limit}`;
   for (const p of pend) {
     const store = storesByCnpj[p.cnpjDest];
     if (!store) continue;
@@ -159,6 +166,7 @@ async function resumo(prisma) {
       count(*) FILTER (WHERE "kind" = 'completa')::int AS completas,
       count(*) FILTER (WHERE "kind" = 'resumo')::int AS "soResumo",
       count(*) FILTER (WHERE "kind" = 'resumo' AND "cienciaAt" IS NOT NULL)::int AS "comCiencia",
+      count(*) FILTER (WHERE "cienciaStatus" = 'fora-do-prazo')::int AS "foraDoPrazo",
       count(*) FILTER (WHERE "erro" IS NOT NULL)::int AS "comErro" FROM "NfeDistDoc"`;
   const lojas = await prisma.$queryRaw`SELECT "cnpj","ultNSU","maxNSU","lastCStat","lastMotivo","lastRunAt","nextAllowedAt" FROM "NfeDistState" ORDER BY "cnpj"`;
   return { documentos: c, lojas };
