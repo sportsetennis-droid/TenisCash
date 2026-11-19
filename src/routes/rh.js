@@ -43,6 +43,11 @@ router.get('/public/jobs/:slug', async (req, res) => {
 });
 router.post('/public/jobs/:slug/apply', applyLimiter, withFile('resume'), (req, res) => send(res, rh.apply(prisma, req.params.slug, req.body || {}, req.file)));
 
+// Entrevista por escrito (link único que o candidato recebe ao se candidatar).
+const interviewLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 120, standardHeaders: true, legacyHeaders: false, message: { error: 'Muitas tentativas. Tente daqui a pouco.' } });
+router.get('/public/interview/:token', interviewLimiter, (req, res) => send(res, rh.getInterview(prisma, req.params.token)));
+router.post('/public/interview/:token', interviewLimiter, (req, res) => send(res, rh.saveInterview(prisma, req.params.token, req.body || {})));
+
 // ───────── Meu RH (vendedor) ─────────
 function identifySelf(req, res, next) {
   const loadSelf = async () => {

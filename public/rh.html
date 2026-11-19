@@ -194,11 +194,13 @@ function jobForm(j) {
     '<div class="row"><label>Loja<select id="js"><option value="">—</option>' + storeOpts(j.storeId) + '</select></label><label>Cargo<select id="jc">' + ['VENDEDOR', 'LOGISTICA', 'SUPERVISOR'].map((c) => '<option' + (j.jobTitle === c ? ' selected' : '') + '>' + c + '</option>').join('') + '</select></label><label>Vagas<input id="jo" type="number" min="1" value="' + (j.openings || 1) + '"></label></div>' +
     '<div class="row"><label>Salário (texto)<input id="jsal" value="' + esc(j.salaryText || '') + '"></label><label>Horário<input id="jh" value="' + esc(j.schedule || '') + '" placeholder="Ex.: escala 6x1, 44h"></label></div>' +
     '<label>Sobre a vaga<textarea id="jd">' + esc(j.description || '') + '</textarea></label><label>O que procuramos<textarea id="jr">' + esc(j.requirements || '') + '</textarea></label>' +
-    '<label>Perguntas para o candidato (uma por linha)<textarea id="jq">' + esc((j.questions || []).join('\n')) + '</textarea></label>' +
+    '<label>Lojas que o candidato pode escolher (uma por linha; em branco = não pergunta)<textarea id="jso" placeholder="Praia do Bessa (Parahyba Mall)">' + esc((j.storeOptions || []).join('\n')) + '</textarea></label>' +
+    '<label>Perguntas da candidatura (uma por linha)<textarea id="jq">' + esc((j.questions || []).join('\n')) + '</textarea></label>' +
+    '<label>Perguntas da entrevista por escrito (uma por linha; o candidato responde no celular depois de se candidatar)<textarea id="jiq" style="min-height:220px">' + esc((j.interviewQuestions || []).join('\n')) + '</textarea></label>' +
     '<label>Status<select id="jst">' + ['ABERTA', 'PAUSADA', 'FECHADA'].map((s) => '<option' + (j.status === s ? ' selected' : '') + '>' + s + '</option>').join('') + '</select></label>' +
     '<div class="msg" id="jm"></div><button class="btn" style="margin-top:12px" id="jgo">Salvar</button>' + (j.id ? ' <button class="btn g" style="margin-top:12px" onclick="location.hash=\'candidatos?job=' + j.id + '\';closeDrawer();go(\'candidatos\')">Ver candidatos</button>' : ''));
   document.getElementById('jgo').onclick = async () => {
-    const body = { title: jt.value, storeId: js.value, jobTitle: jc.value, openings: jo.value, salaryText: jsal.value, schedule: jh.value, description: jd.value, requirements: jr.value, questions: jq.value.split('\n'), status: jst.value };
+    const body = { title: jt.value, storeId: js.value, jobTitle: jc.value, openings: jo.value, salaryText: jsal.value, schedule: jh.value, description: jd.value, requirements: jr.value, questions: jq.value.split('\n'), storeOptions: jso.value.split('\n'), interviewQuestions: jiq.value.split('\n'), status: jst.value };
     try { await (j.id ? api('/jobs/' + j.id, 'PUT', body) : api('/jobs', 'POST', body)); closeDrawer(); go('vagas'); } catch (e) { jm.className = 'msg bad'; jm.textContent = e.message; }
   };
 }
@@ -216,13 +218,21 @@ function interviewCard(c, wa) {
 
 async function candidate(id) {
   const c = await api('/candidates/' + id);
-  const ans = Object.entries(c.answers || {}).map(([q, a]) => '<div style="margin-top:8px"><b>' + esc(q) + '</b><div>' + esc(a || '—') + '</div></div>').join('');
+  // jsonb não guarda a ordem das chaves: mostra na ordem das perguntas da vaga (e depois o que sobrar).
+  const inOrder = (obj, order) => { const o = obj || {}; const ks = [...(order || []).filter((q) => q in o), ...Object.keys(o).filter((q) => !(order || []).includes(q))]; return ks.map((q) => [q, o[q]]); };
+  const ans = inOrder(c.answers, c.jobQuestions).map(([q, a]) => '<div style="margin-top:8px"><b>' + esc(q) + '</b><div>' + esc(a || '—') + '</div></div>').join('');
   const wa = 'https://wa.me/55' + String(c.phone).replace(/^55/, '');
+  const lojas = (c.storeChoices || []).length ? '<div>🏬 Quer trabalhar em: <b>' + esc(c.storeChoices.join(' · ')) + '</b></div>' : '';
+  const iv = inOrder(c.interview, c.jobInterviewQuestions).filter(([, a]) => a);
+  const ivLink = c.interviewToken ? location.origin + '/vagas?e=' + c.interviewToken : '';
+  const ivCard = c.interviewToken ? '<div class="card"><b>Entrevista por escrito</b> ' + (c.interviewDoneAt ? '<span class="pill p-ok">respondida em ' + br(c.interviewDoneAt) + '</span>' : '<span class="pill p-mute">' + (iv.length ? 'começou, não enviou' : 'ainda não respondeu') + '</span>') +
+    iv.map(([q, a], i) => '<div style="margin-top:10px"><b>' + (i + 1) + '. ' + esc(q) + '</b><div style="white-space:pre-wrap">' + esc(a) + '</div></div>').join('') +
+    (c.interviewDoneAt ? '' : '<div class="muted" style="margin-top:8px">Link para o candidato responder: <a href="' + esc(ivLink) + '" target="_blank">' + esc(ivLink) + '</a></div>') + '</div>' : '';
   drawer('<h2>' + esc(c.name) + '</h2><div class="muted">' + esc(c.jobTitleText) + ' · ' + br(c.createdAt) + ' · <span class="pill p-brand">' + STAGE_LABEL[c.stage] + '</span></div>' +
-    '<div class="card"><div>📱 <a href="' + wa + '" target="_blank">' + esc(c.phone) + '</a>' + (c.email ? ' · ✉️ ' + esc(c.email) : '') + '</div>' + (c.city ? '<div>📍 ' + esc(c.city) + '</div>' : '') + (c.birthDate ? '<div>🎂 ' + br(c.birthDate) + '</div>' : '') +
+    '<div class="card"><div>📱 <a href="' + wa + '" target="_blank">' + esc(c.phone) + '</a>' + (c.email ? ' · ✉️ ' + esc(c.email) : '') + '</div>' + (c.city ? '<div>📍 ' + esc(c.city) + '</div>' : '') + lojas + (c.birthDate ? '<div>🎂 ' + br(c.birthDate) + '</div>' : '') +
     (c.resumeFile ? '<button class="btn g" style="margin-top:10px" id="cv">📎 Abrir currículo</button>' : '<div class="muted" style="margin-top:6px">Sem currículo anexado.</div>') + '</div>' +
     (c.interviewUrl ? interviewCard(c, wa) : '') +
-    (c.experience ? '<div class="card"><b>Experiência</b><div style="white-space:pre-wrap">' + esc(c.experience) + '</div></div>' : '') + (ans ? '<div class="card">' + ans + '</div>' : '') +
+    (c.experience ? '<div class="card"><b>Experiência</b><div style="white-space:pre-wrap">' + esc(c.experience) + '</div></div>' : '') + (ans ? '<div class="card">' + ans + '</div>' : '') + ivCard +
     (c.stage === 'CONTRATADO' ? '<div class="card msg ok">Contratado. A ficha está na aba Equipe.</div>' :
     '<div class="card"><b>Mover no processo</b><div class="row"><label>Etapa<select id="cs">' + META.stages.filter((s) => s !== 'CONTRATADO').map((s) => '<option value="' + s + '"' + (s === c.stage ? ' selected' : '') + '>' + STAGE_LABEL[s] + '</option>').join('') + '</select></label>' +
     '<label>Nota (1–5)<select id="cr"><option value="">—</option>' + [1, 2, 3, 4, 5].map((n) => '<option' + (c.rating === n ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></label><label>Entrevista em (gera o link de vídeo)<input id="ci" type="datetime-local"></label></div>' +

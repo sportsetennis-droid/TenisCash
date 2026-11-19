@@ -375,6 +375,20 @@ async function partC() {
     const r = await h.upsertLocalProduct({ id: 4041, name: { pt: 'W' }, categories: [], images: [], variants: [{ sku: '0196565999404', price: '1' }] });
     assert.strictEqual(r, null); assert.strictEqual(await prisma.product.count(), antes);
   });
+  await t('AUDITORIA 19/11: foto tirada de propósito do card (fotosRemovidas) não volta da loja online; card sem foto e sem retirada recupera', async () => {
+    const bf = require('../src/services/nuvemshopImageBackfill');
+    const tirada = await prisma.product.create({ data: { sku: 'BF1', name: 'Top Rose', brand: 'LETS GYM', category: 'Roupas', price: 10, aiContext: { color: 'Rose', fotosRemovidas: { em: '2026-11-19T10:51:00Z', motivo: 'outra cor', urls: ['https://x/nude.jpg'] } } } });
+    const vazia = await prisma.product.create({ data: { sku: 'BF2', name: 'Top Preto', brand: 'LETS GYM', category: 'Roupas', price: 10, aiContext: { color: 'Preto' } } });
+    await prisma.nuvemshopProductMapping.create({ data: { localProductId: tirada.id, nuvemshopProductId: '6060' } });
+    await prisma.nuvemshopProductMapping.create({ data: { localProductId: vazia.id, nuvemshopProductId: '6061' } });
+    const remoto = (id) => ({ id, images: [{ src: 'https://cdn.ns/' + id + '-1.jpg' }, { src: 'https://cdn.ns/' + id + '-2.jpg' }] });
+    const r = await bf.backfillLocalImagesFromNuvemshop({ connection: { id: 'c' }, remoteProducts: [remoto(6060), remoto(6061)] });
+    assert.strictEqual(r.skippedRemovidas, 1, JSON.stringify(r));
+    assert.strictEqual((await prisma.product.findUnique({ where: { id: tirada.id } })).imageUrl, null, 'foto errada voltou');
+    assert.strictEqual((await prisma.product.findUnique({ where: { id: vazia.id } })).imageUrl, 'https://cdn.ns/6061-1.jpg', 'card sem retirada recupera');
+    assert.ok(bf.fotoFoiRemovidaDePropósito({ aiContext: JSON.stringify({ fotosRemovidas: { em: 'x' } }) }));
+    assert.ok(!bf.fotoFoiRemovidaDePropósito({ aiContext: { color: 'Azul' } }));
+  });
   await t('AUDITORIA 5: dois cards válidos no mesmo anúncio — o que esgota faz o OUTRO ser reenviado (loja fica com o estoque real dele)', async () => {
     const { c: a } = await cardValido(1);
     const { c: b, ps: psB } = await cardValido(3);

@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#E5571E">
-<link rel="icon" href="/icon-192.svg" type="image/svg+xml">
+<link rel="icon" href="/brand/sports-tennis-icon.svg" type="image/svg+xml">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="description" content="Trabalhe na Sports & Tennis: vagas abertas nas nossas lojas em João Pessoa e Campina Grande.">
+<meta name="description" content="Trabalhe na Sports & Tennis: veja as vagas abertas nas nossas lojas e candidate-se pelo celular.">
 <title>Trabalhe conosco · Sports & Tennis</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&family=Barlow+Condensed:ital,wght@1,800;1,900&display=swap" rel="stylesheet">
@@ -17,11 +17,12 @@
 body{font-family:'Barlow',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--ink);font-size:16px;line-height:1.45;padding-top:var(--safe-t)}
 button,input,textarea,select{font:inherit;color:inherit}
 #app{max-width:520px;margin:0 auto;padding:0 16px calc(40px + var(--safe-b))}
-.hero{background:#111;color:#fff;margin:0 -16px;padding:28px 20px 24px;position:relative;overflow:hidden}
-.hero:after{content:"";position:absolute;right:-40px;top:-30px;width:180px;height:180px;border-radius:50%;background:var(--brand);opacity:.9}
-.hero .brand{font-family:'Barlow Condensed',sans-serif;font-style:italic;font-weight:900;letter-spacing:.5px;text-transform:uppercase;font-size:15px;color:var(--brand);position:relative;z-index:1}
-.hero h1{font-family:'Barlow Condensed',sans-serif;font-style:italic;font-weight:900;text-transform:uppercase;font-size:40px;line-height:.95;margin-top:8px;position:relative;z-index:1}
-.hero p{color:#d1d1d6;margin-top:10px;font-size:15px;position:relative;z-index:1;max-width:330px}
+.hero{background:var(--brand);color:#fff;margin:0 -16px;padding:26px 20px 28px}
+.hero img{display:block;width:210px;max-width:62%;height:auto}
+.hero h1{font-family:'Barlow Condensed',sans-serif;font-style:italic;font-weight:900;text-transform:uppercase;font-size:42px;line-height:.95;margin-top:26px}
+.hero p{margin-top:10px;font-size:16px;font-weight:500;max-width:340px}
+.bar{background:var(--brand);margin:0 -16px;padding:14px 20px}
+.bar img{display:block;width:150px;height:auto}
 .job{display:block;width:100%;text-align:left;background:var(--fill);border:0;border-radius:16px;padding:16px;margin-top:12px;cursor:pointer}
 .job h3{font-size:18px;font-weight:800}
 .job .meta{color:var(--muted);font-size:14px;margin-top:4px}
@@ -46,6 +47,14 @@ textarea{min-height:90px;resize:vertical}
 .btn:disabled{opacity:.6}
 .msg{margin-top:10px;font-size:14px;font-weight:600}
 .msg.bad{color:var(--bad)}
+.opt{display:flex;gap:12px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;margin-top:8px;min-height:52px;font-weight:600;font-size:15px;color:var(--ink);cursor:pointer}
+.opt input{width:22px;min-height:22px;height:22px;margin:0;accent-color:var(--brand);flex:none}
+.prog{height:6px;background:var(--line);border-radius:99px;margin-top:14px;overflow:hidden}.prog i{display:block;height:100%;background:var(--brand);border-radius:99px;transition:width .2s}
+.qn{color:var(--brand);font-weight:800;font-size:13px;text-transform:uppercase;letter-spacing:.4px;margin-top:22px}
+.qt{font-size:22px;font-weight:800;line-height:1.2;margin-top:6px}
+.ia{min-height:170px;margin-top:14px}
+.nav{display:flex;gap:10px}.nav .btn{flex:1}.btn.g{background:var(--fill);color:var(--ink)}
+.hint{color:var(--muted);font-size:13px;margin-top:8px}
 .hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
 .done{text-align:center;padding:50px 10px}
 .done .big{font-size:56px}
@@ -60,7 +69,12 @@ textarea{min-height:90px;resize:vertical}
 <script>
 const $app = document.getElementById('app');
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const hero = '<div class="hero"><div class="brand">Sports &amp; Tennis</div><h1>Venha jogar<br>no nosso time</h1><p>Vagas abertas nas nossas lojas de João Pessoa e Campina Grande.</p></div>';
+const LOGO = '<img src="/brand/sports-tennis-logo.svg" alt="Sports &amp; Tennis" width="1007" height="237">';
+const heroWith = (sub) => '<div class="hero">' + LOGO + '<h1>Venha jogar<br>no nosso time</h1><p>' + sub + '</p></div>';
+const hero = heroWith('Trabalhe com a gente.');
+const bar = '<div class="bar">' + LOGO + '</div>';
+// "[Tema] pergunta" → tema vira o título da etapa; sem colchetes, fica só a pergunta.
+const splitQ = (q) => { const m = /^\[([^\]]{1,40})\]\s*(.+)$/s.exec(q); return m ? { tema: m[1], texto: m[2] } : { tema: '', texto: q }; };
 
 async function listView() {
   $app.innerHTML = hero + '<div class="empty">Carregando vagas…</div>';
@@ -68,11 +82,13 @@ async function listView() {
   try { jobs = await (await fetch('/api/rh/public/jobs', { cache: 'no-store' })).json(); } catch (_) {}
   if (!Array.isArray(jobs) || !jobs.length) {
     $app.innerHTML = hero + '<div class="empty">Nenhuma vaga aberta agora.<br>Volte em breve! 🧡</div><div class="foot">Sports &amp; Tennis</div>';
+    resumeBanner();
     return;
   }
-  $app.innerHTML = hero + jobs.map((j) => '<button class="job" data-slug="' + esc(j.slug) + '"><h3>' + esc(j.title) + '</h3><div class="meta">' +
+  $app.innerHTML = heroWith(jobs.length === 1 ? 'Temos 1 vaga aberta. Candidate-se pelo celular.' : 'Temos ' + jobs.length + ' vagas abertas. Candidate-se pelo celular.') + jobs.map((j) => '<button class="job" data-slug="' + esc(j.slug) + '"><h3>' + esc(j.title) + '</h3><div class="meta">' +
     esc([j.storeName, j.salaryText].filter(Boolean).join(' · ')) + '</div><div class="go">Ver vaga e me candidatar →</div></button>').join('') +
     '<div class="foot">Sports &amp; Tennis · Trabalhe conosco</div>';
+  resumeBanner();
   $app.querySelectorAll('.job').forEach((b) => b.onclick = () => { history.pushState({}, '', '?v=' + encodeURIComponent(b.dataset.slug)); jobView(b.dataset.slug); });
 }
 
@@ -82,8 +98,10 @@ async function jobView(slug) {
   try { const r = await fetch('/api/rh/public/jobs/' + encodeURIComponent(slug), { cache: 'no-store' }); if (r.ok) j = await r.json(); } catch (_) {}
   if (!j) { $app.innerHTML = '<button class="back" id="bk">← Todas as vagas</button><div class="empty">Esta vaga foi encerrada.</div>'; document.getElementById('bk').onclick = goList; return; }
   document.title = j.title + ' · Sports & Tennis';
+  const lojas = (j.storeOptions || []).length ? '<div style="margin-top:14px;font-size:13px;font-weight:700;color:#3a3a3c">Em qual loja você quer trabalhar? (pode marcar mais de uma)</div>' +
+    j.storeOptions.map((o, i) => '<label class="opt"><input type="checkbox" name="loja" value="' + i + '"><span>' + esc(o) + '</span></label>').join('') : '';
   const qs = (j.questions || []).map((q, i) => '<label>' + esc(q) + '<textarea name="q' + i + '" maxlength="1000"></textarea></label>').join('');
-  $app.innerHTML = '<button class="back" id="bk">← Todas as vagas</button>' +
+  $app.innerHTML = bar + '<button class="back" id="bk">← Todas as vagas</button>' +
     '<h2>' + esc(j.title) + '</h2>' + [j.storeName, j.salaryText, j.schedule].filter(Boolean).map((t) => '<span class="tag">' + esc(t) + '</span>').join('') +
     (j.description ? '<div class="sec"><h4>Sobre a vaga</h4><p>' + esc(j.description) + '</p></div>' : '') +
     (j.requirements ? '<div class="sec"><h4>O que procuramos</h4><p>' + esc(j.requirements) + '</p></div>' : '') +
@@ -91,12 +109,12 @@ async function jobView(slug) {
     '<label>Nome completo<input name="name" required maxlength="120" autocomplete="name"></label>' +
     '<label>WhatsApp com DDD<input name="phone" required inputmode="tel" autocomplete="tel" placeholder="(83) 9 9999-9999"></label>' +
     '<label>E-mail (opcional)<input name="email" type="email" inputmode="email" autocomplete="email"></label>' +
-    '<label>Cidade / bairro<input name="city" maxlength="80"></label>' +
+    '<label>Cidade / bairro<input name="city" maxlength="80"></label>' + lojas +
     '<label>Sua experiência (onde trabalhou, quanto tempo, o que fazia)<textarea name="experience" maxlength="3000"></textarea></label>' + qs +
-    '<div style="margin-top:12px;font-size:13px;font-weight:700;color:#3a3a3c">Currículo (PDF ou foto, opcional)</div><div class="file" id="fl"><span>📎</span><span id="fn">Toque para anexar</span><input type="file" name="resume" accept="application/pdf,image/jpeg,image/png,image/webp"></div>' +
+    '<div style="margin-top:12px;font-size:13px;font-weight:700;color:#3a3a3c">Anexe o seu currículo (PDF ou foto)</div><div class="file" id="fl"><span>📎</span><span id="fn">Toque para anexar</span><input type="file" name="resume" accept="application/pdf,image/jpeg,image/png,image/webp"></div>' +
     '<div class="hp" aria-hidden="true"><label>Site<input name="website" tabindex="-1" autocomplete="off"></label></div>' +
     '<label class="chk"><input type="checkbox" name="consent"><span>Autorizo a Sports &amp; Tennis a usar meus dados só para este processo seletivo e a falar comigo pelo WhatsApp. Posso pedir para apagar quando quiser; se eu não for chamado, meus dados são apagados em 12 meses.</span></label>' +
-    '<button class="btn" id="send" type="submit">Enviar candidatura</button><div class="msg" id="m"></div></form>' +
+    '<button class="btn" id="send" type="submit">' + (j.interviewCount ? 'Enviar e ir para a entrevista' : 'Enviar candidatura') + '</button><div class="msg" id="m"></div></form>' +
     '<div class="foot">Sports &amp; Tennis · Seus dados são protegidos pela LGPD.</div>';
   document.getElementById('bk').onclick = goList;
   const f = document.getElementById('f');
@@ -109,11 +127,14 @@ async function jobView(slug) {
     const name = f.name.value.trim(), phone = f.phone.value.replace(/\D/g, '');
     if (name.length < 3) { m.className = 'msg bad'; m.textContent = 'Informe seu nome completo.'; f.name.focus(); return; }
     if (phone.length < 10) { m.className = 'msg bad'; m.textContent = 'Informe seu WhatsApp com DDD.'; f.phone.focus(); return; }
+    const picked = [...f.querySelectorAll('input[name=loja]:checked')].map((el) => j.storeOptions[+el.value]);
+    if ((j.storeOptions || []).length && !picked.length) { m.className = 'msg bad'; m.textContent = 'Escolha em qual loja você quer trabalhar.'; f.querySelector('input[name=loja]').focus(); return; }
     if (!f.consent.checked) { m.className = 'msg bad'; m.textContent = 'Marque a autorização para enviar.'; return; }
     if (fileInput.files[0] && fileInput.files[0].size > 8 * 1024 * 1024) { m.className = 'msg bad'; m.textContent = 'Currículo grande demais (máx. 8 MB).'; return; }
     const fd = new FormData();
     ['name', 'phone', 'email', 'city', 'experience', 'website'].forEach((k) => fd.append(k, f[k].value));
     fd.append('consent', 'true');
+    fd.append('storeChoices', JSON.stringify(picked));
     fd.append('answers', JSON.stringify((j.questions || []).map((_, i) => f['q' + i].value)));
     const src = new URLSearchParams(location.search).get('src'); if (src) fd.append('source', src);
     if (fileInput.files[0]) fd.append('resume', fileInput.files[0]);
@@ -122,13 +143,86 @@ async function jobView(slug) {
       const r = await fetch('/api/rh/public/jobs/' + encodeURIComponent(slug) + '/apply', { method: 'POST', body: fd });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || 'Não foi possível enviar. Tente de novo.');
-      $app.innerHTML = '<div class="done"><div class="big">🧡</div><h2>Candidatura enviada!</h2><p>Obrigado, ' + esc(name.split(' ')[0]) + '. Se o seu perfil combinar com a vaga, a gente chama você no WhatsApp.</p><button class="btn" id="mais">Ver outras vagas</button></div>';
+      if (d.interviewToken) { keep(d.interviewToken); history.replaceState({}, '', location.pathname); interviewIntro(d.interviewToken, name.split(' ')[0], d.interviewCount); return; }
+      $app.innerHTML = bar + '<div class="done"><div class="big">🧡</div><h2>Candidatura enviada!</h2><p>Obrigado, ' + esc(name.split(' ')[0]) + '. Se o seu perfil combinar com a vaga, a gente chama você no WhatsApp.</p><button class="btn" id="mais">Ver outras vagas</button></div>';
       document.getElementById('mais').onclick = goList;
-    } catch (err) { m.className = 'msg bad'; m.textContent = err.message; btn.disabled = false; btn.textContent = 'Enviar candidatura'; }
+    } catch (err) { m.className = 'msg bad'; m.textContent = err.message; btn.disabled = false; btn.textContent = j.interviewCount ? 'Enviar e ir para a entrevista' : 'Enviar candidatura'; }
   };
 }
+// ───────── Entrevista por escrito ─────────
+// O link da entrevista fica guardado neste aparelho (não na barra de endereço, para não ser copiado sem querer).
+const KEY = 'st-vagas-entrevista';
+const keep = (t) => { try { localStorage.setItem(KEY, t); } catch (_) {} };
+const kept = () => { try { return localStorage.getItem(KEY) || ''; } catch (_) { return ''; } };
+const forget = () => { try { localStorage.removeItem(KEY); } catch (_) {} };
+async function resumeBanner() {
+  const t = kept(); if (!/^[a-f0-9]{48}$/.test(t)) return;
+  let d = null;
+  try { const r = await fetch('/api/rh/public/interview/' + t, { cache: 'no-store' }); if (r.status === 404) return forget(); if (r.ok) d = await r.json(); } catch (_) {}
+  if (!d || d.done) { if (d) forget(); return; }
+  const hero = $app.querySelector('.hero'); if (!hero || document.getElementById('rsm')) return;
+  const b = document.createElement('button'); b.className = 'job'; b.id = 'rsm'; b.style.background = 'var(--brand-soft)';
+  b.innerHTML = '<h3>Continuar a minha entrevista</h3><div class="meta">' + esc(d.job) + ' · ' + d.answers.filter(Boolean).length + ' de ' + d.questions.length + ' respondidas</div><div class="go">Continuar de onde parei →</div>';
+  b.onclick = () => interviewView(t);
+  hero.after(b);
+}
+function interviewIntro(token, firstName, count) {
+  window.scrollTo(0, 0);
+  $app.innerHTML = bar + '<div class="done"><div class="big">🧡</div><h2>Candidatura enviada, ' + esc(firstName) + '!</h2>' +
+    '<p>Agora falta a entrevista: são ' + count + ' perguntas para a gente conhecer você, o seu jeito de trabalhar e de atender. Responda com calma, do seu jeito, com exemplos reais.</p>' +
+    '<button class="btn" id="go">Iniciar entrevista</button>' +
+    '<p class="hint">Suas respostas ficam salvas a cada pergunta. Se precisar parar, é só abrir esta página de novo neste celular e tocar em "Continuar a minha entrevista".</p></div>';
+  document.getElementById('go').onclick = () => interviewView(token);
+}
+async function interviewView(token, fromLink) {
+  $app.innerHTML = '<div class="empty">Carregando…</div>';
+  let d = null, invalid = false;
+  try { const r = await fetch('/api/rh/public/interview/' + encodeURIComponent(token), { cache: 'no-store' }); if (r.ok) d = await r.json(); else if (r.status === 404) invalid = true; } catch (_) {}
+  if (invalid) { if (kept() === token) forget(); $app.innerHTML = hero + '<div class="empty">Este link de entrevista não é válido.</div><button class="btn" id="bk2">Ver vagas</button>'; document.getElementById('bk2').onclick = goList; return; }
+  if (!d) { $app.innerHTML = hero + '<div class="empty">Não deu para abrir a entrevista agora.<br>Confira a internet e tente de novo.</div><button class="btn" id="rt">Tentar de novo</button>'; document.getElementById('rt').onclick = () => interviewView(token, fromLink); return; }
+  keep(token);
+  const optional = (q) => /\(opcional\)\s*$/i.test(q);
+  const doneView = () => { window.scrollTo(0, 0); $app.innerHTML = bar + '<div class="done"><div class="big">🧡</div><h2>Entrevista enviada!</h2><p>Obrigado, ' + esc(d.firstName) + '. A gente lê tudo com atenção e, se o seu perfil combinar com a vaga, chama você no WhatsApp.</p></div><div class="foot">Sports &amp; Tennis</div>'; };
+  if (d.done || !d.questions.length) { forget(); return doneView(); }
+  if (fromLink && !d.answers.some(Boolean)) return interviewIntro(token, d.firstName, d.questions.length);
+  const answers = d.answers.slice();
+  let i = answers.findIndex((a, k) => !a && !optional(d.questions[k])); if (i < 0) i = answers.length - 1;
+  const post = async (finish) => {
+    const r = await fetch('/api/rh/public/interview/' + encodeURIComponent(token), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ answers: Object.fromEntries(d.questions.map((q, k) => [q, answers[k] || ''])), finish }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'Não foi possível salvar. Confira a internet e tente de novo.');
+    return j;
+  };
+  const show = () => {
+    window.scrollTo(0, 0);
+    const last = i === d.questions.length - 1;
+    const q = splitQ(d.questions[i]);
+    $app.innerHTML = bar + '<div class="prog"><i style="width:' + Math.round(((i + 1) / d.questions.length) * 100) + '%"></i></div>' +
+      '<div class="qn">' + esc(q.tema || 'Entrevista') + ' · pergunta ' + (i + 1) + ' de ' + d.questions.length + '</div><div class="qt">' + esc(q.texto) + '</div>' +
+      '<textarea class="ia" id="ia" maxlength="2000" placeholder="Escreva aqui a sua resposta">' + esc(answers[i] || '') + '</textarea>' +
+      '<div class="msg" id="im"></div><div class="nav">' + (i > 0 ? '<button class="btn g" id="pv">Voltar</button>' : '') +
+      '<button class="btn" id="nx">' + (last ? 'Enviar entrevista' : 'Próxima') + '</button></div>' +
+      '<div class="foot">' + esc(d.job) + ' · Sports &amp; Tennis</div>';
+    const ta = document.getElementById('ia'), im = document.getElementById('im'), nx = document.getElementById('nx');
+    const pv = document.getElementById('pv');
+    if (pv) pv.onclick = () => { answers[i] = ta.value.trim(); i--; show(); };
+    nx.onclick = async () => {
+      answers[i] = ta.value.trim();
+      if (!answers[i] && !optional(d.questions[i])) { im.className = 'msg bad'; im.textContent = 'Escreva a sua resposta para continuar.'; ta.focus(); return; }
+      nx.disabled = true; nx.textContent = last ? 'Enviando…' : 'Salvando…';
+      try {
+        if (last) {
+          const miss = answers.findIndex((a, k) => !a && !optional(d.questions[k]));
+          if (miss >= 0) { i = miss; show(); return; }
+          await post(true); forget(); doneView();
+        } else { await post(false); i++; show(); }
+      } catch (err) { im.className = 'msg bad'; im.textContent = err.message; nx.disabled = false; nx.textContent = last ? 'Enviar entrevista' : 'Próxima'; }
+    };
+  };
+  show();
+}
 function goList() { history.pushState({}, '', location.pathname); document.title = 'Trabalhe conosco · Sports & Tennis'; listView(); }
-function route() { const v = new URLSearchParams(location.search).get('v'); v ? jobView(v) : listView(); }
+function route() { const q = new URLSearchParams(location.search); const e = q.get('e'), v = q.get('v'); e ? interviewView(e, true) : v ? jobView(v) : listView(); }
 window.onpopstate = route;
 route();
 </script>
