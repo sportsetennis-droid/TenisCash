@@ -65,6 +65,20 @@ const COORD = new Set(['MANAGE_TOURNAMENT', 'ASSIGN_ROLES', 'CORRECT_RESULT', 'P
 const MATCH_SCOPED = new Set(['REFEREE', 'RESULT', 'LIVE']);
 const ARCHIVED_OK = new Set(['VIEW', 'RESTORE', 'VIEW_AUDIT']);
 
+// REGRA DE TRANSIÇÃO (Liga F1, 2026-11-19): o torneio só passa a EXIGIR escala por
+// jogo depois que o organizador escala o PRIMEIRO jogo. Enquanto NENHUM jogo do
+// torneio tiver árbitro escalado (MatchOfficial), qualquer REFEREE do torneio apita
+// os jogos (como era antes). Ao escalar o 1º jogo, só os escalados apitam — e jogo
+// sem escala fica com fundador/coordenador. Protege campeonato em andamento que
+// nunca usou escala (ex.: II Futsal Master Cup) sem mexer em dado nenhum.
+async function tournamentUsesAssignment(tournamentId) {
+  const one = await prisma.matchOfficial.findFirst({
+    where: { matchId: { in: (await prisma.tournamentMatch.findMany({ where: { tournamentId: String(tournamentId) }, select: { id: true } })).map((m) => m.id) } },
+    select: { id: true },
+  });
+  return !!one;
+}
+
 // Árbitro está ESCALADO (MatchOfficial) neste jogo?
 async function isNominated(userId, matchId) {
   if (!userId || !matchId) return false;
@@ -104,10 +118,12 @@ async function can(userId, userRole, tournamentId, action, opts = {}) {
       if (!isReferee) return false;
       // Sem jogo (mesa de check-in do torneio): basta ser arbitragem do torneio.
       if (!opts.matchId) return action === 'REFEREE';
-      // Com jogo: SÓ o árbitro escalado. Jogo sem escala = só fundador/coordenador.
+      // Com jogo: o árbitro ESCALADO manda. Jogo sem escala: qualquer árbitro do torneio
+      // SÓ enquanto o torneio não adotou escala (nenhum jogo escalado) — regra de transição.
       const m = await prisma.tournamentMatch.findUnique({ where: { id: String(opts.matchId) }, select: { tournamentId: true } });
       if (!m || m.tournamentId !== t.id) return false;
-      return isNominated(userId, opts.matchId);
+      if (await isNominated(userId, opts.matchId)) return true;
+      return !(await tournamentUsesAssignment(t.id));
     }
     default:
       return false;
@@ -221,8 +237,8 @@ async function eventContext(eventId) {
 }
 
 // Jogos que EU devo apitar neste torneio (pra tela da arbitragem).
-// Coordenador/fundador/admin → todos. Árbitro → SÓ os jogos em que foi escalado (Liga F1:
-// jogo sem árbitro escalado é da coordenação — fechou a brecha do "qualquer árbitro").
+// Coordenador/fundador/admin → todos. Árbitro → os jogos em que foi escalado; enquanto o
+// torneio não adotou escala (nenhum jogo escalado), também os livres (regra de transição).
 async function myMatches(userId, userRole, tournamentId) {
   const rs = await rolesFor(userId, tournamentId);
   const admin = isGlobalAdmin(userRole);
@@ -253,7 +269,8 @@ async function myMatches(userId, userRole, tournamentId) {
   const out = [];
   for (const m of matches) {
     const nominated = !!nominatedMine[m.id];
-    if (!isCoord && !nominated) continue; // árbitro só vê os jogos em que está escalado
+    // escala adotada → árbitro só vê os jogos dele; sem escala no torneio → vê todos (livres)
+    if (!isCoord && !nominated && officials.length) continue;
     out.push({
       id: m.id, tournamentId: m.tournamentId, categoryId: m.categoryId, category: cById[m.categoryId] || '',
       stage: m.stage, round: m.round, groupName: m.groupName, status: m.status,
@@ -313,11 +330,12 @@ async function myRoles(userId, userRole, tournamentId) {
     regenerateForce: await c('REGENERATE_FORCE'),
   };
   const teams = roles.filter((r) => TEAM_SCOPED.includes(r.role) && r.entryId);
-  return { roles: roles.map((r) => ({ role: r.role, roleLabel: ROLE_LABEL[r.role] || r.role, entryId: r.entryId })), caps, teams, isGlobalAdmin: admin };
+  const refereeAssignment = (await tournamentUsesAssignment(tournamentId)) ? 'required' : 'open';
+  return { roles: roles.map((r) => ({ role: r.role, roleLabel: ROLE_LABEL[r.role] || r.role, entryId: r.entryId })), caps, teams, isGlobalAdmin: admin, refereeAssignment };
 }
 
 module.exports = {
   ROLES, ROLE_LABEL, TEAM_SCOPED, OFFICIAL_ROLES, ACTIONS, isGlobalAdmin,
-  rolesFor, can, isNominated, resolveUser, assignRole, removeRole, listRoles, myRoles,
+  rolesFor, can, isNominated, tournamentUsesAssignment, resolveUser, assignRole, removeRole, listRoles, myRoles,
   entryContext, matchContext, playerContext, eventContext, myMatches, myTeam,
 };

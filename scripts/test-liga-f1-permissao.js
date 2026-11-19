@@ -275,6 +275,56 @@ async function dbSuite() {
     assert.deepStrictEqual(off, []);
   });
 
+  // ------------------------------------------------------------------ REGRA DE TRANSIÇÃO DA ESCALA
+  console.log('  — regra de transição: torneio sem nenhuma escala → qualquer árbitro apita');
+  const tr = await prisma.tournament.create({ data: { slug: 'f1r-' + RUN, name: 'F1 Transição ' + RUN, sport: 'FUTSAL', format: 'ROUND_ROBIN', ownerId: U.founder.id, status: 'ONGOING' } });
+  const trc = await prisma.tournamentCategory.create({ data: { tournamentId: tr.id, name: 'Livre' } });
+  const trA = await prisma.tournamentEntry.create({ data: { tournamentId: tr.id, categoryId: trc.id, name: 'TR A', status: 'CONFIRMED' } });
+  const trB = await prisma.tournamentEntry.create({ data: { tournamentId: tr.id, categoryId: trc.id, name: 'TR B', status: 'CONFIRMED' } });
+  const trM = (round) => prisma.tournamentMatch.create({ data: { tournamentId: tr.id, categoryId: trc.id, stage: 'LEAGUE', round, ordering: 1, homeEntryId: trA.id, awayEntryId: trB.id, status: 'SCHEDULED' } });
+  const R1 = await trM(1);
+  const R2 = await trM(2);
+  const R3 = await trM(3);
+  const refX = await mkUser('árbitro do torneio X');
+  const refY = await mkUser('árbitro do torneio Y');
+  for (const u of [refX, refY]) await prisma.tournamentRole.create({ data: { tournamentId: tr.id, userId: u.id, role: 'REFEREE' } });
+  const myM = async (u) => (await call('GET', `/api/tournaments/${tr.id}/my-matches`, { token: tok(u) })).json.matches.map((m) => m.id).sort();
+  await ok('(1) torneio SEM nenhuma escala: árbitro não escalado finaliza, lança resultado e mexe no ao vivo (200)', async () => {
+    assert.strictEqual(await roles.tournamentUsesAssignment(tr.id), false);
+    const live = await call('POST', `/api/tournaments/matches/${R3.id}/live`, { token: tok(refX), body: { status: 'LIVE' } });
+    assert.strictEqual(live.status, 200, live.text);
+    const fin = await call('POST', `/api/tournaments/matches/${R1.id}/finalize`, { token: tok(refX), body: {} });
+    assert.strictEqual(fin.status, 200, fin.text);
+    const res = await call('POST', `/api/tournaments/matches/${R2.id}/result`, { token: tok(refX), body: { homeScore: 2, awayScore: 1 } });
+    assert.strictEqual(res.status, 200, res.text);
+    // usuário qualquer continua fora
+    assert.strictEqual((await call('POST', `/api/tournaments/matches/${R3.id}/live`, { token: tok(U.anyone), body: { status: 'LIVE' } })).status, 403);
+    for (const m of [R1, R2, R3]) await resetMatch(m);
+  });
+  await ok('(3a) my-matches SEM escala: árbitro vê todos os jogos livres; my-roles diz "open"', async () => {
+    assert.deepStrictEqual(await myM(refX), [R1.id, R2.id, R3.id].sort());
+    assert.strictEqual((await call('GET', `/api/tournaments/${tr.id}/my-roles`, { token: tok(refX) })).json.refereeAssignment, 'open');
+  });
+  await ok('(2) escalou UM jogo → torneio passa a exigir escala: não escalado negado nos jogos sem escala e no escalado', async () => {
+    const r = await call('POST', `/api/tournaments/${tr.id}/matches/${R2.id}/referees`, { token: tok(U.founder), body: { userId: refY.id, role: 'REF1' } });
+    assert.strictEqual(r.status, 201, r.text);
+    assert.strictEqual(await roles.tournamentUsesAssignment(tr.id), true);
+    for (const [m, path_, body] of [[R1, 'finalize', {}], [R1, 'result', { homeScore: 1, awayScore: 0 }], [R3, 'live', { status: 'LIVE' }], [R2, 'finalize', {}], [R2, 'result', { homeScore: 1, awayScore: 0 }], [R2, 'live', { status: 'LIVE' }]]) {
+      const x = await call('POST', `/api/tournaments/matches/${m.id}/${path_}`, { token: tok(refX), body });
+      assert.strictEqual(x.status, 403, `refX ${path_} ${m === R2 ? 'escalado' : 'sem escala'} → ${x.status}`);
+    }
+    // o escalado apita o dele; jogo sem escala agora é da coordenação
+    assert.strictEqual((await call('POST', `/api/tournaments/matches/${R2.id}/live`, { token: tok(refY), body: { status: 'LIVE' } })).status, 200);
+    assert.strictEqual((await call('POST', `/api/tournaments/matches/${R1.id}/live`, { token: tok(refY), body: { status: 'LIVE' } })).status, 403);
+    assert.strictEqual((await call('POST', `/api/tournaments/matches/${R1.id}/finalize`, { token: tok(U.coord), body: {} })).status, 403, 'coord do OUTRO torneio não manda aqui');
+    assert.strictEqual((await call('POST', `/api/tournaments/matches/${R1.id}/finalize`, { token: tok(U.founder), body: {} })).status, 200);
+  });
+  await ok('(3b) my-matches COM escala: não escalado não vê nada; escalado vê só o dele; my-roles diz "required"', async () => {
+    assert.deepStrictEqual(await myM(refX), []);
+    assert.deepStrictEqual(await myM(refY), [R2.id]);
+    assert.strictEqual((await call('GET', `/api/tournaments/${tr.id}/my-roles`, { token: tok(refX) })).json.refereeAssignment, 'required');
+  });
+
   // ------------------------------------------------------------------ CAMINHO FELIZ + JOGO ENCERRADO
   console.log('  — árbitro escalado fecha a súmula; jogo encerrado; auditoria');
   await resetMatch(M1); await clearEvents(M1); await resetMatch(M2); await clearEvents(M2);

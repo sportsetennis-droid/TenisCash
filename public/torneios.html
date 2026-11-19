@@ -1262,6 +1262,7 @@ async function renderTournament(id){
   const canManage=isOwner||!!(MR.caps&&MR.caps.manageTournament);
   CURPERM={canManage:canManage,canApprove:canManage};
   CURCAPS=MR.caps||{};
+  REF_MODE=MR.refereeAssignment||null;
   const canAssign=isOwner||!!(MR.caps&&MR.caps.assignRoles);
   const canRegister=['OPEN','ONGOING'].includes(t.status);
   const st=ST_LABEL[t.status]||['',''];
@@ -1517,9 +1518,19 @@ async function saveSponsor(tid){
 const ROLE_LBL={FOUNDER:'Fundador do campeonato',COORDINATOR:'Coordenador técnico',TEAM_ADMIN:'Administrador do time',COACH:'Treinador',REFEREE:'Arbitragem',PLAYER:'Jogador'};
 const ROLE_IC={FOUNDER:I.star,COORDINATOR:I.compass,TEAM_ADMIN:I.shield,COACH:I.clip,REFEREE:I.whistle,PLAYER:I.user};
 const TEAM_ROLES=['TEAM_ADMIN','COACH','PLAYER'];
+// Liga F1 — regra de transição da escala de arbitragem (aviso pro organizador)
+const REF_RULE_TXT='Enquanto nenhum jogo tiver árbitro escalado, qualquer árbitro do torneio pode apitar. Ao escalar o primeiro jogo, só os escalados apitam.';
+function refRuleNote(mode){
+  return '<div class="subcard" style="margin:8px 0 10px"><div style="display:flex;gap:8px;align-items:flex-start">'+I.whistle.replace('<svg','<svg style="width:18px;height:18px;flex:none;margin-top:2px"')+
+    '<div><p class="muted" style="margin:0;font-size:12.5px">'+REF_RULE_TXT+'</p>'+
+    (mode?'<p style="margin:6px 0 0;font-size:12.5px;font-weight:700">Agora: '+(mode==='required'?'só os árbitros escalados apitam cada jogo.':'qualquer árbitro do torneio pode apitar (nenhum jogo escalado).')+'</p>':'')+
+    '</div></div></div>';
+}
+let REF_MODE=null; // 'open' | 'required' (vem do my-roles)
 function rolesCard(tid){
   return '<div class="card" id="roles-card">'+cardH(I.users,'Contas &amp; Papéis')+
     '<p class="muted" style="margin:-4px 0 6px">Quem alimenta cada parte do torneio. Cada pessoa entra com telefone + senha.</p>'+
+    refRuleNote(REF_MODE)+
     '<div id="roles-list"><div class="spin"></div></div>'+
     '<div class="sp12"></div><button class="btn sm gho full" data-act="add-role" data-tid="'+tid+'">'+I.plus+'Nomear pessoa</button></div>';
 }
@@ -2696,6 +2707,7 @@ function drawSumula(){
   let off='';
   if(!done)off='<details class="card fold"'+(mt.referee1?'':' open')+'><summary>'+cardH(I.whistle,'Arbitragem','<span class="chv fchev">'+I.chev+'</span>')+'</summary>'+
     '<p class="muted" style="font-size:12.5px">Quadro oficial de futsal: 2 árbitros + mesa + cronometrista (3º árbitro opcional).</p>'+
+    refRuleNote(null)+
     '<label for="ref1">Árbitro 1 (principal)</label><input id="ref1" value="'+esc(mt.referee1||'')+'" placeholder="árbitro principal">'+
     '<label for="ref2">Árbitro 2 (auxiliar)</label><input id="ref2" value="'+esc(mt.referee2||'')+'" placeholder="árbitro auxiliar">'+
     '<label for="ref3">3º árbitro</label><input id="ref3" value="'+esc(mt.referee3||'')+'" placeholder="opcional">'+
