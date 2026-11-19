@@ -750,7 +750,6 @@ app.get('/api/health', (req, res) => {
     igHealth,
     scannerPipeline: 'durable-queue-v1',
     scannerRuntime: process.versions.node,
-    limpaTeste: global.__limpaTeste || null, // TEMPORÁRIO (limpeza única dos times de teste) — sai no próximo PR
   });
 });
 
@@ -2296,8 +2295,6 @@ const server = app.listen(PORT, '0.0.0.0', () => {
         require('./ai/rede').iniciar().catch((e) => console.error('[RNA] iniciar:', e.message));
         // ranking Glicko-2: gera do histórico os esportes que ainda não têm rating (idempotente)
         require('./services/clubRating').bootstrapEmpty();
-        // TEMPORÁRIO: limpeza única do jogo de teste "Leões Teste × Tigres Teste" (sai no próximo PR)
-        require('./services/limpaTimesTeste').rodarNoBoot(prisma).then((r) => { global.__limpaTeste = { em: new Date().toISOString(), ...r }; });
       });
   } catch (e) {
     console.error('[ensureApexSchema] falha ao iniciar:', e.message);
