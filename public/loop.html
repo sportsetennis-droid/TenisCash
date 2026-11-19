@@ -47,13 +47,19 @@
 </div>
 
 <script>
-const VIEW='/api/_loopview?g=stloop2026';
+// Liga Aberta F0: a pauta exige login de ADMIN (mesmo token do admin.html).
+const VIEW='/api/_loopview';
+function adminToken(){ try{ return localStorage.getItem('tc_admin_token')||''; }catch(_){ return ''; } }
 const $=(s)=>document.querySelector(s);
 function esc(s){ return String(s==null?'':s).replace(/</g,'&lt;'); }
 
 async function load(){
   try{
-    const r=await (await fetch(VIEW)).json();
+    const tok=adminToken();
+    if(!tok){ $('#out').innerHTML='<div class="info">Entre no <a href="/admin.html" style="color:#ffd400">admin</a> com um usuário administrador e volte aqui.</div>'; return; }
+    const resp=await fetch(VIEW,{headers:{'Authorization':'Bearer '+tok},cache:'no-store'});
+    if(resp.status===401||resp.status===403){ $('#out').innerHTML='<div class="info">Sessão de admin expirada ou sem permissão. Entre de novo no <a href="/admin.html" style="color:#ffd400">admin</a>.</div>'; return; }
+    const r=await resp.json();
     if(!r.ok){ $('#out').innerHTML='<div class="info">erro: '+esc(r.error||'falhou')+'</div>'; return; }
     render(r);
   }catch(e){ $('#out').innerHTML='<div class="info">erro de conexão: '+esc(e.message)+'</div>'; }

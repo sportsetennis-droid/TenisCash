@@ -4,6 +4,7 @@ const { PrismaClient } = require('@prisma/client');
 const { allocateInternalBarcode } = require('./services/internalBarcode');
 const { isAdminRole, isDesignRole, isDesignRequestAllowed } = require('./services/designAccess');
 const { normalizeProductColorContext } = require('./services/colorName');
+const { resolveJwtSecret } = require('./services/jwtSecret');
 const prisma = new PrismaClient();
 
 // Todo produto criado pelo fluxo principal já nasce com o código interno.
@@ -39,7 +40,9 @@ prisma.$use(async (params, next) => {
   return next(params);
 });
 
-const JWT_SECRET = process.env.JWT_SECRET || 'teniscash-secret-change-in-production';
+// Liga Aberta F0: sem segredo padrão. Produção sem JWT_SECRET derruba o boot
+// (o Railway mantém a versão anterior); fora de produção, segredo aleatório.
+const JWT_SECRET = resolveJwtSecret();
 
 const verifiedIdentity = Symbol('verifiedIdentity');
 

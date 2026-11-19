@@ -7,12 +7,12 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const { prisma } = require('../middleware');
+const { prisma, JWT_SECRET } = require('../middleware');
 const { canRecord } = require('../services/mfDailyProduction');
 const ensureDailySchema = require('../services/mfDailySchema').createSchemaReadiness(prisma);
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'teniscash-dev-secret';
+// Mesmo segredo do middleware (sem padrão próprio — Liga Aberta F0).
 const TZ = 'America/Fortaleza';
 
 router.use(async (_req, res, next) => {

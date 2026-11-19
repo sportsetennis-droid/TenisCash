@@ -4098,6 +4098,21 @@ model TournamentPost {
 // Notificação in-app (central de avisos do atleta). Sem relação forte
 // com User (userId solto, padrão dos modelos de competição) pra não tocar
 // o modelo User. Lida pelo app via /api/tournaments/notifications.
+// Liga Aberta F0 — código de verificação do cadastro de atleta (WhatsApp).
+// Só o HASH (HMAC) do código; 10 min de validade; máx. 5 tentativas.
+// Tabela criada pelo SQL aditivo de src/services/ensureApexSchema.js.
+model AthleteSignupCode {
+  id        String    @id @default(cuid())
+  phone     String
+  codeHash  String
+  attempts  Int       @default(0)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([phone, createdAt])
+}
+
 model AppNotification {
   id        String   @id @default(cuid())
   userId    String

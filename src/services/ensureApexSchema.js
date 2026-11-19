@@ -882,7 +882,18 @@ const STATEMENTS = [
   `DO $$ BEGIN ALTER TABLE "SegmentEffort" ADD CONSTRAINT "SegmentEffort_activityId_fkey" FOREIGN KEY ("activityId") REFERENCES "Activity"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object OR invalid_foreign_key OR foreign_key_violation THEN NULL; END $$`,
   `DO $$ BEGIN ALTER TABLE "SegmentEffort" ADD CONSTRAINT "SegmentEffort_segmentId_fkey" FOREIGN KEY ("segmentId") REFERENCES "Segment"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object OR invalid_foreign_key OR foreign_key_violation THEN NULL; END $$`,
   `DO $$ BEGIN ALTER TABLE "LiveTrackingSession" ADD CONSTRAINT "LiveTrackingSession_activityId_fkey" FOREIGN KEY ("activityId") REFERENCES "Activity"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object OR invalid_foreign_key OR foreign_key_violation THEN NULL; END $$`,
-  `DO $$ BEGIN ALTER TABLE "ChallengeParticipation" ADD CONSTRAINT "ChallengeParticipation_challengeId_fkey" FOREIGN KEY ("challengeId") REFERENCES "Challenge"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object OR invalid_foreign_key OR foreign_key_violation THEN NULL; END $$`,
+  `DO $$ BEGIN ALTER TABLE "ChallengeParticipation" ADD CONSTRAINT "ChallengeParticipation_challengeId_fkey" FOREIGN KEY ("challengeId") REFERENCES "Challenge"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object OR invalid_foreign_key OR foreign_key_violation THEN NULL; END $$`,  // Liga Aberta F0 — código de verificação do cadastro de atleta (só o HASH do código)
+  `CREATE TABLE IF NOT EXISTS "AthleteSignupCode" (
+     "id" TEXT NOT NULL,
+     "phone" TEXT NOT NULL,
+     "codeHash" TEXT NOT NULL,
+     "attempts" INTEGER NOT NULL DEFAULT 0,
+     "expiresAt" TIMESTAMP(3) NOT NULL,
+     "usedAt" TIMESTAMP(3),
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "AthleteSignupCode_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE INDEX IF NOT EXISTS "AthleteSignupCode_phone_createdAt_idx" ON "AthleteSignupCode"("phone", "createdAt")`,
 ];
 
 // Busca tolerante a erro (pg_trgm). Extensão + índices GIN de trigram em

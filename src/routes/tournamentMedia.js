@@ -26,6 +26,8 @@ const live = require('../services/tournamentLive');
 const art = require('../services/tournamentArt');
 const sheet = require('../services/matchSheet');
 const { publicBaseUrl } = require('../config/publicUrl');
+const { limits } = require('../services/ligaRateLimit');
+const { guardImageField, ImageGuardError } = require('../services/imageGuard');
 
 const apiRouter = express.Router();
 const publicRouter = express.Router();
@@ -119,8 +121,10 @@ apiRouter.get('/:id/qr.png', async (req, res) => {
 // --------------------------------------------------------------------
 // PATROCINADORES
 // --------------------------------------------------------------------
-const LOGO_DATA_RX = /^data:image\/(png|jpe?g|webp|gif|svg\+xml);base64,[a-z0-9+/=\s]+$/i;
-function cleanSponsor(b, partial) {
+// Liga Aberta F0: logo do patrocinador = imagem PNG/JPEG/WEBP REAL (SVG não),
+// conferida por magic bytes + sharp (máx 4096 px), reencodada até ~600 KB;
+// ou link https://. Antes aceitava svg+xml e qualquer texto com o prefixo.
+async function cleanSponsor(b, partial) {
   const out = {};
   if (!partial || 'name' in b) {
     const name = String(b.name || '').trim().slice(0, 80);
@@ -128,11 +132,12 @@ function cleanSponsor(b, partial) {
     out.name = name;
   }
   if ('logoUrl' in b) {
-    const v = b.logoUrl == null ? '' : String(b.logoUrl).trim();
-    if (!v) out.logoUrl = null;
-    else if (/^https?:\/\/\S+$/i.test(v) && v.length <= 1000) out.logoUrl = v;
-    else if (LOGO_DATA_RX.test(v) && v.length <= 600000) out.logoUrl = v;
-    else return { error: 'logo inválido (URL https ou imagem até ~400 KB)' };
+    try {
+      out.logoUrl = await guardImageField(b.logoUrl, { maxChars: 600000, allowRelative: false });
+    } catch (e) {
+      if (e instanceof ImageGuardError) return { error: e.message, status: e.status };
+      throw e;
+    }
   }
   if ('link' in b) {
     const v = b.link == null ? '' : String(b.link).trim();
@@ -180,13 +185,13 @@ apiRouter.get('/:id/sponsors', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-apiRouter.post('/:id/sponsors', authMiddleware, async (req, res) => {
+apiRouter.post('/:id/sponsors', authMiddleware, limits.upload, async (req, res) => {
   try {
     const t = await findTournament(req.params.id);
     if (!t) return res.status(404).json({ error: 'torneio não encontrado' });
     if (!(await canManage(req, res, t))) return;
-    const c = cleanSponsor(req.body || {}, false);
-    if (c.error) return res.status(400).json({ error: c.error });
+    const c = await cleanSponsor(req.body || {}, false);
+    if (c.error) return res.status(c.status || 400).json({ error: c.error });
     const count = await prisma.tournamentSponsor.count({ where: { tournamentId: t.id } });
     if (count >= 40) return res.status(400).json({ error: 'limite de 40 patrocinadores por torneio' });
     if (c.data.ordering == null) c.data.ordering = count;
@@ -195,15 +200,15 @@ apiRouter.post('/:id/sponsors', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-apiRouter.patch('/:id/sponsors/:sid', authMiddleware, async (req, res) => {
+apiRouter.patch('/:id/sponsors/:sid', authMiddleware, limits.upload, async (req, res) => {
   try {
     const t = await findTournament(req.params.id);
     if (!t) return res.status(404).json({ error: 'torneio não encontrado' });
     if (!(await canManage(req, res, t))) return;
     const cur = await prisma.tournamentSponsor.findFirst({ where: { id: req.params.sid, tournamentId: t.id } });
     if (!cur) return res.status(404).json({ error: 'patrocinador não encontrado' });
-    const c = cleanSponsor(req.body || {}, true);
-    if (c.error) return res.status(400).json({ error: c.error });
+    const c = await cleanSponsor(req.body || {}, true);
+    if (c.error) return res.status(c.status || 400).json({ error: c.error });
     const s = await prisma.tournamentSponsor.update({ where: { id: cur.id }, data: c.data });
     res.json(sponsorOut(s, originOf(req)));
   } catch (err) { res.status(500).json({ error: err.message }); }

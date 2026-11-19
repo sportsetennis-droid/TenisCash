@@ -217,26 +217,9 @@ app.use('/api', designIsolationMiddleware);
 // TEMPORÁRIO (remover após uso): re-pull foto 2026 COM COR, fora de /api/admin. Guard por ?g=.
 app.post('/api/_px2026col', aiCurationRoutes.pull2026ColHandler);
 app.post('/api/_catengine', catalogEngineRoutes.catEngineRunHandler); // motor de catálogo (teste/cron guardado)
-// Leitura PÚBLICA (read-only, sem login) da pauta do loop — pro dono ver no /loop.html.
-// Token próprio 'stloop2026' (≠ reinado2026) — NÃO destrava nada que gera custo.
-app.get('/api/_loopview', async (req, res) => {
-  if (req.query.g !== 'stloop2026') return res.status(403).json({ error: 'forbidden' });
-  try {
-    const loop = require('./services/marketingLoop');
-    const state = await loop.getLoopState();
-    const slate = await loop.getLoopSlate();
-    res.json({
-      ok: true,
-      learnings: state.learnings || '',
-      learningsUpdatedAt: state.learningsUpdatedAt || null,
-      lastBrainAt: state.lastBrainAt || null,
-      brain: loop.BRAIN_MODEL,
-      slate,
-    });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
-  }
-});
+// Leitura da pauta do loop (/loop.html). Liga Aberta F0: exige login de ADMIN
+// (o ?g= fixo vivia no próprio loop.html, ou seja, era público).
+app.get('/api/_loopview', ...require('./routes/loopView').loopViewChain);
 // TEMPORÁRIO (remover após uso): QR pra conectar um número de loja sem login (pedido do dono 15/11).
 // Guarda = sha256 do segredo (fora do repositório). Só canais do mapa (config/canais.js).
 app.get('/api/_waqr', async (req, res) => {
@@ -259,8 +242,12 @@ app.get('/api/_waqr', async (req, res) => {
 });
 // TEMPORÁRIO (remover após uso): diagnóstico "por que o cupom não sai" — READ-ONLY,
 // roda NO SERVIDOR (tem banco + enxerga os agentes das lojas). O dono abre no navegador.
+// Liga Aberta F0: guarda = sha256 do segredo (rotação: env ROUTE_GUARD_FISCALDIAG).
+const _guardHash = require('./services/secretGuard').matchesSecretHash;
+const _FISCALDIAG_SHA256 = '9c358aac1c62e30fadb2a2381548da3ef1b67232e90e3270aa31f895e6fcbaff';
+const _REINADO_SHA256 = '0993d4b3f72b41c9e4aee8484b5599659fc9144d339d7390d9b1fd85510b0ce7';
 app.get('/api/_fiscaldiag', async (req, res) => {
-  if (req.query.g !== 'stxdiag2026') return res.status(403).json({ error: 'forbidden' });
+  if (!_guardHash(req.query.g, _FISCALDIAG_SHA256, 'ROUTE_GUARD_FISCALDIAG')) return res.status(403).json({ error: 'forbidden' });
   try {
     const { prisma } = require('./middleware');
     const { buildFiscalDiagnoseReport } = require('./services/fiscalDiagnose');
@@ -274,7 +261,7 @@ app.get('/api/_fiscaldiag', async (req, res) => {
 // fiscais se auto-atualizarem AGORA (POST /selfupdate com o token do banco).
 // Usado pra subir o agente v2.4-certinfo sem ninguém ir nas lojas.
 app.post('/api/_agentpush', async (req, res) => {
-  if (req.query.g !== 'stxdiag2026') return res.status(403).json({ error: 'forbidden' });
+  if (!_guardHash(req.query.g, _FISCALDIAG_SHA256, 'ROUTE_GUARD_FISCALDIAG')) return res.status(403).json({ error: 'forbidden' });
   try {
     const { prisma } = require('./middleware');
     const stores = await prisma.store.findMany({
@@ -299,7 +286,7 @@ app.post('/api/_agentpush', async (req, res) => {
 });
 // TEMPORÁRIO (remover após uso): roda o cérebro do loop de marketing em prod + retorna resumo. Guard ?g=.
 app.post('/api/_loopbrain', async (req, res) => {
-  if (req.query.g !== 'reinado2026') return res.status(403).json({ error: 'forbidden' });
+  if (!_guardHash(req.query.g, _REINADO_SHA256, 'ROUTE_GUARD_REINADO')) return res.status(403).json({ error: 'forbidden' });
   try {
     const loop = require('./services/marketingLoop');
     const slate = await loop.runBrain({ ctx: req.query.ctx || undefined });
@@ -310,7 +297,7 @@ app.post('/api/_loopbrain', async (req, res) => {
 });
 // TEMPORÁRIO (remover após uso): gera 1 foto editorial premium server-side (Railway tem FAL_KEY). Guard ?g=.
 app.post('/api/_falgen', async (req, res) => {
-  if (req.query.g !== 'reinado2026') return res.status(403).json({ error: 'forbidden' });
+  if (!_guardHash(req.query.g, _REINADO_SHA256, 'ROUTE_GUARD_REINADO')) return res.status(403).json({ error: 'forbidden' });
   const keys = { falKey: !!process.env.FAL_KEY, openaiKey: !!process.env.OPENAI_API_KEY };
   try {
     const { prisma } = require('./middleware');

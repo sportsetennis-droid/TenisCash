@@ -281,6 +281,18 @@ async function sendVerificationCode(phone) {
     attempts: 0,
   });
 
+  return sendCodeMessage(formattedPhone, code);
+}
+
+// Envia um código JÁ GERADO pelo mesmo canal do cadastro (Meta Cloud com template
+// de autenticação, ou Evolution). Usado também pelo cadastro de atleta da Liga
+// (src/services/athleteSignupCode.js), que guarda só o HASH do código no banco.
+async function sendCodeMessage(phone, code) {
+  await loadConnectedMetaCredentials();
+  const formattedPhone = formatPhoneBR(phone);
+  if (!formattedPhone) {
+    return { success: false, message: 'Telefone invalido' };
+  }
   const providers = whatsappProviderOrder();
   if (!providers.length) {
     return { success: false, message: 'WhatsApp nao configurado' };
@@ -426,6 +438,7 @@ async function sendCampaignBatch({ phones, message, recipients, delayMs = 1500 }
 
 module.exports = {
   sendVerificationCode,
+  sendCodeMessage,
   verifyCode,
   isPhoneVerified,
   clearVerified,
