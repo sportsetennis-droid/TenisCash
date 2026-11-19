@@ -204,6 +204,17 @@
     scheduleRefresh();
   }
   function connect() {
+    // Liga F4: reconexão com espera crescente (live-sse.js); consulta de 20 s SÓ com o SSE caído
+    if (window.ClubLiveSSE) {
+      ES = window.ClubLiveSSE.connect('/api/tournaments/' + encodeURIComponent(C.tid) + '/live', {
+        onMessage: onLive,
+        onState: function (ok) {
+          SSE_OK = ok;
+          if (ok) { if (POLL) { clearInterval(POLL); POLL = null; } } else if (!POLL) POLL = setInterval(function () { load(false); }, 20000);
+        },
+      });
+      return;
+    }
     if (!window.EventSource) { POLL = setInterval(function () { load(false); }, 20000); return; }
     ES = new EventSource('/api/tournaments/' + encodeURIComponent(C.tid) + '/live');
     ES.onopen = function () { SSE_OK = true; if (POLL) { clearInterval(POLL); POLL = null; } };

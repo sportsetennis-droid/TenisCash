@@ -180,6 +180,8 @@ function render(){
   }
   if(D.links&&D.links.length)h+='<div class="sec"><h2>Torneios</h2><div class="card list">'+D.links.map(function(l){return '<a href="'+(l.slug?'/t/'+encodeURIComponent(l.slug):'#')+'" style="text-decoration:none"><div class="tx"><b>'+esc(l.tournament||'Torneio')+'</b><span>Inscrito como '+esc(l.entryName)+'</span></div><span class="pill">Ver</span></a>';}).join('')+'</div></div>';
   if(v&&v.status==='ACTIVE'&&role!=='owner')h+='<div class="sec"><button class="btn s w" data-a="leave">Sair do clube</button></div>';
+  // Liga F4: quem chegou pelo link do clube também pode organizar o próprio campeonato
+  h+='<div class="sec"><div class="card inv"><b>Organize o seu campeonato</b><span style="color:var(--dim);font-size:14px">Tabela, súmula e ao vivo no celular em 2 minutos.</span><a class="btn p w" href="/criar-liga" data-testid="criar-liga">Criar minha liga</a></div></div>';
   h+='<p class="fine" style="text-align:center;margin-top:26px">Club Sports &amp; Tennis</p></div>';
   app.innerHTML=h;
 }

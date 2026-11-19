@@ -918,6 +918,19 @@ a.nrow:active{background:rgba(255,255,255,.08)}
 .tgl input{appearance:none;-webkit-appearance:none;width:46px;height:28px;border-radius:14px;background:var(--line2);position:relative;flex:none;cursor:pointer;transition:background .2s}
 .tgl input:before{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.25);transition:transform .2s}
 .tgl input:checked{background:var(--acc)}.tgl input:checked:before{transform:translateX(18px)}
+/* Liga F4 — avisos por tipo × canal (celular / WhatsApp) */
+.pgrid{padding:4px 12px}
+.pgh,.pgr{display:grid;grid-template-columns:minmax(0,1fr) 58px 78px;align-items:center;gap:6px}
+.pgh{min-height:36px;font-size:11px;font-weight:800;letter-spacing:.1px;text-transform:uppercase;color:var(--mut);border-bottom:1px solid var(--line)}
+.pgh span,.pgr .c{text-align:center}
+.pgr{min-height:56px;border-bottom:1px solid var(--line);font-size:14px}
+.pgr:last-child{border-bottom:0}
+.pgr .c{display:flex;align-items:center;justify-content:center;min-height:52px;cursor:pointer}
+.pgr input{appearance:none;-webkit-appearance:none;width:46px;height:28px;border-radius:14px;background:var(--line2);position:relative;flex:none;cursor:pointer;transition:background .2s}
+.pgr input:before{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.25);transition:transform .2s}
+.pgr input:checked{background:var(--acc)}.pgr input:checked:before{transform:translateX(18px)}
+.pgr input:disabled{opacity:.45;cursor:default}
+.pgr .na{color:var(--mut);font-size:13px}
 #sheet .list .lrow{padding:10px 14px}
 </style>
 </head>
@@ -2437,11 +2450,29 @@ function pushDisable(btn){
   pushCurrent().then(function(sub){if(!sub)return;var ep=sub.endpoint;return sub.unsubscribe().catch(function(){}).then(function(){return api('/club-push/subscribe',{method:'DELETE',body:{endpoint:ep}}).catch(function(){});});})
   .then(function(){PUSH.on=false;toast('Notificações desligadas neste aparelho');pushSheet();});
 }
+// Liga F4: avisos por TIPO × CANAL. Celular (push) segue o interruptor geral; WhatsApp só no que
+// o atleta ligar (padrão: desligado) — nada de mensagem sem a pessoa pedir.
+function prefsGrid(p,pushOk){
+  var lb=p.labels||{},wl=p.whatsappLabels||{},wa=p.whatsapp||{},keys=Object.keys(wl).length?Object.keys(wl):Object.keys(lb);
+  if(!keys.length)return '';
+  var pushOn=!!p.push&&pushOk;
+  return '<div class="sfield" style="margin-top:14px"><span>Quero receber</span></div><div class="card wh pgrid" data-testid="prefs-grid">'+
+    '<div class="pgh"><span style="text-align:left">Aviso</span><span>Celular</span><span>WhatsApp</span></div>'+
+    keys.map(function(k){
+      var hasPush=Object.prototype.hasOwnProperty.call(lb,k);
+      return '<div class="pgr"><span>'+esc(wl[k]||lb[k])+'</span>'+
+        (hasPush?'<label class="c"><input type="checkbox" aria-label="Celular: '+esc(lb[k])+'" data-act="ptype" data-k="'+esc(k)+'"'+(p.types&&p.types[k]!==false?' checked':'')+(pushOn?'':' disabled')+'></label>':'<span class="c"><span class="na">—</span></span>')+
+        '<label class="c"><input type="checkbox" aria-label="WhatsApp: '+esc(wl[k]||lb[k])+'" data-act="pwa" data-testid="pref-wa-'+esc(k)+'" data-k="'+esc(k)+'"'+(wa[k]===true?' checked':'')+'></label></div>';
+    }).join('')+'</div>'+
+    '<p class="fine" style="margin-top:8px">WhatsApp só chega no que você ligar aqui (começa tudo desligado). Pode mudar quando quiser.</p>';
+}
 function pushSheet(){
-  var h='<div class="eyebrow acc">Notificações no celular</div><h2 class="disp" style="margin-top:10px">Avisos do Club</h2>';
+  var h='<div class="eyebrow acc">Notificações</div><h2 class="disp" style="margin-top:10px">Avisos do Club</h2>';
   if(!pushSupported()){
-    h+='<p class="lead">'+(isIOS()&&!isStandalone()?'No iPhone, as notificações funcionam com o Club instalado: toque em Compartilhar e depois em “Adicionar à Tela de Início”. Abra o Club pelo ícone e volte aqui.':'Este navegador não recebe notificações. Use o Chrome, o Edge ou o Safari atualizado.')+'</p>';
-    return openSheet(h+'<div class="acts"><button class="btn ghost full" data-act="sheet-close">Fechar</button></div>');
+    h+='<p class="lead">'+(isIOS()&&!isStandalone()?'No iPhone, as notificações no celular funcionam com o Club instalado: toque em Compartilhar e depois em “Adicionar à Tela de Início”. Abra o Club pelo ícone e volte aqui.':'Este navegador não recebe notificações no celular. Use o Chrome, o Edge ou o Safari atualizado.')+'</p>';
+    openSheet(h+'<div id="pref-wa-only"><div class="sk" style="height:220px;border-radius:16px;margin-top:10px"></div></div><div class="acts"><button class="btn ghost full" data-act="sheet-close">Fechar</button></div>');
+    api('/club-push/preferences').then(function(p){PUSH.prefs=p;var el=document.getElementById('pref-wa-only');if(el)el.innerHTML=prefsGrid(p,false);}).catch(function(){var el=document.getElementById('pref-wa-only');if(el)el.innerHTML='';});
+    return;
   }
   if(!sheetEl.classList.contains('on'))openSheet(h+'<div class="sk" style="height:56px;border-radius:16px;margin-top:14px"></div><div class="sk" style="height:220px;border-radius:16px;margin-top:10px"></div>');
   Promise.all([pushCurrent(),api('/club-push/preferences').catch(function(){return null;})]).then(function(x){
@@ -2453,15 +2484,16 @@ function pushSheet(){
     if(PUSH.err)b+='<div class="serr" role="alert" style="margin-top:8px">'+esc(PUSH.err)+'</div>';
     var lb=p.labels||{},keys=Object.keys(lb);
     if(keys.length){
-      b+='<div class="sfield" style="margin-top:14px"><span>Quero receber</span></div><div class="card wh tgls">'+
-        '<label class="tgl"><span><b>Todas as notificações do Club</b></span><input type="checkbox" data-act="pmaster"'+(p.push?' checked':'')+'></label>'+
-        keys.map(function(k){return '<label class="tgl'+(p.push?'':' off')+'"><span>'+esc(lb[k])+'</span><input type="checkbox" data-act="ptype" data-k="'+esc(k)+'"'+(p.types[k]!==false?' checked':'')+(p.push?'':' disabled')+'></label>';}).join('')+'</div>';
+      b+='<div class="card wh tgls" style="margin-top:14px"><label class="tgl"><span><b>Todas as notificações no celular</b></span><input type="checkbox" data-act="pmaster"'+(p.push?' checked':'')+'></label></div>';
+      b+=prefsGrid(p,true);
     }
     if(PUSH.on)b+='<div class="acts" style="margin-top:12px"><button class="btn ghost full" data-act="pushtest">Enviar notificação de teste</button></div>';
     $('.body',sheetEl).innerHTML=b;
   });
 }
 function pushPref(body){api('/club-push/preferences',{method:'PUT',body:body}).then(function(p){PUSH.prefs=p;pushSheet();}).catch(function(e){toast(e.message,true);});}
+// WhatsApp não depende do push: grava e mantém a tela (sem recarregar a folha inteira)
+function waPref(body,el){api('/club-push/preferences',{method:'PUT',body:body}).then(function(p){PUSH.prefs=p;var k=el.getAttribute('data-k');el.checked=!!(p.whatsapp&&p.whatsapp[k]);toast(el.checked?'WhatsApp ligado para este aviso':'WhatsApp desligado para este aviso');}).catch(function(e){el.checked=!el.checked;toast(e.message,true);});}
 
 /* ===================== CLUBES PERMANENTES (F5) ===================== */
 var NCL={sports:[]};
@@ -2733,6 +2765,7 @@ document.addEventListener('change',function(e){
   if(a==='rkcat'){S.rkCat=el.value;redraw(true);}
   else if(a==='pmaster')pushPref({push:el.checked});
   else if(a==='ptype'){var t={};t[el.getAttribute('data-k')]=el.checked;pushPref({types:t});}
+  else if(a==='pwa'){var w={};w[el.getAttribute('data-k')]=el.checked;waPref({whatsapp:w},el);}
 });
 /* ===================== boot ===================== */
 if(MOCK&&QS.get('tab')==='past')S.agendaTab='past';

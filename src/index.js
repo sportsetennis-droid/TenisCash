@@ -1591,6 +1591,12 @@ app.get('/t/:slug', async (req, res) => {
   .act{flex-shrink:0;display:inline-flex;align-items:center;gap:7px;min-height:44px;padding:0 15px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:#fff;font-family:'Oswald',sans-serif;font-size:13.5px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;cursor:pointer;text-decoration:none;-webkit-tap-highlight-color:transparent}
   .act.pri{background:linear-gradient(135deg,var(--red),#B8410F);border-color:transparent;box-shadow:0 6px 16px rgba(229,87,30,.3)}
   .act svg{width:17px;height:17px}
+  /* Liga F4 — "Criar minha liga" (convite para quem chegou pelo link virar organizador) */
+  .cta-liga{display:flex;align-items:center;gap:12px;margin-top:26px;padding:16px;border-radius:18px;background:linear-gradient(135deg,rgba(229,87,30,.18),rgba(229,87,30,.05));border:1px solid rgba(229,87,30,.35)}
+  .cta-liga div{flex:1;min-width:0}
+  .cta-liga b{display:block;font-family:'Oswald',sans-serif;font-size:17px;letter-spacing:.3px;text-transform:uppercase}
+  .cta-liga span{display:block;color:var(--mut);font-size:13px;margin-top:2px}
+  .cta-btn{flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 18px;border-radius:14px;background:var(--red);color:#fff;font-family:'Oswald',sans-serif;font-weight:700;font-size:14px;letter-spacing:.4px;text-transform:uppercase;text-decoration:none}
   .tlv{padding:9px 14px 11px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:5px;background:rgba(255,255,255,.015)}
   .tle{display:flex;align-items:center;gap:8px;font-size:12.5px;color:#cfd6e2;font-weight:600}
   .tle.a{flex-direction:row-reverse;text-align:right}
@@ -1634,6 +1640,7 @@ app.get('/t/:slug', async (req, res) => {
 
     <div class="acts" id="acts">
       <button class="act pri" type="button" data-m="share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>Compartilhar</button>
+      ${require('./services/clubIdentity').isExcludedSlug(t.slug) ? '' : `<button class="act" type="button" data-m="join" data-testid="join-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>Entrar num time</button>`}
       <button class="act" type="button" data-m="artes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></svg>Artes</button>
       <button class="act" type="button" data-m="cal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>Calendário</button>
       <button class="act" type="button" data-m="qr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/></svg>QR code</button>
@@ -1649,8 +1656,11 @@ app.get('/t/:slug', async (req, res) => {
 
     ${sponsorsHtml}
 
+    <div class="cta-liga"><div><b>Organize o seu campeonato</b><span>Tabela, súmula e ao vivo no celular em 2 minutos.</span></div><a class="cta-btn" href="/criar-liga" data-testid="criar-liga">Criar minha liga</a></div>
+
     <div class="footer"><span class="livedot" id="livedot" style="display:none" title="ao vivo conectado"></span>${PUBLIC_DOMAIN} · Club Sports &amp; Tennis</div>
   </div>
+<script src="/club/live-sse.js"></script>
 <script src="/club/torneio-midia.js"></script>
 <script>
 (function(){
@@ -1919,12 +1929,13 @@ app.get('/t/:slug', async (req, res) => {
         if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.classList.add('hl');}
         INIT=null;
       }
-      // ao vivo: com SSE conectado não precisa de polling; sem SSE, volta pro polling de 20s
-      if(!SSE_ON&&DATA.matches.some(function(m){return m.status==='LIVE';})){POLL=setTimeout(function(){load(catId,true);},20000);}
+      // ao vivo: com SSE conectado (ou conectando) não consulta; só com o SSE CAÍDO volta pra consulta de 20s
+      if(SSE_DOWN&&DATA.matches.some(function(m){return m.status==='LIVE';})){POLL=setTimeout(function(){load(catId,true);},20000);}
     }).catch(function(){if(!silent)elBody.innerHTML=ek('Erro ao carregar.');});
   }
   // ---------- AO VIVO por SSE ----------
-  var SSE_ON=false, RELOAD_T=null;
+  // Liga F4: SSE_DOWN = caiu (ou o navegador não tem SSE) → só aí a consulta de 20s roda.
+  var SSE_ON=false, SSE_DOWN=!(window.EventSource&&window.ClubMidia), RELOAD_T=null;
   function softReload(){ clearTimeout(RELOAD_T); RELOAD_T=setTimeout(function(){ if(CURID) load(CURID,true); },600); }
   function patchMatch(snap){
     if(!DATA||!snap) return false;
@@ -1947,7 +1958,7 @@ app.get('/t/:slug', async (req, res) => {
   }
   if(window.ClubMidia){
     ClubMidia.connectLive(TID,onLive,function(ok){
-      SSE_ON=ok;
+      SSE_ON=ok; SSE_DOWN=!ok;
       var dot=document.getElementById('livedot'); if(dot) dot.style.display=ok?'inline-block':'none';
       if(ok){ if(POLL){clearTimeout(POLL);POLL=null;} }
       else if(!POLL&&DATA&&DATA.matches.some(function(m){return m.status==='LIVE';})){ POLL=setTimeout(function(){load(CURID,true);},20000); }
@@ -1956,6 +1967,40 @@ app.get('/t/:slug', async (req, res) => {
   // ---------- mídia: artes, QR, calendário, embed ----------
   function curCat(){ for(var i=0;i<CATS.length;i++) if(CATS[i].id===CURID) return CATS[i]; return CATS[0]||{}; }
   function teamsOf(){ var seen={},out=[]; ((DATA&&DATA.stand)||[]).forEach(function(s){ var n=s.entry&&s.entry.name; if(n&&!seen[n]){seen[n]=1;out.push({id:s.entry.id,name:n});} }); out.sort(function(a,b){return a.name.localeCompare(b.name);}); return out; }
+  // ---------- Liga F4: Compartilhar (imagens prontas feed/story + link) ----------
+  function isDone(m){return m.status==='FINISHED'||m.status==='WALKOVER';}
+  function lastFinished(){var l=((DATA&&DATA.matches)||[]).filter(function(m){return isDone(m)&&m.homeEntry&&m.awayEntry;});l.sort(function(x,y){return new Date(y.scheduledAt||0)-new Date(x.scheduledAt||0);});return l[0]||null;}
+  function champKnown(){var ms=(DATA&&DATA.matches)||[];var f=ms.filter(function(m){return m.stage==='FINAL';})[0];if(f)return isDone(f)&&!!f.winnerEntryId;return ms.length>0&&ms.every(function(m){return isDone(m)||m.status==='CANCELED';});}
+  function artSrc(tipo,q){return function(fmt){var p=['formato='+fmt];for(var k in q){if(q[k])p.push(k+'='+encodeURIComponent(q[k]));}return '/api/tournaments/'+encodeURIComponent(TID)+'/arte/'+tipo+'.png?'+p.join('&');};}
+  function openShare(){
+    var c=curCat(),imgs=[],lf=lastFinished();
+    if(lf)imgs.push({key:'resultado',label:'Resultado',src:artSrc('resultado',{matchId:lf.id})});
+    if(CURID){
+      imgs.push({key:'tabela',label:'Tabela'+(c.name?' · '+c.name:''),src:artSrc('classificacao',{categoryId:CURID})});
+      imgs.push({key:'artilharia',label:'Artilharia',src:artSrc('artilharia',{categoryId:CURID})});
+      if(champKnown())imgs.push({key:'campeao',label:'Campeão',src:artSrc('campeao',{categoryId:CURID})});
+    }
+    imgs.push({key:'torneio',label:'Capa do torneio',src:artSrc('torneio',{})});
+    var link=location.origin+'/t/'+encodeURIComponent(SLUG);
+    ClubMidia.openShareSheet({title:'Compartilhar',link:link,text:'Acompanhe '+TNAME+' ao vivo: '+link,shareTitle:TNAME,slug:SLUG,images:imgs});
+  }
+  // ---------- Liga F4: Entrar num time (link que o próprio time liberou na página) ----------
+  var JOIN=null;
+  function openJoin(){
+    var body=ClubMidia.openSheet('Entrar num time','<div data-testid="join-sheet"></div><div class="cm-note" style="text-align:left">Carregando…</div>');
+    var p=JOIN?Promise.resolve(JOIN):fetch(cb('/api/tournaments/'+encodeURIComponent(TID)+'/join-links'),FO).then(function(r){return r.ok?r.json():{links:{}};}).catch(function(){return {links:{}};});
+    p.then(function(j){
+      JOIN=j;var links=(j&&j.links)||{},seen={},teams=[];
+      ((DATA&&DATA.stand)||[]).forEach(function(s){var e=s.entry;if(e&&!seen[e.id]&&!(e.members&&e.members.length)){seen[e.id]=1;teams.push(e);}});
+      teams.sort(function(x,y){return String(x.name).localeCompare(String(y.name));});
+      var h='<div data-testid="join-sheet"></div><p class="cm-note" style="text-align:left;margin:0 0 12px">Cada time libera o próprio link. Sem link? Peça ao responsável do time.</p>';
+      if(!teams.length)h+='<div class="cm-note">Nenhum time nesta categoria.</div>';
+      else h+='<div class="cm-list">'+teams.map(function(e){var L=links[e.id];
+        if(L&&!L.full)return '<a href="'+esc(L.url)+'" data-testid="join-team">'+esc(e.name)+' <small>Entrar neste time →</small></a>';
+        return '<div class="jrow" data-testid="join-ask"><b>'+esc(e.name)+'</b><small>'+(L&&L.full?'Elenco completo':'Peça o link ao responsável do time')+'</small></div>';}).join('')+'</div>';
+      body.innerHTML=h;
+    });
+  }
   var ART_LABEL={classificacao:'Classificação',artilharia:'Artilharia',campeao:'Campeão',resultado:'Resultado',proximo:'Próximo jogo'};
   document.addEventListener('click',function(ev){
     var t=ev.target.closest?ev.target.closest('[data-m],[data-art],[data-vart],[data-qrm]'):null;
@@ -1972,7 +2017,8 @@ app.get('/t/:slug', async (req, res) => {
     }
     if(t.getAttribute('data-qrm')){ ClubMidia.openQr({tid:TID,slug:SLUG,name:TNAME,matchId:t.getAttribute('data-qrm')}); return; }
     var a=t.getAttribute('data-m');
-    if(a==='share') ClubMidia.sharePage({slug:SLUG,name:TNAME});
+    if(a==='share') openShare();
+    else if(a==='join') openJoin();
     else if(a==='artes') ClubMidia.openArtSheet({tid:TID,slug:SLUG,title:'Artes do torneio',shareTitle:TNAME,types:[
       ['classificacao','Classificação · '+(c.name||''),{categoryId:CURID}],
       ['artilharia','Artilharia · '+(c.name||''),{categoryId:CURID}],
@@ -2182,9 +2228,11 @@ app.get('/atleta/:username', async (req, res) => {
         <button class="btn btn-s" id="artBtn">Arte pro story</button>
       </div>
       <a class="btn btn-s" href="/" style="display:block;margin-top:10px;text-decoration:none;text-align:center">Abrir o app</a>
+      <a class="btn btn-s" href="/criar-liga" data-testid="criar-liga" style="display:block;margin-top:10px;text-decoration:none;text-align:center">Criar minha liga</a>
     </div>
     <div class="foot">${PUBLIC_DOMAIN} · Club Sports &amp; Tennis</div>
   </div>
+<script src="/club/live-sse.js"></script>
 <script src="/club/torneio-midia.js"></script>
 <script>
 (function(){
@@ -2221,9 +2269,16 @@ app.get('/atleta/:username', async (req, res) => {
   document.getElementById('artBtn').addEventListener('click',function(){
     if(window.ClubMidia) ClubMidia.openArtSheet({tid:'club',slug:'atleta-'+HANDLE,title:'Arte do atleta',types:[['atleta','Card do atleta',{handle:HANDLE}]],shareTitle:NAME});
   });
+  // Liga F4: folha Compartilhar com o card pronto (feed/story) + link do perfil
   function share(){
-    var url=location.href;
+    var url=location.origin+'/atleta/'+encodeURIComponent(HANDLE);
     var txt='Confira o card de '+NAME+' no Sports & Tennis: '+url;
+    if(window.ClubMidia&&ClubMidia.openShareSheet){
+      ClubMidia.openShareSheet({title:'Compartilhar',link:url,text:txt,shareTitle:NAME,slug:'atleta-'+HANDLE,images:[
+        {key:'atleta',label:'Card do atleta',src:function(fmt){return '/api/tournaments/club/arte/atleta.png?formato='+fmt+'&handle='+encodeURIComponent(HANDLE);}}
+      ]});
+      return;
+    }
     if(navigator.share){navigator.share({title:NAME,text:txt,url:url}).catch(function(){});}
     else{window.open('https://wa.me/?text='+encodeURIComponent(txt),'_blank');}
   }

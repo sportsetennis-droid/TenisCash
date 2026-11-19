@@ -2330,14 +2330,25 @@ function readGameRules(){
   return {periods:n('gr-per'),minutesPerPeriod:n('gr-min'),playersOnField:n('gr-pl'),maxRoster:n('gr-max'),foulLimit:n('gr-fl'),foulText:v('gr-ft').value.trim()||null,foulWarnText:v('gr-fw').value.trim()||null,events:events};
 }
 // ---------- Liga F3: link do time (o próprio time preenche o elenco) ----------
-async function teamLinkSheet(eid,name){
-  let r;try{r=await api('/entries/'+eid+'/team-invite',{method:'POST',body:{}});}catch(e){return toast(e.message);}
+async function teamLinkSheet(eid,name,fresh){
+  // Liga F4: se o time já tem o link NA PÁGINA pública, abre com ele (não derruba o botão
+  // "Entrar neste time"); gerar outro é ação explícita.
+  let r=null;
+  if(!fresh){try{const c=await api('/entries/'+eid+'/team-invite');if(c&&c.active)r=c.active;}catch(e){}}
+  if(!r){try{r=await api('/entries/'+eid+'/team-invite',{method:'POST',body:{}});}catch(e){return toast(e.message);}}
   const exp=new Date(r.expiresAt).toLocaleDateString('pt-BR',{timeZone:'America/Fortaleza'});
   openSheet('<h3>Link do time'+(r.team&&r.team.name?' · '+esc(r.team.name):'')+'</h3><p class="muted">Quem abrir entra com a conta e se adiciona ao elenco. Vale até '+esc(exp)+' para várias pessoas. Gerar outro desativa este.</p><div class="sp8"></div>'+
     '<input id="inv-url" readonly value="'+esc(r.url)+'">'+
     '<div class="sp12"></div><button class="btn" data-act="team-invite-copy">'+I.link+'Copiar link</button>'+
     '<div class="sp8"></div><a class="btn sec full" style="text-align:center" href="'+esc(r.whatsappUrl)+'" target="_blank" rel="noopener">Abrir no meu WhatsApp para enviar</a>'+
+    '<div class="sp8"></div><label class="tgl" style="display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px"><span>Mostrar o botão <b>Entrar neste time</b> na página pública do campeonato</span><input type="checkbox" id="inv-public" data-testid="team-link-public"'+(r.public?' checked':'')+'></label>'+
+    (r.public?'<div class="sp8"></div><button class="btn sec full" data-act="team-link-new" data-eid="'+eid+'" data-name="'+esc(name||'')+'">'+I.link+'Gerar outro link (o atual deixa de valer)</button>':'')+
     '<div class="sp8"></div><button class="btn gho full" data-act="team-link-revoke" data-eid="'+eid+'">'+I.x+'Desativar o link</button>');
+  const cb=document.getElementById('inv-public');
+  if(cb)cb.addEventListener('change',async function(){
+    try{await api('/entries/'+eid+'/team-invite',{method:'PATCH',body:cb.checked?{public:true,token:r.token}:{public:false}});toast(cb.checked?'Link na página pública':'Link fora da página');}
+    catch(e){cb.checked=!cb.checked;toast(e.message);}
+  });
 }
 async function teamLinkRevoke(eid){try{await api('/entries/'+eid+'/team-invite',{method:'DELETE'});closeSheet();toast('Link desativado');}catch(e){toast(e.message);}}
 // ---------- Liga F3: duplicar para a próxima temporada ----------
@@ -2817,12 +2828,43 @@ function drawSumula(){
     (mt.referee1?'<div><span>Árbitro 1:</span> <b>'+esc(mt.referee1)+'</b></div>':'')+(mt.referee2?'<div><span>Árbitro 2:</span> <b>'+esc(mt.referee2)+'</b></div>':'')+(mt.referee3?'<div><span>3º árbitro:</span> <b>'+esc(mt.referee3)+'</b></div>':'')+(mt.scorer?'<div><span>Mesa:</span> <b>'+esc(mt.scorer)+'</b></div>':'')+(mt.timekeeper?'<div><span>Cronometrista:</span> <b>'+esc(mt.timekeeper)+'</b></div>':'')+'</div></div>';
   let fin='';
   if(!done)fin='<div class="actbar"><button class="btn big" data-act="sum-finalize" data-mid="'+mid+'">'+I.flag+'Fechar súmula ('+s.liveScore.home+'×'+s.liveScore.away+')</button></div>';
-  else fin='<div class="card">'+emptyB(I.check,'Súmula encerrada. Placar oficial <b>'+(s.match.homeScore!=null?s.match.homeScore:'-')+'×'+(s.match.awayScore!=null?s.match.awayScore:'-')+'</b>.','sm')+'</div>';
+  else fin='<div class="card">'+emptyB(I.check,'Súmula encerrada. Placar oficial <b>'+(s.match.homeScore!=null?s.match.homeScore:'-')+'×'+(s.match.awayScore!=null?s.match.awayScore:'-')+'</b>.','sm')+'</div>'+
+    // Liga F4: quem jogou e não tem conta — o organizador/árbitro manda o convite pelo PRÓPRIO WhatsApp
+    '<div class="card" id="unc-box" data-testid="unclaimed-box">'+cardH(I.users,'Jogadores sem conta')+'<div id="unc-body"><p class="muted" style="font-size:12.5px">Carregando…</p></div></div>';
   if(h.entry&&a.entry)fin+='<div class="card">'+cardH(I.upload,'Arte do jogo')+'<p class="muted" style="margin:-4px 0 12px;font-size:12.5px">'+(done?'Resultado final':'Placar ao vivo')+' pronto pro Instagram/WhatsApp — o público acompanha lance a lance na página.</p>'+
     '<div class="brow"><button class="btn sm" data-act="m-artm" data-tid="'+esc(mt.tournamentId)+'" data-mid="'+mid+'">'+I.share+'Arte '+(done?'do resultado':'ao vivo')+'</button>'+
     '<button class="btn sm gho" data-act="m-qrm" data-tid="'+esc(mt.tournamentId)+'" data-mid="'+mid+'">'+I.grid+'QR do jogo</button></div></div>';
   html+='<div class="g2 sum"><div class="col">'+score+ctrl+ros+'</div><div class="col">'+evh+off+fin+'</div></div>';
   html+='</div>';app.innerHTML=html;
+  if(done)uncLoad(mid,false);
+}
+// ---------- Liga F4: súmula fechada → convite para quem jogou sem conta ----------
+// O sistema NÃO envia nada: mostra o texto pronto e o botão que abre o WhatsApp de quem está
+// com o celular na mão (wa.me). Abrir de novo recupera o mesmo link (não invalida o já mandado).
+let UNC=null;
+async function uncLoad(mid,create){
+  const box=document.getElementById('unc-body');if(!box)return;
+  let r;
+  try{r=create?await api('/matches/'+mid+'/claim-invites',{method:'POST',body:{}}):await api('/matches/'+mid+'/unclaimed');}
+  catch(e){const b=document.getElementById('unc-box');if(e.status===403||e.status===404){if(b)b.remove();return;}box.innerHTML='<p class="muted">'+esc(e.message)+'</p>';return;}
+  UNC={mid:mid,data:r};
+  if(r&&r.excluded){const b=document.getElementById('unc-box');if(b)b.remove();return;}
+  const L=(r&&r.players)||[];
+  if(!L.length){box.innerHTML='<p class="muted" style="font-size:12.5px" data-testid="unclaimed-none">Todo mundo deste jogo já tem conta ligada no elenco.</p>';return;}
+  let h='<p class="muted" style="font-size:12.5px;margin:-4px 0 10px">Quem jogou sem conta não guarda gols, jogos e títulos no histórico. Mande o convite pelo seu WhatsApp — o sistema não envia mensagem sozinho.</p>';
+  if(!r.canInvite)h+='<p class="muted" style="font-size:12.5px;margin:0 0 10px">O convite é gerado pela organização, pelo admin ou pelo treinador do time.</p>';
+  else if(r.pendingInvites>0)h+='<button class="btn full" data-act="unc-prep" data-mid="'+mid+'" data-testid="unclaimed-prepare">'+I.link+'Preparar convites ('+r.pendingInvites+')</button><div class="sp12"></div>';
+  h+=L.map(function(p,i){
+    const iv=p.invite;
+    return '<div class="prow" data-testid="unclaimed-row" style="cursor:default"><span class="pno">'+(p.number!=null?p.number:'–')+'</span><div class="grow"><div class="nm wrap2">'+esc(p.name)+'</div><div class="sub">'+esc(p.team)+'</div></div>'+
+      (iv?'<a class="btn sm" data-testid="unclaimed-wa" href="'+esc(iv.whatsappUrl)+'" target="_blank" rel="noopener">'+I.send+'WhatsApp</a><button class="btn icon gho" aria-label="Copiar convite" data-act="unc-copy" data-i="'+i+'">'+I.link+'</button>'
+        :'<span class="pill g">'+(p.canInvite?'sem convite':'sem conta')+'</span>')+'</div>';
+  }).join('');
+  box.innerHTML=h;
+}
+async function uncCopy(i){
+  const p=UNC&&UNC.data&&UNC.data.players[i];if(!p||!p.invite)return;
+  try{await navigator.clipboard.writeText(p.invite.whatsappText);toast('Convite copiado');}catch(e){toast('Não deu para copiar');}
 }
 function sumReload(){if(SUMULA)renderSumula(SUMULA.mid);}
 function sumPlayerSheet(pid,eid,pn){
@@ -3019,6 +3061,7 @@ document.addEventListener('click',async(ev)=>{
   if(a==='sum-timeout'){sumTimeout(el.dataset.eid);return;}
   if(a==='sum-team-ev'){sumTeamEvent(el.dataset.t,el.dataset.eid);return;}
   if(a==='team-link'){teamLinkSheet(el.dataset.eid,el.dataset.name);return;}
+  if(a==='team-link-new'){teamLinkSheet(el.dataset.eid,el.dataset.name,true);return;}
   if(a==='team-link-revoke'){teamLinkRevoke(el.dataset.eid);return;}
   if(a==='dup-sheet'){dupSheet(el.dataset.id,el.dataset.name||'');return;}
   if(a==='dup-do'){dupDo(el.dataset.id);return;}
@@ -3028,6 +3071,8 @@ document.addEventListener('click',async(ev)=>{
   if(a==='sum-delplayer'){if(confirm('Remover jogador do elenco?')){try{await api('/players/'+el.dataset.pid,{method:'DELETE'});toast('Removido');sumReload();}catch(e){toast(e.message);}}return;}
   if(a==='rp-save'){sumSavePlayer(el.dataset.eid);return;}
   if(a==='sum-finalize'){sumFinalize(el.dataset.mid);return;}
+  if(a==='unc-prep'){uncLoad(el.dataset.mid,true);return;}
+  if(a==='unc-copy'){uncCopy(Number(el.dataset.i));return;}
   if(a==='team-logo'){pickTeamLogo(el.dataset.eid);return;}
   if(a==='sum-officials'){sumOfficials(el.dataset.mid);return;}
   if(a==='fz-go'){sumFinalizeGo(el.dataset.mid);return;}

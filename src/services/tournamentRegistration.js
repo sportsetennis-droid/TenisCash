@@ -430,7 +430,7 @@ async function register(slugOrId, body, user, meta = {}) {
     await confirmRegistration(reg.id, { reason: 'free' });
   }
   try {
-    await notify(t.ownerId, { type: 'entry', title: 'Nova inscrição', body: `${displayName} se inscreveu em "${t.name}" (${STATUS_LABEL[reg.status] || reg.status}).`, link: '#/inscricoes/' + t.id });
+    await notify(t.ownerId, { type: 'entry', title: 'Nova inscrição', body: `${displayName} se inscreveu em "${t.name}" (${STATUS_LABEL[reg.status] || reg.status}).`, link: '#/inscricoes/' + t.id }, { waCategory: 'organizer' });
   } catch (_) {}
   return prisma.tournamentRegistration.findUnique({ where: { id: reg.id } });
 }
@@ -716,7 +716,7 @@ async function markChargePaid(chargeId, { paidCents, e2e }) {
   }
   await prisma.tournamentRegistration.update({ where: { id: reg.id }, data: { refundStatus: 'REQUESTED', refundRequestedAt: new Date(), refundReason: 'PIX recebido depois do prazo e sem vaga — devolver manualmente' } });
   await audit(prisma, { tournamentId: reg.tournamentId, registrationId: reg.id, action: 'PAID_LATE_NO_SLOT', note: 'precisa de estorno manual' });
-  try { await notify(t.ownerId, { type: 'entry', title: 'PIX recebido sem vaga', body: `${reg.displayName} pagou depois do prazo e não há vaga. Faça o estorno manual no painel.`, link: '#/inscricoes/' + t.id }); } catch (_) {}
+  try { await notify(t.ownerId, { type: 'entry', title: 'PIX recebido sem vaga', body: `${reg.displayName} pagou depois do prazo e não há vaga. Faça o estorno manual no painel.`, link: '#/inscricoes/' + t.id }, { waCategory: 'organizer' }); } catch (_) {}
   return { ok: true, paid: true, confirmed: false, needsRefund: true };
 }
 
@@ -857,7 +857,7 @@ async function requestRefund(publicToken, reason, user) {
   await prisma.tournamentRegistration.update({ where: { id: reg.id }, data: { refundStatus: 'REQUESTED', refundRequestedAt: new Date(), refundReason: clean(reason, 300) || null } });
   await audit(prisma, { tournamentId: reg.tournamentId, registrationId: reg.id, action: 'REFUND_REQUESTED', actorUserId: user ? user.id : null, note: clean(reason, 300) });
   const t = await prisma.tournament.findUnique({ where: { id: reg.tournamentId }, select: { ownerId: true, name: true, id: true } });
-  try { await notify(t.ownerId, { type: 'entry', title: 'Pedido de reembolso', body: `${reg.displayName} pediu reembolso da inscrição em "${t.name}".`, link: '#/inscricoes/' + t.id }); } catch (_) {}
+  try { await notify(t.ownerId, { type: 'entry', title: 'Pedido de reembolso', body: `${reg.displayName} pediu reembolso da inscrição em "${t.name}".`, link: '#/inscricoes/' + t.id }, { waCategory: 'organizer' }); } catch (_) {}
   return { ok: true };
 }
 

@@ -9,6 +9,12 @@
 // =====================================================================
 
 const STATEMENTS = [
+  // Liga Aberta F4 — compartilhar e voltar (WhatsApp por tipo, link público do time,
+  // convite de vaga recuperável). PRIMEIRO da lista; só roda se a tabela já existe
+  // (banco novo: repetido no FIM da lista, depois dos CREATE TABLE). Aditivo, nunca apaga.
+  `DO $$ BEGIN IF to_regclass('"ClubNotifyPref"') IS NOT NULL THEN ALTER TABLE "ClubNotifyPref" ADD COLUMN IF NOT EXISTS "whatsapp" JSONB; END IF; END $$`,
+  `DO $$ BEGIN IF to_regclass('"TeamInvite"') IS NOT NULL THEN ALTER TABLE "TeamInvite" ADD COLUMN IF NOT EXISTS "publicToken" TEXT; END IF; END $$`,
+  `DO $$ BEGIN IF to_regclass('"RosterInvite"') IS NOT NULL THEN ALTER TABLE "RosterInvite" ADD COLUMN IF NOT EXISTS "recoverable" BOOLEAN NOT NULL DEFAULT false; END IF; END $$`,
   // Liga Aberta F3 — criação em 2 minutos (regras por categoria, racha, link do time).
   // PRIMEIRO da lista (as rotas novas leem essas colunas/tabelas). Aditivo, nunca apaga.
   `ALTER TABLE "TournamentCategory" ADD COLUMN IF NOT EXISTS "gameRules" JSONB`,
@@ -1007,6 +1013,10 @@ const STATEMENTS = [
      CONSTRAINT "AthleteSignupCode_pkey" PRIMARY KEY ("id")
    )`,
   `CREATE INDEX IF NOT EXISTS "AthleteSignupCode_phone_createdAt_idx" ON "AthleteSignupCode"("phone", "createdAt")`,
+  // Liga Aberta F4 (repetido para banco novo: as tabelas acima já existem aqui)
+  `ALTER TABLE "ClubNotifyPref" ADD COLUMN IF NOT EXISTS "whatsapp" JSONB`,
+  `ALTER TABLE "TeamInvite" ADD COLUMN IF NOT EXISTS "publicToken" TEXT`,
+  `ALTER TABLE "RosterInvite" ADD COLUMN IF NOT EXISTS "recoverable" BOOLEAN NOT NULL DEFAULT false`,
 ];
 
 // Busca tolerante a erro (pg_trgm). Extensão + índices GIN de trigram em
@@ -1059,4 +1069,4 @@ async function ensureApexSchema(prisma) {
   return ok;
 }
 
-module.exports = { ensureApexSchema, ensureSearchIndexes, STATEMENTS_TOTAL: () => STATEMENTS.length };
+module.exports = { ensureApexSchema, ensureSearchIndexes, STATEMENTS_TOTAL: () => STATEMENTS.length, STATEMENTS };

@@ -154,6 +154,7 @@ ${FONT}
 <div class="goal" id="goal"><div class="big" id="gbig">GOL!</div><div class="who" id="gwho"></div><div class="sc" id="gsc"></div></div>
 <div class="hint" id="hint">Toque na tela para tela cheia</div>
 <script>window.CLUB_TELAO=${json(cfg)};</script>
+<script src="/club/live-sse.js"></script>
 <script src="/club/telao.js"></script>
 </body>
 </html>`;
@@ -216,6 +217,7 @@ ${FONT}
 <div class="sp" id="sp"></div>
 <div class="ft"><a href="/t/${esc(cfg.slug)}" target="_blank" rel="noopener">Ver tudo no Club Sports &amp; Tennis →</a></div>
 <script>window.CLUB_EMBED=${json(cfg)};</script>
+<script src="/club/live-sse.js"></script>
 <script src="/club/embed.js"></script>
 </body>
 </html>`;

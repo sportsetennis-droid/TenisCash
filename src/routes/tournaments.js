@@ -37,6 +37,7 @@ const gameRules = require('../services/tournamentRules');
 const presets = require('../services/tournamentPresets');
 const quick = require('../services/quickTournament');
 const pickup = require('../services/pickup');
+const matchNotices = require('../services/matchNotices');
 const teamInvite = require('../services/teamInvite');
 const { duplicateTournament } = require('../services/tournamentDuplicate');
 
@@ -71,7 +72,7 @@ const PARAM_GUARDS = {
   },
   matchId: {
     tid: async (v) => (await prisma.tournamentMatch.findUnique({ where: { id: String(v) }, select: { tournamentId: true } }))?.tournamentId,
-    gone: (req, res) => res.status(404).json({ error: /\/(events|lineup|officials|finalize|referees(\/[^/]+)?)$/.test(req.path) ? 'jogo não encontrado' : 'partida não encontrada' }),
+    gone: (req, res) => res.status(404).json({ error: /\/(events|lineup|officials|finalize|unclaimed|claim-invites|referees(\/[^/]+)?)$/.test(req.path) ? 'jogo não encontrado' : 'partida não encontrada' }),
   },
   eventId: {
     tid: async (v) => {
@@ -1244,7 +1245,7 @@ router.post('/:id/entries', authMiddleware, entryLimitUnlessManager, async (req,
       await clubIdentity.brand(teamEntry);
       if (!manager) {
         try {
-          await notify(t.ownerId, { type: 'entry', title: 'Novo pedido de inscrição', body: `${teamName} pediu vaga em "${t.name}". Aprove na categoria.`, link: '#/t/' + t.id });
+          await notify(t.ownerId, { type: 'entry', title: 'Novo pedido de inscrição', body: `${teamName} pediu vaga em "${t.name}". Aprove na categoria.`, link: '#/t/' + t.id }, { waCategory: 'organizer' });
         } catch (_) {}
       }
       return res.status(201).json(teamEntry);
@@ -1310,7 +1311,7 @@ router.post('/:id/entries', authMiddleware, entryLimitUnlessManager, async (req,
 
     if (!manager) {
       try {
-        await notify(t.ownerId, { type: 'entry', title: 'Novo pedido de inscrição', body: `${name} pediu vaga em "${t.name}". Aprove na categoria.`, link: '#/t/' + t.id });
+        await notify(t.ownerId, { type: 'entry', title: 'Novo pedido de inscrição', body: `${name} pediu vaga em "${t.name}". Aprove na categoria.`, link: '#/t/' + t.id }, { waCategory: 'organizer' });
       } catch (_) {}
       return res.status(201).json(entry);
     }
@@ -1456,7 +1457,7 @@ router.post('/:id/entries/request', authMiddleware, entryLimitUnlessManager, asy
         title: 'Novo pedido de inscrição',
         body: `${name} pediu vaga em "${t.name}". Aprove na categoria.`,
         link: '#/t/' + t.id,
-      });
+      }, { waCategory: 'organizer' });
     } catch (_) {}
     res.status(201).json(entry);
   } catch (err) {
@@ -1755,7 +1756,7 @@ router.post('/matches/:matchId/result', authMiddleware, async (req, res) => {
   try {
     const match = await prisma.tournamentMatch.findUnique({
       where: { id: req.params.matchId },
-      include: { tournament: { select: { id: true, ownerId: true, name: true } } },
+      include: { tournament: { select: { id: true, ownerId: true, name: true, slug: true } } },
     });
     if (!match) return res.status(404).json({ error: 'partida não encontrada' });
     if (!(await allow(req, res, match.tournamentId, 'RESULT', { matchId: match.id }, 'só a organização ou o árbitro escalado neste jogo registra o resultado'))) return;
@@ -1770,8 +1771,12 @@ router.post('/matches/:matchId/result', authMiddleware, async (req, res) => {
     await audit.record({ tournamentId: match.tournamentId, userId: req.userId, action: closed ? 'result.correct' : 'result.set', entity: 'TournamentMatch', entityId: match.id, before, after: audit.matchSnap(after) });
     live.emitMatch(match.id, 'end');
 
-    // avisa os atletas das duas entries (menos quem lançou o placar)
-    try {
+    // Liga F4: aviso detalhado (placar + o que mudou no histórico de cada jogador com conta),
+    // assíncrono e idempotente (correção = aviso de correção). O torneio da LISTA DE EXCLUSÃO
+    // (Futsal Master Cup, em andamento) segue com o aviso antigo, exatamente como antes.
+    if (!clubIdentity.isExcludedSlug(match.tournament.slug)) {
+      matchNotices.schedule(match.id, { byUserId: req.userId, source: 'result' });
+    } else try {
       const ids = [
         ...(match.homeEntryId ? await entryMemberIds(match.homeEntryId) : []),
         ...(match.awayEntryId ? await entryMemberIds(match.awayEntryId) : []),
@@ -2100,8 +2105,34 @@ router.post('/players/:playerId/unlink', authMiddleware, async (req, res) => {
 // Gera (e revoga o anterior) — coordenação ou admin do PRÓPRIO time (can MANAGE_TEAM).
 router.post('/entries/:entryId/team-invite', authMiddleware, limits.rosterInvite, async (req, res) => {
   try {
-    res.status(201).json(await teamInvite.createInvite({ entryId: req.params.entryId, userId: req.userId, userRole: req.userRole, days: (req.body || {}).days }));
+    res.status(201).json(await teamInvite.createInvite({ entryId: req.params.entryId, userId: req.userId, userRole: req.userRole, days: (req.body || {}).days, public: (req.body || {}).public === true }));
   } catch (e) { if (svcErr(res, e)) return; res.status(500).json({ error: e.message }); }
+});
+// Liga F4: link do time que está NA PÁGINA pública (o único que dá pra recuperar — os outros
+// ficam só com o hash). A folha do organizador abre com ele em vez de gerar outro.
+router.get('/entries/:entryId/team-invite', authMiddleware, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json(await teamInvite.currentPublic({ entryId: req.params.entryId, userId: req.userId, userRole: req.userRole }));
+  } catch (e) { if (svcErr(res, e)) return; res.status(500).json({ error: e.message }); }
+});
+// Liga F4: mostrar (ou esconder) o link ativo do time no botão "Entrar neste time" da página
+// pública. body { public:true, token } (o token do link ativo) | { public:false }.
+router.patch('/entries/:entryId/team-invite', authMiddleware, async (req, res) => {
+  try {
+    const b = req.body || {};
+    res.json(await teamInvite.setPublic({ entryId: req.params.entryId, userId: req.userId, userRole: req.userRole, token: b.token, public: b.public === true }));
+  } catch (e) { if (svcErr(res, e)) return; res.status(500).json({ error: e.message }); }
+});
+// Liga F4: links públicos de "Entrar neste time" (só os times que escolheram mostrar). Leitura
+// com a visibilidade do torneio (privado = mesmo 404).
+router.get('/:id/join-links', async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const t = await access.loadVisibleTournament(req, req.params.id, { select: { id: true } });
+    if (!t) return access.sendNotFound(res);
+    res.json({ links: await teamInvite.publicJoinLinks(t.id) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 // Revoga o link ativo do time.
 router.delete('/entries/:entryId/team-invite', authMiddleware, async (req, res) => {
@@ -2296,10 +2327,45 @@ router.post('/matches/:matchId/finalize', authMiddleware, async (req, res) => {
     await audit.record({ tournamentId: m.tournamentId, userId: req.userId, action: closed ? 'sheet.correct' : 'sheet.finalize', entity: 'TournamentMatch', entityId: m.id, before: audit.matchSnap(prev), after: audit.matchSnap(after) });
     live.emitMatch(req.params.matchId, 'end');
     require('../ai/rede/ganchos').jogoFinalizado(req.params.matchId);
+    // Liga F4: aviso aos jogadores (placar + histórico) — assíncrono, best-effort, idempotente
+    matchNotices.schedule(req.params.matchId, { byUserId: req.userId, source: 'finalize' });
     res.json(r);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// Liga F4 — súmula FECHADA: elenco SEM conta dos dois times + convite por vaga com texto
+// pronto e link wa.me. Quem manda é o organizador/árbitro, pelo próprio WhatsApp (o sistema
+// não envia nada). GET só lê (recupera os convites já gerados); POST gera os que faltam.
+// Ver a lista: árbitro do jogo ou organização. O LINK do convite (que entrega a vaga a uma
+// conta) só para quem pode mexer no elenco daquele time — coordenação, admin ou treinador
+// (can SET_LINEUP, igual ao convite da F2). Árbitro vê só os nomes.
+async function unclaimedCtx(req, res) {
+  const m = await roles.matchContext(req.params.matchId);
+  if (!m) { res.status(404).json({ error: 'jogo não encontrado' }); return null; } // = guarda do :matchId (privado)
+  if (!(await allow(req, res, m.tournamentId, 'REFEREE', { matchId: m.id }, 'sem permissão (árbitro do jogo ou organização)'))) return null;
+  const inviteEntryIds = [];
+  for (const eid of [m.homeEntryId, m.awayEntryId].filter(Boolean)) {
+    if (await roles.can(req.userId, req.userRole, m.tournamentId, 'SET_LINEUP', { entryId: eid })) inviteEntryIds.push(eid);
+  }
+  return { ...m, inviteEntryIds };
+}
+router.get('/matches/:matchId/unclaimed', authMiddleware, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const m = await unclaimedCtx(req, res); if (!m) return;
+    res.json(await matchNotices.unclaimed(m.id, { create: false, actorUserId: req.userId, inviteEntryIds: m.inviteEntryIds }));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+router.post('/matches/:matchId/claim-invites', authMiddleware, limits.rosterInvite, async (req, res) => {
+  try {
+    const m = await unclaimedCtx(req, res); if (!m) return;
+    if (!m.inviteEntryIds.length) return res.status(403).json({ error: 'só a coordenação, o admin ou o treinador do time gera o convite da vaga' });
+    const st = await prisma.tournamentMatch.findUnique({ where: { id: m.id }, select: { status: true } });
+    if (!sheet.isClosedStatus(st && st.status)) return res.status(409).json({ code: 'NOT_FINISHED', error: 'feche a súmula antes de convidar quem jogou' });
+    res.json(await matchNotices.unclaimed(m.id, { create: true, actorUserId: req.userId, inviteEntryIds: m.inviteEntryIds }));
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // Suspensos (automático, dos jogos encerrados) — público. ?categoryId= opcional.
@@ -2879,11 +2945,11 @@ router.post('/:id/pickup/games', authMiddleware, async (req, res) => {
 });
 // Placar rápido: { side:'home'|'away', delta:1|-1, playerId? }
 router.post('/pickup/games/:matchId/score', authMiddleware, async (req, res) => {
-  try { res.json(await pickup.score(pickupActor(req), req.params.matchId, req.body || {})); }
+  try { const r = await pickup.score(pickupActor(req), req.params.matchId, req.body || {}); live.emitMatch(req.params.matchId, 'update'); res.json(r); }
   catch (e) { if (svcErr(res, e)) return; res.status(500).json({ error: e.message }); }
 });
 router.post('/pickup/games/:matchId/finish', authMiddleware, async (req, res) => {
-  try { res.json(await pickup.finishGame(pickupActor(req), req.params.matchId)); }
+  try { const r = await pickup.finishGame(pickupActor(req), req.params.matchId); live.emitMatch(req.params.matchId, 'end'); res.json(r); }
   catch (e) { if (svcErr(res, e)) return; res.status(500).json({ error: e.message }); }
 });
 // Artilharia acumulada da temporada (ano em America/Fortaleza). ?season=2026
