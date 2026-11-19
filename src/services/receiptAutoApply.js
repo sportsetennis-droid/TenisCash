@@ -128,14 +128,33 @@ async function podeEntrarAnterior(tx, read, lot, round, cache) {
       'WHERE k."roundId" = $1 AND k.status = \'applied\' AND k."reversedAt" IS NULL AND b."storeId" = $2 AND b."excludedAt" IS NULL AND upper(btrim(p.category)) IN ' + FAMILIA_SQL[fam], round.id, lot.toStoreId);
     cache.set(kFam, (c && c.n) >= FAMILIA_CONTADA_MIN);
   }
-  return !cache.get(kFam); // a loja já está contando essa família: a contagem manda
+  if (cache.get(kFam)) return false; // a loja já está contando essa família: a contagem manda
+  // sem NF-e de entrada do código lido: não entra (auditoria 18/11 — não chutar)
+  const kNf = 'nf:' + read.barcode;
+  if (!cache.has(kNf)) {
+    const n = await tx.$queryRawUnsafe('SELECT 1 FROM "XmlFiscalItem" i JOIN "XmlFiscalDocument" d ON d.id = i."fiscalDocumentId" WHERE i.ean = $1 AND d."docType" = \'entrada\' LIMIT 1', String(read.barcode || ''));
+    cache.set(kNf, n.length > 0);
+  }
+  if (!cache.get(kNf)) return false;
+  // teto = comprado (NF-e): recebido em todas as lojas acima do comprado vai para conferência
+  // (pega peça bipada no recebimento de duas lojas — transferência física sem registro)
+  const kCap = 'cap:' + ps;
+  if (!cache.has(kCap)) {
+    const [c] = await tx.$queryRawUnsafe(
+      'SELECT (SELECT stock FROM "ProductSize" WHERE id = $1)::int AS comprado, (SELECT count(*) FROM (SELECT metadata->>\'clientScanId\' FROM "StoreStockMovement" WHERE source IN ' + SRC_SQL + ' AND "productSizeId" = $1 GROUP BY 1 HAVING SUM(quantity) > 0) x)::int AS ativos', ps);
+    cache.set(kCap, { comprado: c ? c.comprado || 0 : 0, ativos: c ? c.ativos || 0 : 0 });
+  }
+  const cap = cache.get(kCap);
+  if (cap.ativos >= cap.comprado) return false;
+  cap.ativos++; // reserva a vaga desta leitura
+  return true;
 }
 
 // Baixa das vendas apagadas pelo arquivamento: só para tamanho com recebimento ANTERIOR ativo
 // nesta contagem; alvo = soma das vendas (e estornos) entre o 1º recebimento anterior e o início
 // da contagem. Idempotente: grava só a diferença para o que já foi baixado.
 async function baixarVendasArquivadas(tx, storeId, productSizeId, round) {
-  if (!round || !round.open) return 0;
+  if (!round) return 0;
   const [a] = await tx.$queryRawUnsafe(
     'SELECT MIN(em) AS em FROM (SELECT metadata->>\'clientScanId\' AS cs, MIN(metadata->>\'scannedAt\') AS em, SUM(quantity) AS net, bool_or(metadata->>\'anteriorAContagem\' = \'true\') AS ant ' +
     'FROM "StoreStockMovement" WHERE source IN ' + SRC_SQL + ' AND "storeId" = $1 AND "productSizeId" = $2 AND metadata->>\'roundId\' = $3 GROUP BY 1) x WHERE net > 0 AND ant',
@@ -145,7 +164,13 @@ async function baixarVendasArquivadas(tx, storeId, productSizeId, round) {
     const [v] = await tx.$queryRawUnsafe(
       'SELECT COALESCE(SUM(quantity), 0)::int AS q FROM "StoreStockMovement" WHERE "storeId" = $1 AND "productSizeId" = $2 AND type ~ \'^(sale|exchange_|nuvemshop_order)\' AND "createdAt" >= $3::timestamp AND "createdAt" < $4::timestamp', // createdAt é UTC sem fuso: compara em UTC
       storeId, productSizeId, new Date(a.em).toISOString(), new Date(round.startedAt).toISOString());
-    alvo = v ? v.q : 0;
+    const vendas = -(v ? v.q : 0); // q é negativo (venda -1, estorno +1)
+    // a venda consome primeiro o estoque que já existia antes do 1º recebimento (auditoria 18/11)
+    const [s0] = await tx.$queryRawUnsafe(
+      'SELECT "stockAfter" AS s FROM "StoreStockMovement" WHERE "storeId" = $1 AND "productSizeId" = $2 AND "createdAt" < $3::timestamp ORDER BY "createdAt" DESC, id DESC LIMIT 1',
+      storeId, productSizeId, new Date(a.em).toISOString());
+    const antes = Math.max(0, s0 ? Number(s0.s) || 0 : 0);
+    alvo = -Math.max(0, vendas - antes);
   }
   const [j] = await tx.$queryRawUnsafe(
     'SELECT COALESCE(SUM(quantity), 0)::int AS q FROM "StoreStockMovement" WHERE source = $1 AND "storeId" = $2 AND "productSizeId" = $3 AND metadata->>\'roundId\' = $4',
@@ -196,11 +221,20 @@ async function aplicarLote(tx, lotId) {
   const round = await replacementRound(tx, lot.toStoreId);
   const atual = await aplicadoPorLeitura(tx, lotId);
   // planeja primeiro; trava todos os tamanhos em ordem; só então escreve
+  // o CÓDIGO lido é a chave: se hoje ele pertence a UM outro tamanho (card dividido depois da leitura), vale esse
+  const codigos = [...new Set(lot.scans.map((r) => r.barcode).filter(Boolean))];
+  const donos = new Map();
+  if (codigos.length) for (const r of await tx.productSize.findMany({ where: { barcode: { in: codigos } }, select: { id: true, barcode: true } })) donos.set(r.barcode, [...(donos.get(r.barcode) || []), r.id]);
+  const efetiva = (read) => {
+    const d = donos.get(read.barcode) || [];
+    return d.length === 1 && read.productSizeId && d[0] !== read.productSizeId ? { ...read, productSizeId: d[0] } : read;
+  };
   const planos = [];
   const cache = new Map();
   // 'novo' = depois do início da contagem; 'anterior' = recebido antes e ainda não contado; null = não entra
   const comoEntra = async (read) => (deveEntrar(read, lot, round) ? 'novo' : (await podeEntrarAnterior(tx, read, lot, round, cache)) ? 'anterior' : null);
-  for (const read of lot.scans) {
+  for (const lido of lot.scans) {
+    const read = efetiva(lido);
     const ja = atual.get(read.clientScanId);
     const temEntrada = !!(ja && ja.net > 0);
     const trocou = temEntrada && !!read.productSizeId && ja.productSizeId !== read.productSizeId;
@@ -231,22 +265,20 @@ async function aplicarLote(tx, lotId) {
       aplicadas++; tocados.add(x.read.productSizeId);
     }
   }
-  if (round && round.open) {
-    for (const ps of [...tocados].sort()) await baixarVendasArquivadas(tx, lot.toStoreId, ps, round);
-    for (const ps of [...tocados].sort()) await parear(tx, lot.toStoreId, ps, round);
-  }
+  if (round) for (const ps of [...tocados].sort()) await baixarVendasArquivadas(tx, lot.toStoreId, ps, round);
+  if (round && round.open) for (const ps of [...tocados].sort()) await parear(tx, lot.toStoreId, ps, round);
   return { aplicadas, desfeitas };
 }
 
 // Leituras de recebimento ativas (net>0) da loja/tamanho, desde o início da rodada, em ordem de horário.
 async function recebimentosAtivos(tx, storeId, productSizeId, round) {
   const rows = await tx.$queryRawUnsafe(
-    'SELECT metadata->>\'clientScanId\' AS cs, MIN(metadata->>\'scannedAt\') AS em, SUM(quantity)::int AS net FROM "StoreStockMovement" ' +
+    'SELECT metadata->>\'clientScanId\' AS cs, MIN(metadata->>\'scannedAt\') AS em, SUM(quantity)::int AS net, bool_or(metadata->>\'anteriorAContagem\' = \'true\') AS ant, MAX(metadata->>\'lotId\') AS lot FROM "StoreStockMovement" ' +
     'WHERE source IN ' + SRC_SQL + ' AND "storeId" = $1 AND "productSizeId" = $2 GROUP BY 1 HAVING MAX(metadata->>\'roundId\') = $3', storeId, productSizeId, round.id);
   // todas as entradas desta contagem (o HAVING já prende ao roundId), inclusive recebimento ANTERIOR
   // validado: se a contagem bipar a peça depois, ela pareia com ele e não soma em dobro.
   return rows.filter((r) => r.net > 0 && r.em)
-    .map((r) => ({ cs: r.cs, em: new Date(r.em).getTime() }))
+    .map((r) => ({ cs: r.cs, em: new Date(r.em).getTime(), anterior: !!r.ant, lotId: r.lot }))
     .sort((a, b) => a.em - b.em || String(a.cs).localeCompare(String(b.cs)));
 }
 
@@ -264,8 +296,18 @@ async function parear(tx, storeId, productSizeId, roundIn) {
   });
   const contagem = checks.filter((c) => c.bipe && c.bipe.storeId === storeId && !c.bipe.excludedAt)
     .sort((a, b) => new Date(a.bipe.bipedAt) - new Date(b.bipe.bipedAt) || a.bipeId.localeCompare(b.bipeId));
+  // recebimento ANTERIOR à contagem: quando a contagem bipa o tamanho, ela manda — o anterior sai e a baixa
+  // de vendas volta (auditoria 18/11: parear impediria a contagem de corrigir para baixo)
+  const anteriores = recebidos.filter((r) => r.anterior);
+  if (contagem.length && anteriores.length) {
+    for (const r of anteriores) {
+      await applyStoreStockDelta(tx, { storeId, productSizeId, quantity: -1, type: 'receipt_reverse', source: SOURCE_REVERSE,
+        reason: 'Contagem nova bipou este tamanho: vale a contagem, o recebimento anterior sai', metadata: { lotId: r.lotId, clientScanId: r.cs, roundId: round.id, motivo: 'contagem-manda' } });
+    }
+    await baixarVendasArquivadas(tx, storeId, productSizeId, round);
+  }
   // pareamento guloso: cada bipe da contagem pega o recebimento livre mais antigo feito ANTES dele
-  const livres = recebidos.slice();
+  const livres = recebidos.filter((r) => !r.anterior);
   const alvo = new Map(); // bipeId -> clientScanId
   for (const c of contagem) {
     const t = new Date(c.bipe.bipedAt).getTime();
