@@ -156,8 +156,8 @@ async function inviteInfo(token) {
   const inv = await prisma.teamInvite.findUnique({ where: { tokenHash: hashToken(token) } });
   if (!inv) return { status: 'invalid' };
   const entry = await prisma.tournamentEntry.findUnique({ where: { id: inv.entryId }, select: { id: true, name: true, logoUrl: true, tournamentId: true, categoryId: true } });
-  const t = entry ? await prisma.tournament.findUnique({ where: { id: entry.tournamentId }, select: { name: true, slug: true, sport: true, visibility: true, archivedAt: true } }) : null;
-  if (!entry || !t || t.archivedAt) return { status: 'invalid' };
+  const t = entry ? await prisma.tournament.findUnique({ where: { id: entry.tournamentId }, select: { name: true, slug: true, sport: true, visibility: true, archivedAt: true, suspendedAt: true } }) : null;
+  if (!entry || !t || t.archivedAt || t.suspendedAt) return { status: 'invalid' }; // F6: suspenso = inválido
   await require('./clubIdentity').brand(entry);
   const rules = await rulesOfEntry(prisma, entry);
   const rosterCount = await prisma.rosterPlayer.count({ where: { entryId: entry.id, role: 'PLAYER' } });
@@ -187,10 +187,11 @@ async function join(token, { userId }) {
     const st = statusOf(inv);
     if (st === 'revoked') fail(410, 'este link foi desativado — peça o link novo ao time', { status: 'revoked' });
     if (st === 'expired') fail(410, 'link vencido — peça um novo ao time', { status: 'expired' });
-    const t = await tx.tournament.findUnique({ where: { id: inv.tournamentId }, select: { id: true, archivedAt: true } });
-    if (!t || t.archivedAt) fail(404, 'link inválido');
+    const t = await tx.tournament.findUnique({ where: { id: inv.tournamentId }, select: { id: true, archivedAt: true, suspendedAt: true } });
+    if (!t || t.archivedAt || t.suspendedAt) fail(404, 'link inválido');
     await tx.$queryRaw`SELECT "id" FROM "TournamentEntry" WHERE "id" = ${inv.entryId} FOR UPDATE`;
     const entry = await loadEntry(tx, inv.entryId);
+    if (await require('./ligaMinors').userDeclaredMinor(me.id)) fail(403, require('./ligaMinors').MINOR_JOIN_MSG); // Liga F6
     const already = await tx.rosterPlayer.findFirst({ where: { entryId: entry.id, userId: me.id }, select: { id: true, name: true } });
     if (already) fail(409, 'você já está no elenco deste time', { status: 'member', playerId: already.id });
     const rules = await rulesOfEntry(tx, entry);

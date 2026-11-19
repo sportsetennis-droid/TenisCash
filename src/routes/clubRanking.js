@@ -65,7 +65,7 @@ router.post('/recompute', authMiddleware, adminMiddleware, pub(async (req) => {
 // Níveis de um atleta (id, @username ou handle do perfil) + posição
 router.get('/athlete/:handle', pub(async (req, res) => {
   const userId = await engine.resolveUserId(req.params.handle);
-  if (!userId) { res.status(404).json({ error: 'atleta não encontrado' }); return undefined; }
+  if (!userId || (await require('../services/ligaPrivacy').isErased(userId))) { res.status(404).json({ error: 'atleta não encontrado' }); return undefined; } // F6
   return { userId, levels: await rating.athleteLevels(userId) };
 }));
 

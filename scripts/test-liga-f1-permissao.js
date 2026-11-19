@@ -82,7 +82,7 @@ async function main() {
     assert.strictEqual(accessMod.normalizeVisibility('nao-listado'), 'unlisted');
     assert.strictEqual(accessMod.normalizeVisibility('xyz'), 'public');
     assert.strictEqual(accessMod.normalizeVisibility('xyz', null), null);
-    assert.deepStrictEqual(accessMod.LISTED_WHERE, { visibility: 'public', archivedAt: null });
+    assert.deepStrictEqual(accessMod.LISTED_WHERE, { visibility: 'public', archivedAt: null, suspendedAt: null }); // Liga F6: suspenso também fora
   });
   await ok('nenhuma checagem inline de dono sobrou nas rotas de torneio (can() é a porta)', () => {
     const fs = require('fs');

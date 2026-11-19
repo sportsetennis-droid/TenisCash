@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="robots" content="noindex">
+<title>Moderação · Club</title>
+<style>
+:root{--bg:#f4f4f6;--card:#fff;--tx:#111114;--mut:#6b6b76;--line:#e4e4ea;--or:#E5571E;--red:#c4001a;--ok:#0a7a3d;--chip:#f0f0f4}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#0b0b0d;--card:#17171c;--tx:#f4f4f6;--mut:#a1a1aa;--line:#2a2a32;--chip:#22222a}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.4 "Inter",system-ui,-apple-system,sans-serif}
+body{padding-top:env(safe-area-inset-top);padding-bottom:calc(72px + env(safe-area-inset-bottom))}
+.app{max-width:480px;margin:0 auto;padding:12px 16px}
+h1{font-size:24px;margin:6px 0 2px;font-weight:900;font-style:italic;text-transform:uppercase;letter-spacing:.3px}
+.sub{color:var(--mut);font-size:13px;margin-bottom:10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px;margin:10px 0}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.btn{min-height:44px;padding:0 14px;border-radius:12px;border:1px solid var(--line);background:var(--chip);color:var(--tx);font-weight:700;font-size:14px;font-family:inherit;cursor:pointer}
+.btn.p{background:var(--or);border-color:var(--or);color:#fff}
+.btn.d{background:var(--red);border-color:var(--red);color:#fff}
+.btn:disabled{opacity:.5}
+.pill{display:inline-block;padding:2px 8px;border-radius:99px;background:var(--chip);font-size:12px;font-weight:700;margin-right:4px}
+.pill.r{background:var(--red);color:#fff}.pill.o{background:var(--or);color:#fff}
+.k{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.4px;font-weight:700}
+.nm{font-weight:800;font-size:16px;word-break:break-word}
+.q{white-space:pre-wrap;word-break:break-word;background:var(--chip);border-radius:10px;padding:8px;margin-top:6px;font-size:14px}
+.thumb{max-width:100%;max-height:180px;border-radius:10px;margin-top:6px;display:block}
+.seg{display:flex;gap:6px;margin:8px 0}
+.seg button{flex:1}
+.seg button.on{background:var(--tx);color:var(--bg);border-color:var(--tx)}
+.empty{text-align:center;color:var(--mut);padding:30px 10px}
+nav.bn{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);z-index:20}
+nav.bn .in{max-width:480px;margin:0 auto;display:flex}
+nav.bn button{flex:1;min-height:56px;border:0;background:none;color:var(--mut);font-weight:700;font-size:13px;font-family:inherit;cursor:pointer;position:relative}
+nav.bn button.on{color:var(--or)}
+nav.bn .bd{position:absolute;top:6px;right:18%;background:var(--red);color:#fff;border-radius:99px;font-size:11px;padding:1px 6px}
+.shbg{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:40;display:none}
+.shbg.on{display:block}
+.sh{position:fixed;left:0;right:0;bottom:0;z-index:41;max-width:480px;margin:0 auto;background:var(--card);border-radius:20px 20px 0 0;padding:12px 16px calc(16px + env(safe-area-inset-bottom));transform:translateY(105%);transition:transform .2s;max-height:88vh;overflow:auto}
+.sh.on{transform:none;visibility:visible}
+.sh:not(.on){visibility:hidden;transition:transform .2s,visibility 0s .2s}
+.grab{width:44px;height:5px;border-radius:9px;background:var(--line);margin:0 auto 10px}
+.sh textarea,.sh input{width:100%;min-height:44px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--tx);padding:10px;font-size:15px;font-family:inherit}
+.sh textarea{min-height:80px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));background:var(--tx);color:var(--bg);padding:10px 16px;border-radius:12px;font-weight:700;opacity:0;transition:opacity .2s;z-index:60;pointer-events:none;max-width:90vw}
+.toast.on{opacity:1}
+a{color:var(--or)}
+@media (min-width:900px){body{padding-top:24px}.app{background:var(--bg);box-shadow:0 10px 40px rgba(0,0,0,.18);border-radius:28px;min-height:80vh}}
+</style>
+</head>
+<body>
+<div class="app" id="app"><div class="empty">Carregando…</div></div>
+<nav class="bn" id="bn" style="display:none"><div class="in">
+  <button data-tab="reports" class="on" data-testid="tab-reports">Denúncias<span class="bd" id="bd-rep" style="display:none"></span></button>
+  <button data-tab="suspended" data-testid="tab-suspended">Suspensos</button>
+  <button data-tab="privacy" data-testid="tab-privacy">Privacidade<span class="bd" id="bd-priv" style="display:none"></span></button>
+  <button data-tab="log" data-testid="tab-log">Registro</button>
+</div></nav>
+<div class="shbg" id="shbg"></div>
+<div class="sh" id="sh" role="dialog" aria-modal="true"></div>
+<div class="toast" id="toast" role="status"></div>
+<script>
+(function(){
+  'use strict';
+  var TOKEN='';try{TOKEN=localStorage.getItem('tc_token')||'';}catch(_){}
+  var app=document.getElementById('app'), TAB='reports', STATUS='OPEN', Q=null;
+  function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+  function fd(d){try{return new Date(d).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'America/Fortaleza'});}catch(_){return '';}}
+  function toast(m){var t=document.getElementById('toast');t.textContent=m;t.classList.add('on');clearTimeout(toast._t);toast._t=setTimeout(function(){t.classList.remove('on');},2800);}
+  function api(path,opts){opts=opts||{};return fetch('/api/liga'+path,{method:opts.method||'GET',cache:'no-store',headers:{'Content-Type':'application/json',Authorization:'Bearer '+TOKEN},body:opts.body?JSON.stringify(opts.body):undefined}).then(function(r){return r.json().catch(function(){return {};}).then(function(j){if(!r.ok){var e=new Error(j.error||('erro '+r.status));e.status=r.status;throw e;}return j;});});}
+  var bg=document.getElementById('shbg'),sh=document.getElementById('sh');
+  function closeSheet(){bg.classList.remove('on');sh.classList.remove('on');}
+  bg.addEventListener('click',closeSheet);
+  // Folha de confirmação: { title, text, reason:bool, danger:bool, okLabel } → Promise<{reason}|null>
+  function confirmSheet(o){return new Promise(function(resolve){
+    sh.innerHTML='<div class="grab"></div><div class="nm">'+esc(o.title)+'</div><p class="sub" style="margin:6px 0 10px">'+esc(o.text||'')+'</p>'+
+      (o.reason?'<label class="k">Motivo (fica no registro)</label><textarea id="cf-reason" maxlength="300" data-testid="confirm-reason"></textarea>':'')+
+      '<div class="row"><button class="btn" id="cf-no" type="button">Cancelar</button><button class="btn '+(o.danger?'d':'p')+'" id="cf-ok" type="button" data-testid="confirm-ok">'+esc(o.okLabel||'Confirmar')+'</button></div>';
+    bg.classList.add('on');sh.classList.add('on');
+    document.getElementById('cf-no').onclick=function(){closeSheet();resolve(null);};
+    document.getElementById('cf-ok').onclick=function(){var r=document.getElementById('cf-reason');closeSheet();resolve({reason:r?r.value:''});};
+  });}
+
+  // só imagem do próprio site (/media, /img) vira <img>: link externo não carrega (não vaza IP do admin)
+  function img(u,alt){return /^\/(media|img)\//.test(String(u||''))?'<img class="thumb" src="'+esc(u)+'" alt="'+esc(alt)+'">':(u?'<div class="sub">imagem externa (não carregada)</div>':'');}
+  function targetHtml(r){
+    var t=r.target||{}, h='';
+    if(r.targetType==='TOURNAMENT') h='<div class="nm">'+esc(t.name||'(torneio)')+'</div>';
+    else if(r.targetType==='ENTRY') h='<div class="nm">Time: '+esc(t.name||'')+'</div>'+img(t.logoUrl,'escudo');
+    else if(r.targetType==='POST') h='<div class="nm">Aviso'+(t.hidden?' <span class="pill r">oculto</span>':'')+'</div>'+(t.title?'<div><b>'+esc(t.title)+'</b></div>':'')+'<div class="q">'+esc(t.body||'')+'</div>'+img(t.imageUrl,'imagem do aviso');
+    else if(r.targetType==='IMAGE') h='<div class="nm">Imagem ('+esc(t.entity||'')+')</div>'+(t.url?img(t.url,'imagem denunciada'):'<div class="sub">imagem já saiu do ar</div>');
+    return h;
+  }
+  function reportCard(r){
+    var T=r.tournament, O=r.organizer, open=r.status==='OPEN';
+    var acts='';
+    if(open){
+      acts+='<button class="btn" data-a="dismiss" data-id="'+r.id+'" data-testid="act-dismiss">Descartar</button>';
+      if(r.targetType==='POST')acts+='<button class="btn" data-a="hide-post" data-id="'+r.id+'" data-testid="act-hide-post">Ocultar aviso</button>';
+      if((r.targetType==='IMAGE'&&r.target&&r.target.url)||(r.targetType==='POST'&&r.target&&r.target.imageUrl)||(r.targetType==='ENTRY'&&r.target&&r.target.logoUrl))acts+='<button class="btn" data-a="hide-image" data-id="'+r.id+'" data-excl="'+(T&&T.excluded?1:0)+'" data-testid="act-hide-image">Ocultar imagem</button>';
+    }
+    if(T&&!T.suspended)acts+='<button class="btn d" data-a="suspend-t" data-id="'+r.id+'" data-tid="'+esc(T.id)+'" data-name="'+esc(T.name)+'" data-excl="'+(T.excluded?1:0)+'" data-testid="act-suspend-t">Suspender torneio</button>';
+    if(O&&!O.suspended&&r.targetType==='TOURNAMENT')acts+='<button class="btn d" data-a="suspend-o" data-id="'+r.id+'" data-name="'+esc(O.name||'')+'" data-testid="act-suspend-o">Suspender organizador</button>';
+    return '<div class="card" data-testid="report-card" data-report="'+r.id+'">'+
+      '<div><span class="pill o">'+esc(r.reasonLabel)+'</span><span class="pill">'+esc({TOURNAMENT:'Torneio',ENTRY:'Time',POST:'Aviso',IMAGE:'Imagem'}[r.targetType]||r.targetType)+'</span>'+
+      (r.sameTargetOpen>1?'<span class="pill r">'+r.sameTargetOpen+' denúncias</span>':'')+(!open?'<span class="pill">'+esc(r.status==='DISMISSED'?'descartada':'resolvida')+'</span>':'')+'</div>'+
+      '<div style="margin-top:8px">'+targetHtml(r)+'</div>'+
+      (r.text?'<div class="k" style="margin-top:8px">Relato</div><div class="q">'+esc(r.text)+'</div>':'')+
+      (T?'<div class="sub" style="margin-top:8px">Torneio: <a href="/t/'+esc(T.slug)+'" target="_blank" rel="noopener">'+esc(T.name)+'</a>'+(T.suspended?' <span class="pill r">suspenso</span>':'')+(T.excluded?' <span class="pill">lista de exclusão</span>':'')+'</div>':'')+
+      (O?'<div class="sub">Organizador: '+esc(O.name||'')+(O.username?' @'+esc(O.username):'')+(O.suspended?' <span class="pill r">suspenso</span>':'')+'</div>':'')+
+      '<div class="sub">Por '+esc((r.reporter&&r.reporter.name)||'—')+' · '+esc(fd(r.createdAt))+'</div>'+
+      (acts?'<div class="row">'+acts+'</div>':'')+'</div>';
+  }
+
+  function badges(){
+    var b1=document.getElementById('bd-rep'),b2=document.getElementById('bd-priv');
+    if(Q&&Q.openTotal){b1.textContent=Q.openTotal;b1.style.display='';}else b1.style.display='none';
+    if(Q&&Q.pendingPrivacy){b2.textContent=Q.pendingPrivacy;b2.style.display='';}else b2.style.display='none';
+  }
+  function load(){
+    app.innerHTML='<div class="empty">Carregando…</div>';
+    return api('/moderation/queue?status='+STATUS).then(function(j){Q=j;badges();render();}).catch(function(e){
+      if(e.status===401||e.status===403){app.innerHTML='<h1>Moderação</h1><div class="card empty" data-testid="mod-denied">Só o administrador do sistema acessa esta tela.<div class="row" style="justify-content:center"><a class="btn p" href="/torneios.html" style="display:inline-flex;align-items:center;text-decoration:none">Entrar</a></div></div>';return;}
+      app.innerHTML='<div class="card empty">'+esc(e.message)+'</div>';
+    });
+  }
+  function render(){
+    document.getElementById('bn').style.display='';
+    var h='<h1>Moderação</h1><div class="sub">Club · Liga Aberta — denúncias, suspensões e pedidos de privacidade</div>';
+    if(TAB==='reports'){
+      h+='<div class="seg"><button class="btn'+(STATUS==='OPEN'?' on':'')+'" data-st="OPEN">Abertas</button><button class="btn'+(STATUS==='ALL'?' on':'')+'" data-st="ALL">Todas</button></div>';
+      h+=(Q.items||[]).length?Q.items.map(reportCard).join(''):'<div class="card empty" data-testid="queue-empty">Nenhuma denúncia '+(STATUS==='OPEN'?'em aberto':'')+'.</div>';
+      if(Q.nextCursor)h+='<button class="btn" style="width:100%" data-a="more" data-testid="queue-more">Ver mais</button>';
+    } else if(TAB==='suspended'){
+      h+='<div class="k" style="margin-top:8px">Torneios suspensos</div>';
+      h+=(Q.suspendedTournaments||[]).length?Q.suspendedTournaments.map(function(t){return '<div class="card"><div class="nm">'+esc(t.name)+'</div><div class="sub">desde '+esc(fd(t.suspendedAt))+(t.suspendedReason?' · '+esc(t.suspendedReason):'')+'</div><div class="row"><button class="btn p" data-a="unsuspend-t" data-tid="'+esc(t.id)+'" data-testid="act-unsuspend-t">Reativar</button></div></div>';}).join(''):'<div class="card empty">Nenhum torneio suspenso.</div>';
+      h+='<div class="k" style="margin-top:14px">Organizadores suspensos</div>';
+      h+=(Q.suspendedOrganizers||[]).length?Q.suspendedOrganizers.map(function(o){return '<div class="card"><div class="nm">'+esc(o.name||o.userId)+(o.username?' @'+esc(o.username):'')+'</div><div class="sub">desde '+esc(fd(o.suspendedAt))+(o.reason?' · '+esc(o.reason):'')+'</div><div class="row"><button class="btn p" data-a="unsuspend-o" data-uid="'+esc(o.userId)+'" data-testid="act-unsuspend-o">Reativar</button></div></div>';}).join(''):'<div class="card empty">Nenhum organizador suspenso.</div>';
+    } else if(TAB==='privacy'){
+      h+='<div id="priv"><div class="empty">Carregando…</div></div>';
+    } else {
+      h+='<div id="log"><div class="empty">Carregando…</div></div>';
+    }
+    app.innerHTML=h;
+    if(TAB==='privacy')api('/moderation/privacy-requests?status=PENDING_ADMIN').then(function(j){
+      document.getElementById('priv').innerHTML=(j.items||[]).length?j.items.map(function(p){var s=p.summary||{};return '<div class="card" data-testid="privacy-card"><div class="nm">'+esc((p.user&&p.user.name)||p.userId)+'</div><div class="sub">'+esc(p.kind==='DELETE'?'Pediu para apagar os dados esportivos':'Pedido')+' · '+esc(fd(p.createdAt))+'</div>'+
+        '<div class="q">Conta de login: '+esc(s.contaDeLogin||'')+(s.motivosParaManter&&s.motivosParaManter.length?'\nMantida por: '+esc(s.motivosParaManter.join(', ')):'')+(s.medalhasMantidas?'\nMedalhas mantidas: '+s.medalhasMantidas:'')+'</div>'+
+        '<div class="sub" style="margin-top:6px">Nada de saldo, compra ou nota fiscal foi mexido. Converse com o atleta e conclua.</div>'+
+        '<div class="row"><button class="btn p" data-a="close-priv" data-id="'+p.id+'" data-testid="act-close-priv">Concluir</button></div></div>';}).join(''):'<div class="card empty" data-testid="privacy-empty">Nenhum pedido esperando o admin.</div>';
+    }).catch(function(e){document.getElementById('priv').innerHTML='<div class="card empty">'+esc(e.message)+'</div>';});
+    if(TAB==='log')api('/moderation/log').then(function(j){
+      document.getElementById('log').innerHTML=(j.items||[]).length?j.items.map(function(l){return '<div class="card"><div><span class="pill">'+esc(l.action)+'</span></div><div class="sub">'+esc(l.targetType)+' '+esc(String(l.targetId).slice(0,40))+' · '+esc(fd(l.createdAt))+'</div></div>';}).join(''):'<div class="card empty">Sem registros ainda.</div>';
+    }).catch(function(e){document.getElementById('log').innerHTML='<div class="card empty">'+esc(e.message)+'</div>';});
+  }
+  function act(fn,ok){return fn.then(function(r){toast(ok);return load();}).catch(function(e){toast(e.message);});}
+  // 2 passos: o servidor diz se a ação atinge o Master Cup (lista de exclusão) → confirma de novo
+  function actConfirm(path,body,ok){return api(path,{method:'POST',body:body}).then(function(){toast(ok);return load();}).catch(function(e){
+    if(e.status===409){return confirmSheet({title:'Atenção: lista de exclusão',text:e.message,danger:true,okLabel:'Confirmar mesmo assim'}).then(function(c){if(c)return act(api(path,{method:'POST',body:Object.assign({},body,{confirm:true})}),ok);});}
+    toast(e.message);});}
+  document.getElementById('bn').addEventListener('click',function(e){var b=e.target.closest('button[data-tab]');if(!b)return;TAB=b.getAttribute('data-tab');[].forEach.call(document.querySelectorAll('nav.bn button'),function(x){x.classList.toggle('on',x===b);});render();});
+  app.addEventListener('click',function(e){
+    var b=e.target.closest('button');if(!b)return;
+    if(b.getAttribute('data-st')){STATUS=b.getAttribute('data-st');load();return;}
+    var a=b.getAttribute('data-a'), id=b.getAttribute('data-id'), excl=b.getAttribute('data-excl')==='1';
+    if(a==='more'){api('/moderation/queue?status='+STATUS+'&cursor='+encodeURIComponent(Q.nextCursor)).then(function(j){Q.items=Q.items.concat(j.items||[]);Q.nextCursor=j.nextCursor;render();});return;}
+    if(a==='dismiss'){act(api('/moderation/reports/'+id+'/dismiss',{method:'POST'}),'Denúncia descartada');return;}
+    if(a==='hide-post'){confirmSheet({title:'Ocultar este aviso?',text:'O aviso some do mural público. Dá para mostrar de novo depois.',okLabel:'Ocultar'}).then(function(c){if(c)actConfirm('/moderation/reports/'+id+'/hide-post',{},'Aviso ocultado');});return;}
+    if(a==='hide-image'){confirmSheet({title:'Ocultar esta imagem?',text:'O campo da imagem fica vazio e o endereço /media para de abrir.'+(excl?' Este torneio está na lista de exclusão (Master Cup): é uma ação manual sua.':''),danger:true,okLabel:'Ocultar imagem'}).then(function(c){if(c)actConfirm('/moderation/reports/'+id+'/hide-image',{},'Imagem ocultada');});return;}
+    if(a==='suspend-t'){confirmSheet({title:'Suspender "'+b.getAttribute('data-name')+'"?',text:'O torneio sai do ar para o público em todas as páginas, artes, ao vivo e vitrine. O dono ainda vê, mas não altera nada.'+(excl?' Atenção: torneio da lista de exclusão (Master Cup).':''),reason:true,danger:true,okLabel:'Suspender'}).then(function(c){if(c)act(api('/moderation/tournaments/'+encodeURIComponent(b.getAttribute('data-tid'))+'/suspend',{method:'POST',body:{confirm:true,reason:c.reason,reportId:id}}),'Torneio suspenso');});return;}
+    if(a==='suspend-o'){confirmSheet({title:'Suspender o organizador '+(b.getAttribute('data-name')||'')+'?',text:'Ele não cria torneio novo e perde a gestão dos torneios até você reativar.',reason:true,danger:true,okLabel:'Suspender'}).then(function(c){if(c)act(api('/moderation/organizers/suspend',{method:'POST',body:{confirm:true,reason:c.reason,reportId:id}}),'Organizador suspenso');});return;}
+    if(a==='unsuspend-t'){act(api('/moderation/tournaments/'+encodeURIComponent(b.getAttribute('data-tid'))+'/unsuspend',{method:'POST'}),'Torneio reativado');return;}
+    if(a==='unsuspend-o'){act(api('/moderation/organizers/'+encodeURIComponent(b.getAttribute('data-uid'))+'/unsuspend',{method:'POST'}),'Organizador reativado');return;}
+    if(a==='close-priv'){confirmSheet({title:'Concluir este pedido?',text:'Registre o que foi combinado com o atleta.',reason:true,okLabel:'Concluir'}).then(function(c){if(c)api('/moderation/privacy-requests/'+id+'/close',{method:'POST',body:{note:c.reason}}).then(function(){toast('Pedido concluído');load().then(function(){TAB='privacy';render();});}).catch(function(e){toast(e.message);});});return;}
+  });
+  if(!TOKEN){app.innerHTML='<h1>Moderação</h1><div class="card empty" data-testid="mod-denied">Entre como administrador.<div class="row" style="justify-content:center"><a class="btn p" href="/torneios.html" style="display:inline-flex;align-items:center;text-decoration:none">Entrar</a></div></div>';return;}
+  load();
+})();
+</script>
+</body>
+</html>

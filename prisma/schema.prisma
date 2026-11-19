@@ -3871,6 +3871,10 @@ model Tournament {
   archivedBy String?
   // Exigir árbitro escalado em cada jogo (false = qualquer árbitro do torneio apita jogo sem escala)
   requireRefereeAssignment Boolean @default(false)
+  // Liga Aberta F6: suspenso pela moderação (some do público com o mesmo 404; dono e admin veem)
+  suspendedAt     DateTime?
+  suspendedReason String?
+  suspendedBy     String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -4122,6 +4126,8 @@ model TournamentPost {
   body         String     @db.Text
   pinned       Boolean    @default(false)
   imageUrl     String? // Liga F5: imagem do aviso ("/media/<sha>.<ext>" ou https://)
+  hiddenAt     DateTime? // Liga F6: ocultado pela moderação (some do mural público)
+  hiddenBy     String?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
@@ -4188,6 +4194,7 @@ model RosterPlayer {
   role         String   @default("PLAYER") // PLAYER | COACH (técnico) | ASSISTANT (auxiliar)
   started      Boolean  @default(false) // titular (início) x banco
   userId       String? // conta do atleta (reivindicada por convite — Liga F2 — ou ligada pela coordenação)
+  minorProfileId String? // Liga F6: vaga de MENOR (MinorProfile, só com LIGA_MINORS ligado)
   createdAt    DateTime @default(now())
 
   @@index([entryId])
@@ -7216,6 +7223,8 @@ model MediaObject {
   url         String? // endereço público quando storage = s3
   source      String   @default("upload") // upload (conta na cota) | legacy | migration
   ownerUserId String? // quem enviou primeiro (cota de imagens por mês do plano)
+  blockedAt     DateTime? // Liga F6: bloqueada pela moderação → /media responde 404
+  blockedReason String?
   createdAt   DateTime @default(now())
 
   @@index([ownerUserId, createdAt])
@@ -7239,4 +7248,89 @@ model OrganizerSubscription {
   planKey   String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// =====================================================================
+// Liga Aberta F6 — moderação, privacidade e menores
+// =====================================================================
+// Denúncia de torneio, time (inscrição), aviso ou imagem. Fila só do admin global.
+model ContentReport {
+  id           String    @id @default(cuid())
+  reporterId   String
+  targetType   String // TOURNAMENT | ENTRY | POST | IMAGE
+  targetId     String // id do torneio/inscrição/aviso; IMAGE: "<entidade>:<id>:<campo>"
+  tournamentId String?
+  context      Json? // IMAGE: { entity, entityId, field, url }
+  reason       String // OFFENSIVE | IMPROPER | SCAM | PERSONAL_DATA | OTHER
+  text         String?
+  status       String    @default("OPEN") // OPEN | DISMISSED | ACTIONED
+  resolution   String? // dismiss | hide_post | hide_image | suspend_tournament | suspend_organizer
+  reviewedBy   String?
+  reviewedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([status, createdAt])
+  @@index([targetType, targetId, status])
+  @@index([reporterId, createdAt])
+}
+
+// Registro das ações GLOBAIS da moderação (o que não é de um torneio só).
+model ModerationLog {
+  id           String   @id @default(cuid())
+  actorId      String
+  action       String // report.dismiss | post.hide | post.unhide | image.hide | tournament.suspend | tournament.unsuspend | organizer.suspend | organizer.unsuspend | privacy.resolve
+  targetType   String
+  targetId     String
+  reportId     String?
+  tournamentId String?
+  before       Json?
+  after        Json?
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([targetType, targetId])
+}
+
+// Organizador suspenso: não cria torneio e can() nega a gestão.
+model OrganizerSuspension {
+  userId      String    @id
+  reason      String?
+  suspendedBy String
+  suspendedAt DateTime  @default(now())
+  liftedAt    DateTime?
+  liftedBy    String?
+}
+
+// Pedido de privacidade (baixar / apagar os próprios dados do Club).
+model PrivacyRequest {
+  id         String    @id @default(cuid())
+  userId     String
+  kind       String // EXPORT | DELETE
+  status     String    @default("DONE") // DONE | PENDING_ADMIN | CLOSED
+  summary    Json? // o que foi feito
+  note       String?
+  resolvedBy String?
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+}
+
+// Menor de 18 sob um RESPONSÁVEL (só com LIGA_MINORS ligado — depende de parecer jurídico).
+// Não é conta (User): sem busca, sem card, sem ranking, sem contato direto.
+model MinorProfile {
+  id               String    @id @default(cuid())
+  guardianUserId   String
+  firstName        String
+  birthDate        String // AAAA-MM-DD declarada pelo responsável (NÃO é prova de idade)
+  ageVerification  String    @default("NONE") // NONE — autodeclaração não vale como verificação
+  consentVersion   String
+  consentTextHash  String
+  consentAt        DateTime
+  status           String    @default("ACTIVE") // ACTIVE | REVOKED
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+
+  @@index([guardianUserId])
 }

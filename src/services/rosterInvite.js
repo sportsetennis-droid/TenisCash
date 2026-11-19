@@ -37,8 +37,9 @@ function baseUrl() { return publicBaseUrl(); }
 
 // Gera (ou regenera) o convite de uma vaga. Convites anteriores ainda não usados são revogados.
 async function createInvite({ playerId, userId, userRole, days }) {
-  const p = await prisma.rosterPlayer.findUnique({ where: { id: String(playerId) }, select: { id: true, entryId: true, name: true, number: true, userId: true } });
+  const p = await prisma.rosterPlayer.findUnique({ where: { id: String(playerId) }, select: { id: true, entryId: true, name: true, number: true, userId: true, minorProfileId: true } });
   if (!p) fail(404, 'jogador não encontrado');
+  if (p.minorProfileId) fail(409, 'vaga de menor (fluxo do responsável): não recebe convite de conta');
   const entry = await prisma.tournamentEntry.findUnique({ where: { id: p.entryId }, select: { id: true, name: true, tournamentId: true } });
   if (!entry) fail(404, 'time não encontrado');
   if (!(await roles.can(userId, userRole, entry.tournamentId, 'SET_LINEUP', { entryId: entry.id }))) {
@@ -129,8 +130,8 @@ async function inviteInfo(token) {
   if (!inv) return { status: 'invalid' };
   const p = await prisma.rosterPlayer.findUnique({ where: { id: inv.rosterPlayerId }, select: { id: true, name: true, number: true, userId: true, entryId: true } });
   const entry = p ? await prisma.tournamentEntry.findUnique({ where: { id: p.entryId }, select: { id: true, name: true, logoUrl: true, tournamentId: true } }) : null;
-  const t = entry ? await prisma.tournament.findUnique({ where: { id: entry.tournamentId }, select: { name: true, slug: true, sport: true, visibility: true, archivedAt: true } }) : null;
-  if (!p || !entry || !t || t.archivedAt) return { status: 'invalid' };
+  const t = entry ? await prisma.tournament.findUnique({ where: { id: entry.tournamentId }, select: { name: true, slug: true, sport: true, visibility: true, archivedAt: true, suspendedAt: true } }) : null;
+  if (!p || !entry || !t || t.archivedAt || t.suspendedAt) return { status: 'invalid' }; // F6: suspenso = inválido
   await require('./clubIdentity').brand(entry);
   let status = 'valid';
   if (inv.usedAt) status = 'used';
@@ -159,10 +160,12 @@ async function claim(token, { userId }) {
     if (inv.usedAt) fail(410, 'este convite já foi usado', { status: 'used' });
     if (inv.revokedAt) fail(410, 'este convite foi substituído por um novo — peça o link atualizado', { status: 'revoked' });
     if (inv.expiresAt < new Date()) fail(410, 'convite expirado — peça um novo ao organizador', { status: 'expired' });
-    const t = await tx.tournament.findUnique({ where: { id: inv.tournamentId }, select: { id: true, archivedAt: true } });
-    if (!t || t.archivedAt) fail(404, 'convite inválido');
-    const p = await tx.rosterPlayer.findUnique({ where: { id: inv.rosterPlayerId }, select: { id: true, entryId: true, userId: true, name: true } });
+    const t = await tx.tournament.findUnique({ where: { id: inv.tournamentId }, select: { id: true, archivedAt: true, suspendedAt: true } });
+    if (!t || t.archivedAt || t.suspendedAt) fail(404, 'convite inválido');
+    const p = await tx.rosterPlayer.findUnique({ where: { id: inv.rosterPlayerId }, select: { id: true, entryId: true, userId: true, name: true, minorProfileId: true } });
     if (!p) fail(404, 'a vaga não existe mais');
+    if (p.minorProfileId) fail(409, 'vaga de menor: não recebe conta', { status: 'used' });
+    if (await require('./ligaMinors').userDeclaredMinor(me.id)) fail(403, require('./ligaMinors').MINOR_JOIN_MSG);
     if (p.userId) fail(409, 'esta vaga já foi reivindicada', { status: 'used' });
     const dup = await tx.rosterPlayer.findFirst({ where: { entryId: p.entryId, userId: me.id, NOT: { id: p.id } }, select: { name: true } });
     if (dup) fail(409, 'sua conta já está ligada a "' + dup.name + '" neste time');

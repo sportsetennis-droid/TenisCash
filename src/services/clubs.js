@@ -296,7 +296,7 @@ async function removeMember(ctx, idOrSlug, targetUserId) {
 // Liga F1: torneio privado/arquivado que o usuário não pode ver = "não existe".
 async function requireVisibleTournament(ctx, tournamentId) {
   const access = require('./tournamentAccess');
-  const t = await prisma.tournament.findUnique({ where: { id: String(tournamentId || '') }, select: { id: true, ownerId: true, visibility: true, archivedAt: true } });
+  const t = await prisma.tournament.findUnique({ where: { id: String(tournamentId || '') }, select: { id: true, ownerId: true, visibility: true, archivedAt: true, suspendedAt: true } });
   if (!t || !(await access.canSee({ userId: ctx.userId, userRole: ctx.userRole }, t))) fail(404, 'torneio não encontrado');
   return t;
 }
@@ -392,7 +392,7 @@ async function publicView(idOrSlug, viewer = {}) {
     .filter((e) => { const k = e.tournamentId + '|' + e.name; if (seenPair.has(k)) return false; seenPair.add(k); return true; })
     .map((e) => ({ id: null, tournamentId: e.tournamentId, entryName: e.name, viaClubId: true })));
   const allTids = [...new Set(allLinks.map((l) => l.tournamentId))];
-  const allTs = allTids.length ? await prisma.tournament.findMany({ where: { id: { in: allTids } }, select: { id: true, name: true, slug: true, sport: true, status: true, ownerId: true, visibility: true, archivedAt: true } }) : [];
+  const allTs = allTids.length ? await prisma.tournament.findMany({ where: { id: { in: allTids } }, select: { id: true, name: true, slug: true, sport: true, status: true, ownerId: true, visibility: true, archivedAt: true, suspendedAt: true } }) : [];
   const tournaments = [];
   for (const t of allTs) if (await access.canSeeListed({ userId: viewer.userId || null, userRole: viewer.userRole || null }, t)) tournaments.push(t);
   const tids = tournaments.map((t) => t.id);

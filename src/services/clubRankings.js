@@ -256,7 +256,7 @@ function categoryPlacements(cat) {
 async function circuitResults({ sport, category, gender }) {
   const cats = await prisma.tournamentCategory.findMany({
     // Liga F1: circuito é público → só torneio PÚBLICO e não arquivado
-    where: { tournament: { sport, status: { not: 'CANCELED' }, visibility: 'public', archivedAt: null } },
+    where: { tournament: { sport, status: { not: 'CANCELED' }, visibility: 'public', archivedAt: null, suspendedAt: null } }, // F6: suspenso fora
     select: {
       id: true, name: true, gender: true, tournamentId: true,
       tournament: { select: { id: true, name: true, slug: true, endDate: true } },

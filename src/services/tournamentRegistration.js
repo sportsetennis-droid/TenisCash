@@ -289,6 +289,9 @@ function parseAthlete(a, idx, refDate) {
   const age = ageAt(birthDate, refDate);
   if (age == null || age > 110) fail(400, `data de nascimento do atleta ${idx + 1} inválida (AAAA-MM-DD)`);
   const out = { name, birthDate, phone: digits(a && a.phone).slice(0, 13) || null, email: clean(a && a.email, 120) || null, minor: age < 18, username: clean(a && a.username, 40).replace(/^@/, '') || null };
+  // Liga F6: com LIGA_MINORS desligado (padrão) NENHUM dado de menor de 18 é coletado —
+  // a inscrição de menor espera o fluxo do responsável (parecer jurídico + ordem do dono).
+  if (out.minor && !require('./ligaMinors').enabled()) fail(403, `atleta ${idx + 1} é menor de 18 anos: inscrição de menor ainda não está disponível`);
   if (out.minor) {
     const g = (a && a.guardian) || {};
     const gName = clean(g.name, 100);
@@ -370,6 +373,16 @@ async function register(slugOrId, body, user, meta = {}) {
     if (!contactPhone) contactPhone = athletes[0].minor ? athletes[0].guardian.phone : digits(athletes[0].phone);
   }
   if (contactPhone.length < 10 || contactPhone.length > 13) fail(400, 'telefone de contato inválido (com DDD)');
+  // Liga F6: nome do time, do elenco e dos atletas passam pelo filtro de texto ofensivo
+  // (torneio da lista de exclusão — Master Cup — fica fora: nada da F6 mexe nele)
+  if (!require('./clubIdentity').isExcludedSlug(t.slug)) {
+    try {
+      require('./contentFilter').assertClean([
+        { field: 'team', value: kind === 'TEAM' ? displayName : null },
+        { field: 'player', value: (roster || []).map((p) => p.name).concat(athletes.map((a) => a.name)) },
+      ]);
+    } catch (e) { if (e && e.code === 'CONTENT_BLOCKED') fail(400, e.message); throw e; }
+  }
 
   const answers = parseAnswers(cfg.customFields || [], b.answers);
 

@@ -10,6 +10,8 @@
 //                vínculo ativo no time (TeamMembership), conta ligada ao
 //                elenco (RosterPlayer.userId) e admin global
 // Torneio ARQUIVADO (archivedAt) some de TODAS as rotas públicas (404).
+// Liga F6: torneio SUSPENSO pela moderação (suspendedAt) também some com o MESMO 404
+// para todo mundo — só o DONO (ownerId) e o admin global ainda veem (com aviso).
 // Quem não pode ver recebe EXATAMENTE o mesmo 404 de "não existe".
 // =====================================================================
 
@@ -77,10 +79,30 @@ async function isMember(userId, t) {
   return !!e;
 }
 
+// Liga F6: o objeto veio sem a coluna suspendedAt (select antigo)? Busca — nunca
+// trata "não selecionado" como "não suspenso".
+async function suspendedAtOf(t) {
+  if (!t) return null;
+  if (t.suspendedAt !== undefined) return t.suspendedAt;
+  if (!t.id) return null;
+  try {
+    const r = await prisma.tournament.findUnique({ where: { id: String(t.id) }, select: { suspendedAt: true, ownerId: true } });
+    if (r && t.ownerId === undefined) t.ownerId = r.ownerId;
+    return r ? r.suspendedAt : null;
+  } catch (_) { return null; } // coluna ainda nascendo logo após o deploy
+}
+// Suspenso: só o dono e o admin global passam.
+async function suspendedBlocks(v, t) {
+  if (!(await suspendedAtOf(t))) return false;
+  if (v && isGlobalAdmin(v.userRole)) return false;
+  return !(v && v.userId && t.ownerId && v.userId === t.ownerId);
+}
+
 // Pode VER este torneio? (t precisa ter id, ownerId, visibility, archivedAt)
 async function canSee(v, t) {
   if (!t) return false;
   if (t.archivedAt) return false;
+  if (await module.exports.suspendedBlocks(v, t)) return false; // via exports: o teste de sabotagem troca
   const vis = normalizeVisibility(t.visibility);
   if (vis !== 'private') return true;
   if (v && isGlobalAdmin(v.userRole)) return true;
@@ -91,12 +113,13 @@ async function canSee(v, t) {
 // não listado/privado só pra membro ou admin global (não listado não entra em lista pública).
 async function canSeeListed(v, t) {
   if (!t || t.archivedAt) return false;
+  if (await module.exports.suspendedBlocks(v, t)) return false; // via exports: o teste de sabotagem troca
   if (normalizeVisibility(t.visibility) === 'public') return true;
   if (v && isGlobalAdmin(v.userRole)) return true;
   return isMember(v && v.userId, t);
 }
 
-const BASE_SELECT = { id: true, slug: true, ownerId: true, visibility: true, archivedAt: true };
+const BASE_SELECT = { id: true, slug: true, ownerId: true, visibility: true, archivedAt: true, suspendedAt: true };
 
 // Carrega o torneio (por id ou slug) SÓ se quem pede pode ver. null = 404.
 // opts.select / opts.include seguem o Prisma (id/ownerId/visibility/archivedAt entram sempre).
@@ -119,11 +142,13 @@ async function canSeeTournamentId(req, tournamentId) {
   return canSee(await viewer(req), t);
 }
 
-// Filtro Prisma da VITRINE / busca / ranking público: só público e não arquivado.
-const LISTED_WHERE = Object.freeze({ visibility: 'public', archivedAt: null });
+// Filtro Prisma da VITRINE / busca / ranking público: só público, não arquivado e não suspenso.
+const LISTED_WHERE = Object.freeze({ visibility: 'public', archivedAt: null, suspendedAt: null });
+// Filtro Prisma para listas internas que já tiravam o arquivado (painel, lembretes): tira também o suspenso.
+const ACTIVE_WHERE = Object.freeze({ archivedAt: null, suspendedAt: null });
 
 module.exports = {
-  VISIBILITIES, NOT_FOUND_BODY, NOT_FOUND_HTML, LISTED_WHERE,
+  VISIBILITIES, NOT_FOUND_BODY, NOT_FOUND_HTML, LISTED_WHERE, ACTIVE_WHERE, suspendedAtOf, suspendedBlocks,
   normalizeVisibility, sendNotFound, viewer, isMember, canSee, canSeeListed,
   loadVisibleTournament, canSeeTournamentId,
 };

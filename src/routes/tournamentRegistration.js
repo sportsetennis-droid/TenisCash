@@ -58,7 +58,7 @@ function clientIp(req) {
 function requireCan(action) {
   return async (req, res, next) => {
     try {
-      const t = await prisma.tournament.findUnique({ where: { id: req.params.tid }, select: { id: true, ownerId: true, visibility: true, archivedAt: true } });
+      const t = await prisma.tournament.findUnique({ where: { id: req.params.tid }, select: { id: true, ownerId: true, visibility: true, archivedAt: true, suspendedAt: true } });
       if (!t || t.archivedAt) return access.sendNotFound(res);
       if (!(await roles.can(req.userId, req.userRole, t.id, action))) {
         // privado sem acesso = mesmo 404 de "não existe" (M9)
@@ -127,8 +127,8 @@ router.get(BASE + '/r/:token', async (req, res) => {
 async function tokenOfArchived(token) {
   const r = await prisma.tournamentRegistration.findUnique({ where: { publicToken: String(token || '') }, select: { tournamentId: true } });
   if (!r) return false;
-  const t = await prisma.tournament.findUnique({ where: { id: r.tournamentId }, select: { archivedAt: true } });
-  return !t || !!t.archivedAt;
+  const t = await prisma.tournament.findUnique({ where: { id: r.tournamentId }, select: { archivedAt: true, suspendedAt: true } });
+  return !t || !!t.archivedAt || !!t.suspendedAt; // F6: suspenso também não cobra
 }
 router.post(BASE + '/r/:token/pay', async (req, res) =>
   send(res, async () => {

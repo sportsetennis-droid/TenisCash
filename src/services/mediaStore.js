@@ -154,6 +154,8 @@ async function putBuffer(buf, opts = {}) {
   const mime = MIME_OF[type];
   const client = opts.db || db;
   const existing = await client.mediaObject.findUnique({ where: { sha256: sha }, select: { url: true, storage: true, mime: true, size: true, width: true, height: true } });
+  // Liga F6: imagem bloqueada pela moderação não volta por upload novo (mesmo conteúdo)
+  if (existing && (await isBlocked(sha, client))) throw new MediaError(400, 'esta imagem foi bloqueada pela moderação');
   if (existing) {
     const url = existing.storage === 's3' && existing.url ? existing.url : `/media/${sha}.${EXT_OF[Object.keys(MIME_OF).find((k) => MIME_OF[k] === existing.mime)] || ext}`;
     remember(sha, url);
@@ -193,10 +195,33 @@ function parseMediaPath(value) {
 }
 const isMediaPath = (v) => !!parseMediaPath(v);
 
-/** Linha do objeto (com os bytes) pelo sha — null se não existe. */
+/** Linha do objeto (com os bytes) pelo sha — null se não existe. Liga F6: traz blockedAt. */
 async function get(sha) {
   if (!/^[a-f0-9]{64}$/.test(String(sha || ''))) return null;
-  return db.mediaObject.findUnique({ where: { sha256: String(sha) }, select: { sha256: true, mime: true, bytes: true, size: true, storage: true, url: true, createdAt: true } });
+  const sel = { sha256: true, mime: true, bytes: true, size: true, storage: true, url: true, createdAt: true };
+  try {
+    return await db.mediaObject.findUnique({ where: { sha256: String(sha) }, select: { ...sel, blockedAt: true } });
+  } catch (e) {
+    // coluna blockedAt ainda nascendo logo após o deploy: serve como antes (nada bloqueado ainda)
+    return db.mediaObject.findUnique({ where: { sha256: String(sha) }, select: sel });
+  }
+}
+
+// ------------------------------------------------------------------ Liga F6 — bloqueio
+async function isBlocked(sha, client = db) {
+  try {
+    const r = await client.mediaObject.findUnique({ where: { sha256: String(sha) }, select: { blockedAt: true } });
+    return !!(r && r.blockedAt);
+  } catch (_) { return false; }
+}
+/** Bloqueia o objeto (moderação): /media passa a responder 404. Tira dos caches da memória.
+ *  ⚠️ A borda (Cloudflare) pode ter a imagem em cache "immutable": purgar a URL lá. */
+async function block(sha, reason) {
+  if (!/^[a-f0-9]{64}$/.test(String(sha || ''))) return { ok: false, blocked: 0 };
+  const r = await db.mediaObject.updateMany({ where: { sha256: String(sha), blockedAt: null }, data: { blockedAt: new Date(), blockedReason: reason ? String(reason).slice(0, 200) : null } });
+  BYTES_CACHE_DROP(String(sha));
+  KNOWN.delete(String(sha));
+  return { ok: true, blocked: r.count };
 }
 
 /** Bytes de uma URL /media/... (para gerar arte no servidor). */
@@ -204,6 +229,7 @@ async function bytesOf(value) {
   const p = parseMediaPath(value);
   if (!p) return null;
   const row = await get(p.sha256);
+  if (row && row.blockedAt) return null; // Liga F6: bloqueada não entra em arte
   if (row && row.bytes) return Buffer.from(row.bytes);
   // no bucket (S3/R2): baixa do endereço público gravado (que veio da nossa configuração)
   if (row && row.storage === 's3' && /^https:\/\//.test(row.url || '')) {
@@ -236,6 +262,7 @@ async function resolveDataUri(value) {
     // sempre no banco: nada de upload pro bucket dentro de um GET (com S3 ligado também)
     return (await putBuffer(p.buf, { source: 'legacy', forceDb: true })).url;
   } catch (e) {
+    if (e instanceof MediaError && /bloqueada/.test(e.message)) return INVALID; // Liga F6: bloqueada não volta pelo JSON
     console.error('[mediaStore] legado', e.message);
     return value; // falhou (ex.: tabela ainda nascendo logo após o deploy) → mantém a imagem como estava
   }
@@ -381,6 +408,10 @@ function isUpload(value) {
 // borda (Cloudflare) ainda não tem a imagem.
 const BYTES_CACHE = new Map();
 let bytesCached = 0;
+function BYTES_CACHE_DROP(sha) {
+  const r = BYTES_CACHE.get(sha);
+  if (r) { bytesCached -= r.size; BYTES_CACHE.delete(sha); }
+}
 const BYTES_CACHE_MAX = Math.max(0, Number(process.env.MEDIA_MEM_CACHE_MB) || 48) * 1024 * 1024;
 function cacheRow(row) {
   if (!row || !row.bytes || row.size > 2 * 1024 * 1024 || !BYTES_CACHE_MAX) return;
@@ -404,7 +435,7 @@ async function serveMedia(req, res) {
     let row = BYTES_CACHE.get(m[1]);
     if (row) { BYTES_CACHE.delete(m[1]); BYTES_CACHE.set(m[1], row); } // LRU
     else { row = await get(m[1]); cacheRow(row); }
-    if (!row) return notFound();
+    if (!row || row.blockedAt) return notFound(); // Liga F6: bloqueada pela moderação = 404
     const ext = m[2] === 'jpeg' ? 'jpg' : m[2];
     if (MIME_BY_EXT[ext] !== row.mime || !RASTER.has(Object.keys(MIME_OF).find((k) => MIME_OF[k] === row.mime) || '')) return notFound();
     if (row.storage === 's3' && row.url) {
@@ -435,5 +466,5 @@ module.exports = {
   MediaError, setPrisma, adapterName, s3Config, signV4,
   put, putBuffer, get, bytesOf, parseMediaPath, isMediaPath,
   isImageDataUri, publicUrlFor, publicizePayload, jsonMiddleware,
-  guardAndStore, isUpload, serveMedia, MEDIA_PATH_RX,
+  guardAndStore, isUpload, serveMedia, MEDIA_PATH_RX, block, isBlocked,
 };

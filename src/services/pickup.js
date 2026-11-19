@@ -158,7 +158,7 @@ async function loadPickupTournament(idOrSlug) {
   const key = String(idOrSlug || '');
   const t = await prisma.tournament.findFirst({ where: { OR: [{ id: key }, { slug: key }] } });
   if (!t || t.archivedAt) return null;
-  return t;
+  return t; // F6: suspenso — a rota já passou por access (dono/admin) e o router.param barra escrita
 }
 function ensurePickup(t) {
   if (!t) fail(404, 'não encontrado');

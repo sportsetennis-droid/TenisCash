@@ -860,6 +860,10 @@ router.patch('/users/me/username', async (req, res) => {
     if (raw && !/^[a-z0-9_.]{3,20}$/.test(raw)) {
       return res.status(400).json({ error: 'username deve ter 3-20 chars: a-z, 0-9, _ ou .' });
     }
+    // Liga F6: o @ aparece no /atleta público — filtro de texto ofensivo (400 em PT, sem repetir a palavra)
+    if (raw && require('../services/contentFilter').isOffensive(raw.replace(/[_.]/g, ' '), { kind: 'name' })) {
+      return res.status(400).json({ error: require('../services/contentFilter').blockMessage('handle'), code: 'CONTENT_BLOCKED' });
+    }
 
     if (raw) {
       const exists = await prisma.user.findFirst({ where: { username: raw, id: { not: userId } } });

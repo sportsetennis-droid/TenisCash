@@ -41,7 +41,7 @@ const TZ = 'America/Fortaleza';
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const jsonForScript = (v) => JSON.stringify(v).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 
-const T_SELECT = { id: true, slug: true, name: true, sport: true, status: true, format: true, bannerUrl: true, city: true, state: true, startDate: true, endDate: true, prizeDescription: true, visibility: true, ownerId: true, description: true, archivedAt: true };
+const T_SELECT = { id: true, slug: true, name: true, sport: true, status: true, format: true, bannerUrl: true, city: true, state: true, startDate: true, endDate: true, prizeDescription: true, visibility: true, ownerId: true, description: true, archivedAt: true, suspendedAt: true };
 
 // Sem checar visibilidade (uso interno: escrita, que passa por roles.can()).
 async function findTournament(key) {

@@ -43,6 +43,21 @@ const { duplicateTournament } = require('../services/tournamentDuplicate');
 const mediaStore = require('../services/mediaStore');
 const pag = require('../services/pagination');
 const plans = require('../services/organizerPlan');
+const contentFilter = require('../services/contentFilter');
+const minors = require('../services/ligaMinors');
+
+// Liga F6 — filtro de nome/texto ofensivo. Torneio da lista de exclusão (Master Cup) NÃO
+// passa pelo filtro (nada da F6 mexe nele durante o evento). false = já respondeu 400.
+function cleanText(res, t, items) {
+  if (t && t.slug && clubIdentity.isExcludedSlug(t.slug)) return true;
+  return contentFilter.guard(res, items);
+}
+// Liga F6 — organizador suspenso não cria torneio (can CREATE_TOURNAMENT).
+async function canCreateTournament(req, res) {
+  if (await roles.can(req.userId, req.userRole, null, 'CREATE_TOURNAMENT')) return true;
+  res.status(403).json({ error: 'Sua conta de organizador está suspensa pela moderação: não é possível criar torneio.', code: 'ORGANIZER_SUSPENDED' });
+  return false;
+}
 
 // Erros de serviço da Liga F3 (QuickError, PickupError, TeamInviteError): status + mensagem em PT.
 function svcErr(res, e) {
@@ -110,11 +125,17 @@ for (const [name, g] of Object.entries(PARAM_GUARDS)) {
       if (name === 'id' && NOT_TOURNAMENT_ID.test(req.path)) return next();
       const tid = await g.tid(value);
       if (!tid) return name === 'id' ? g.gone(req, res) : next(); // entidade inexistente: a rota responde
-      const t = await prisma.tournament.findUnique({ where: { id: String(tid) }, select: { id: true, ownerId: true, visibility: true, archivedAt: true } });
+      const t = await prisma.tournament.findUnique({ where: { id: String(tid) }, select: { id: true, ownerId: true, visibility: true, archivedAt: true, suspendedAt: true } });
       if (!t) return g.gone(req, res);
       if (t.archivedAt && name === 'id' && ARCHIVED_ALLOWED.test(req.path)) return next();
-      if (await access.canSee(await access.viewer(req), t)) return next();
-      return g.gone(req, res);
+      const v = await access.viewer(req);
+      if (!(await access.canSee(v, t))) return g.gone(req, res);
+      // Liga F6: torneio SUSPENSO pela moderação não aceita NENHUMA escrita (nem do dono) —
+      // só o admin global mexe. Quem não é dono/admin já recebeu o 404 acima.
+      if (t.suspendedAt && !['GET', 'HEAD', 'OPTIONS'].includes(req.method) && !(await roles.can(v.userId, v.userRole, null, 'MODERATE'))) {
+        return res.status(403).json({ error: 'Torneio suspenso pela moderação: nada pode ser alterado até a revisão.', code: 'SUSPENDED' });
+      }
+      return next();
     } catch (e) { return next(e); }
   });
 }
@@ -543,6 +564,7 @@ router.post('/:id/people', authMiddleware, async (req, res) => {
     const name = String(b.name || '').trim();
     const phone = String(b.phone || '').replace(/\D/g, '');
     if (!name || !phone) return res.status(400).json({ error: 'informe nome e telefone' });
+    if (!cleanText(res, null, [{ field: 'name', value: name }])) return; // Liga F6
     let user = await prisma.user.findUnique({ where: { phone }, select: { id: true, name: true, phone: true, username: true } });
     let created = false, tempPassword = null;
     if (!user) {
@@ -595,7 +617,10 @@ router.get('/my-tournaments', authMiddleware, async (req, res) => {
     const owned = await prisma.tournament.findMany({ where: { ownerId: req.userId }, select: { id: true } });
     const ids = [...new Set(roleRows.map((r) => r.tournamentId).concat(owned.map((o) => o.id)))];
     if (!ids.length) return res.json({ tournaments: [] });
-    const ts = await prisma.tournament.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, slug: true, sport: true, status: true, ownerId: true, visibility: true, archivedAt: true } });
+    const ts0 = await prisma.tournament.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, slug: true, sport: true, status: true, ownerId: true, visibility: true, archivedAt: true, suspendedAt: true } });
+    // Liga F6: torneio suspenso só aparece para o dono e o admin global (os outros recebem 404 nele)
+    const ts = [];
+    for (const t of ts0) if (!t.suspendedAt || (await access.canSee({ userId: req.userId, userRole: req.userRole }, t))) ts.push(t);
     const byId = {};
     roleRows.forEach((r) => { (byId[r.tournamentId] = byId[r.tournamentId] || []).push({ role: r.role, entryId: r.entryId }); });
     const out = ts.map((t) => ({ ...t, myRoles: (t.ownerId === req.userId ? [{ role: 'FOUNDER' }] : []).concat(byId[t.id] || []) }));
@@ -784,6 +809,9 @@ async function loadForAction(req, res, tournamentId, action, opts = {}, denyMsg)
   if (!t || t.archivedAt) { access.sendNotFound(res); return null; }
   if (!(await roles.can(req.userId, req.userRole, t.id, action, opts))) {
     if (!(await access.canSee({ userId: req.userId, userRole: req.userRole }, t))) { access.sendNotFound(res); return null; }
+    // Liga F6: diz o motivo quando é a moderação que trava (o dono ainda vê o torneio)
+    if (t.suspendedAt) { res.status(403).json({ error: 'Torneio suspenso pela moderação: nada pode ser alterado até a revisão.', code: 'SUSPENDED' }); return null; }
+    if (await roles.isOrganizerSuspended(req.userId)) { res.status(403).json({ error: 'Sua conta de organizador está suspensa pela moderação.', code: 'ORGANIZER_SUSPENDED' }); return null; }
     res.status(403).json({ error: denyMsg || 'sem permissão neste torneio' });
     return null;
   }
@@ -803,6 +831,8 @@ router.post('/', authMiddleware, limits.createTournament, async (req, res) => {
   try {
     const b = req.body || {};
     if (!b.name) return res.status(400).json({ error: 'name obrigatório' });
+    if (!(await canCreateTournament(req, res))) return;
+    if (!cleanText(res, null, [{ field: 'tournament', value: b.name }, { field: 'text', value: [b.description, b.rules, b.prizeDescription].filter(Boolean) }])) return;
     // Liga F5: limite de torneios ativos do plano (só nova criação; admin/equipe sem limite)
     if (!(await plans.guard(res, 'tournament', { actorId: req.userId, actorRole: req.userRole }))) return;
     // Banner: só https:// ou caminho do próprio site / imagem PNG/JPEG/WEBP real (Liga F0);
@@ -868,6 +898,12 @@ router.get('/presets', (req, res) => {
 // Qualquer usuário logado; limitador de criação de torneio da F0 (20/h).
 router.post('/quick', authMiddleware, limits.createTournament, async (req, res) => {
   try {
+    if (!(await canCreateTournament(req, res))) return;
+    {
+      const qb = req.body || {};
+      const tl = Array.isArray(qb.teams) ? qb.teams.map((x) => (x && typeof x === 'object' ? x.name : x)) : typeof qb.teams === 'string' ? qb.teams.split(/\r?\n/) : [];
+      if (!cleanText(res, null, [{ field: 'tournament', value: qb.name }, { field: 'team', value: tl.filter(Boolean).map(String) }])) return;
+    }
     // Liga F5: limite do plano (torneios ativos + times por categoria) antes de gravar
     if (!(await plans.guard(res, 'tournament', { actorId: req.userId, actorRole: req.userRole }))) return;
     const teamsIn = (req.body || {}).teams;
@@ -989,6 +1025,7 @@ router.patch('/:id', authMiddleware, onlyWhen(hasBody('bannerUrl'), limits.uploa
     for (const f of ['name', 'description', 'rules', 'city', 'state', 'prizeDescription']) {
       if (b[f] !== undefined) data[f] = b[f];
     }
+    if (!cleanText(res, t, [{ field: 'tournament', value: data.name }, { field: 'text', value: [data.description, data.rules, data.prizeDescription, data.city].filter(Boolean) }])) return;
     if (b.bannerUrl !== undefined) {
       const bn = await storeImage(req, res, b.bannerUrl, { maxChars: 800000 }, { tournament: t });
       if (!bn.ok) return;
@@ -1089,6 +1126,7 @@ router.post('/:id/categories', authMiddleware, async (req, res) => {
     if (!t) return;
     const b = req.body || {};
     if (!b.name) return res.status(400).json({ error: 'name obrigatório' });
+    if (!cleanText(res, t, [{ field: 'category', value: [b.name, b.levelLabel].filter(Boolean) }])) return;
     // Liga F5: categorias por torneio (plano do dono do torneio; torneio antigo não é limitado)
     if (!(await plans.guard(res, 'category', { actorId: req.userId, actorRole: req.userRole, tournament: t }))) return;
     const rules = categoryRulesData({ tiebreakers: b.tiebreakers, doubleRound: b.doubleRound, suspensionRule: b.suspensionRule, formatConfig: b.formatConfig });
@@ -1159,6 +1197,7 @@ router.patch('/:id/categories/:catId', authMiddleware, async (req, res) => {
     }
     if (b.name !== undefined && String(b.name).trim()) data.name = String(b.name).trim().slice(0, 80);
     if (b.levelLabel !== undefined) data.levelLabel = b.levelLabel || null;
+    if (!cleanText(res, t, [{ field: 'category', value: [data.name, data.levelLabel].filter(Boolean) }])) return;
     if (b.gender !== undefined && ['M', 'F', 'MIXED', 'OPEN'].includes(b.gender)) data.gender = b.gender;
     const generated = await prisma.tournamentMatch.count({ where: { categoryId: cat.id } });
     if (b.format !== undefined) {
@@ -1233,6 +1272,7 @@ router.post('/:id/entries', authMiddleware, entryLimitUnlessManager, async (req,
     if (b.team === true || b.teamName) {
       const teamName = String(b.teamName || b.name || '').trim().slice(0, 80);
       if (!teamName) return res.status(400).json({ error: 'nome do time obrigatório' });
+      if (!cleanText(res, t, [{ field: 'team', value: teamName }])) return;
       const dupName = await prisma.tournamentEntry.findFirst({
         where: { categoryId: cat.id, name: teamName },
       });
@@ -1338,6 +1378,9 @@ router.post('/:id/entries', authMiddleware, entryLimitUnlessManager, async (req,
     }
 
     // nome de exibição
+    // Liga F6: nome digitado passa pelo filtro; conta de menor não entra pela própria conta
+    if (!cleanText(res, t, [{ field: 'name', value: b.name ? String(b.name) : null }])) return;
+    for (const mid of memberIds) if (await minors.userDeclaredMinor(mid)) return res.status(403).json({ error: minors.MINOR_JOIN_MSG, code: 'MINOR_UNAVAILABLE' });
     let name = b.name ? String(b.name).trim().slice(0, 80) : '';
     if (!name) {
       const users = await prisma.user.findMany({
@@ -1486,7 +1529,10 @@ router.post('/:id/entries/request', authMiddleware, entryLimitUnlessManager, asy
       if (count >= t.maxEntries) return res.status(409).json({ error: 'torneio lotado' });
     }
 
-    let name = b.name;
+    let name = b.name ? String(b.name).trim().slice(0, 80) : b.name;
+    // Liga F6: filtro no nome + conta de menor não entra pela própria conta
+    if (!cleanText(res, t, [{ field: 'name', value: name || null }])) return;
+    for (const mid of memberIds) if (await minors.userDeclaredMinor(mid)) return res.status(403).json({ error: minors.MINOR_JOIN_MSG, code: 'MINOR_UNAVAILABLE' });
     if (!name) {
       const users = await prisma.user.findMany({ where: { id: { in: memberIds } }, select: { name: true } });
       name = users.map((u) => u.name?.split(' ')[0] || 'Atleta').join(' & ');
@@ -2005,6 +2051,8 @@ router.post('/entries/:entryId/players', authMiddleware, async (req, res) => {
     const b = req.body || {};
     const name = String(b.name || '').trim();
     if (!name) return res.status(400).json({ error: 'nome do jogador obrigatório' });
+    const tt = await prisma.tournament.findUnique({ where: { id: entry.tournamentId }, select: { slug: true } });
+    if (!cleanText(res, tt, [{ field: 'player', value: name }])) return;
     const role = ['PLAYER', 'COACH', 'ASSISTANT'].includes(String(b.role || '').toUpperCase()) ? String(b.role).toUpperCase() : 'PLAYER';
     // Liga F2: conta na vaga só com vínculo ATIVO no time (igual a /players/:id/link) —
     // senão o gol entraria no histórico de quem não aceitou. Sem vínculo: gere o convite.
@@ -2105,6 +2153,8 @@ router.patch('/entries/:entryId/club', authMiddleware, onlyWhen(hasBody('crestUr
     if (b.name !== undefined) {
       const n = String(b.name || '').trim().slice(0, 80);
       if (n.length < 2) return res.status(400).json({ error: 'nome do clube inválido' });
+      const tt = await prisma.tournament.findUnique({ where: { id: entry.tournamentId }, select: { slug: true } });
+      if (!cleanText(res, tt, [{ field: 'club', value: n }])) return;
       data.name = n;
     }
     for (const k of ['primaryColor', 'secondaryColor']) {
@@ -2237,7 +2287,10 @@ router.post('/players/:playerId/link', authMiddleware, async (req, res) => {
     const uid = (req.body || {}).userId ? String(req.body.userId) : null;
     // Liga F2: tirar (ou trocar) a conta de uma vaga já ligada é do PRÓPRIO atleta ou da
     // COORDENAÇÃO — admin/treinador do time não desfaz o vínculo de outra pessoa. Auditado.
-    const cur = await prisma.rosterPlayer.findUnique({ where: { id: req.params.playerId }, select: { userId: true } });
+    const cur = await prisma.rosterPlayer.findUnique({ where: { id: req.params.playerId }, select: { userId: true, minorProfileId: true } });
+    // Liga F6: vaga de menor (fluxo do responsável) não recebe conta; conta de menor não entra pela própria conta
+    if (uid && cur && cur.minorProfileId) return res.status(409).json({ error: 'vaga de menor: não recebe conta' });
+    if (uid && (await minors.userDeclaredMinor(uid))) return res.status(403).json({ error: minors.MINOR_JOIN_MSG, code: 'MINOR_UNAVAILABLE' });
     if (cur && cur.userId && cur.userId !== uid) {
       const self = cur.userId === req.userId && !uid;
       if (!self && !(await roles.can(req.userId, req.userRole, ctx.entry.tournamentId, 'MANAGE_TOURNAMENT'))) {
@@ -2571,6 +2624,11 @@ router.post('/athletes/register', limits.signupIp, async (req, res) => {
     if (!name) return res.status(400).json({ error: 'nome obrigatório' });
     if (password.length < 4 || password.length > 20) return res.status(400).json({ error: 'senha deve ter 4 a 20 caracteres' });
     if (!whatsapp) return res.status(400).json({ error: 'WhatsApp com DDD obrigatório' });
+    // Liga F6: nome e @ passam pelo filtro de texto ofensivo (antes de gastar o código)
+    if (!cleanText(res, null, [{ field: 'name', value: name }, { field: 'handle', value: b.instagram ? String(b.instagram).replace(/^@/, '') : null }])) return;
+    // Liga F6: menor de 18 — cadastro só pelo fluxo do responsável (LIGA_MINORS, desligado).
+    // Não gravamos a data: só recusamos se ela vier e indicar menor (autodeclaração não vale como prova).
+    if (minors.declaresMinor(b.birthDate || b.birthdate)) return res.status(403).json({ error: minors.MINOR_SIGNUP_MSG, code: 'MINOR_SIGNUP_UNAVAILABLE' });
     if (b.code == null || String(b.code).trim() === '') {
       return res.status(400).json({ error: 'informe o código de 6 dígitos enviado no seu WhatsApp', needsCode: true });
     }
@@ -2674,7 +2732,8 @@ router.post('/athletes/register', limits.signupIp, async (req, res) => {
 router.get('/athletes/:handle/card', async (req, res) => {
   try {
     const userId = await resolveUserId(req.params.handle);
-    if (!userId) return res.status(404).json({ error: 'atleta não encontrado' });
+    // Liga F6: atleta que apagou os dados esportivos não tem mais card/histórico público
+    if (!userId || (await require('../services/ligaPrivacy').isErased(userId))) return res.status(404).json({ error: 'atleta não encontrado' });
     // Liga F2: torneio privado só entra para o próprio atleta / membro (login opcional)
     const card = await engine.buildAthleteCard(userId, { viewer: await access.viewer(req) });
     if (!card) return res.status(404).json({ error: 'atleta não encontrado' });
@@ -2692,7 +2751,8 @@ router.get('/athletes/:handle/history', async (req, res) => {
   try {
     res.set('Cache-Control', 'no-store');
     const userId = await resolveUserId(req.params.handle);
-    if (!userId) return res.status(404).json({ error: 'atleta não encontrado' });
+    // Liga F6: atleta que apagou os dados esportivos não tem mais card/histórico público
+    if (!userId || (await require('../services/ligaPrivacy').isErased(userId))) return res.status(404).json({ error: 'atleta não encontrado' });
     const page = pageOf(req, res, { defaultLimit: 20, maxLimit: 100 });
     if (!page) return;
     const h = await athleteHistory.history(userId, { viewer: await access.viewer(req) });
@@ -2925,7 +2985,8 @@ router.get('/:idOrSlug/posts', async (req, res) => {
     // Liga F5: cursor estável (fixado, data, id). Sem ?limit/?cursor → 50, como antes, + nextCursor.
     const page = pageOf(req, res, { defaultLimit: 50, maxLimit: 100 });
     if (!page) return;
-    const r = await pag.findPage(prisma.tournamentPost, { where: { tournamentId: t.id } }, pag.POST_SPEC, page);
+    // Liga F6: aviso ocultado pela moderação não sai no mural
+    const r = await pag.findPage(prisma.tournamentPost, { where: { tournamentId: t.id, hiddenAt: null } }, pag.POST_SPEC, page);
     res.json({ posts: r.items, nextCursor: r.nextCursor });
   } catch (err) {
     if (pag.sendPageError(res, err)) return; // Liga F5: cursor inválido = 400
@@ -2941,6 +3002,7 @@ router.post('/:id/posts', authMiddleware, limits.post, async (req, res) => {
     const b = req.body || {};
     const body = String(b.body || '').trim();
     if (!body) return res.status(400).json({ error: 'escreva o aviso' });
+    if (!cleanText(res, t, [{ field: 'post', value: [b.title, body].filter(Boolean).map(String) }])) return;
     // Liga F5: avisos por mês do plano do dono do torneio (só nova criação)
     if (!(await plans.guard(res, 'post', { actorId: req.userId, actorRole: req.userRole, tournament: t }))) return;
     // Liga F5: imagem do aviso (opcional) — imageGuard + mediaStore ("/media/<sha>.<ext>")
@@ -3012,6 +3074,11 @@ router.post('/:id/duplicate', authMiddleware, limits.createTournament, async (re
   try {
     const t = await loadForAction(req, res, req.params.id, 'MANAGE_TOURNAMENT', {}, 'só a organização (fundador/coordenador) duplica o torneio');
     if (!t) return;
+    // Liga F6: a cópia nasce do MESMO dono — dono suspenso não ganha torneio novo
+    if (!(await roles.can(t.ownerId, (await prisma.user.findUnique({ where: { id: t.ownerId }, select: { role: true } }) || {}).role, null, 'CREATE_TOURNAMENT'))) {
+      return res.status(403).json({ error: 'O dono deste torneio está suspenso pela moderação: não é possível duplicar.', code: 'ORGANIZER_SUSPENDED' });
+    }
+    if (!cleanText(res, null, [{ field: 'tournament', value: (req.body || {}).name }])) return;
     // Liga F5: a cópia nasce com o MESMO dono → conta nos torneios ativos do plano dele
     if (!plans.isStaffRole(req.userRole) && !clubIdentity.isExcludedSlug(t.slug)) {
       const ownerRole = (await prisma.user.findUnique({ where: { id: t.ownerId }, select: { role: true } }) || {}).role;
@@ -3047,11 +3114,20 @@ async function pickupT(req, res) {
 }
 // Jogadores do racha (organização): { names:[...] | "um por linha", level? (0–7) }
 router.post('/:id/pickup/players', authMiddleware, async (req, res) => {
-  try { const t = await pickupT(req, res); if (!t) return; res.status(201).json(await pickup.addPlayers(t, pickupActor(req), req.body || {})); }
+  try {
+    const t = await pickupT(req, res); if (!t) return;
+    const nm = (req.body || {}).names;
+    const list = Array.isArray(nm) ? nm.map(String) : typeof nm === 'string' ? nm.split(/[\r\n,;]+/) : [];
+    if (!cleanText(res, t, [{ field: 'pickup', value: list.map((x) => x.trim()).filter(Boolean) }])) return;
+    res.status(201).json(await pickup.addPlayers(t, pickupActor(req), req.body || {}));
+  }
   catch (e) { if (svcErr(res, e)) return; res.status(500).json({ error: e.message }); }
 });
 router.patch('/pickup/players/:pickupPlayerId', authMiddleware, async (req, res) => {
-  try { res.json(await pickup.updatePlayer(pickupActor(req), req.params.pickupPlayerId, req.body || {})); }
+  try {
+    if (!cleanText(res, null, [{ field: 'pickup', value: (req.body || {}).name }])) return;
+    res.json(await pickup.updatePlayer(pickupActor(req), req.params.pickupPlayerId, req.body || {}));
+  }
   catch (e) { if (svcErr(res, e)) return; res.status(500).json({ error: e.message }); }
 });
 // Presença: { confirm, playerId? } — sem playerId = eu mesmo (pelo link); outro = organização.

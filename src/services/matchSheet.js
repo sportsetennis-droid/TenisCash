@@ -284,9 +284,11 @@ async function playerStats(tournamentId, opts = {}) {
   const pids = [...new Set(events.map((e) => e.playerId))];
   const players = await prisma.rosterPlayer.findMany({
     where: { id: { in: pids } },
-    select: { id: true, name: true, number: true, entryId: true },
+    select: { id: true, name: true, number: true, entryId: true, minorProfileId: true },
   });
-  const pById = Object.fromEntries(players.map((p) => [p.id, p]));
+  // Liga F6: vaga de MENOR (fluxo do responsável) não entra em ranking/artilharia pública;
+  // os gols continuam valendo no placar do time.
+  const pById = Object.fromEntries(players.filter((p) => !p.minorProfileId).map((p) => [p.id, p]));
   const entryIds = [...new Set(players.map((p) => p.entryId))];
   const entries = await prisma.tournamentEntry.findMany({ where: { id: { in: entryIds } }, select: { id: true, name: true } });
   const teamById = Object.fromEntries(entries.map((e) => [e.id, e.name]));
