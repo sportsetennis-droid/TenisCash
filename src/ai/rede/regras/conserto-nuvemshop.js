@@ -70,7 +70,7 @@ const PASSOS = [
     como: 'Preço de venda = custo × (1 + markup). Mudar preço é decisão do dono: o mini agente de preço propõe e o dono aprova.',
     quem: 'preco (proposta)', dono: true },
   { id: 'promocao', rx: /^promocao /, titulo: 'Promoção zerada, maior que o preço ou abaixo do custo',
-    como: 'A promoção que vai ao site tem que ficar entre o custo e o preço de venda (regra do markup: a loja nunca vende abaixo do custo). Corrigir ou tirar a promoção é decisão do dono — o mini agente de preço propõe.',
+    como: 'Só aparece com a promoção do site ligada (NS_PROMOCAO_NO_SITE=1; hoje o site entra sem promoção, dono 19/11). A promoção que vai ao site tem que ficar entre o custo e o preço de venda (regra do markup: a loja nunca vende abaixo do custo). Corrigir ou tirar a promoção é decisão do dono — o mini agente de preço propõe.',
     quem: 'preco (proposta)', dono: true },
   { id: 'preco-custo', rx: /preco de venda nao supera o custo/, titulo: 'Preço menor ou igual ao custo',
     como: 'Conferir custo (NF-e de entrada) e aplicar o markup. Proposta de preço para o dono aprovar; nunca sobe com preço de custo.',

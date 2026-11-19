@@ -140,8 +140,24 @@ for (const label of ['T-6100', '7891234567890', '', 'SEM TAMANHO']) {
 
 console.log('nuvemshopEligibility: OK');
 
-// promoção nunca vai ao site abaixo do custo, zerada ou maior que o preço (regra do markup, 18/11/2026)
+// site SEM promoção (padrão, dono 19/11): promoção do card não bloqueia nem vai para a loja online
 {
+  delete process.env.NS_PROMOCAO_NO_SITE;
+  const { promocaoParaSite } = require('../src/services/nuvemshopEligibility');
+  for (const promo of [0, 9999, 1, 300]) {
+    const r = assessProductForNuvemshop(validProduct({ promoPrice: promo }), { requireConfirmation: false, isNew: false });
+    assert.ok(!r.reasons.some((x) => /promocao/.test(x)), 'sem promoção no site, ' + promo + ' não bloqueia: ' + r.reasons.join('; '));
+    assert.strictEqual(promocaoParaSite(validProduct({ promoPrice: promo })), null);
+  }
+  console.log('ok site sem promoção: não bloqueia e não envia');
+}
+
+// com NS_PROMOCAO_NO_SITE=1: promoção nunca vai ao site abaixo do custo, zerada ou maior que o preço (regra do markup)
+{
+  process.env.NS_PROMOCAO_NO_SITE = '1';
+  const { promocaoParaSite } = require('../src/services/nuvemshopEligibility');
+  assert.strictEqual(promocaoParaSite(validProduct({ promoPrice: 300 })), '300.00');
+  assert.strictEqual(promocaoParaSite(validProduct({ promoPrice: null })), null);
   const ok = assessProductForNuvemshop(validProduct({ promoPrice: 300 }), { requireConfirmation: false, isNew: false });
   assert.ok(!ok.reasons.some((r) => /promocao/.test(r)), 'promoção entre custo e preço passa: ' + ok.reasons.join('; '));
   for (const [promo, motivo] of [[0, 'promocao zerada'], [9999, 'promocao nao e menor que o preco'], [1, 'promocao nao supera o custo']]) {
@@ -149,5 +165,6 @@ console.log('nuvemshopEligibility: OK');
     assert.ok(r.reasons.includes(motivo), promo + ' → ' + r.reasons.join('; '));
   }
   assert.ok(!assessProductForNuvemshop(validProduct({ promoPrice: null }), { requireConfirmation: false, isNew: false }).reasons.some((r) => /promocao/.test(r)));
-  console.log('ok promoção: trava contra custo/zero/maior que preço');
+  console.log('ok promoção ligada: trava contra custo/zero/maior que preço');
+  delete process.env.NS_PROMOCAO_NO_SITE;
 }
