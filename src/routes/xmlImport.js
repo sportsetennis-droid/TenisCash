@@ -7,6 +7,7 @@ const multer = require('multer');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 const { parseNfeXml } = require('../services/xmlNfeParser');
 const { groupItemsByBase } = require('../services/nfeSizeParser');
+const { importNfeXml } = require('../services/nfeXmlImporter');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -116,159 +117,24 @@ router.put('/nfes/:id', async (req, res) => {
   }
 });
 
+// NF-e baixadas sozinhas da SEFAZ (distribuição DF-e): situação e rodada manual.
+router.get('/dist', async (_req, res) => {
+  try { res.json({ estado: require('../services/nfeDistribuicao').getState(), ...(await require('../services/nfeDistribuicao').resumo(prisma)) }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+router.post('/dist/run', async (_req, res) => {
+  try { res.json(await require('../services/nfeDistribuicao').run(prisma)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Importação NF-e (upload de XML)
 router.post('/nfe/import', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Envie o arquivo XML no campo "file"' });
-
-    const xml = req.file.buffer.toString('utf8');
-    const parsed = await parseNfeXml(xml);
-
-    // Cria job de importação
-    const job = await prisma.xmlImportJob.create({
-      data: {
-        name: req.file.originalname,
-        type: 'NFE_ENTRY',
-        status: 'PROCESSING',
-        uploadedById: req.userId,
-        originalFileName: req.file.originalname,
-        totalItems: parsed.items.length,
-      },
-    });
-
-    // Cria/atualiza fornecedor
-    let supplier = null;
-    if (parsed.issuerCnpj) {
-      supplier = await prisma.supplier.findUnique({ where: { cnpj: parsed.issuerCnpj } });
-      if (!supplier) {
-        supplier = await prisma.supplier.create({
-          data: {
-            companyName: parsed.issuerName || ('CNPJ ' + parsed.issuerCnpj),
-            cnpj: parsed.issuerCnpj,
-            notes: 'Importado via NF-e ' + (parsed.number || ''),
-          },
-        });
-      }
-    }
-
-    // Cria documento fiscal
-    let document;
-    try {
-      document = await prisma.xmlFiscalDocument.create({
-        data: {
-          importJobId: job.id,
-          accessKey: parsed.accessKey || null,
-          number: parsed.number || null,
-          series: parsed.series || null,
-          issuerCnpj: parsed.issuerCnpj || null,
-          issuerName: parsed.issuerName || null,
-          recipientCnpj: parsed.recipientCnpj || null,
-          issueDate: parsed.issueDate ? new Date(parsed.issueDate) : null,
-          totalValue: parsed.totalValue,
-          icmsValue: parsed.icmsValue,
-          icmsStValue: parsed.icmsStValue,
-          fcpValue: parsed.fcpValue,
-          fcpStValue: parsed.fcpStValue,
-          difalDestValue: parsed.difalDestValue,
-          ipiValue: parsed.ipiValue,
-          pisValue: parsed.pisValue,
-          cofinsValue: parsed.cofinsValue,
-          cbsValue: parsed.cbsValue,
-          ibsValue: parsed.ibsValue,
-          supplierId: supplier?.id || null,
-          status: 'imported',
-        },
-      });
-    } catch (err) {
-      // Pode ter conflito de chave única (accessKey duplicada)
-      await prisma.xmlImportJob.update({
-        where: { id: job.id },
-        data: { status: 'FAILED', errorMessage: 'XML já importado (chave de acesso duplicada)' },
-      });
-      return res.status(409).json({ error: 'XML já importado anteriormente', detail: err.message });
-    }
-
-    // Tenta match com produtos existentes (por EAN ou supplierCode → SKU)
-    const itemsToCreate = [];
-    let matched = 0;
-    let newProductsHint = 0;
-
-    for (const item of parsed.items) {
-      let productId = null;
-      let matchStatus = 'pending';
-      if (item.ean) {
-        const p = await prisma.product.findFirst({ where: { sku: item.ean } });
-        if (p) { productId = p.id; matchStatus = 'matched'; matched++; }
-      }
-      if (!productId && item.supplierCode) {
-        const p = await prisma.product.findFirst({ where: { sku: item.supplierCode } });
-        if (p) { productId = p.id; matchStatus = 'matched'; matched++; }
-      }
-      if (!productId) {
-        matchStatus = 'new_product';
-        newProductsHint++;
-      }
-      itemsToCreate.push({
-        fiscalDocumentId: document.id,
-        productId,
-        supplierCode: item.supplierCode,
-        description: item.description,
-        ean: item.ean,
-        ncm: item.ncm,
-        cfop: item.cfop,
-        cst: item.cst,
-        unit: item.unit,
-        quantity: item.quantity,
-        unitValue: item.unitValue,
-        totalValue: item.totalValue,
-        icmsBase: item.icmsBase,
-        icmsValue: item.icmsValue,
-        icmsStValue: item.icmsStValue,
-        fcpValue: item.fcpValue,
-        fcpStValue: item.fcpStValue,
-        difalDestValue: item.difalDestValue,
-        ipiValue: item.ipiValue,
-        pisCst: item.pisCst,
-        pisBase: item.pisBase,
-        pisValue: item.pisValue,
-        cofinsCst: item.cofinsCst,
-        cofinsBase: item.cofinsBase,
-        cofinsValue: item.cofinsValue,
-        cbsValue: item.cbsValue,
-        ibsValue: item.ibsValue,
-        matchStatus,
-      });
-    }
-    if (itemsToCreate.length) {
-      await prisma.xmlFiscalItem.createMany({ data: itemsToCreate });
-    }
-
-    await prisma.xmlImportJob.update({
-      where: { id: job.id },
-      data: {
-        status: 'COMPLETED',
-        processedItems: itemsToCreate.length,
-        completedAt: new Date(),
-      },
-    });
-
-    await prisma.xmlFiscalDocument.update({
-      where: { id: document.id },
-      // Regra do CLAUDE.md: entrada × transferência (CNPJ raiz igual ou CFOP 5152/6152) gravada na importação.
-      data: { status: matched === itemsToCreate.length ? 'matched' : 'partial', ...(document.docType ? {} : (() => { const c = require('../ai/rede/neuronios/_comum-estoque').classificarNfe(document, parsed.items || []); return c.docType ? { docType: c.docType } : {}; })()) },
-    });
-    require('../ai/rede/ganchos').nfeImportada(document.id);
-
-    res.json({
-      ok: true,
-      jobId: job.id,
-      documentId: document.id,
-      supplierId: supplier?.id || null,
-      totals: parsed,
-      itemsCount: itemsToCreate.length,
-      matched,
-      newProductsHint,
-    });
+    const r = await importNfeXml(prisma, req.file.buffer.toString('utf8'), { fileName: req.file.originalname, userId: req.userId });
+    if (r.duplicate) return res.status(409).json({ error: 'XML já importado anteriormente', detail: r.detail });
+    const { duplicate, ...out } = r;
+    res.json(out);
   } catch (err) {
     console.error('[xml/nfe/import] erro:', err);
     res.status(500).json({ error: 'Erro ao processar XML', detail: err.message });
