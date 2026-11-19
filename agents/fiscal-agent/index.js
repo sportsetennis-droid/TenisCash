@@ -28,7 +28,7 @@ const TOKEN = process.env.AGENT_TOKEN;
 const PFX_PATH = process.env.PFX_PATH;
 const PFX_SENHA = process.env.PFX_SENHA;
 const STORE_LABEL = process.env.STORE_LABEL || 'unknown';
-const VERSION = '2.4.0-certinfo';
+const VERSION = '2.5.0-distdfe';
 
 function fatal(msg) { console.error('FATAL:', msg); process.exit(1); }
 if (!TOKEN || TOKEN.length < 16) fatal('AGENT_TOKEN ausente ou curto (>=16 chars)');
@@ -196,6 +196,36 @@ app.post('/consulta', async (req, res) => {
     res.json(result);
   } catch (err) {
     log('ERR', 'consulta', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Distribuição de NF-e (2.5): notas emitidas CONTRA o CNPJ, no Ambiente Nacional. Só leitura.
+app.post('/distdfe', async (req, res) => {
+  try {
+    const { cnpj, environment, ultNSU, chNFe } = req.body || {};
+    if (!cnpj) return res.status(400).json({ ok: false, error: 'cnpj obrigatório' });
+    const { distDFe } = await getSefaz();
+    const r = await distDFe({ cnpj, environment, ultNSU, chNFe, pfxPath: PFX_PATH, pfxSenha: PFX_SENHA });
+    log('INFO', 'distdfe', String(cnpj).slice(-6), r.status || '', (r.docs || []).length + ' docs');
+    res.json(r);
+  } catch (err) {
+    log('ERR', 'distdfe', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Ciência da Operação (210210) — único evento de manifestação aceito aqui.
+app.post('/ciencia', async (req, res) => {
+  try {
+    const { cnpj, environment, chNFe } = req.body || {};
+    if (!cnpj || !chNFe) return res.status(400).json({ ok: false, error: 'cnpj e chNFe obrigatórios' });
+    const { manifestarCiencia } = await getSefaz();
+    const r = await manifestarCiencia({ cnpj, environment, chNFe, pfxPath: PFX_PATH, pfxSenha: PFX_SENHA });
+    log('INFO', 'ciencia', String(chNFe).slice(-12), r.status || '', r.motivo || '');
+    res.json(r);
+  } catch (err) {
+    log('ERR', 'ciencia', err.message);
     res.status(500).json({ ok: false, error: err.message });
   }
 });

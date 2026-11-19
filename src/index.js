@@ -709,6 +709,8 @@ app.get('/api/health', (req, res) => {
   } catch (_) {}
   let nuvemshopAutoUpload = null;
   try { nuvemshopAutoUpload = require('./services/nuvemshopAutoUpload').getNuvemshopAutoUploadState(); } catch (_) {}
+  let nfeDistribuicao = null;
+  try { nfeDistribuicao = require('./services/nfeDistribuicao').getState(); } catch (_) {}
   let audioLocal = null;
   try { audioLocal = require('./services/localTranscriber').getAsrState(); } catch (_) {}
   let ia = null;
@@ -741,6 +743,7 @@ app.get('/api/health', (req, res) => {
     whatsappWebhookAuth,
     ia,
     audioLocal,
+    nfeDistribuicao,
     qrOffers,
     imageRepair,
     waHealth,
@@ -2378,6 +2381,8 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   try { require('./services/nuvemshopCardMirror').startNuvemshopCardMirror(); } catch (e) { console.error('[nsCardMirror] falha ao iniciar:', e.message); }
   // Cada gerente de marca preenche sozinho o cadastro que tem prova escrita (regra 31, dono 2026-11-18)
   try { require('./services/cuidadorDeMarca').iniciarCuidadorDeMarca(require('./middleware').prisma); } catch (e) { console.error('[cuidador de marca] falha ao iniciar:', e.message); }
+  // NF-e de compra baixando sozinha da SEFAZ (dono 18/11/2026). NFE_DIST=0 desliga.
+  try { require('./services/nfeDistribuicao').start(require('./middleware').prisma); } catch (e) { console.error('[nfe-dist] falha ao iniciar:', e.message); }
   // Recebimento bipado entra sozinho no estoque da loja (dono 2026-11-18)
   try { require('./services/receiptAutoApply').iniciarRecebimentoAutomatico(require('./middleware').prisma); } catch (e) { console.error('[recebimento automático] falha ao iniciar:', e.message); }
   try { startQROffersCron(); } catch (e) { console.error('[qrOffersCron] falha ao iniciar:', e.message); }
