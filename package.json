@@ -17,6 +17,7 @@
     "test:tournament-db": "node scripts/test-tournament-db.js",
     "test:tournament-registration": "node scripts/test-tournament-registration.js",
     "test:tournament-media": "node scripts/test-tournament-media.js",
+    "test:liga-f0": "node scripts/test-liga-f0-seguranca.js",
     "test:fin": "node scripts/test-fin-core.js && node scripts/test-stone-connect.js && node scripts/test-fin-payables.js",
     "test:payroll": "node scripts/test-payroll-engine.js",
     "test:payroll-http": "node scripts/test-payroll-http.cjs",

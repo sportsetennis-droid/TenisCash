@@ -1086,7 +1086,7 @@ async function renderHome(){
       '<div class="grow"><div class="nm wrap2">'+esc(t.name)+'</div>'+
       '<div class="sub">'+esc(FMT_LABEL[t.format]||t.format)+' · '+(t._count?t._count.entries:0)+' inscritos</div>'+
       '<div class="pills">'+stPill(st)+'</div></div>'+CHV+'</div>';});}
-  if(ME){
+  if(isGlobalAdminMe()){ // Liga F0: a importação da tabela oficial é só do admin do sistema
     html+='<div class="sp12"></div><button class="btn sm sec full" data-act="import-futsal">'+I.download+'Importar II Futsal Master Cup 2026</button>';
   }
   html+='</div>';
@@ -1222,6 +1222,9 @@ async function doCreate(){
 
 // ---------- manage tournament ----------
 let CURCAT=null; // categoria aberta no detalhe
+// Permissões do torneio aberto (Liga F0): aprovar inscrição = fundador ou admin global (backend igual).
+let CURPERM={canManage:false,canApprove:false};
+function isGlobalAdminMe(){return !!(ME&&['admin','superadmin','manager'].includes(ME.role));}
 let CURT=null;   // torneio aberto (p/ re-render do mural)
 async function renderTournament(id){
   loading();CURCAT=null;CURT=id;
@@ -1231,6 +1234,7 @@ async function renderTournament(id){
   let MR={caps:{},roles:[],teams:[]};
   try{MR=await api('/'+id+'/my-roles');}catch(e){}
   const canManage=isOwner||!!(MR.caps&&MR.caps.manageTournament);
+  CURPERM={canManage:canManage,canApprove:!!(isOwner||isGlobalAdminMe())};
   const canAssign=isOwner||!!(MR.caps&&MR.caps.assignRoles);
   const canRegister=['OPEN','ONGOING'].includes(t.status);
   const st=ST_LABEL[t.status]||['',''];
@@ -1967,8 +1971,8 @@ async function renderCatPanel(tab){
       pending.forEach(e=>{
         const who=(e.members||[]).map(m=>'@'+(m.user.username||m.user.name||'?')).join(' & ');
         body+='<div class="listitem"><div class="av ghost">'+I.clock+'</div><div class="grow"><div class="nm wrap2">'+esc(e.name)+'</div><div class="sub">'+esc(who)+'</div></div>'+
-          '<button class="btn sm" data-act="approve-entry" data-eid="'+e.id+'">'+I.check+'Aprovar</button>'+
-          '<button class="btn icon gho" aria-label="Remover inscrição" data-act="del-entry" data-eid="'+e.id+'">'+I.x+'</button></div>';});
+          (CURPERM.canApprove?'<button class="btn sm" data-act="approve-entry" data-eid="'+e.id+'">'+I.check+'Aprovar</button>'+
+          '<button class="btn icon gho" aria-label="Remover inscrição" data-act="del-entry" data-eid="'+e.id+'">'+I.x+'</button>':'<span class="sub">aguardando o organizador</span>')+'</div>';});
       body+='<div class="sp12"></div>';
     }
     body+='<button class="btn gho" data-act="add-entry" data-tid="'+tid+'" data-cid="'+cid+'" data-dbl="'+(isDbl?1:0)+'">'+I.plus+'Inscrever atleta'+(isDbl?'/dupla':'')+'</button>';
@@ -2265,7 +2269,7 @@ async function saveEntry(tid,cid,isDbl){
   if(isDbl){const u2=document.getElementById('en-u2').value.trim();if(!u2)return toast('Informe o parceiro de dupla');members.push(u2.replace(/^@/,''));}
   const body={categoryId:cid,name:document.getElementById('en-name').value.trim()||undefined};
   if(members.length)body.memberUsernames=members;
-  try{await api('/'+tid+'/entries',{method:'POST',body});closeSheet();toast('Inscrito!');if(CURCAT&&CURCAT.cid===cid)renderCatPanel('inscritos');}
+  try{const r=await api('/'+tid+'/entries',{method:'POST',body});closeSheet();toast(r&&r.status==='PENDING'?'Inscrição enviada — aguardando aprovação do organizador':'Inscrito!');if(CURCAT&&CURCAT.cid===cid)renderCatPanel('inscritos');}
   catch(e){toast(e.message);}
 }
 function sheetResult(mid,h,a,hid,aid){

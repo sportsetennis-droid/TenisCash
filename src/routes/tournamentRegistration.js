@@ -15,6 +15,7 @@ const jwt = require('jsonwebtoken');
 const { prisma, authMiddleware, JWT_SECRET } = require('../middleware');
 const roles = require('../services/tournamentRoles');
 const reg = require('../services/tournamentRegistration');
+const { limits } = require('../services/ligaRateLimit');
 
 const router = express.Router();
 const BASE = '/api/tournament-registration';
@@ -87,9 +88,14 @@ router.get(BASE + '/public/:slug', async (req, res) => {
 router.post(BASE + '/public/:slug/coupon', (req, res) =>
   send(res, () => reg.checkCoupon(req.params.slug, (req.body || {}).code, (req.body || {}).categoryId)));
 
-router.post(BASE + '/public/:slug/register', async (req, res) => {
+// Liga Aberta F0: limitador próprio (por usuário logado, senão por IP).
+async function attachOptionalUser(req, _res, next) {
+  try { const u = await optionalUser(req); req.optionalUser = u; if (u) req.userId = u.id; } catch (_) { req.optionalUser = null; }
+  next();
+}
+router.post(BASE + '/public/:slug/register', attachOptionalUser, limits.publicRegister, async (req, res) => {
   try {
-    const user = await optionalUser(req);
+    const user = req.optionalUser || null;
     const r = await reg.register(req.params.slug, req.body || {}, user, { ip: clientIp(req), userAgent: req.headers['user-agent'] });
     res.status(201).json({ token: r.publicToken, status: r.status, statusLabel: reg.STATUS_LABEL[r.status] || r.status, dueCents: reg.dueCents(r) });
   } catch (e) {

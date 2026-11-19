@@ -404,7 +404,7 @@ async function snapshot() {
   const coach = await user('Téo Técnico');
   let club;
   await ok('criar clube (escudo, cores, esportes) e ver a página pública', async () => {
-    const r = await req(server, 'POST', '/api/clubs', { token: tok(A), body: { name: 'Cabo Branco Futsal', sports: ['FUTSAL', 'xyz', 'BEACH_TENNIS'], primaryColor: '#123abc', crestUrl: 'data:image/png;base64,iVBORw0KGgo=' } });
+    const r = await req(server, 'POST', '/api/clubs', { token: tok(A), body: { name: 'Cabo Branco Futsal', sports: ['FUTSAL', 'xyz', 'BEACH_TENNIS'], primaryColor: '#123abc', crestUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==' /* PNG 1x1 real — a Liga F0 recusa arquivo só com o cabeçalho */ } });
     assert.strictEqual(r.status, 201, r.text);
     club = r.json;
     assert.strictEqual(club.slug, 'cabo-branco-futsal');

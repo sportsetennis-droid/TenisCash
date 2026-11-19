@@ -12,6 +12,7 @@ const { curateProduct } = require('../services/curationAgent');
 const { isConfigured: visionConfigured } = require('../services/visionValidator');
 const serperImg = require('../services/serperImageSearch');
 const serperWeb = require('../services/serperWebSearch');
+const { matchesSecretHash } = require('../services/secretGuard');
 
 const router = express.Router();
 
@@ -24,7 +25,9 @@ function validatedMinScore(raw) {
 // Deriva a cor pelo REF (busca web), grava aiContext.color, limpa imageUrl e
 // re-puxa a imagem COM cor + Vision exigindo score>=8 (rejeita cor errada).
 // Fora de /api/admin (auth blanket); protegido por ?g=. Registrado em index.js.
-const PX2026COL_GUARD = 'px2026col_7d2b9e4a1f';
+// Liga Aberta F0: só o sha256 do segredo (novo, forte; texto fora do git) fica no código.
+// Rotação: env ROUTE_GUARD_PX2026COL no Railway vale no lugar deste hash.
+const PX2026COL_GUARD_SHA256 = '9e2c74b63e8ccc15ac500eec849e83ceefd55f0d2098af9a98506ff42a3f2996';
 const COLOR_DICT = [
   [/\b(pret[oa]|negr[oa]|black)\b/i, 'Preto'],
   [/\b(branc[oa]|blanc[oa]|white)\b/i, 'Branco'],
@@ -55,7 +58,7 @@ function refFromProduct(name, ctx) {
   return m ? m[1] : null;
 }
 async function pull2026ColHandler(req, res) {
-  if (req.query.g !== PX2026COL_GUARD) return res.status(404).json({ error: 'not found' });
+  if (!matchesSecretHash(req.query.g, PX2026COL_GUARD_SHA256, 'ROUTE_GUARD_PX2026COL')) return res.status(404).json({ error: 'not found' });
   try {
     if (!serperImg.isConfigured() || !visionConfigured() || !serperWeb.isConfigured()) {
       return res.json({ ready: false, serperImg: serperImg.isConfigured(), serperWeb: serperWeb.isConfigured(), vision: visionConfigured() });
