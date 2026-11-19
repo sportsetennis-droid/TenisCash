@@ -9,8 +9,9 @@ const BIPADO = 'Quando o dono diz "bipado"/"bipados", é SEMPRE o ESTOQUE NOVO: 
   '(rodadas operationType="replacement" que não foram canceladas). Bipe antigo, de rodada cancelada, de inventário antigo ou ainda pendente NÃO é "bipado". ' +
   'Ao responder sobre "bipados", conte, liste e cruze só esse conjunto (dono, 18/11/2026).';
 
-const CINCO_FOTOS = 'Todo produto tem que ter 5 fotos da MESMA COR do card (nem menos, nem mais). Produto novo com menos de 5 não sobe para a Nuvemshop; ' +
-  'o que já está no site com menos de 5 é completado. Foto nunca é inventada nem de outra cor (dono, 18/11/2026).';
+const CINCO_FOTOS = 'Todo produto tem como META 5 fotos da MESMA COR do card (no máximo 5). Produto novo SOBE para a Nuvemshop com 3 fotos ou mais; ' +
+  'com menos de 3 não sobe (dono, 19/11/2026: "até 3 fotos pode liberar... menos de 3 fotos não"). Quem tem 3 ou 4 continua sendo completado até 5. ' +
+  'Foto nunca é inventada nem de outra cor (dono, 18/11/2026).';
 
 const NUVEMSHOP_AUTOMATICA = 'Toda alteração no card (foto, tamanho, código, venda, estoque, preço, nome, cor, descrição, classificação — tudo) chega SOZINHA na Nuvemshop: ' +
   'espelho do card a cada 3 min, estoque a cada 5 min, produto novo de hora em hora. Nenhum agente depende de "subir na mão" (dono, 18/11/2026).';

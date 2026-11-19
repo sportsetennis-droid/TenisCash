@@ -72,13 +72,19 @@ function usableImageCount(product) {
   return new Set([product?.imageUrl, ...gallery].filter(valid).map((s) => clean(s))).size;
 }
 
-// REGRA DO DONO (2026-11-18): "produto não pode ter menos de 5 fotos".
-// Vale para todo produto NOVO que sobe para a Nuvemshop. Os já publicados com
-// menos de 5 não são tirados do ar por esta regra (decisão do dono) — o gerente
-// de cada marca aponta e ensina a completar.
+// FOTOS — dois números diferentes:
+//  - minPhotos(): o MÍNIMO para um produto NOVO subir para a Nuvemshop. Dono, 19/11/2026:
+//    "Os que tiver até 3 fotos pode liberar... Menos de 3 fotos não". Era 5 (regra de 18/11).
+//    Os já publicados não são tirados do ar por esta regra. Override sem deploy: NS_MIN_FOTOS.
+//  - metaFotos(): a META de todo card (regra 27: 5 fotos da mesma cor). O gerente de marca e a
+//    tela de fotos da loja continuam completando até 5. Override: NS_META_FOTOS.
 function minPhotos() {
-  const n = Number(process.env.NS_MIN_FOTOS || 5);
-  return Number.isFinite(n) && n > 0 ? n : 5;
+  const n = Number(process.env.NS_MIN_FOTOS || 3);
+  return Number.isFinite(n) && n > 0 ? n : 3;
+}
+function metaFotos() {
+  const n = Number(process.env.NS_META_FOTOS || 5);
+  return Number.isFinite(n) && n > 0 ? Math.max(n, minPhotos()) : 5;
 }
 
 // Lojas cujo estoque FÍSICO vale pra loja online (dono 2026-11-12: "tenho produtos
@@ -333,6 +339,7 @@ module.exports = {
   hasUsableImage,
   usableImageCount,
   minPhotos,
+  metaFotos,
   hasRemoteUsableImage,
   isPublicSizeLabel,
   nuvemshopStockStoreIds,
