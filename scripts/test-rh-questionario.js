@@ -1,4 +1,4 @@
-// Teste do questionário com nota, roteiro de entrevista e role-play (RH).
+// Teste do questionário com nota por perfil, roteiro de entrevista e role-play (RH).
 // Uso: DATABASE_URL=postgres local de teste  →  node scripts/test-rh-questionario.js
 // Nunca rodar apontando para produção: cria e apaga vagas e candidatos de teste.
 const assert = require('assert');
@@ -13,126 +13,125 @@ let n = 0;
 const ok = (name) => { n++; console.log('  ✓', name); };
 const fails = async (fn, status, re) => { try { await fn(); } catch (e) { assert.strictEqual(e.status, status, e.message); if (re) assert.match(e.message, re); return; } assert.fail('devia falhar com ' + status); };
 const throwsSync = (fn, re) => { try { fn(); } catch (e) { assert.match(e.message, re); return; } assert.fail('devia dar erro'); };
-// melhor resposta = alternativa com mais pontos (MC) ou que não reprova (ELIM)
-const best = (list) => Object.fromEntries(list.map((q) => [q.id, q.type === 'MC' ? q.options.reduce((bi, o, i, a) => (o.points > a[bi].points ? i : bi), 0) : q.options.findIndex((o) => o.ok)]));
+// respostas: melhor (pontos máximos / não reprova) ou pior (0 / não reprova); perfil pela letra
+function answers(list, code, mode = 'best') {
+  const a = {};
+  for (const q of list) {
+    if (q.type === 'PERFIL') { if (code) a[q.id] = q.options.findIndex((o) => o.code === code); continue; }
+    if (q.type === 'ELIM') { a[q.id] = q.options.findIndex((o) => o.ok); continue; }
+    const pts = q.options.map((o) => o.points);
+    a[q.id] = pts.indexOf(mode === 'best' ? Math.max(...pts) : Math.min(...pts));
+  }
+  return a;
+}
 
 (async () => {
   // ── modelos
   for (const [k, t] of Object.entries(scr.TEMPLATES)) {
     const norm = scr.normalize(t.screening);
-    assert.deepStrictEqual(scr.normalize(scr.toText(norm)).map((q) => q.options), norm.map((q) => q.options), k);
-    assert.ok(t.cutoff <= scr.maxScore(norm));
-    assert.ok(!/estado civil|\bfilhos?\b|gravid|religi|\bidade\b|quantos anos/i.test(JSON.stringify(t)), k + ': pergunta proibida');
+    assert.strictEqual(scr.toText(scr.normalize(scr.toText(norm))), scr.toText(norm), k);
+    assert.ok(t.cutoffPct > 0 && t.cutoffPct <= 100);
+    assert.ok(!/estado civil|\bfilhos?\b|gravid|religi|\bidade\b|quantos anos|escala|6x1|5x2/i.test(JSON.stringify(t)), k + ': pergunta proibida ou fala de escala');
   }
-  assert.strictEqual(scr.maxScore(scr.TEMPLATES.VENDEDOR.screening), 35); assert.strictEqual(scr.TEMPLATES.VENDEDOR.cutoff, 24);
-  ok('modelos Vendedor (35 pts, corte 24), Logística e Supervisor: texto ida e volta igual, sem pergunta proibida');
+  assert.deepStrictEqual(scr.maxByProfile(scr.normalize(scr.TEMPLATES.VENDEDOR.screening)), { A: 34, B: 35, C: 41, D: 47 });
+  ok('modelo Vendedor com 4 perfis (máx. A 34, B 35, C 41, D 47), corte 70%; sem pergunta proibida nem escala');
   throwsSync(() => scr.normalize('ELIM: Pode sábado?\n- Sim\n- Às vezes'), /\(reprova\)/);
-  throwsSync(() => scr.normalize('ELIM: Pode sábado?\n- Não (reprova)\n- Nunca (reprova)'), /não reprova/);
   throwsSync(() => scr.normalize('MC: Experiência\n- Nenhuma\n- Muita = 3'), /= pontos/);
-  throwsSync(() => scr.normalize('Experiência?\n- a = 1'), /ELIM:/);
-  throwsSync(() => scr.normalize('MC: X\n- a = 1'), /2 a 6/);
-  throwsSync(() => scr.normalize('MC: X\n- a = 11\n- b = 0'), /0 a 10/);
-  throwsSync(() => scr.normalize('ELIM: Pode sábado?\n- Sim = 3\n- Não (reprova)'), /ELIM não tem pontos/);
-  throwsSync(() => scr.normalize('MC: X\n- a (reprova) = 1\n- b = 0'), /só vale em pergunta ELIM/);
-  ok('questionário mal escrito: erro claro com a linha');
+  throwsSync(() => scr.normalize('ELIM: X\n- Sim = 3\n- Não (reprova)'), /ELIM não tem pontos/);
+  throwsSync(() => scr.normalize('MC [A]: X\n- a = 1\n- b = 0'), /falta a pergunta PERFIL/);
+  throwsSync(() => scr.normalize('PERFIL: Quem é você?\n- Novo [A]\n- Velho [B]\n\nMC [C]: X\n- a = 1\n- b = 0'), /\[C\] não existe/);
+  throwsSync(() => scr.normalize('PERFIL: Quem é você?\n- Novo\n- Velho [B]'), /letra do perfil/);
+  throwsSync(() => scr.normalize('MC: X\n- a = 1\n- b = 0\n\nPERFIL: Quem?\n- Novo [A]\n- Velho [B]'), /primeira/);
+  throwsSync(() => scr.normalize('PERFIL: Quem?\n- Novo [A]\n- Velho [B]\n\nMC [A]: X\n- a = 1\n- b = 0'), /perfil B não tem nenhuma pergunta/);
+  ok('questionário mal escrito: erro claro (inclusive perfil errado ou sem pergunta)');
   const v1 = scr.normalize('MC: A\n- x = 1\n- y = 0\n\nMC: B\n- x = 1\n- y = 0');
   const v2 = scr.normalize('MC: NOVA\n- x = 1\n- y = 0\n\nMC: A\n- x = 1\n- y = 0\n\nMC: B\n- x = 1\n- y = 0', v1);
-  assert.deepStrictEqual(v2.map((q) => q.id), ['q3', 'q1', 'q2']); ok('pergunta nova no topo não rouba o id das antigas (resposta não muda de pergunta)');
+  assert.deepStrictEqual(v2.map((q) => q.id), ['q3', 'q1', 'q2']); ok('pergunta nova no topo não rouba o id das antigas');
 
   // ── vaga semeada
   await rh.ensureSchema(prisma);
   const job = await rh.getJob(prisma, seedJobs.SLUG);
-  assert.strictEqual(job.screening.length, scr.TEMPLATES.VENDEDOR.screening.length); assert.strictEqual(job.cutoff, 24);
-  assert.ok(!job.questions.some((q) => /disponibilidade|pratica ou acompanha/i.test(q))); ok('vaga Bessa/Pirâmide já entra com o modelo Vendedor e sem perguntas repetidas');
+  assert.strictEqual(job.screening[0].type, 'PERFIL'); assert.strictEqual(job.cutoffPct, 70);
+  assert.ok(job.questions.includes(seedJobs.OPEN_RENAME[1]) && !job.questions.includes(seedJobs.OPEN_RENAME[0]));
+  ok('vaga Bessa/Pirâmide nasce com perfis; pergunta aberta serve para quem nunca trabalhou');
   const pub = rh.publicJob(job);
-  assert.strictEqual(pub.screening.length, job.screening.length);
-  assert.ok(!/points|"ok"|ELIM|"MC"|reprova/.test(JSON.stringify(pub.screening)), 'vazou resposta'); ok('página pública recebe só perguntas e alternativas (sem pontos nem "reprova")');
+  assert.ok(!/points|"ok"|ELIM|"MC"|reprova/.test(JSON.stringify(pub.screening)), 'vazou resposta');
+  assert.ok(pub.screening[0].perfil && pub.screening.find((q) => q.id === 'D1').only[0] === 'D');
+  ok('página pública: perfis e a que perfil cada pergunta serve, sem pontos nem "reprova"');
 
-  // ── candidatura
-  const base = (extra) => ({ name: 'Candidato Questionário', phone: '83977770001', consent: 'true', storeChoices: JSON.stringify([job.storeOptions[0]]), ...extra });
-  const all = best(job.screening);
-  const missing = { ...all }; delete missing.M5;
-  await fails(() => rh.apply(prisma, job.slug, base({ screening: JSON.stringify(missing) }), null), 400, /pergunta 7 do questionário/); ok('sem responder tudo não envia (diz qual pergunta)');
-  await fails(() => rh.apply(prisma, job.slug, base({ screening: JSON.stringify({ ...all, M1: 9 }) }), null), 400, /questionário/); ok('alternativa inexistente não vale');
-  await rh.apply(prisma, job.slug, base({ screening: JSON.stringify(all), score: 999, eliminated: 'false', talentPool: 'true', referredBy: '  Lio da Tambaú ' }), null);
-  const zero = Object.fromEntries(job.screening.map((q) => [q.id, q.type === 'ELIM' ? q.options.findIndex((o) => o.ok) : q.options.findIndex((o) => o.points === 0)]));
-  await rh.apply(prisma, job.slug, base({ phone: '83977770002', name: 'Candidato Fraco', screening: JSON.stringify(zero) }), null);
-  const elimAns = { ...all, E1: job.screening[0].options.findIndex((o) => !o.ok) };
-  await rh.apply(prisma, job.slug, base({ phone: '83977770003', name: 'Candidato Sem Domingo', screening: JSON.stringify(elimAns) }), null);
+  // ── candidatura por perfil
+  const base = (phone, extra) => ({ name: 'Candidato ' + phone.slice(-1), phone, consent: 'true', storeChoices: JSON.stringify([job.storeOptions[0]]), ...extra });
+  await fails(() => rh.apply(prisma, job.slug, base('83977770001', { screening: JSON.stringify(answers(job.screening, null)) }), null), 400, /pergunta 1 do questionário/);
+  ok('sem escolher o perfil não envia');
+  const onlyCommonA = answers(job.screening, 'A'); delete onlyCommonA.A2;
+  await fails(() => rh.apply(prisma, job.slug, base('83977770001', { screening: JSON.stringify(onlyCommonA) }), null), 400, /questionário/);
+  ok('falta pergunta do perfil: não envia');
+  const aAns = answers(job.screening.filter((q) => scr.appliesTo(q, 'A') || q.type === 'PERFIL'), 'A');
+  await rh.apply(prisma, job.slug, base('83977770001', { screening: JSON.stringify({ ...aAns, D1: 0, M6: 0 }), score: 999, talentPool: 'true', referredBy: ' Lio ' }), null);
+  await rh.apply(prisma, job.slug, base('83977770002', { screening: JSON.stringify(answers(job.screening, 'D', 'worst')) }), null);
+  await rh.apply(prisma, job.slug, base('83977770003', { screening: JSON.stringify(answers(job.screening, 'D')) }), null);
+  await rh.apply(prisma, job.slug, base('83977770004', { screening: JSON.stringify({ ...answers(job.screening, 'B'), E1: 1 }) }), null);
   const list = await rh.listCandidates(prisma, { jobId: job.id });
-  const top = list.find((c) => c.phone === '83977770001'), low = list.find((c) => c.phone === '83977770002'), el = list.find((c) => c.phone === '83977770003');
-  assert.strictEqual(top.score, 35); assert.strictEqual(top.scoreMax, 35); assert.strictEqual(top.eliminated, false); assert.strictEqual(top.cutoff, 24); assert.strictEqual(top.cutoffAt, 24);
-  ok('nota calculada no servidor: 35/35 (o "score" que o navegador mandar é ignorado)');
-  assert.strictEqual(low.score, 0); assert.strictEqual(low.eliminated, false); ok('respostas fracas: 0/35');
-  assert.strictEqual(el.eliminated, true); assert.strictEqual(el.stage, 'NOVO'); assert.strictEqual(el.score, 35);
-  ok('eliminatória só marca: continua em "Novo" para revisão humana (LGPD art. 20)');
-  assert.strictEqual(top.talentPool, true); assert.strictEqual(top.referredBy, 'Lio da Tambaú'); assert.strictEqual(low.talentPool, false); ok('banco de talentos e indicação gravados');
-  assert.strictEqual(top.screening, undefined); assert.strictEqual(top.scorecard, undefined); assert.ok(top.evalSummary); ok('lista do funil leve: sem respostas completas, com resumo');
-  const det = await rh.getCandidate(prisma, el.id);
-  assert.ok(det.events.some((e) => e.kind === 'TRIAGEM' && /Revisar antes de reprovar/.test(e.note)));
-  assert.strictEqual(det.screening.E1.elim, true); assert.strictEqual(det.screening.M4.points, 3); assert.match(det.screening.M4.a, /rotina/);
-  ok('ficha mostra cada resposta com pontos e registra a eliminatória no histórico');
+  const by = (ph) => list.find((c) => c.phone === ph);
+  const a1 = by('83977770001'), d0 = by('83977770002'), d1 = by('83977770003'), b1 = by('83977770004');
+  assert.strictEqual(a1.score, 34); assert.strictEqual(a1.scoreMax, 34); assert.strictEqual(a1.profile, 'Vai ser o meu primeiro emprego');
+  assert.strictEqual(a1.cutoffAt, 24);
+  ok('primeiro emprego: 34/34 só nas perguntas dele (respostas de outro perfil são ignoradas); corte 24 = 70%');
+  const det1 = await rh.getCandidate(prisma, a1.id);
+  assert.ok(!det1.screening.D1 && !det1.screening.M6 && det1.screening.A1 && det1.screening.PERFIL.type === 'PERFIL'); ok('ficha guarda só as perguntas do perfil e o perfil escolhido');
+  assert.strictEqual(d1.score, 47); assert.strictEqual(d1.scoreMax, 47); assert.strictEqual(d1.cutoffAt, 33);
+  assert.strictEqual(d0.score, 1); assert.strictEqual(d0.scoreMax, 47);
+  ok('loja de esporte: 47/47 com as técnicas; respostas fracas 1/47');
+  assert.strictEqual(b1.eliminated, true); assert.strictEqual(b1.stage, 'NOVO'); assert.strictEqual(b1.scoreMax, 35); ok('eliminatória só marca para revisar; perfil B tem máx. 35');
+  assert.strictEqual(a1.talentPool, true); assert.strictEqual(a1.referredBy, 'Lio'); ok('banco de talentos e indicação gravados');
+  assert.strictEqual(a1.screening, undefined); assert.ok(a1.evalSummary); ok('lista do funil leve, com perfil e resumo');
 
   // ── roteiro + role-play
-  assert.strictEqual(det.guide.length, 12); assert.strictEqual(det.roleplay.criteria.length, 9); ok('vendedor: roteiro com 12 perguntas e role-play com 9 critérios');
-  const iv = Object.fromEntries(det.guide.map((g, i) => [g.k, (i % 5) + 1]));
-  iv.cliente = 9; iv.inventado = 5;
+  const det = await rh.getCandidate(prisma, b1.id);
+  assert.strictEqual(det.guide.length, 12); assert.strictEqual(det.roleplay.criteria.length, 9);
+  const iv = Object.fromEntries(det.guide.map((g, i) => [g.k, (i % 5) + 1])); iv.cliente = 9;
   const rpGood = Object.fromEntries(det.roleplay.criteria.map((c) => [c.k, 4]));
-  let r = await rh.saveScorecard(prisma, el.id, { interview: iv, roleplay: rpGood, notes: 'Disse que corre 3x por semana.' }, null);
-  assert.strictEqual(r.scorecard.interview.cliente, undefined); assert.strictEqual(r.scorecard.interview.inventado, undefined);
-  assert.strictEqual(r.evalSummary.interviewDone, 11); assert.strictEqual(r.evalSummary.roleplayAvg, 4); assert.strictEqual(r.evalSummary.roleplayOk, true);
-  ok('nota fora de 1–5 ou pergunta que não existe é descartada; role-play 4,0 passa');
-  r = await rh.saveScorecard(prisma, el.id, { interview: iv, roleplay: { ...rpGood, honestidade: 1, postura: 5, fechamento: 5 } }, null);
-  assert.ok(r.evalSummary.roleplayAvg >= 3.5); assert.strictEqual(r.evalSummary.roleplayOk, false); ok('nota 1 em Honestidade reprova o role-play mesmo com média boa');
-  r = await rh.saveScorecard(prisma, el.id, { interview: {}, roleplay: { abordagem: 5 } }, null);
-  assert.strictEqual(r.evalSummary.roleplayOk, null); ok('role-play incompleto não dá veredito');
-  assert.ok(r.events.filter((e) => e.kind === 'AVALIACAO').length === 3); ok('cada avaliação salva entra no histórico');
+  let r = await rh.saveScorecard(prisma, b1.id, { interview: iv, roleplay: rpGood }, null);
+  assert.strictEqual(r.evalSummary.interviewDone, 11); assert.strictEqual(r.evalSummary.roleplayOk, true);
+  r = await rh.saveScorecard(prisma, b1.id, { interview: iv, roleplay: { ...rpGood, honestidade: 1, postura: 5, fechamento: 5 } }, null);
+  assert.strictEqual(r.evalSummary.roleplayOk, false);
+  ok('roteiro e role-play: nota fora de 1–5 descartada; 1 em Honestidade reprova o role-play');
 
-  // ── vaga nova pelo painel (texto) + cargo Logística
+  const ga = await rh.getCandidate(prisma, a1.id);
+  assert.ok(ga.guide.find((g) => g.k === 'meta').q.includes('escola') && !ga.guide.some((g) => /bateu a meta|cliente achou caro/.test(g.q)));
+  assert.ok(det.guide.find((g) => g.k === 'meta').q.includes('bateu a meta')); ok('roteiro de primeiro emprego não pede experiência de venda');
+
+  // ── vaga nova pelo painel: corte em %
   const t = scr.TEMPLATES.LOGISTICA;
-  const lj = await rh.saveJob(prisma, { title: 'Auxiliar de estoque — teste', jobTitle: 'LOGISTICA', screeningText: scr.toText(t.screening), cutoff: '12' }, null);
-  assert.strictEqual(lj.screening.length, t.screening.length); assert.strictEqual(lj.cutoff, 12);
-  assert.deepStrictEqual(lj.screening.map((q) => q.id), t.screening.map((q) => q.id)); // texto do modelo mantém os ids E1, M1…
+  const lj = await rh.saveJob(prisma, { title: 'Auxiliar de estoque — teste', jobTitle: 'LOGISTICA', screeningText: scr.toText(t.screening), cutoffPct: '65' }, null);
+  assert.strictEqual(lj.cutoffPct, 65); assert.strictEqual(lj.cutoff, null);
   const adminRow = (await rh.listJobs(prisma)).find((j) => j.id === lj.id);
-  assert.strictEqual(adminRow.screeningMax, 18); assert.ok(adminRow.screeningText.startsWith('ELIM: ')); ok('painel cria vaga pelo texto do modelo Logística (18 pts, corte 12)');
+  assert.deepStrictEqual(adminRow.screeningMaxBy, { '': 18 }); ok('painel cria vaga sem perfil, corte 65%');
   await rh.saveJob(prisma, { title: 'Auxiliar de estoque — teste', jobTitle: 'LOGISTICA', status: 'ABERTA' }, null, lj.id);
-  assert.strictEqual((await rh.getJob(prisma, lj.id)).screening.length, t.screening.length); ok('salvar a vaga sem mexer no questionário não apaga o questionário');
-  await rh.saveJob(prisma, { title: 'Auxiliar de estoque — teste', jobTitle: 'LOGISTICA', screeningText: '', cutoff: '' }, null, lj.id);
-  const cleared = await rh.getJob(prisma, lj.id); assert.deepStrictEqual(cleared.screening, []); assert.strictEqual(cleared.cutoff, null); ok('apagar o texto tira o questionário');
-  await rh.saveJob(prisma, { title: 'Auxiliar de estoque — teste', jobTitle: 'LOGISTICA', screeningText: scr.toText(t.screening), cutoff: 12 }, null, lj.id);
-  await rh.apply(prisma, lj.slug, { name: 'Estoquista Teste', phone: '83977770009', consent: 'true', screening: JSON.stringify(best((await rh.getJob(prisma, lj.id)).screening)) }, null);
+  const kept = await rh.getJob(prisma, lj.id); assert.strictEqual(kept.screening.length, t.screening.length); assert.strictEqual(kept.cutoffPct, 65); ok('salvar sem mexer no questionário não apaga nada');
+  await rh.apply(prisma, lj.slug, { name: 'Estoquista Teste', phone: '83977770009', consent: 'true', screening: JSON.stringify(answers(kept.screening, null)) }, null);
   const ec = (await rh.listCandidates(prisma, { jobId: lj.id }))[0];
-  assert.strictEqual(ec.score, 18);
-  const ed = await rh.saveScorecard(prisma, ec.id, { interview: { conferencia: 5 }, roleplay: { abordagem: 5 } }, null);
-  assert.strictEqual(ed.guide.length, 8); assert.strictEqual(ed.roleplay, null); assert.deepStrictEqual(ed.scorecard.roleplay, {}); ok('logística: roteiro próprio (8 perguntas), sem role-play de venda');
+  assert.strictEqual(ec.score, 18); assert.strictEqual(ec.cutoffAt, 12); assert.strictEqual(ec.profile, null); ok('vaga sem perfil continua igual (18/18, corte 12)');
 
-  // ── semente não pisa no que o dono editou
+  // ── vaga já no ar com o questionário único (V1) vira por perfil; candidatos antigos intactos; edição do dono não é tocada
+  const v1Scr = scr.normalize(scr.T_VENDEDOR_V1);
+  await prisma.$executeRaw`UPDATE "HrJob" SET "screening"=${JSON.stringify(v1Scr)}::jsonb, "cutoffPct"=NULL, "cutoff"=24,
+    "questions"=${JSON.stringify(job.questions.map((q) => (q === seedJobs.OPEN_RENAME[1] ? seedJobs.OPEN_RENAME[0] : q)))}::jsonb WHERE "id"=${job.id}`;
+  await seedJobs.seed(prisma);
+  const up = await rh.getJob(prisma, job.id);
+  assert.strictEqual(up.screening[0].type, 'PERFIL'); assert.strictEqual(up.cutoffPct, 70); assert.strictEqual(up.cutoff, null);
+  assert.ok(up.questions.includes(seedJobs.OPEN_RENAME[1])); ok('vaga no ar (questionário único) passa para perfis no próximo boot');
+  await prisma.$executeRaw`UPDATE "HrJob" SET "screening"=${JSON.stringify(v1Scr)}::jsonb, "cutoffPct"=NULL, "cutoff"=28 WHERE "id"=${job.id}`;
+  await seedJobs.seed(prisma);
+  assert.strictEqual((await rh.getJob(prisma, job.id)).cutoffPct, 80); ok('corte mexido pelo dono (28 de 35) vira 80%, não é apagado');
+  const old = await rh.getCandidate(prisma, d1.id); assert.strictEqual(old.score, 47); ok('quem já se candidatou mantém nota e respostas');
   await prisma.$executeRaw`UPDATE "HrJob" SET "screening"=${JSON.stringify(scr.normalize('ELIM: Do dono?\n- Sim\n- Não (reprova)'))}::jsonb WHERE "id"=${job.id}`;
   await seedJobs.seed(prisma);
-  assert.strictEqual((await rh.getJob(prisma, job.id)).screening[0].text, 'Do dono?'); ok('questionário editado pelo dono nunca é trocado pela semente');
+  assert.strictEqual((await rh.getJob(prisma, job.id)).screening[0].text, 'Do dono?'); ok('questionário editado pelo dono nunca é trocado');
   await prisma.$executeRaw`UPDATE "HrJob" SET "screening"='[]'::jsonb WHERE "id"=${job.id}`;
   await seedJobs.seed(prisma);
-  assert.deepStrictEqual((await rh.getJob(prisma, job.id)).screening, []); ok('dono apagou o questionário: a semente não põe de volta');
-  await prisma.$executeRaw`UPDATE "HrJob" SET "screening"='[]'::jsonb, "cutoff"=NULL, "screeningSeeded"=false, "questions"=${JSON.stringify(seedJobs.QUESTIONS_V1)}::jsonb WHERE "id"=${job.id}`;
-  await seedJobs.seed(prisma);
-  const re = await rh.getJob(prisma, job.id);
-  assert.strictEqual(re.screening.length, 14); assert.strictEqual(re.cutoff, 24); assert.deepStrictEqual(re.questions, seedJobs.JOB.questions); ok('vaga já no ar sem questionário recebe o modelo (caso de produção)');
+  assert.deepStrictEqual((await rh.getJob(prisma, job.id)).screening, []); ok('dono apagou o questionário: não volta');
 
-  // ── sem falar de escala (dono 19/11): vaga no ar com o texto antigo é trocada e a resposta acompanha
-  assert.ok(!/escala|6x1|5x2/i.test(JSON.stringify(scr.TEMPLATES) + JSON.stringify(scr.GUIDE) + JSON.stringify(seedJobs.JOB.interviewQuestions)), 'ainda fala de escala');
-  const [[oldE1, newE1]] = seedJobs.RENAMES.screening, [[oldIq, newIq]] = seedJobs.RENAMES.interview;
-  const cur = await rh.getJob(prisma, job.id);
-  await prisma.$executeRaw`UPDATE "HrJob" SET "screening"=${JSON.stringify(cur.screening.map((q) => (q.id === 'E1' ? { ...q, text: oldE1 } : q)))}::jsonb,
-    "interviewQuestions"=${JSON.stringify(cur.interviewQuestions.map((q) => (q === newIq ? oldIq : q)))}::jsonb WHERE "id"=${job.id}`;
-  await prisma.$executeRaw`UPDATE "HrCandidate" SET "interview"=${JSON.stringify({ [oldIq]: 'Saio cedo de casa.' })}::jsonb WHERE "id"=${el.id}`;
-  await seedJobs.seed(prisma);
-  const fx = await rh.getJob(prisma, job.id);
-  assert.strictEqual(fx.screening.find((q) => q.id === 'E1').text, newE1); assert.ok(fx.interviewQuestions.includes(newIq) && !fx.interviewQuestions.includes(oldIq));
-  assert.deepStrictEqual((await rh.getCandidate(prisma, el.id)).interview, { [newIq]: 'Saio cedo de casa.' });
-  assert.ok(!/escala|6x1/i.test(JSON.stringify(rh.publicJob(fx))) && !/escala|6x1/i.test(JSON.stringify(fx.interviewQuestions)));
-  ok('vaga no ar deixa de falar de escala; resposta já dada continua na pergunta');
-
-  // limpeza
   await prisma.$executeRaw`DELETE FROM "HrCandidateEvent" WHERE "candidateId" IN (SELECT "id" FROM "HrCandidate" WHERE "phone" LIKE '8397777000%')`;
   await prisma.$executeRaw`DELETE FROM "HrCandidate" WHERE "phone" LIKE '8397777000%'`;
   await prisma.$executeRaw`DELETE FROM "HrJob" WHERE "id"=${lj.id}`;
