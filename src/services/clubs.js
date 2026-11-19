@@ -369,9 +369,16 @@ async function publicView(idOrSlug, viewer = {}) {
   }).sort((a, b) => order[a.role] - order[b.role] || String(a.name).localeCompare(String(b.name)));
 
   // Vínculos explícitos → próximos jogos + treinos
-  const links = await prisma.clubTournamentLink.findMany({ where: { clubId: club.id }, orderBy: { createdAt: 'asc' } });
-  const tids = [...new Set(links.map((l) => l.tournamentId))];
-  const tournaments = tids.length ? await prisma.tournament.findMany({ where: { id: { in: tids } }, select: { id: true, name: true, slug: true, sport: true, status: true } }) : [];
+  // Liga F1: só torneio que quem olha pode ver na LISTA (público e não arquivado; não
+  // listado/privado só pra membro ou admin global). O resto some do clube.
+  const access = require('./tournamentAccess');
+  const allLinks = await prisma.clubTournamentLink.findMany({ where: { clubId: club.id }, orderBy: { createdAt: 'asc' } });
+  const allTids = [...new Set(allLinks.map((l) => l.tournamentId))];
+  const allTs = allTids.length ? await prisma.tournament.findMany({ where: { id: { in: allTids } }, select: { id: true, name: true, slug: true, sport: true, status: true, ownerId: true, visibility: true, archivedAt: true } }) : [];
+  const tournaments = [];
+  for (const t of allTs) if (await access.canSeeListed({ userId: viewer.userId || null, userRole: viewer.userRole || null }, t)) tournaments.push(t);
+  const tids = tournaments.map((t) => t.id);
+  const links = allLinks.filter((l) => tids.includes(l.tournamentId));
   const tmap = new Map(tournaments.map((t) => [t.id, t]));
   const pairs = new Set(links.map((l) => l.tournamentId + '|' + l.entryName));
   let upcoming = [];

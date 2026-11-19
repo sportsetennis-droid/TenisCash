@@ -58,9 +58,13 @@ function clientIp(req) {
 function requireCan(action) {
   return async (req, res, next) => {
     try {
-      const t = await prisma.tournament.findUnique({ where: { id: req.params.tid }, select: { id: true, archivedAt: true } });
+      const t = await prisma.tournament.findUnique({ where: { id: req.params.tid }, select: { id: true, ownerId: true, visibility: true, archivedAt: true } });
       if (!t || t.archivedAt) return access.sendNotFound(res);
-      if (!(await roles.can(req.userId, req.userRole, t.id, action))) return res.status(403).json({ error: 'sem permissão neste torneio' });
+      if (!(await roles.can(req.userId, req.userRole, t.id, action))) {
+        // privado sem acesso = mesmo 404 de "não existe" (M9)
+        if (!(await access.canSee({ userId: req.userId, userRole: req.userRole }, t))) return access.sendNotFound(res);
+        return res.status(403).json({ error: 'sem permissão neste torneio' });
+      }
       next();
     } catch (e) {
       res.status(500).json({ error: 'erro interno' });
@@ -119,8 +123,18 @@ router.get(BASE + '/r/:token', async (req, res) => {
   send(res, async () => reg.publicStatus(req.params.token, await optionalUser(req)));
 });
 
+// Liga F1: inscrição de torneio ARQUIVADO não gera cobrança nova.
+async function tokenOfArchived(token) {
+  const r = await prisma.tournamentRegistration.findUnique({ where: { publicToken: String(token || '') }, select: { tournamentId: true } });
+  if (!r) return false;
+  const t = await prisma.tournament.findUnique({ where: { id: r.tournamentId }, select: { archivedAt: true } });
+  return !t || !!t.archivedAt;
+}
 router.post(BASE + '/r/:token/pay', async (req, res) =>
-  send(res, async () => reg.startPayment(req.params.token, req.body || {}, await optionalUser(req))));
+  send(res, async () => {
+    if (await tokenOfArchived(req.params.token)) throw new reg.RegError(404, 'inscrição não encontrada');
+    return reg.startPayment(req.params.token, req.body || {}, await optionalUser(req));
+  }));
 
 router.post(BASE + '/r/:token/cancel', async (req, res) =>
   send(res, async () => reg.cancelByToken(req.params.token, await optionalUser(req))));

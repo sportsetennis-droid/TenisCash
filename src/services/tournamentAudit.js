@@ -50,11 +50,15 @@ async function list(tournamentId, { limit = 50, cursor = null, action = null } =
   const rows = await prisma.tournamentAudit.findMany(q);
   const hasMore = rows.length > take;
   const items = hasMore ? rows.slice(0, take) : rows;
-  const userIds = [...new Set(items.map((r) => r.userId).filter(Boolean))];
+  const targetOf = (r) => (r.after && (r.after.userId || r.after.ownerId)) || (r.before && r.before.userId) || null;
+  const userIds = [...new Set(items.map((r) => r.userId).concat(items.map(targetOf)).filter(Boolean))];
   const users = userIds.length ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true, username: true } }) : [];
   const uById = Object.fromEntries(users.map((u) => [u.id, u]));
   return {
-    items: items.map((r) => ({ ...r, user: r.userId ? (uById[r.userId] || { id: r.userId }) : null })),
+    items: items.map((r) => {
+      const tg = targetOf(r);
+      return { ...r, user: r.userId ? (uById[r.userId] || { id: r.userId }) : null, target: tg ? (uById[tg] || { id: tg }) : null };
+    }),
     nextCursor: hasMore ? items[items.length - 1].id : null,
   };
 }

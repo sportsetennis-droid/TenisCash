@@ -9,6 +9,24 @@
 // =====================================================================
 
 const STATEMENTS = [
+  // Liga Aberta F1 — PRIMEIRO da lista (as rotas de torneio leem essas colunas: quanto antes
+  // existirem depois do deploy, menor a janela de erro). Aditivo, nunca apaga.
+  `ALTER TABLE "Tournament" ADD COLUMN IF NOT EXISTS "archivedAt" TIMESTAMP(3)`,
+  `ALTER TABLE "Tournament" ADD COLUMN IF NOT EXISTS "archivedBy" TEXT`,
+  `ALTER TABLE "Tournament" ADD COLUMN IF NOT EXISTS "requireRefereeAssignment" BOOLEAN NOT NULL DEFAULT false`,
+  `CREATE TABLE IF NOT EXISTS "TournamentAudit" (
+     "id" TEXT NOT NULL,
+     "tournamentId" TEXT NOT NULL,
+     "userId" TEXT,
+     "action" TEXT NOT NULL,
+     "entity" TEXT,
+     "entityId" TEXT,
+     "before" JSONB,
+     "after" JSONB,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "TournamentAudit_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE INDEX IF NOT EXISTS "TournamentAudit_tournamentId_createdAt_idx" ON "TournamentAudit"("tournamentId", "createdAt")`,
   `ALTER TABLE "Tournament" ADD COLUMN IF NOT EXISTS "cashEnabled" BOOLEAN NOT NULL DEFAULT false`,
   `ALTER TABLE "Tournament" ADD COLUMN IF NOT EXISTS "prizePaidAt" TIMESTAMP(3)`,
   `ALTER TABLE "TournamentEntry" ADD COLUMN IF NOT EXISTS "entryTxId" TEXT`,
@@ -894,22 +912,6 @@ const STATEMENTS = [
      CONSTRAINT "AthleteSignupCode_pkey" PRIMARY KEY ("id")
    )`,
   `CREATE INDEX IF NOT EXISTS "AthleteSignupCode_phone_createdAt_idx" ON "AthleteSignupCode"("phone", "createdAt")`,
-  // Liga Aberta F1 — arquivamento reversível + auditoria do torneio (aditivo, nunca apaga)
-  `ALTER TABLE "Tournament" ADD COLUMN IF NOT EXISTS "archivedAt" TIMESTAMP(3)`,
-  `ALTER TABLE "Tournament" ADD COLUMN IF NOT EXISTS "archivedBy" TEXT`,
-  `CREATE TABLE IF NOT EXISTS "TournamentAudit" (
-     "id" TEXT NOT NULL,
-     "tournamentId" TEXT NOT NULL,
-     "userId" TEXT,
-     "action" TEXT NOT NULL,
-     "entity" TEXT,
-     "entityId" TEXT,
-     "before" JSONB,
-     "after" JSONB,
-     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-     CONSTRAINT "TournamentAudit_pkey" PRIMARY KEY ("id")
-   )`,
-  `CREATE INDEX IF NOT EXISTS "TournamentAudit_tournamentId_createdAt_idx" ON "TournamentAudit"("tournamentId", "createdAt")`,
 ];
 
 // Busca tolerante a erro (pg_trgm). Extensão + índices GIN de trigram em

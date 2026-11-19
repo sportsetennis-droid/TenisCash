@@ -3859,6 +3859,8 @@ model Tournament {
   // Arquivamento reversível (excluir = arquivar; fundador/admin restaura em até 30 dias)
   archivedAt DateTime?
   archivedBy String?
+  // Exigir árbitro escalado em cada jogo (false = qualquer árbitro do torneio apita jogo sem escala)
+  requireRefereeAssignment Boolean @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

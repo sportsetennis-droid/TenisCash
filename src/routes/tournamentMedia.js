@@ -186,6 +186,7 @@ async function listSponsors(tournamentId, origin, all) {
 
 async function canManage(req, res, t) {
   if (!(await roles.can(req.userId, req.userRole, t.id, 'MANAGE_TOURNAMENT'))) {
+    if (!(await access.canSee({ userId: req.userId, userRole: req.userRole }, t))) { access.sendNotFound(res); return false; }
     res.status(403).json({ error: 'só a organização do torneio gerencia patrocinadores' });
     return false;
   }

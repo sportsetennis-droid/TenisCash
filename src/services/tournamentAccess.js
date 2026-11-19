@@ -84,6 +84,15 @@ async function canSee(v, t) {
   return isMember(v && v.userId, t);
 }
 
+// Pode aparecer numa LISTA (clube, vitrine de terceiros)? Público e não arquivado pra todos;
+// não listado/privado só pra membro ou admin global (não listado não entra em lista pública).
+async function canSeeListed(v, t) {
+  if (!t || t.archivedAt) return false;
+  if (normalizeVisibility(t.visibility) === 'public') return true;
+  if (v && isGlobalAdmin(v.userRole)) return true;
+  return isMember(v && v.userId, t);
+}
+
 const BASE_SELECT = { id: true, slug: true, ownerId: true, visibility: true, archivedAt: true };
 
 // Carrega o torneio (por id ou slug) SÓ se quem pede pode ver. null = 404.
@@ -112,6 +121,6 @@ const LISTED_WHERE = Object.freeze({ visibility: 'public', archivedAt: null });
 
 module.exports = {
   VISIBILITIES, NOT_FOUND_BODY, NOT_FOUND_HTML, LISTED_WHERE,
-  normalizeVisibility, sendNotFound, viewer, isMember, canSee,
+  normalizeVisibility, sendNotFound, viewer, isMember, canSee, canSeeListed,
   loadVisibleTournament, canSeeTournamentId,
 };

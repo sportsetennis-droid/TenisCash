@@ -1104,6 +1104,13 @@ async function renderHome(){
       '<div class="grow"><div class="nm wrap2">'+esc(t.name)+'</div>'+
       '<div class="sub">'+esc(FMT_LABEL[t.format]||t.format)+' · '+(t._count?t._count.entries:0)+' inscritos</div>'+
       '<div class="pills">'+stPill(st)+(t.visibility&&t.visibility!=='public'?'<span class="pill g">'+esc(VIS_LBL[t.visibility]||t.visibility)+'</span>':'')+'</div></div>'+CHV+'</div>';});}
+  if(isGlobalAdminMe()){ // Liga F1: admin global restaura qualquer torneio arquivado (até 30 dias)
+    let arq=[];try{arq=((await api('/mine?archived=1')).tournaments||[]).filter(t=>!mineIds.has(t.id));}catch(e){}
+    if(arq.length){html+='<div class="sp12"></div><div class="grp">Excluídos (admin)</div>';
+      arq.forEach(t=>{const left=Math.ceil((new Date(t.archivedAt).getTime()+30*864e5-Date.now())/864e5);
+        html+='<div class="listitem"><div class="av">'+sportIc(t.sport)+'</div><div class="grow"><div class="nm wrap2">'+esc(t.name)+'</div><div class="sub">'+(left>0?'restaura em até '+left+' dia(s)':'prazo encerrado')+'</div></div>'+
+          (left>0?'<button class="btn sm gho" data-act="restore-t" data-id="'+t.id+'">Restaurar</button>':'')+'</div>';});}
+  }
   if(isGlobalAdminMe()){ // Liga F0: a importação da tabela oficial é só do admin do sistema
     html+='<div class="sp12"></div><button class="btn sm sec full" data-act="import-futsal">'+I.download+'Importar II Futsal Master Cup 2026</button>';
   }
@@ -1341,7 +1348,7 @@ async function renderTournament(id){
   main+='<div id="cat-panel"></div>';
   side='<div class="card wh">'+cardH(I.id,'Inscrição online')+'<p class="muted" style="margin:-4px 0 12px">Link de inscrição com PIX, TenisCash, cupom, lista de espera e check-in por QR.</p>'+
     '<button class="btn full" data-act="nav" data-h="inscricoes/'+t.id+'">'+I.users+'Inscrições e check-in</button></div>'+side;
-  side+=privacyCard(t);
+  if(CURCAPS.manageTournament||isGlobalAdminMe())side+=privacyCard(t);
   if(CURCAPS.viewAudit)side+='<div class="card">'+cardH(I.list,'Auditoria')+'<p class="muted" style="margin:-4px 0 12px">Quem mudou resultado, súmula, chave, papéis, privacidade e dono — com o antes e o depois.</p>'+
     '<button class="btn sm gho full" data-act="audit" data-tid="'+t.id+'">'+I.list+'Ver auditoria</button></div>';
   if(CURCAPS.transfer||CURCAPS.archive)side+=founderCard(t);
@@ -1363,7 +1370,7 @@ function privacyCard(t){
   const v=t.visibility||'public';
   return '<div class="card">'+cardH(I.eye,'Quem pode ver')+
     '<label for="t-vis" class="sr">Visibilidade</label><select id="t-vis">'+VIS_OPTS.map(o=>'<option value="'+o[0]+'"'+(o[0]===v?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>'+
-    '<p class="muted" style="margin:8px 0 12px;font-size:12.5px">'+esc(VIS_HELP[v]||'')+'</p>'+
+    '<p class="muted" id="t-vis-h" style="margin:8px 0 12px;font-size:12.5px">'+esc(VIS_HELP[v]||'')+'</p>'+
     '<button class="btn sm gho full" data-act="save-vis" data-id="'+t.id+'">'+I.check+'Salvar visibilidade</button></div>';
 }
 function founderCard(t){
@@ -1399,14 +1406,18 @@ async function doArchive(id){
 async function doRestore(id){
   try{await api('/'+id+'/restore',{method:'POST'});toast('Torneio restaurado');renderHome();}catch(e){toast(e.message);}
 }
-const AUDIT_LBL={'result.set':'Resultado lançado','result.correct':'Resultado corrigido','sheet.finalize':'Súmula fechada','sheet.correct':'Súmula corrigida','bracket.generate':'Chave gerada','bracket.knockout':'Mata-mata montado','role.add':'Papel dado','role.remove':'Papel tirado','official.add':'Árbitro escalado','official.remove':'Árbitro retirado','tournament.archive':'Torneio excluído (arquivado)','tournament.restore':'Torneio restaurado','tournament.transfer':'Dono transferido','tournament.visibility':'Visibilidade mudou'};
+const AUDIT_LBL={'result.set':'Resultado lançado','result.correct':'Resultado corrigido','sheet.finalize':'Súmula fechada','sheet.correct':'Súmula corrigida','bracket.generate':'Chave gerada','bracket.knockout':'Mata-mata montado','role.add':'Papel dado','role.remove':'Papel tirado','official.add':'Árbitro escalado','official.remove':'Árbitro retirado','tournament.archive':'Torneio excluído (arquivado)','tournament.restore':'Torneio restaurado','tournament.transfer':'Dono transferido','tournament.visibility':'Visibilidade mudou','tournament.refereeRule':'Regra da arbitragem','result.reopen':'Jogo reaberto','sheet.event.add':'Evento lançado (correção)','sheet.event.remove':'Evento apagado (correção)','match.teams':'Times do jogo','match.teams.correct':'Times do jogo (correção)'};
 let AUDIT_CUR=null;
 function auditTxt(x){
   const a=x.after||{},b=x.before||{};
   if(/^result|^sheet/.test(x.action))return (b.homeScore!=null&&b.awayScore!=null?(b.homeScore+'×'+b.awayScore+' → '):'')+(a.homeScore!=null?a.homeScore+'×'+a.awayScore:'');
   if(/^bracket/.test(x.action))return (a.matchesCreated!=null?a.matchesCreated+' jogos criados':'')+(a.deletedMatches?' · '+a.deletedMatches+' apagados':'')+(a.deletedFinished?' ('+a.deletedFinished+' com resultado)':'');
   if(x.action==='tournament.visibility')return (VIS_LBL[b.visibility]||b.visibility)+' → '+(VIS_LBL[a.visibility]||a.visibility);
-  if(/^role/.test(x.action))return (ROLE_LBL[(a.role||b.role)]||a.role||b.role||'');
+  const who=x.target&&(x.target.name||x.target.username)?(x.target.name||'@'+x.target.username):'';
+  if(/^role/.test(x.action))return (ROLE_LBL[(a.role||b.role)]||a.role||b.role||'')+(who?' · '+who:'');
+  if(/^official/.test(x.action))return ((a.role||b.role)||'')+(who?' · '+who:'');
+  if(x.action==='tournament.transfer')return who?'Novo dono: '+who:'';
+  if(x.action==='tournament.refereeRule')return a.requireRefereeAssignment?'Exigir árbitro escalado: ligado':'Exigir árbitro escalado: desligado';
   return '';
 }
 async function auditSheet(tid,more){
@@ -1518,19 +1529,24 @@ async function saveSponsor(tid){
 const ROLE_LBL={FOUNDER:'Fundador do campeonato',COORDINATOR:'Coordenador técnico',TEAM_ADMIN:'Administrador do time',COACH:'Treinador',REFEREE:'Arbitragem',PLAYER:'Jogador'};
 const ROLE_IC={FOUNDER:I.star,COORDINATOR:I.compass,TEAM_ADMIN:I.shield,COACH:I.clip,REFEREE:I.whistle,PLAYER:I.user};
 const TEAM_ROLES=['TEAM_ADMIN','COACH','PLAYER'];
-// Liga F1 — regra de transição da escala de arbitragem (aviso pro organizador)
-const REF_RULE_TXT='Enquanto nenhum jogo tiver árbitro escalado, qualquer árbitro do torneio pode apitar. Ao escalar o primeiro jogo, só os escalados apitam.';
-function refRuleNote(mode){
-  return '<div class="subcard" style="margin:8px 0 10px"><div style="display:flex;gap:8px;align-items:flex-start">'+I.whistle.replace('<svg','<svg style="width:18px;height:18px;flex:none;margin-top:2px"')+
-    '<div><p class="muted" style="margin:0;font-size:12.5px">'+REF_RULE_TXT+'</p>'+
-    (mode?'<p style="margin:6px 0 0;font-size:12.5px;font-weight:700">Agora: '+(mode==='required'?'só os árbitros escalados apitam cada jogo.':'qualquer árbitro do torneio pode apitar (nenhum jogo escalado).')+'</p>':'')+
-    '</div></div></div>';
+// Liga F1 — escala de arbitragem: interruptor explícito do torneio (requireRefereeAssignment)
+const REF_RULE_TXT='Exigir árbitro escalado em cada jogo: quando ligado, só o árbitro escalado apita o jogo.';
+const REF_RULE_OFF='Desligado: jogo sem árbitro escalado pode ser apitado por qualquer árbitro do torneio. Jogo com árbitro escalado: só o escalado.';
+// mode: 'open' | 'required' | null (só texto). tid: mostra o interruptor (organização).
+function refRuleNote(mode,tid){
+  const on=mode==='required';
+  let h='<div class="subcard" style="margin:8px 0 10px"><div style="display:flex;gap:8px;align-items:flex-start">'+I.whistle.replace('<svg','<svg style="width:18px;height:18px;flex:none;margin-top:2px"')+'<div style="flex:1">';
+  if(tid)h+='<label class="chk" style="min-height:44px;font-weight:700"><input type="checkbox" id="ref-req" data-tid="'+tid+'"'+(on?' checked':'')+'> Exigir árbitro escalado em cada jogo</label>';
+  h+='<p class="muted" style="margin:4px 0 0;font-size:12.5px">'+(tid?'Quando ligado, só o árbitro escalado apita o jogo.':REF_RULE_TXT)+'</p>';
+  if(mode)h+='<p style="margin:6px 0 0;font-size:12.5px;font-weight:700">Agora: '+(on?'só o árbitro escalado apita cada jogo.':'jogo sem escala pode ser apitado por qualquer árbitro do torneio.')+'</p>';
+  else h+='<p class="muted" style="margin:4px 0 0;font-size:12.5px">'+REF_RULE_OFF+'</p>';
+  return h+'</div></div></div>';
 }
 let REF_MODE=null; // 'open' | 'required' (vem do my-roles)
 function rolesCard(tid){
   return '<div class="card" id="roles-card">'+cardH(I.users,'Contas &amp; Papéis')+
     '<p class="muted" style="margin:-4px 0 6px">Quem alimenta cada parte do torneio. Cada pessoa entra com telefone + senha.</p>'+
-    refRuleNote(REF_MODE)+
+    refRuleNote(REF_MODE||'open',CURCAPS.manageTournament?tid:null)+
     '<div id="roles-list"><div class="spin"></div></div>'+
     '<div class="sp12"></div><button class="btn sm gho full" data-act="add-role" data-tid="'+tid+'">'+I.plus+'Nomear pessoa</button></div>';
 }
@@ -2707,7 +2723,7 @@ function drawSumula(){
   let off='';
   if(!done)off='<details class="card fold"'+(mt.referee1?'':' open')+'><summary>'+cardH(I.whistle,'Arbitragem','<span class="chv fchev">'+I.chev+'</span>')+'</summary>'+
     '<p class="muted" style="font-size:12.5px">Quadro oficial de futsal: 2 árbitros + mesa + cronometrista (3º árbitro opcional).</p>'+
-    refRuleNote(null)+
+    refRuleNote(null,null)+
     '<label for="ref1">Árbitro 1 (principal)</label><input id="ref1" value="'+esc(mt.referee1||'')+'" placeholder="árbitro principal">'+
     '<label for="ref2">Árbitro 2 (auxiliar)</label><input id="ref2" value="'+esc(mt.referee2||'')+'" placeholder="árbitro auxiliar">'+
     '<label for="ref3">3º árbitro</label><input id="ref3" value="'+esc(mt.referee3||'')+'" placeholder="opcional">'+
@@ -2842,6 +2858,17 @@ async function sumFinalizeGo(mid){
 }
 
 // ---------- delegated events ----------
+document.addEventListener('change',async(ev)=>{
+  const el=ev.target;if(!el||!el.id)return;
+  if(el.id==='t-vis'||el.id==='c-vis'){const h=document.getElementById(el.id==='t-vis'?'t-vis-h':'c-vis-h');if(h)h.textContent=VIS_HELP[el.value]||'';return;}
+  if(el.id==='ref-req'){
+    const want=!!el.checked;
+    try{await api('/'+el.dataset.tid,{method:'PATCH',body:{requireRefereeAssignment:want}});REF_MODE=want?'required':'open';
+      toast(want?'Agora só o árbitro escalado apita cada jogo':'Jogo sem escala: qualquer árbitro do torneio apita');
+      const card=document.getElementById('roles-card');if(card){const sub=card.querySelector('.subcard');if(sub)sub.outerHTML=refRuleNote(REF_MODE,el.dataset.tid);}}
+    catch(e){el.checked=!want;toast(e.message);}
+  }
+});
 document.addEventListener('click',async(ev)=>{
   const el=ev.target.closest('[data-act]');if(!el)return;
   const a=el.dataset.act;

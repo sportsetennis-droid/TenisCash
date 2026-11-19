@@ -49,8 +49,10 @@ function whenText(date, now = new Date()) {
 }
 
 async function remindTrainings(from, to, now = from) {
+  // Liga F1: treino de torneio arquivado não recebe lembrete (TrainingSession não tem relação)
+  const archived = (await prisma.tournament.findMany({ where: { archivedAt: { not: null } }, select: { id: true } })).map((t) => t.id);
   const sessions = await prisma.trainingSession.findMany({
-    where: { status: 'SCHEDULED', reminderSentAt: null, scheduledAt: { gte: from, lte: to } },
+    where: { status: 'SCHEDULED', reminderSentAt: null, scheduledAt: { gte: from, lte: to }, ...(archived.length ? { tournamentId: { notIn: archived } } : {}) },
     take: 200,
   });
   let sent = 0;
@@ -74,7 +76,7 @@ async function remindTrainings(from, to, now = from) {
 
 async function remindMatches(from, to, now = from) {
   const matches = await prisma.tournamentMatch.findMany({
-    where: { status: 'SCHEDULED', reminderSentAt: null, scheduledAt: { gte: from, lte: to }, homeEntryId: { not: null }, awayEntryId: { not: null } },
+    where: { status: 'SCHEDULED', reminderSentAt: null, scheduledAt: { gte: from, lte: to }, homeEntryId: { not: null }, awayEntryId: { not: null }, tournament: { archivedAt: null } },
     include: { homeEntry: { select: { id: true, name: true } }, awayEntry: { select: { id: true, name: true } } },
     take: 200,
   });
