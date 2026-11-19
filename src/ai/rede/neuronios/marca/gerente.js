@@ -24,8 +24,10 @@ async function cadastroIncompleto(ler, marcasDoRelatorio, quando) {
   if (!lojas.length) return [];
   const rows = await ler.$queryRawUnsafe(
     'SELECT p.id, p.name, p.brand, ' +
-    "  (coalesce(btrim(p.\"longDescription\"), '') = '' AND coalesce(btrim(p.\"shortDescription\"), '') = '') AS sem_descricao, " +
-    "  (coalesce(btrim(p.\"imageUrl\"), '') = '' AND (CASE WHEN jsonb_typeof(p.\"imageUrls\"::jsonb) = 'array' THEN jsonb_array_length(p.\"imageUrls\"::jsonb) ELSE 0 END) = 0) AS sem_foto " +
+    "  (coalesce(regexp_replace(p.\"longDescription\", '\s', '', 'g'), '') = '' AND coalesce(regexp_replace(p.\"shortDescription\", '\s', '', 'g'), '') = '') AS sem_descricao, " +
+    // mesma conta do portão (usableImageCount): principal + galeria, válidas, sem repetir, sem Instagram/crawler
+    "  (SELECT count(DISTINCT md5(btrim(x))) FROM (SELECT p.\"imageUrl\" AS x UNION ALL SELECT jsonb_array_elements_text(CASE WHEN jsonb_typeof(p.\"imageUrls\"::jsonb) = 'array' THEN p.\"imageUrls\"::jsonb ELSE '[]'::jsonb END)) t " +
+    "     WHERE btrim(x) ~* '^(https?://|data:image/[a-z0-9.+-]+.base64,)' AND btrim(x) !~* '(lookaside\.instagram\.com|/crawler/|google_widget|/seo/)') AS n_fotos " +
     'FROM "Product" p WHERE p.active = true ' +
     ' AND EXISTS (SELECT 1 FROM "StoreStock" ss JOIN "ProductSize" ps ON ps.id = ss."productSizeId" WHERE ps."productId" = p.id AND ss.stock > 0 AND ss."storeId" = ANY($1::text[])) ' +
     ' AND NOT EXISTS (SELECT 1 FROM "NuvemshopProductMapping" m WHERE m."localProductId" = p.id AND m."syncStatus" <> \'hidden-invalid\')', lojas);
@@ -34,10 +36,11 @@ async function cadastroIncompleto(ler, marcasDoRelatorio, quando) {
   for (const r of rows) {
     const k = chave(r.brand);
     if (!k || !marcas.has(k)) continue;
-    const falta = [r.sem_foto && 'foto', r.sem_descricao && 'descricao'].filter(Boolean);
+    // card fora do site é NOVO: a regra 27 exige 5 fotos válidas para subir
+    const falta = [Number(r.n_fotos || 0) < 5 && 'foto', r.sem_descricao && 'descricao'].filter(Boolean);
     if (!falta.length) continue;
     const n = cont.get(k) || 0; if (n >= POR_MARCA()) continue; cont.set(k, n + 1);
-    out.push({ tipo: 'marca.cadastro-incompleto', forca: 0.6, dados: { chave: 'cadastro|' + r.id + '|' + dia, productId: r.id, marca: k, falta, produto: { nome: r.name, marca: r.brand }, motivo: 'card com estoque nas lojas do site e fora da Nuvemshop' } });
+    out.push({ tipo: 'marca.cadastro-incompleto', forca: 0.6, dados: { chave: 'cadastro|' + r.id, nFotos: Number(r.n_fotos || 0), productId: r.id, marca: k, falta, produto: { nome: r.name, marca: r.brand }, motivo: 'card com estoque nas lojas do site e fora da Nuvemshop' } });
   }
   return out;
 }

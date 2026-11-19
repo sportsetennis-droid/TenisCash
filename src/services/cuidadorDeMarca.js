@@ -18,11 +18,28 @@
 const { tipoDoNome, modalidadeChuteira, publicoDoNome } = require('../ai/rede/regras/local-certo');
 const { mergeAiContext } = require('./aiContextMerge');
 
-const norm = (s) => String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim();
-const vazio = (v) => ['', 'A CLASSIFICAR', 'A DEFINIR', 'NAO DEFINIDO', 'SEM MARCA'].includes(norm(v));
+const norm = (s) => String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
+// MESMA definição de "vazio" no plano e na gravação (auditoria 18/11)
+const VAZIOS = new Set(['', 'A CLASSIFICAR', 'A DEFINIR', 'NAO DEFINIDO', 'SEM MARCA']);
+const vazio = (v) => VAZIOS.has(norm(v));
 
-const CATEGORIA_DO_TIPO = { 'tênis': 'Tênis', chuteira: 'Chuteiras', 'sandália/chinelo': 'Sandálias', 'acessório': 'Acessórios', roupa: 'Vestuário' };
+// Só valores que existem na ÁRVORE OFICIAL (scripts/seed-category-tree.js), por categoria.
+// Sandálias (categoria) e Unissex não estão na árvore: o gerente não preenche — vai para o dono.
+const CATEGORIA_DO_TIPO = { 'tênis': 'Tênis', chuteira: 'Chuteiras', 'acessório': 'Acessórios', roupa: 'Vestuário' };
+const PUBLICO_DA_ARVORE = {
+  TENIS: { masculino: 'Homem', feminino: 'Feminino', infantil_masculino: 'Menino', infantil_feminino: 'Menina' },
+  CHUTEIRAS: { masculino: 'Homem', infantil_masculino: 'Menino', infantil_sem_genero: 'Menino' }, // árvore: só Homem/Menino
+  VESTUARIO: { masculino: 'Homem', feminino: 'Mulher', infantil_masculino: 'Menino', infantil_feminino: 'Menina' },
+  ACESSORIOS: { masculino: 'Homem', feminino: 'Mulher', infantil_masculino: 'Menino', infantil_feminino: 'Menina' },
+};
 const MODALIDADE = { FUTSAL: 'Futsal', SOCIETY: 'Society', CAMPO: 'Campo' };
+
+// numeração infantil escrita no nome ("28/33") ou na grade do card (calçado < 34): nunca vira adulto
+function temNumeracaoInfantil(p) {
+  const nums = [...norm(p.name).matchAll(/(?<![\d.,])(\d{2})(?:\s*[/-]\s*(\d{2}))?(?![\d.,])/g)].flatMap((m) => [m[1], m[2]]).filter(Boolean).map(Number);
+  if (nums.some((n) => n >= 15 && n <= 33)) return true;
+  return (p.tamanhos || []).some((t) => { const n = Number(String(t).replace(',', '.')); return Number.isFinite(n) && n >= 15 && n < 34; });
+}
 
 // O que dá para preencher deste card, só com prova escrita. Devolve { mudancas, provas }.
 function planejar(p) {
@@ -35,15 +52,14 @@ function planejar(p) {
     if (t && CATEGORIA_DO_TIPO[t.tipo]) { categoria = CATEGORIA_DO_TIPO[t.tipo]; mudancas.category = categoria; provas.push(`categoria ${categoria}: nome diz "${t.palavra}"`); }
   }
   const cat = norm(categoria);
-  if (vazio(p.subcategory)) {
+  const arvore = PUBLICO_DA_ARVORE[cat];
+  if (vazio(p.subcategory) && arvore) {
     const pub = publicoDoNome(p.name);
-    let sub = null;
-    if (pub.infantil) {
-      if (cat === 'CHUTEIRAS') sub = 'Menino';
-      else if (cat === 'TENIS' && pub.genero) sub = pub.genero === 'masculino' ? 'Menino' : 'Menina';
-    } else if (pub.genero) sub = pub.genero === 'masculino' ? 'Homem' : 'Mulher';
-    else if (/\bUNISS?EX\b/.test(norm(p.name))) sub = 'Unissex';
-    if (sub) { mudancas.subcategory = sub; provas.push(`público ${sub}: nome diz ${pub.infantil ? 'infantil' + (pub.genero ? ' ' + pub.genero : '') : (pub.genero || 'unissex')}`); }
+    let chaveArv = null;
+    if (pub.infantil) chaveArv = pub.genero ? 'infantil_' + pub.genero : 'infantil_sem_genero';
+    else if (pub.genero && !temNumeracaoInfantil(p)) chaveArv = pub.genero;
+    const sub = chaveArv ? arvore[chaveArv] : null; // sem nó na árvore (ex.: chuteira feminina) = não preenche
+    if (sub) { mudancas.subcategory = sub; provas.push(`público ${sub}: nome diz ${pub.infantil ? 'infantil' + (pub.genero ? ' ' + pub.genero : '') : pub.genero}`); }
   }
   if (cat === 'CHUTEIRAS' && vazio(cls.modality)) {
     const mod = modalidadeChuteira(p.name);
@@ -69,11 +85,17 @@ function pendencias(p, mudancas = {}) {
 async function candidatos(db, { marca = null, storeIds = [] } = {}) {
   if (!storeIds.length) return [];
   return db.$queryRawUnsafe(
-    'SELECT p.id, p.name, p.brand, p.category, p.subcategory, p."aiContext" FROM "Product" p ' +
+    'SELECT p.id, p.name, p.brand, p.category, p.subcategory, p."aiContext", ARRAY(SELECT ps.size FROM "ProductSize" ps WHERE ps."productId" = p.id) AS tamanhos FROM "Product" p ' +
     'WHERE p.active = true AND ($1::text IS NULL OR upper(p.brand) = upper($1)) ' +
     ' AND EXISTS (SELECT 1 FROM "StoreStock" ss JOIN "ProductSize" ps ON ps.id = ss."productSizeId" WHERE ps."productId" = p.id AND ss.stock > 0 AND ss."storeId" = ANY($2::text[])) ' +
     ' AND NOT EXISTS (SELECT 1 FROM "NuvemshopProductMapping" m WHERE m."localProductId" = p.id AND m."syncStatus" <> \'hidden-invalid\')',
     marca, storeIds);
+}
+
+// Grava UM campo só se ele continuar exatamente como foi lido (vazio). Devolve true se gravou.
+async function gravarSeIgual(db, id, campo, lido, novo) {
+  const r = await db.product.updateMany({ where: { id, [campo]: lido == null ? null : lido }, data: { [campo]: novo } });
+  return r.count === 1;
 }
 
 async function cuidar(db, { marca = null, aplicar = true, agora = new Date() } = {}) {
@@ -82,28 +104,27 @@ async function cuidar(db, { marca = null, aplicar = true, agora = new Date() } =
   const res = { cards: lista.length, preenchidos: 0, campos: 0, itens: [] };
   for (const p of lista) {
     const { mudancas, provas } = planejar(p);
-    const n = Object.keys(mudancas).length;
-    if (!n) continue;
-    res.preenchidos++; res.campos += n;
-    if (res.itens.length < 50) res.itens.push({ productId: p.id, nome: p.name, marca: p.brand, mudancas, provas });
-    if (!aplicar) continue;
-    // nunca sobrescreve: a gravação confere de novo que o campo continua vazio
-    const dados = {};
-    if (mudancas.category) dados.category = mudancas.category;
-    if (mudancas.subcategory) dados.subcategory = mudancas.subcategory;
-    if (Object.keys(dados).length) {
-      // cada campo a preencher tem que CONTINUAR vazio na hora de gravar (AND); senão não grava nada
-      const VAZIOS = ['', 'A CLASSIFICAR', 'A DEFINIR', 'A classificar', 'A definir'];
-      // category é obrigatória no schema (sem null); subcategory pode ser null
-      await db.product.updateMany({ where: { id: p.id, AND: Object.keys(dados).map((k) => (k === 'category' ? { [k]: { in: VAZIOS } } : { OR: [{ [k]: null }, { [k]: { in: VAZIOS } }] })) }, data: dados });
+    if (!Object.keys(mudancas).length) continue;
+    if (!aplicar) { res.preenchidos++; res.campos += Object.keys(mudancas).length; if (res.itens.length < 50) res.itens.push({ productId: p.id, nome: p.name, marca: p.brand, mudancas, provas }); continue; }
+    // grava campo a campo, cada um só se continuar como foi lido; registra SÓ o que foi gravado
+    const feito = {}; const provasFeitas = [];
+    const prova = (k) => provas.find((x) => x.startsWith({ category: 'categoria', subcategory: 'público', modality: 'modalidade' }[k])) || null;
+    let categoriaOk = true;
+    if (mudancas.category) { categoriaOk = await gravarSeIgual(db, p.id, 'category', p.category, mudancas.category); if (categoriaOk) { feito.category = mudancas.category; provasFeitas.push(prova('category')); } }
+    // público e modalidade dependem da categoria: só seguem se ela ficou como planejado
+    if (categoriaOk && mudancas.subcategory && await gravarSeIgual(db, p.id, 'subcategory', p.subcategory, mudancas.subcategory)) { feito.subcategory = mudancas.subcategory; provasFeitas.push(prova('subcategory')); }
+    if (categoriaOk && mudancas.modality) {
+      // atômico: só a chave modality dentro de classification, e só se continuar vazia (não apaga edição do meio)
+      const n = await db.$executeRawUnsafe(
+        'UPDATE "Product" SET "aiContext" = COALESCE("aiContext", \'{}\'::jsonb) || jsonb_build_object(\'classification\', COALESCE("aiContext"->\'classification\', \'{}\'::jsonb) || jsonb_build_object(\'modality\', $2::text)) ' +
+        'WHERE id = $1 AND (jsonb_typeof("aiContext") = \'object\' OR "aiContext" IS NULL) AND upper(btrim(COALESCE("aiContext"->\'classification\'->>\'modality\', \'\'))) IN (\'\', \'A CLASSIFICAR\', \'A DEFINIR\', \'NAO DEFINIDO\', \'NÃO DEFINIDO\')',
+        p.id, mudancas.modality);
+      if (n === 1) { feito.modality = mudancas.modality; provasFeitas.push(prova('modality')); }
     }
-    const patch = { preenchidoPeloGerente: { em: agora.toISOString(), campos: mudancas, provas } };
-    if (mudancas.modality) {
-      const atual = await db.product.findUnique({ where: { id: p.id }, select: { aiContext: true } });
-      const cls = (atual && atual.aiContext && atual.aiContext.classification) || {};
-      if (vazio(cls.modality)) patch.classification = { ...cls, modality: mudancas.modality };
-    }
-    await mergeAiContext(db, p.id, patch);
+    if (!Object.keys(feito).length) continue;
+    res.preenchidos++; res.campos += Object.keys(feito).length;
+    if (res.itens.length < 50) res.itens.push({ productId: p.id, nome: p.name, marca: p.brand, mudancas: feito, provas: provasFeitas });
+    await mergeAiContext(db, p.id, { preenchidoPeloGerente: { em: agora.toISOString(), campos: feito, provas: provasFeitas.filter(Boolean) } });
   }
   return res;
 }
@@ -119,4 +140,4 @@ function iniciarCuidadorDeMarca(db) {
 }
 function estadoCuidadorDeMarca() { return JSON.parse(JSON.stringify(state)); }
 
-module.exports = { planejar, pendencias, candidatos, cuidar, iniciarCuidadorDeMarca, estadoCuidadorDeMarca };
+module.exports = { temNumeracaoInfantil, planejar, pendencias, candidatos, cuidar, iniciarCuidadorDeMarca, estadoCuidadorDeMarca };

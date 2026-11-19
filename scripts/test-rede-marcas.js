@@ -108,7 +108,7 @@ async function partB() {
   const atras = (d) => new Date(agora - d * DIA);
 
   async function limpar() {
-    await prisma.stocktakeBipe.deleteMany({}); await prisma.stocktakeRound.deleteMany({});
+    await prisma.aIApproval.deleteMany({ where: { type: 'rna_descricao' } }).catch(() => {}); await prisma.stocktakeBipe.deleteMany({}); await prisma.stocktakeRound.deleteMany({});
     await prisma.nuvemshopProductMapping.deleteMany({});
     await prisma.storeStockMovement.deleteMany({}); await prisma.saleItem.deleteMany({}); await prisma.sale.deleteMany({});
     await prisma.storeStock.deleteMany({}); await prisma.productSize.deleteMany({}); await prisma.product.deleteMany({}); await prisma.store.deleteMany({});
@@ -332,7 +332,54 @@ async function partB() {
     assert.strictEqual(Number(j.price), 300); assert.strictEqual((await prisma.productSize.findUnique({ where: { id: J.S['33'].id } })).stock, 2);
     // planejar: tênis infantil sem gênero escrito não é chutado
     assert.deepStrictEqual(cuidador.planejar({ name: 'TENIS ADIDAS ADVANTAGE BASE JR', category: 'Tênis', subcategory: null, aiContext: {} }).mudancas, {});
-    assert.deepStrictEqual(cuidador.planejar({ name: 'TENIS FILA COMET FEMININO', category: 'Tênis', subcategory: '', aiContext: {} }).mudancas, { subcategory: 'Mulher' });
+    assert.deepStrictEqual(cuidador.planejar({ name: 'TENIS FILA COMET FEMININO', category: 'Tênis', subcategory: '', aiContext: {} }).mudancas, { subcategory: 'Feminino' });
+  });
+  await t('regra 31 / auditoria: só valores da árvore oficial, criança nunca vira adulto, chuteira feminina vai para o dono', () => {
+    const { planejar } = require('../src/services/cuidadorDeMarca');
+    const pl = (name, category, subcategory = null, extra = {}) => planejar({ name, category, subcategory, aiContext: {}, ...extra }).mudancas;
+    assert.deepStrictEqual(pl('CHUTEIRA FUTSAL PENALTY JR FEMININA', 'Chuteiras'), { modality: 'Futsal' }, 'chuteira infantil feminina: árvore não tem Menina → não preenche público');
+    assert.deepStrictEqual(pl('CHUTEIRA SOCIETY NIKE FEMININA', 'Chuteiras'), { modality: 'Society' }, 'chuteira feminina adulta: árvore não tem → dono');
+    assert.deepStrictEqual(pl('CHUTEIRA CAMPO UNISSEX', 'Chuteiras'), { modality: 'Campo' }, 'Unissex não está na árvore');
+    assert.deepStrictEqual(pl('TENIS NIKE UNISSEX', 'Tênis'), {});
+    assert.deepStrictEqual(pl('CHINELO RIDER MASCULINO', 'A CLASSIFICAR'), {}, 'Sandálias não é categoria na árvore');
+    assert.deepStrictEqual(pl('TENIS MASCULINO 28/33', 'Tênis'), {}, 'numeração infantil no nome: não vira Homem');
+    assert.deepStrictEqual(pl('TENIS NIKE MASCULINO', 'Tênis', null, { tamanhos: ['28', '29', '30'] }), {}, 'grade infantil no card: não vira Homem');
+    assert.deepStrictEqual(pl('TENIS FILA COMET FEMININO', 'Tênis'), { subcategory: 'Feminino' }, 'Tênis feminino = Feminino na árvore');
+    assert.deepStrictEqual(pl('CHUTEIRA FUTSAL JOMA SALA MAX JR', 'Chuteiras'), { subcategory: 'Menino', modality: 'Futsal' });
+    assert.deepStrictEqual(pl('CAMISETA DRY FIT MASCULINA', 'A CLASSIFICAR'), { category: 'Vestuário', subcategory: 'Homem' });
+    // o que preenche não é acusado pela régua do lugar certo (regra 30)
+    const { conferirLocal } = require('../src/ai/rede/regras/local-certo');
+    for (const [n, c] of [['CHUTEIRA FUTSAL JOMA SALA MAX JR', 'Chuteiras'], ['TENIS FILA COMET FEMININO', 'Tênis'], ['CAMISETA DRY FIT MASCULINA', 'A CLASSIFICAR']]) {
+      const m = pl(n, c);
+      const card = { name: n, category: m.category || c, subcategory: m.subcategory, aiContext: { classification: { modality: m.modality || 'X', tier: 'Y' } } };
+      assert.deepStrictEqual(conferirLocal(card).filter((x) => !/incompleta/.test(x)), [], n);
+    }
+  });
+  await t('regra 31 / auditoria: grava campo a campo só se continuar vazio; a prova registra SÓ o que foi gravado; modalidade atômica', async () => {
+    const cuidador = require('../src/services/cuidadorDeMarca');
+    const N = await prod({ sku: 'J9', name: 'TENIS JOMA TESTE MASCULINO', brand: 'JOMA', category: 'Não definido', subcategory: null, price: 300, costPrice: 150 }, [{ size: '41', barcode: '8424309000941', stock: 1 }]);
+    await loc(L.LOJA04, N.S['41'], 1);
+    await cuidador.cuidar(prisma, { marca: 'JOMA' });
+    const n = await prisma.product.findUnique({ where: { id: N.id } });
+    assert.strictEqual(n.category, 'Tênis'); assert.strictEqual(n.subcategory, 'Homem');
+    assert.deepStrictEqual(n.aiContext.preenchidoPeloGerente.campos, { category: 'Tênis', subcategory: 'Homem' });
+    // modalidade: não apaga a especialidade gravada por outra edição
+    const M = await prod({ sku: 'J8', name: 'CHUTEIRA CAMPO JOMA TESTE MASCULINA', brand: 'JOMA', category: 'Chuteiras', subcategory: 'Homem', price: 300, costPrice: 150, aiContext: { classification: { tier: 'Profissional' } } }, [{ size: '42', barcode: '8424309000942', stock: 1 }]);
+    await loc(L.LOJA04, M.S['42'], 1);
+    await cuidador.cuidar(prisma, { marca: 'JOMA' });
+    const m = await prisma.product.findUnique({ where: { id: M.id } });
+    assert.deepStrictEqual(m.aiContext.classification, { tier: 'Profissional', modality: 'Campo' });
+    // segunda rodada: nada a fazer, nada registrado de novo
+    const r2 = await cuidador.cuidar(prisma, { marca: 'JOMA' });
+    assert.ok(!r2.itens.some((x) => x.productId === N.id || x.productId === M.id), JSON.stringify(r2.itens));
+  });
+  await t('regra 31 / auditoria: descrição não gasta IA se já existe proposta pendente para o card', async () => {
+    const desc = require('../src/ai/rede/neuronios/conteudo/descricao');
+    await prisma.aIApproval.create({ data: { type: 'rna_descricao', status: 'pending', title: 'teste', payload: { rna: { chave: 'descricao:' + F.id } } } });
+    let chamou = 0;
+    const r = await desc.disparar({ sinal: { tipo: 'marca.cadastro-incompleto', dados: { productId: F.id, falta: ['descricao'] } }, ler, pensar: async () => { chamou++; return { ok: true, json: { texto: 'x' } }; } });
+    assert.deepStrictEqual(r, []); assert.strictEqual(chamou, 0);
+    await prisma.aIApproval.deleteMany({ where: { type: 'rna_descricao' } });
   });
   await limpar();
   await prisma.$disconnect();

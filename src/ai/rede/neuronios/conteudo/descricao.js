@@ -79,6 +79,9 @@ module.exports = {
       return [{ tipo: 'dado-faltante', dados: { chave: 'descricao:' + p.id, productId: p.id, campos: ['nome', 'marca'].filter((k) => !dados[k]), motivo: 'sem nome/marca no card não há descrição sem inventar' } }];
     }
 
+    // não gasta IA se já existe proposta pendente (ou recusada há pouco) para este card (auditoria 18/11)
+    const jaTem = await ler.aIApproval.findFirst({ where: { type: 'rna_descricao', status: { in: ['pending', 'rejected'] }, payload: { path: ['rna', 'chave'], equals: 'descricao:' + p.id } }, select: { id: true } }).catch(() => null);
+    if (jaTem) return [];
     let textoFinal = null; let origem = 'modelo-fixo'; let recusado = null;
     if (pensar) {
       const r = await pensar({
