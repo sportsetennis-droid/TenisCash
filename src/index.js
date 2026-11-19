@@ -509,7 +509,14 @@ app.use('/api/minha-escala', require('./routes/selfSchedule'));
 // RH completo (dono 18/11/2026): recrutamento + vagas públicas, férias CLT, documentos, admissão/desligamento, avaliação.
 app.use('/api/rh', require('./routes/rh'));
 try { require('node-cron').schedule('40 3 * * *', () => require('./services/rh').purgeOldCandidates(require('./middleware').prisma).catch(() => {}), { timezone: 'America/Fortaleza' }); } catch (_) {}
-app.get(['/vagas', '/trabalhe-conosco'], (req, res) => res.sendFile(require('path').join(__dirname, '..', 'public', 'vagas.html')));
+// A página de vagas é exibida dentro de sportsetennis.com.br/vagas (página da Nuvemshop com iframe),
+// então só ela libera ser incorporada pela loja. O resto do sistema continua bloqueado.
+app.get(['/vagas', '/trabalhe-conosco'], (req, res) => {
+  res.removeHeader('X-Frame-Options');
+  res.setHeader('Content-Security-Policy', "frame-ancestors 'self' https://sportsetennis.com.br https://www.sportsetennis.com.br");
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.sendFile(require('path').join(__dirname, '..', 'public', 'vagas.html'), { cacheControl: false });
+});
 app.use('/api/seller/interview', weeklyInterviewRoutes);
 app.use('/api/admin/xml', xmlImportRoutes);
 app.use('/api/admin/recommendations', recommendationsRoutes);
