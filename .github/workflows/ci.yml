@@ -92,6 +92,8 @@ jobs:
         run: node scripts/test-marcas-painel.cjs
       - name: 5 fotos por produto e espelho do card → Nuvemshop
         run: node scripts/test-ns-fotos-espelho.js
+      - name: Fotos pela loja — vendedor bipa a peça e fotografa (mesmo código, até 5, loja da conta)
+        run: node scripts/test-fotos-loja.js
       - name: Servidor MCP — acesso só do dono, ferramentas, confirmação e sem vazar PII
         env:
           PSQL: psql

@@ -143,6 +143,8 @@ if (CANONICAL_HOST) {
     } catch (_) { return next(); }
   });
 }
+// fotos da loja (até 5 fotos em base64): parser próprio com limite maior, antes do global (que pula corpo já lido)
+app.use('/api/fotos-loja', express.json({ limit: '8mb' }));
 app.use(express.json({
   // 1.5mb pra acomodar foto/audio em base64 do /api/messages-v2
   limit: '1.5mb',
@@ -614,6 +616,7 @@ app.use('/api/instagram', require('./routes/instagramWebhook')); // DM do Instag
 app.use('/api/ig', require('./routes/igPublish')); // publicação multi-conta (lojas, Meta, Baratão) via usuário do sistema
 app.use('/api/stocktake', stocktakeRoutes);
 app.use('/api/scan-transfers', require('./routes/scanTransfers'));
+app.use('/api/fotos-loja', require('./routes/fotosLoja')); // vendedor fotografa a peça do card sem foto (dono 19/11)
 app.use('/api/classification', classificationRoutes);
 app.use('/api/messages-v2', messagesV2Routes);
 app.use('/api/marketing', marketingRoutes);

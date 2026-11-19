@@ -183,11 +183,19 @@ async function fotosPeloSiteDaMarca(db, p, { buscarFotos, agora }) {
   }
   const { lojasDaMarca } = require('./corOficialMarca');
   const oficial = !!(r.host && lojasDaMarca(p.brand).includes(r.host));
-  const evid = { fonte: r.fonte, consulta: r.consulta || null, host: r.host || null, codigo: r.ean, fotos: r.fotos.length, anteriores: [p.imageUrl, ...(Array.isArray(p.imageUrls) ? p.imageUrls : [])].filter(Boolean), em: agora.toISOString(), por: oficial ? 'gerente da marca (site oficial da marca)' : 'gerente da marca (revendedor, mesmo código de barras)' };
+  const todasAntes = [p.imageUrl, ...(Array.isArray(p.imageUrls) ? p.imageUrls : [])].filter((u) => typeof u === 'string' && u.trim());
+  // links ficam na evidência; foto base64 vai para o arquivo de fotos (não incha o card e não se perde)
+  const base64Antes = todasAntes.filter((u) => u.startsWith('data:'));
+  if (base64Antes.length) {
+    const { garantirArquivo } = require('./fotosDaLoja');
+    await garantirArquivo(db);
+    for (const u of base64Antes) await db.$executeRawUnsafe('INSERT INTO "ProductPhotoArchive" (id, "productId", image, motivo, "userId", "createdAt") VALUES ($1, $2, $3, $4, NULL, $5)', require('crypto').randomUUID(), p.id, u, 'gerente da marca: fotos oficiais', agora);
+  }
+  const evid = { fonte: r.fonte, consulta: r.consulta || null, host: r.host || null, codigo: r.ean, fotos: r.fotos.length, anteriores: todasAntes.filter((u) => /^https?:\/\//i.test(u)), arquivadas: base64Antes.length, em: agora.toISOString(), por: oficial ? 'gerente da marca (site oficial da marca)' : 'gerente da marca (revendedor, mesmo código de barras)' };
   // atômico: só troca se a foto principal E a galeria continuam as que foram lidas (não atropela edição do meio)
   const n = await db.$executeRawUnsafe(
     'UPDATE "Product" SET "imageUrl" = $2, "imageUrls" = $3::jsonb, "aiContext" = (COALESCE("aiContext", \'{}\'::jsonb) - \'fotoOficialTentativa\') || jsonb_build_object(\'fotosOficiais\', $4::jsonb), "updatedAt" = now() ' +
-    'WHERE id = $1 AND (jsonb_typeof("aiContext") = \'object\' OR "aiContext" IS NULL) AND COALESCE("imageUrl", \'\') = $5::text AND COALESCE("imageUrls", \'[]\'::jsonb) = $6::jsonb',
+    'WHERE id = $1 AND (jsonb_typeof("aiContext") = \'object\' OR "aiContext" IS NULL) AND COALESCE("imageUrl", \'\') = $5::text AND (CASE WHEN jsonb_typeof("imageUrls") = \'array\' THEN "imageUrls" ELSE \'[]\'::jsonb END) = $6::jsonb', // JSON null/não-lista = lista vazia (auditoria 19/11)
     p.id, r.fotos[0], JSON.stringify(r.fotos.slice(1)), JSON.stringify(evid), String(p.imageUrl || ''), JSON.stringify(Array.isArray(p.imageUrls) ? p.imageUrls : []));
   return n === 1 ? { fotos: r.fotos.length, antes: atuais, fonte: r.fonte } : null;
 }
