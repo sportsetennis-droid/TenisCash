@@ -72,19 +72,39 @@ const INTERVIEW_V1 = [
     'Quer deixar alguma pergunta ou recado para a gente? (opcional)',
 ];
 
+// Questionário com nota (19/11/2026): modelo Vendedor(a) da pesquisa de recrutamento.
+// As perguntas abertas que viraram questionário (experiência, disponibilidade, esporte) saem da lista aberta.
+const QUESTIONS_V1 = JOB.questions.slice();
+JOB.questions = [
+  'Por que você quer trabalhar na Sports & Tennis?',
+  'Conte um atendimento ou venda de que você se orgulha: o que o cliente precisava e o que você fez?',
+  'A partir de quando você pode começar?',
+];
+const { TEMPLATES } = require('./screening');
+JOB.screening = TEMPLATES.VENDEDOR.screening;
+JOB.cutoff = TEMPLATES.VENDEDOR.cutoff;
+
 async function seed(prisma) {
-  const [has] = await prisma.$queryRaw`SELECT "id", "interviewQuestions" FROM "HrJob" WHERE "slug"=${SLUG} LIMIT 1`;
+  const [has] = await prisma.$queryRaw`SELECT "id", "interviewQuestions", "questions", "screening", "screeningSeeded" FROM "HrJob" WHERE "slug"=${SLUG} LIMIT 1`;
   if (has) {
     if (JSON.stringify(has.interviewQuestions) === JSON.stringify(INTERVIEW_V1)) {
       await prisma.$executeRaw`UPDATE "HrJob" SET "interviewQuestions"=${JSON.stringify(JOB.interviewQuestions)}::jsonb, "updatedAt"=NOW() WHERE "id"=${has.id}`;
     }
+    // Entra uma vez só, e só se a vaga ainda não tem questionário. Se o dono apagar depois, não volta.
+    if (!has.screeningSeeded && (!Array.isArray(has.screening) || !has.screening.length)) {
+      const swapOpen = JSON.stringify(has.questions) === JSON.stringify(QUESTIONS_V1);
+      await prisma.$executeRaw`UPDATE "HrJob" SET "screening"=${JSON.stringify(JOB.screening)}::jsonb, "cutoff"=COALESCE("cutoff", ${JOB.cutoff}::int),
+        "questions"=CASE WHEN ${swapOpen} THEN ${JSON.stringify(JOB.questions)}::jsonb ELSE "questions" END, "screeningSeeded"=true, "updatedAt"=NOW() WHERE "id"=${has.id}`;
+    } else if (!has.screeningSeeded) {
+      await prisma.$executeRaw`UPDATE "HrJob" SET "screeningSeeded"=true WHERE "id"=${has.id}`;
+    }
     return false;
   }
-  await prisma.$executeRaw`INSERT INTO "HrJob" ("id","slug","title","jobTitle","description","openings","status","questions","storeOptions","interviewQuestions")
+  await prisma.$executeRaw`INSERT INTO "HrJob" ("id","slug","title","jobTitle","description","openings","status","questions","storeOptions","interviewQuestions","screening","cutoff","screeningSeeded")
     VALUES (${require('crypto').randomUUID()}, ${SLUG}, ${JOB.title}, 'VENDEDOR', ${JOB.description}, 1, 'ABERTA',
-      ${JSON.stringify(JOB.questions)}::jsonb, ${JSON.stringify(JOB.storeOptions)}::jsonb, ${JSON.stringify(JOB.interviewQuestions)}::jsonb)
+      ${JSON.stringify(JOB.questions)}::jsonb, ${JSON.stringify(JOB.storeOptions)}::jsonb, ${JSON.stringify(JOB.interviewQuestions)}::jsonb, ${JSON.stringify(JOB.screening)}::jsonb, ${JOB.cutoff}::int, true)
     ON CONFLICT ("slug") DO NOTHING`;
   return true;
 }
 
-module.exports = { seed, SLUG, JOB, INTERVIEW_V1 };
+module.exports = { seed, SLUG, JOB, INTERVIEW_V1, QUESTIONS_V1 };

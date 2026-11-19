@@ -54,6 +54,9 @@ textarea{min-height:80px}
 .tabs2 button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
 .ev{border-left:3px solid var(--line);padding:4px 0 8px 10px;margin-left:4px}
 .msg{font-weight:600;margin-top:8px}.msg.bad{color:var(--bad)}.msg.ok{color:var(--ok)}
+.sc5{display:flex;gap:4px;margin-top:4px}.sc5 button{width:34px;height:34px;border:1px solid var(--line);background:#fff;border-radius:8px;font-weight:800;cursor:pointer}.sc5 button.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+.gq{border-top:1px solid #f0f0f2;padding:10px 0}.gq small{display:block;color:var(--muted);margin-top:2px}
+.sa{display:flex;justify-content:space-between;gap:10px;border-top:1px solid #f0f0f2;padding:7px 0}.sa .pt{font-weight:800;white-space:nowrap}
 .stars{display:flex;gap:4px}.stars button{width:36px;height:36px;border:1px solid var(--line);background:#fff;border-radius:8px;font-weight:800;cursor:pointer}.stars button.on{background:var(--brand);color:#fff;border-color:var(--brand)}
 .login{max-width:380px;margin:80px auto;text-align:center}
 @media (max-width:700px){main{padding:12px}.kanban{grid-template-columns:repeat(6,80vw)}}
@@ -127,8 +130,9 @@ const VIEWS = {
     $m().innerHTML = '<div class="card"><h2>Candidatos<span class="sp"></span><select id="jf" style="max-width:280px;margin:0"><option value="">Todas as vagas</option>' +
       jobs.map((j) => '<option value="' + j.id + '"' + (j.id === jf ? ' selected' : '') + '>' + esc(j.title) + '</option>').join('') + '</select></h2><div class="kanban">' +
       META.stages.map((s) => '<div class="col"><h3>' + STAGE_LABEL[s] + ' (' + list.filter((c) => c.stage === s).length + ')</h3>' +
-        list.filter((c) => c.stage === s).map((c) => '<div class="cc" data-id="' + c.id + '"><b>' + esc(c.name) + '</b><small>' + esc(c.jobTitleText) + '</small><br><small>' + br(c.createdAt) +
-          (c.rating ? ' · ' + '★'.repeat(c.rating) : '') + (c.resumeFile ? ' · 📎' : '') + '</small></div>').join('') + '</div>').join('') + '</div></div>';
+        list.filter((c) => c.stage === s).sort(rankCand).map((c) => '<div class="cc" data-id="' + c.id + '"><b>' + esc(c.name) + '</b><small>' + esc(c.jobTitleText) + '</small><br>' + candBadges(c) + '<small>' + br(c.createdAt) +
+          (c.rating ? ' · ' + '★'.repeat(c.rating) : '') + (c.resumeFile ? ' · 📎' : '') + (c.talentPool ? ' · banco de talentos' : '') + '</small></div>').join('') + '</div>').join('') + '</div>' +
+      '<div class="muted" style="margin-top:8px">Em cada etapa, quem tem a maior nota no questionário aparece primeiro. Resposta eliminatória só marca para revisar: ninguém é reprovado sozinho.</div></div>';
     document.getElementById('jf').onchange = (e) => { location.hash = 'candidatos' + (e.target.value ? '?job=' + e.target.value : ''); VIEWS.candidatos(); };
     document.querySelectorAll('.cc').forEach((el) => el.onclick = () => candidate(el.dataset.id));
   },
@@ -187,20 +191,56 @@ const VIEWS = {
   },
 };
 
+// Ordem do funil: eliminatória por último; depois maior nota; depois o mais recente.
+function rankCand(a, b) {
+  if (!!a.eliminated !== !!b.eliminated) return a.eliminated ? 1 : -1;
+  const sa = a.scoreMax ? a.score / a.scoreMax : -1, sb = b.scoreMax ? b.score / b.scoreMax : -1;
+  if (sa !== sb) return sb - sa;
+  return new Date(b.createdAt) - new Date(a.createdAt);
+}
+function scorePill(c) {
+  if (!c.scoreMax) return '';
+  // corte gravado no dia da candidatura (se o dono trocar o questionário depois, o selo antigo não muda de sentido)
+  const cut = c.cutoffAt != null && c.cutoffAt <= c.scoreMax ? c.cutoffAt : null;
+  const pass = cut != null ? c.score >= cut : c.score / c.scoreMax >= 0.7;
+  return '<span class="pill ' + (pass ? 'p-ok' : 'p-mute') + '" title="Nota do questionário' + (cut != null ? ' (corte ' + cut + ')' : '') + '">' + c.score + '/' + c.scoreMax + '</span> ';
+}
+function candBadges(c) {
+  const e = c.evalSummary || {};
+  return scorePill(c) + (c.eliminated ? '<span class="pill p-bad" title="Marcou resposta eliminatória: revisar">eliminatória</span> ' : '') +
+    (e.interviewAvg != null ? '<span class="pill p-brand" title="Média do roteiro de entrevista">🎤 ' + String(e.interviewAvg).replace('.', ',') + '</span> ' : '') +
+    (e.roleplayOk === true ? '<span class="pill p-ok">role-play ✓</span> ' : e.roleplayOk === false ? '<span class="pill p-warn">role-play abaixo</span> ' : '') + '<br>';
+}
+
 function jobForm(j) {
-  j = j || { status: 'ABERTA', openings: 1, questions: ['Já trabalhou com vendas? Onde e por quanto tempo?', 'Tem disponibilidade para trabalhar aos sábados e em escala?'], salaryText: 'R$ 1.790,00 + comissão', jobTitle: 'VENDEDOR' };
+  const TPL = META.screeningTemplates || {};
+  j = j || { status: 'ABERTA', openings: 1, questions: ['Por que você quer trabalhar na Sports & Tennis?', ...((TPL.VENDEDOR || {}).open || []), 'A partir de quando você pode começar?'], salaryText: 'R$ 1.790,00 + comissão', jobTitle: 'VENDEDOR',
+    screeningText: (TPL.VENDEDOR || {}).text || '', cutoff: (TPL.VENDEDOR || {}).cutoff };
   drawer('<h2>' + (j.id ? 'Editar vaga' : 'Nova vaga') + '</h2>' +
     '<label>Título<input id="jt" value="' + esc(j.title || '') + '" placeholder="Ex.: Vendedor(a) — Sports & Tennis Praia do Bessa"></label>' +
     '<div class="row"><label>Loja<select id="js"><option value="">—</option>' + storeOpts(j.storeId) + '</select></label><label>Cargo<select id="jc">' + ['VENDEDOR', 'LOGISTICA', 'SUPERVISOR'].map((c) => '<option' + (j.jobTitle === c ? ' selected' : '') + '>' + c + '</option>').join('') + '</select></label><label>Vagas<input id="jo" type="number" min="1" value="' + (j.openings || 1) + '"></label></div>' +
     '<div class="row"><label>Salário (texto)<input id="jsal" value="' + esc(j.salaryText || '') + '"></label><label>Horário<input id="jh" value="' + esc(j.schedule || '') + '" placeholder="Ex.: escala 6x1, 44h"></label></div>' +
     '<label>Sobre a vaga<textarea id="jd">' + esc(j.description || '') + '</textarea></label><label>O que procuramos<textarea id="jr">' + esc(j.requirements || '') + '</textarea></label>' +
     '<label>Lojas que o candidato pode escolher (uma por linha; em branco = não pergunta)<textarea id="jso" placeholder="Praia do Bessa (Parahyba Mall)">' + esc((j.storeOptions || []).join('\n')) + '</textarea></label>' +
-    '<label>Perguntas da candidatura (uma por linha)<textarea id="jq">' + esc((j.questions || []).join('\n')) + '</textarea></label>' +
+    '<div class="card" style="background:#fafafa"><b>Questionário com nota</b><div class="muted" style="margin-top:4px">O candidato toca na resposta; a nota sai sozinha e o funil mostra os melhores primeiro. ' +
+      '<b>ELIM:</b> eliminatória (a resposta com "(reprova)" só marca para você revisar). <b>MC:</b> múltipla escolha, cada alternativa termina com "= pontos". Os pontos nunca aparecem para o candidato.</div>' +
+      '<div style="margin-top:8px">' + Object.entries(TPL).map(([k, t]) => '<button class="btn g" type="button" data-tpl="' + k + '" style="margin:4px 6px 0 0">Usar modelo ' + esc(t.label) + ' (' + t.max + ' pts)</button>').join('') + '</div>' +
+      '<textarea id="jscr" style="min-height:260px;font-family:ui-monospace,Consolas,monospace;font-size:12px" placeholder="ELIM: Você tem disponibilidade para sábados?&#10;- Sim&#10;- Não (reprova)&#10;&#10;MC: Experiência com vendas&#10;- Nenhuma = 0&#10;- 1 ano ou mais = 3">' + esc(j.screeningText || '') + '</textarea>' +
+      '<div class="row"><label>Nota de corte (chamar para entrevista a partir de)<input id="jcut" type="number" min="0" value="' + (j.cutoff == null ? '' : j.cutoff) + '"></label><label>Nota máxima<input id="jmax" disabled value="' + (j.screeningMax || '') + '"></label></div></div>' +
+    '<label>Perguntas abertas da candidatura (uma por linha)<textarea id="jq">' + esc((j.questions || []).join('\n')) + '</textarea></label>' +
     '<label>Perguntas da entrevista por escrito (uma por linha; o candidato responde no celular depois de se candidatar)<textarea id="jiq" style="min-height:220px">' + esc((j.interviewQuestions || []).join('\n')) + '</textarea></label>' +
     '<label>Status<select id="jst">' + ['ABERTA', 'PAUSADA', 'FECHADA'].map((s) => '<option' + (j.status === s ? ' selected' : '') + '>' + s + '</option>').join('') + '</select></label>' +
     '<div class="msg" id="jm"></div><button class="btn" style="margin-top:12px" id="jgo">Salvar</button>' + (j.id ? ' <button class="btn g" style="margin-top:12px" onclick="location.hash=\'candidatos?job=' + j.id + '\';closeDrawer();go(\'candidatos\')">Ver candidatos</button>' : ''));
+  jscr.oninput = () => { jmax.value = 'salve para ver'; };
+  document.querySelectorAll('[data-tpl]').forEach((b) => b.onclick = () => {
+    const t = TPL[b.dataset.tpl]; if (!t) return;
+    if (jscr.value.trim() && !confirm('Trocar o questionário atual pelo modelo ' + t.label + '?')) return;
+    jscr.value = t.text; jcut.value = t.cutoff; jmax.value = t.max;
+    const cur = jq.value.split('\n').map((x) => x.trim()).filter(Boolean);
+    jq.value = [...cur, ...t.open.filter((q) => !cur.includes(q))].join('\n');
+  });
   document.getElementById('jgo').onclick = async () => {
-    const body = { title: jt.value, storeId: js.value, jobTitle: jc.value, openings: jo.value, salaryText: jsal.value, schedule: jh.value, description: jd.value, requirements: jr.value, questions: jq.value.split('\n'), storeOptions: jso.value.split('\n'), interviewQuestions: jiq.value.split('\n'), status: jst.value };
+    const body = { screeningText: jscr.value, cutoff: jcut.value, title: jt.value, storeId: js.value, jobTitle: jc.value, openings: jo.value, salaryText: jsal.value, schedule: jh.value, description: jd.value, requirements: jr.value, questions: jq.value.split('\n'), storeOptions: jso.value.split('\n'), interviewQuestions: jiq.value.split('\n'), status: jst.value };
     try { await (j.id ? api('/jobs/' + j.id, 'PUT', body) : api('/jobs', 'POST', body)); closeDrawer(); go('vagas'); } catch (e) { jm.className = 'msg bad'; jm.textContent = e.message; }
   };
 }
@@ -216,6 +256,37 @@ function interviewCard(c, wa) {
     '<div class="muted" style="margin-top:6px">Entre no link uns minutos antes para abrir a sala (na 1ª vez o site pede login com Google).</div></div>';
 }
 
+// Roteiro de entrevista estruturada (mesmas perguntas e ordem para todos, nota 1–5) + role-play de 5 min.
+function evalCard(c) {
+  const sc = c.scorecard || {}, iv = sc.interview || {}, rp = sc.roleplay || {}, s = c.evalSummary || {};
+  const five = (grp, k, v) => '<div class="sc5" data-g="' + grp + '" data-k="' + k + '">' + [1, 2, 3, 4, 5].map((n) => '<button type="button" data-n="' + n + '"' + (v === n ? ' class="on"' : '') + '>' + n + '</button>').join('') + '</div>';
+  const fmt = (x) => x == null ? '—' : String(x).replace('.', ',');
+  return '<div class="card"><b>🎤 Roteiro da entrevista</b> <span class="muted">média ' + fmt(s.interviewAvg) + ' · ' + s.interviewDone + '/' + s.interviewTotal + '</span>' +
+    '<div class="muted" style="margin-top:4px">Faça as mesmas perguntas, na mesma ordem, para todos. Peça um caso real (situação, o que fez, resultado). 1 = genérico · 3 = exemplo real incompleto · 5 = exemplo completo com resultado.</div>' +
+    c.guide.map((g, i) => '<div class="gq"><b>' + (i + 1) + '. ' + esc(g.c) + '</b><div>' + esc(g.q) + '</div><small>Bom: ' + esc(g.good) + ' · Alerta: ' + esc(g.bad) + '</small>' + five('interview', g.k, iv[g.k]) + '</div>').join('') +
+    (c.roleplay ? '<div style="margin-top:14px"><b>🏃 Role-play de 5 minutos</b> <span class="muted">média ' + fmt(s.roleplayAvg) + ' · ' + s.roleplayDone + '/' + s.roleplayTotal + '</span>' +
+      (s.roleplayOk === true ? ' <span class="pill p-ok">passou</span>' : s.roleplayOk === false ? ' <span class="pill p-warn">abaixo</span>' : '') +
+      '<div class="muted" style="margin-top:4px">' + esc(c.roleplay.intro) + ' Passa com média 3,5 ou mais e sem nota 1 em Honestidade.</div>' +
+      c.roleplay.criteria.map((r) => '<div class="gq"><b>' + esc(r.c) + '</b><small>' + esc(r.d) + '</small>' + five('roleplay', r.k, rp[r.k]) + '</div>').join('') + '</div>' : '') +
+    '<label>Anotações da entrevista (frases que a pessoa disse)<textarea id="evn">' + esc(sc.notes || '') + '</textarea></label>' +
+    '<button class="btn" style="margin-top:10px" id="evgo">Salvar avaliação</button><div class="msg" id="evm"></div></div>';
+}
+function wireEval(c, id) {
+  const dp = document.getElementById('dp');
+  dp.querySelectorAll('.sc5 button').forEach((b) => b.onclick = () => {
+    const box = b.parentElement; const on = b.classList.contains('on');
+    box.querySelectorAll('button').forEach((x) => x.classList.remove('on')); if (!on) b.classList.add('on');
+  });
+  const g = document.getElementById('evgo'); if (!g) return;
+  g.onclick = async () => {
+    const body = { interview: {}, roleplay: {}, notes: document.getElementById('evn').value };
+    dp.querySelectorAll('.sc5').forEach((box) => { const on = box.querySelector('button.on'); if (on) body[box.dataset.g][box.dataset.k] = +on.dataset.n; });
+    g.disabled = true;
+    try { await api('/candidates/' + id + '/scorecard', 'POST', body); await candidate(id); const m = document.getElementById('evm'); if (m) { m.className = 'msg ok'; m.textContent = 'Avaliação salva.'; } }
+    catch (e) { const m = document.getElementById('evm'); m.className = 'msg bad'; m.textContent = e.message; g.disabled = false; }
+  };
+}
+
 async function candidate(id) {
   const c = await api('/candidates/' + id);
   // jsonb não guarda a ordem das chaves: mostra na ordem das perguntas da vaga (e depois o que sobrar).
@@ -228,11 +299,17 @@ async function candidate(id) {
   const ivCard = c.interviewToken ? '<div class="card"><b>Entrevista por escrito</b> ' + (c.interviewDoneAt ? '<span class="pill p-ok">respondida em ' + br(c.interviewDoneAt) + '</span>' : '<span class="pill p-mute">' + (iv.length ? 'começou, não enviou' : 'ainda não respondeu') + '</span>') +
     iv.map(([q, a], i) => '<div style="margin-top:10px"><b>' + (i + 1) + '. ' + esc(q) + '</b><div style="white-space:pre-wrap">' + esc(a) + '</div></div>').join('') +
     (c.interviewDoneAt ? '' : '<div class="muted" style="margin-top:8px">Link para o candidato responder: <a href="' + esc(ivLink) + '" target="_blank">' + esc(ivLink) + '</a></div>') + '</div>' : '';
+  const sAns = Object.values(c.screening || {});
+  const scrCard = sAns.length ? '<div class="card"><b>Questionário</b> ' + scorePill(c) + (c.cutoffAt != null ? '<span class="muted">corte ' + c.cutoffAt + '</span>' : '') +
+    (c.eliminated ? '<div class="msg bad" style="margin-top:6px">⚠️ Marcou resposta eliminatória. Confirme com a pessoa antes de reprovar (ninguém é reprovado só pelo questionário).</div>' : '') +
+    sAns.map((r) => '<div class="sa"><div><div>' + esc(r.q) + '</div><div class="muted">' + esc(r.a) + '</div></div><div class="pt">' +
+      (r.type === 'MC' ? '<span class="pill ' + (r.points === r.max ? 'p-ok' : r.points ? 'p-warn' : 'p-mute') + '">' + r.points + '/' + r.max + '</span>' : (r.elim ? '<span class="pill p-bad">reprova</span>' : '<span class="pill p-ok">ok</span>')) + '</div></div>').join('') + '</div>' : '';
+  const extra = (c.referredBy ? '<div>🤝 Indicado por: <b>' + esc(c.referredBy) + '</b></div>' : '') + (c.talentPool ? '<div>⭐ Quer ficar no banco de talentos</div>' : '');
   drawer('<h2>' + esc(c.name) + '</h2><div class="muted">' + esc(c.jobTitleText) + ' · ' + br(c.createdAt) + ' · <span class="pill p-brand">' + STAGE_LABEL[c.stage] + '</span></div>' +
-    '<div class="card"><div>📱 <a href="' + wa + '" target="_blank">' + esc(c.phone) + '</a>' + (c.email ? ' · ✉️ ' + esc(c.email) : '') + '</div>' + (c.city ? '<div>📍 ' + esc(c.city) + '</div>' : '') + lojas + (c.birthDate ? '<div>🎂 ' + br(c.birthDate) + '</div>' : '') +
+    '<div class="card"><div>📱 <a href="' + wa + '" target="_blank">' + esc(c.phone) + '</a>' + (c.email ? ' · ✉️ ' + esc(c.email) : '') + '</div>' + (c.city ? '<div>📍 ' + esc(c.city) + '</div>' : '') + lojas + extra + (c.birthDate ? '<div>🎂 ' + br(c.birthDate) + '</div>' : '') +
     (c.resumeFile ? '<button class="btn g" style="margin-top:10px" id="cv">📎 Abrir currículo</button>' : '<div class="muted" style="margin-top:6px">Sem currículo anexado.</div>') + '</div>' +
     (c.interviewUrl ? interviewCard(c, wa) : '') +
-    (c.experience ? '<div class="card"><b>Experiência</b><div style="white-space:pre-wrap">' + esc(c.experience) + '</div></div>' : '') + (ans ? '<div class="card">' + ans + '</div>' : '') + ivCard +
+    (c.experience ? '<div class="card"><b>Experiência</b><div style="white-space:pre-wrap">' + esc(c.experience) + '</div></div>' : '') + scrCard + (ans ? '<div class="card">' + ans + '</div>' : '') + ivCard + evalCard(c) +
     (c.stage === 'CONTRATADO' ? '<div class="card msg ok">Contratado. A ficha está na aba Equipe.</div>' :
     '<div class="card"><b>Mover no processo</b><div class="row"><label>Etapa<select id="cs">' + META.stages.filter((s) => s !== 'CONTRATADO').map((s) => '<option value="' + s + '"' + (s === c.stage ? ' selected' : '') + '>' + STAGE_LABEL[s] + '</option>').join('') + '</select></label>' +
     '<label>Nota (1–5)<select id="cr"><option value="">—</option>' + [1, 2, 3, 4, 5].map((n) => '<option' + (c.rating === n ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></label><label>Entrevista em (gera o link de vídeo)<input id="ci" type="datetime-local"></label></div>' +
@@ -242,6 +319,7 @@ async function candidate(id) {
     '<div class="card"><b>Histórico</b>' + c.events.map((e) => '<div class="ev"><small class="muted">' + new Date(e.createdAt).toLocaleString('pt-BR', { timeZone: 'America/Fortaleza' }) + '</small><div>' + esc(e.kind.replace('_', ' ').toLowerCase()) +
       (e.toStage && e.fromStage && e.toStage !== e.fromStage ? ': ' + STAGE_LABEL[e.fromStage] + ' → ' + STAGE_LABEL[e.toStage] : '') + (e.scheduledAt ? ' · ' + new Date(e.scheduledAt).toLocaleString('pt-BR', { timeZone: 'America/Fortaleza' }) : '') + (e.note ? '<div>' + esc(e.note) + '</div>' : '') + '</div></div>').join('') + '</div>' +
     '<button class="btn r" style="margin-top:6px" id="cdel">Excluir candidato e currículo (LGPD)</button>');
+  wireEval(c, id);
   document.getElementById('cdel').onclick = async () => { if (!confirm('Apagar ' + c.name + ' e o currículo de vez? Não dá para desfazer.')) return; try { await api('/candidates/' + id, 'DELETE'); closeDrawer(); go('candidatos'); } catch (e) { alert(e.message); } };
   const cv = document.getElementById('cv'); if (cv) cv.onclick = () => openFile('/candidates/' + id + '/resume');
   const cs = document.getElementById('cs'); if (cs) cs.onchange = () => { document.getElementById('rrl').style.display = cs.value === 'REPROVADO' ? 'block' : 'none'; };

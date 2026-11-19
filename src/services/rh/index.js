@@ -56,6 +56,7 @@ const normPhone = (v) => { let p = String(v || '').replace(/\D/g, ''); if (p.len
 const CONSENT_V = 'v1-2026-11-18: uso dos dados só para o processo seletivo e contato por WhatsApp; pedido de exclusão a qualquer momento; reprovados apagados em 12 meses';
 const clean = (v, n = 200) => (v == null ? null : String(v).trim().slice(0, n) || null);
 const id = () => crypto.randomUUID();
+const scr = require('./screening');
 
 let ready = null;
 function ensureSchema(prisma) {
@@ -81,6 +82,19 @@ function ensureSchema(prisma) {
       `ALTER TABLE "HrCandidate" ADD COLUMN IF NOT EXISTS "interviewToken" TEXT`,
       `ALTER TABLE "HrCandidate" ADD COLUMN IF NOT EXISTS "interviewDoneAt" TIMESTAMP(3)`,
       `CREATE UNIQUE INDEX IF NOT EXISTS "HrCandidate_itoken_uq" ON "HrCandidate" ("interviewToken")`,
+      // Questionário com nota, roteiro de entrevista, role-play, banco de talentos e indicação (dono 19/11/2026).
+      `ALTER TABLE "HrJob" ADD COLUMN IF NOT EXISTS "screening" JSONB NOT NULL DEFAULT '[]'`,
+      `ALTER TABLE "HrJob" ADD COLUMN IF NOT EXISTS "cutoff" INT`,
+      `ALTER TABLE "HrJob" ADD COLUMN IF NOT EXISTS "screeningSeeded" BOOLEAN NOT NULL DEFAULT false`,
+      `ALTER TABLE "HrCandidate" ADD COLUMN IF NOT EXISTS "cutoffAt" INT`,
+      `ALTER TABLE "HrCandidate" ADD COLUMN IF NOT EXISTS "screening" JSONB NOT NULL DEFAULT '{}'`,
+      `ALTER TABLE "HrCandidate" ADD COLUMN IF NOT EXISTS "score" INT`,
+      `ALTER TABLE "HrCandidate" ADD COLUMN IF NOT EXISTS "scoreMax" INT`,
+      `ALTER TABLE "HrCandidate" ADD COLUMN IF NOT EXISTS "eliminated" BOOLEAN NOT NULL DEFAULT false`,
+      `ALTER TABLE "HrCandidate" ADD COLUMN IF NOT EXISTS "elimReasons" JSONB NOT NULL DEFAULT '[]'`,
+      `ALTER TABLE "HrCandidate" ADD COLUMN IF NOT EXISTS "scorecard" JSONB NOT NULL DEFAULT '{}'`,
+      `ALTER TABLE "HrCandidate" ADD COLUMN IF NOT EXISTS "talentPool" BOOLEAN NOT NULL DEFAULT false`,
+      `ALTER TABLE "HrCandidate" ADD COLUMN IF NOT EXISTS "referredBy" TEXT`,
       `CREATE TABLE IF NOT EXISTS "HrCandidateEvent" ("id" SERIAL PRIMARY KEY, "candidateId" TEXT NOT NULL, "kind" TEXT NOT NULL, "fromStage" TEXT, "toStage" TEXT,
         "note" TEXT, "scheduledAt" TIMESTAMP(3), "actorId" TEXT, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT NOW())`,
       `CREATE INDEX IF NOT EXISTS "HrCandidateEvent_c_idx" ON "HrCandidateEvent" ("candidateId", "createdAt")`,
@@ -134,19 +148,27 @@ async function saveJob(prisma, data, actorId, jobId = null) {
   const list = (v, max, len) => JSON.stringify(Array.isArray(v) ? [...new Set(v.map((q) => clean(q, len)).filter(Boolean))].slice(0, max) : []);
   const storeOptions = list(data.storeOptions, 8, 80);
   const interviewQuestions = list(data.interviewQuestions, 40, 300);
+  // Questionário com nota: o painel manda em texto ("ELIM:"/"MC:" e alternativas com "-"). Sem o campo, não mexe.
+  const scrSent = data.screeningText !== undefined || data.screening !== undefined;
+  const prevScr = scrSent && jobId ? ((await getJob(prisma, jobId)) || {}).screening : [];
+  const screening = scrSent ? JSON.stringify(scr.normalize(data.screeningText !== undefined ? String(data.screeningText) : data.screening, prevScr)) : null;
+  const cutoffSent = data.cutoff !== undefined;
+  const cutoff = cutoffSent && data.cutoff !== '' && data.cutoff != null ? Math.max(0, Math.min(500, parseInt(data.cutoff, 10) || 0)) : null;
   const vals = [title, clean(data.storeId, 60), clean(data.jobTitle, 30) || 'VENDEDOR', clean(data.description, 4000), clean(data.requirements, 3000),
     clean(data.salaryText, 200), clean(data.schedule, 200), openings, status, JSON.stringify(questions)];
   if (jobId) {
     const n = await prisma.$executeRaw`UPDATE "HrJob" SET "title"=${vals[0]}, "storeId"=${vals[1]}, "jobTitle"=${vals[2]}, "description"=${vals[3]}, "requirements"=${vals[4]},
-      "salaryText"=${vals[5]}, "schedule"=${vals[6]}, "openings"=${vals[7]}, "status"=${vals[8]}, "questions"=${vals[9]}::jsonb, "storeOptions"=${storeOptions}::jsonb, "interviewQuestions"=${interviewQuestions}::jsonb, "updatedAt"=NOW() WHERE "id"=${jobId}`;
+      "salaryText"=${vals[5]}, "schedule"=${vals[6]}, "openings"=${vals[7]}, "status"=${vals[8]}, "questions"=${vals[9]}::jsonb, "storeOptions"=${storeOptions}::jsonb, "interviewQuestions"=${interviewQuestions}::jsonb,
+      "screening"=COALESCE(${screening}::jsonb, "screening"), "cutoff"=CASE WHEN ${cutoffSent} THEN ${cutoff}::int ELSE "cutoff" END, "updatedAt"=NOW() WHERE "id"=${jobId}`;
     if (!n) throw httpErr(404, 'Vaga não encontrada.');
     await audit(prisma, 'HrJob', jobId, 'UPDATE', actorId, { title, status });
     return getJob(prisma, jobId);
   }
   const newId = id();
   let slug = slugify(title) + '-' + newId.slice(0, 5);
-  await prisma.$executeRaw`INSERT INTO "HrJob" ("id","slug","title","storeId","jobTitle","description","requirements","salaryText","schedule","openings","status","questions","storeOptions","interviewQuestions","createdById")
-    VALUES (${newId}, ${slug}, ${vals[0]}, ${vals[1]}, ${vals[2]}, ${vals[3]}, ${vals[4]}, ${vals[5]}, ${vals[6]}, ${vals[7]}, ${vals[8]}, ${vals[9]}::jsonb, ${storeOptions}::jsonb, ${interviewQuestions}::jsonb, ${actorId || null})`;
+  await prisma.$executeRaw`INSERT INTO "HrJob" ("id","slug","title","storeId","jobTitle","description","requirements","salaryText","schedule","openings","status","questions","storeOptions","interviewQuestions","screening","cutoff","createdById")
+    VALUES (${newId}, ${slug}, ${vals[0]}, ${vals[1]}, ${vals[2]}, ${vals[3]}, ${vals[4]}, ${vals[5]}, ${vals[6]}, ${vals[7]}, ${vals[8]}, ${vals[9]}::jsonb, ${storeOptions}::jsonb, ${interviewQuestions}::jsonb,
+      ${screening || '[]'}::jsonb, ${cutoff}::int, ${actorId || null})`;
   await audit(prisma, 'HrJob', newId, 'CREATE', actorId, { title });
   return getJob(prisma, newId);
 }
@@ -167,13 +189,14 @@ async function listJobs(prisma, { publicOnly = false } = {}) {
         (SELECT count(*)::int FROM "HrCandidate" c WHERE c."jobId"=j."id" AND c."stage"='NOVO') AS "newCandidates" FROM "HrJob" j ORDER BY j."status"='ABERTA' DESC, j."createdAt" DESC`;
   const stores = await prisma.store.findMany({ select: { id: true, name: true } });
   const sn = Object.fromEntries(stores.map((s) => [s.id, s.name]));
-  return rows.map((j) => ({ ...j, storeName: sn[j.storeId] || null }));
+  return rows.map((j) => (publicOnly ? { ...j, storeName: sn[j.storeId] || null }
+    : { ...j, storeName: sn[j.storeId] || null, screeningText: scr.toText(j.screening), screeningMax: scr.maxScore(j.screening) }));
 }
 
 function publicJob(j) {
   return { slug: j.slug, title: j.title, storeName: j.storeName, description: j.description, requirements: j.requirements, salaryText: j.salaryText,
     schedule: j.schedule, questions: j.questions || [], storeOptions: j.storeOptions || [],
-    interviewCount: Array.isArray(j.interviewQuestions) ? j.interviewQuestions.length : 0, createdAt: j.createdAt };
+    interviewCount: Array.isArray(j.interviewQuestions) ? j.interviewQuestions.length : 0, screening: scr.publicView(j.screening), createdAt: j.createdAt };
 }
 
 async function apply(prisma, slug, body, file) {
@@ -198,22 +221,36 @@ async function apply(prisma, slug, body, file) {
   try { picked = typeof body.storeChoices === 'string' ? JSON.parse(body.storeChoices) : (body.storeChoices || []); } catch (_) { picked = []; }
   const storeChoices = opts.filter((o) => Array.isArray(picked) && picked.includes(o));
   if (opts.length && !storeChoices.length) throw httpErr(400, 'Escolha em qual loja você quer trabalhar.');
+  // Questionário com nota: calculado aqui no servidor (a página pública não sabe os pontos).
+  const scrList = Array.isArray(job.screening) ? job.screening : [];
+  let sres = { answers: {}, score: null, max: null, eliminated: false, reasons: [] };
+  if (scrList.length) {
+    let sa = {};
+    try { sa = typeof body.screening === 'string' ? JSON.parse(body.screening) : (body.screening || {}); } catch (_) { sa = {}; }
+    sres = scr.score(scrList, sa);
+  }
+  const talentPool = body.talentPool === true || body.talentPool === 'true' || body.talentPool === 'on';
   const hasInterview = Array.isArray(job.interviewQuestions) && job.interviewQuestions.length > 0;
   const token = hasInterview ? crypto.randomBytes(24).toString('hex') : null;
   let saved = null;
   if (file) saved = require('./store').save(file);
   const cid = id();
   try {
-    await prisma.$executeRaw`INSERT INTO "HrCandidate" ("id","jobId","name","phone","email","city","linkedin","experience","answers","resumeFile","resumeName","resumeMime","source","consentAt","consentText","storeChoices","interviewToken")
+    await prisma.$executeRaw`INSERT INTO "HrCandidate" ("id","jobId","name","phone","email","city","linkedin","experience","answers","resumeFile","resumeName","resumeMime","source","consentAt","consentText","storeChoices","interviewToken","screening","score","scoreMax","eliminated","elimReasons","talentPool","referredBy","cutoffAt")
       VALUES (${cid}, ${job.id}, ${name}, ${phone}, ${email}, ${clean(body.city, 80)}, ${clean(body.linkedin, 200)},
         ${clean(body.experience, 3000)}, ${JSON.stringify(cleanAnswers)}::jsonb, ${saved && saved.storedName}, ${saved && saved.originalName}, ${saved && saved.mimeType}, ${clean(body.source, 40) || 'site'}, NOW(), ${CONSENT_V},
-        ${JSON.stringify(storeChoices)}::jsonb, ${token})`;
+        ${JSON.stringify(storeChoices)}::jsonb, ${token}, ${JSON.stringify(sres.answers)}::jsonb, ${sres.score}::int, ${sres.max}::int, ${sres.eliminated},
+        ${JSON.stringify(sres.reasons)}::jsonb, ${talentPool}, ${clean(body.referredBy, 120)}, ${sres.max ? (job.cutoff == null ? null : job.cutoff) : null}::int)`;
   } catch (e) {
     if (saved) require('./store').remove(saved.storedName);
     if (/unique|duplicate/i.test(e.message)) throw httpErr(409, 'Você já se candidatou a esta vaga. Boa sorte! 🧡');
     throw e;
   }
-  await prisma.$executeRaw`INSERT INTO "HrCandidateEvent" ("candidateId","kind","toStage","note") VALUES (${cid}, 'CANDIDATURA', 'NOVO', ${'Candidatura pelo site: ' + job.title})`;
+  await prisma.$executeRaw`INSERT INTO "HrCandidateEvent" ("candidateId","kind","toStage","note") VALUES (${cid}, 'CANDIDATURA', 'NOVO', ${'Candidatura pelo site: ' + job.title + (sres.max ? ' · questionário ' + sres.score + '/' + sres.max : '')})`;
+  if (sres.eliminated) {
+    await prisma.$executeRaw`INSERT INTO "HrCandidateEvent" ("candidateId","kind","toStage","note") VALUES (${cid}, 'TRIAGEM', 'NOVO',
+      ${'Marcou resposta eliminatória: ' + sres.reasons.join(' | ') + '. Revisar antes de reprovar (ninguém é reprovado automaticamente).'})`;
+  }
   return { ok: true, job: job.title, interviewToken: token, interviewCount: hasInterview ? job.interviewQuestions.length : 0 };
 }
 
@@ -258,18 +295,23 @@ async function saveInterview(prisma, token, body) {
 async function listCandidates(prisma, { jobId = null, stage = null, q = null } = {}) {
   await ensureSchema(prisma);
   let rows = jobId
-    ? await prisma.$queryRaw`SELECT c.*, j."title" AS "jobTitleText", j."storeId" FROM "HrCandidate" c JOIN "HrJob" j ON j."id"=c."jobId" WHERE c."jobId"=${jobId} ORDER BY c."createdAt" DESC`
-    : await prisma.$queryRaw`SELECT c.*, j."title" AS "jobTitleText", j."storeId" FROM "HrCandidate" c JOIN "HrJob" j ON j."id"=c."jobId" ORDER BY c."createdAt" DESC LIMIT 1000`;
+    ? await prisma.$queryRaw`SELECT c.*, j."title" AS "jobTitleText", j."storeId", j."jobTitle" AS "jobRole", j."cutoff" FROM "HrCandidate" c JOIN "HrJob" j ON j."id"=c."jobId" WHERE c."jobId"=${jobId} ORDER BY c."createdAt" DESC`
+    : await prisma.$queryRaw`SELECT c.*, j."title" AS "jobTitleText", j."storeId", j."jobTitle" AS "jobRole", j."cutoff" FROM "HrCandidate" c JOIN "HrJob" j ON j."id"=c."jobId" ORDER BY c."createdAt" DESC LIMIT 1000`;
   if (stage) rows = rows.filter((r) => r.stage === stage);
   if (q) { const t = String(q).toLowerCase(); rows = rows.filter((r) => (r.name + ' ' + r.phone + ' ' + (r.city || '')).toLowerCase().includes(t)); }
-  return rows.map((r) => ({ ...r, resumeFile: r.resumeFile ? true : false, interviewToken: undefined, interview: undefined }));
+  return rows.map((r) => ({ ...r, resumeFile: r.resumeFile ? true : false, interviewToken: undefined, interview: undefined, screening: undefined,
+    scorecard: undefined, evalSummary: scr.summarize(r.jobRole, r.scorecard) }));
 }
 
 async function getCandidate(prisma, cid) {
   await ensureSchema(prisma);
-  const [c] = await prisma.$queryRaw`SELECT c.*, j."title" AS "jobTitleText", j."storeId", j."jobTitle" AS "jobRole", j."questions" AS "jobQuestions", j."interviewQuestions" AS "jobInterviewQuestions"
+  const [c] = await prisma.$queryRaw`SELECT c.*, j."title" AS "jobTitleText", j."storeId", j."jobTitle" AS "jobRole", j."questions" AS "jobQuestions", j."interviewQuestions" AS "jobInterviewQuestions", j."cutoff"
     FROM "HrCandidate" c JOIN "HrJob" j ON j."id"=c."jobId" WHERE c."id"=${cid}`;
   if (!c) return null;
+  const role = scr.roleOf(c.jobRole);
+  c.guide = scr.GUIDE[role];
+  c.roleplay = role === 'VENDEDOR' ? scr.ROLEPLAY : null;
+  c.evalSummary = scr.summarize(role, c.scorecard);
   c.events = await prisma.$queryRaw`SELECT * FROM "HrCandidateEvent" WHERE "candidateId"=${cid} ORDER BY "createdAt" DESC`;
   return c;
 }
@@ -290,6 +332,21 @@ async function moveCandidate(prisma, cid, { stage, note, rating, rejectReason, s
     await prisma.$executeRaw`INSERT INTO "HrCandidateEvent" ("candidateId","kind","fromStage","toStage","note","scheduledAt","actorId")
       VALUES (${cid}, ${sched ? 'ENTREVISTA_MARCADA' : (stage && stage !== c.stage ? 'ETAPA' : 'NOTA')}, ${c.stage}, ${stage || c.stage}, ${clean(note, 2000)}, ${sched}, ${actorId || null})`;
   }
+  return getCandidate(prisma, cid);
+}
+
+// Roteiro da entrevista + role-play: nota 1–5 por pergunta. Só registra e resume; quem decide é o dono.
+async function saveScorecard(prisma, cid, body, actorId) {
+  await ensureSchema(prisma);
+  const c = await getCandidate(prisma, cid);
+  if (!c) throw httpErr(404, 'Candidato não encontrado.');
+  const sc = scr.buildScorecard(c.jobRole, body || {});
+  const s = sc.summary;
+  await prisma.$executeRaw`UPDATE "HrCandidate" SET "scorecard"=${JSON.stringify({ interview: sc.interview, roleplay: sc.roleplay, notes: sc.notes, by: actorId || null, at: new Date().toISOString() })}::jsonb, "updatedAt"=NOW() WHERE "id"=${cid}`;
+  const note = 'Entrevista ' + (s.interviewAvg == null ? '—' : String(s.interviewAvg).replace('.', ',')) + ' (' + s.interviewDone + '/' + s.interviewTotal + ')' +
+    (s.roleplayTotal ? ' · role-play ' + (s.roleplayAvg == null ? '—' : String(s.roleplayAvg).replace('.', ',')) + ' (' + s.roleplayDone + '/' + s.roleplayTotal + ')' +
+      (s.roleplayOk === true ? ' · passou no role-play' : s.roleplayOk === false ? ' · abaixo do role-play' : '') : '');
+  await prisma.$executeRaw`INSERT INTO "HrCandidateEvent" ("candidateId","kind","fromStage","toStage","note","actorId") VALUES (${cid}, 'AVALIACAO', ${c.stage}, ${c.stage}, ${note}, ${actorId || null})`;
   return getCandidate(prisma, cid);
 }
 
@@ -735,7 +792,7 @@ function userFromLink(k) {
 
 module.exports = {
   STAGES, DOC_TYPES, REQUIRED_DOCS, CHECKLISTS, REVIEW_CRITERIA, ensureSchema,
-  saveJob, getJob, listJobs, publicJob, apply, getInterview, saveInterview, listCandidates, getCandidate, moveCandidate, hire, deleteCandidate, purgeOldCandidates,
+  saveJob, getJob, listJobs, publicJob, apply, getInterview, saveInterview, listCandidates, getCandidate, moveCandidate, saveScorecard, screening: scr, hire, deleteCandidate, purgeOldCandidates,
   vacationBalance, validateVacation, requestVacation, decideVacation, cancelVacation, adjustVacationRight, listVacations,
   addDocument, listDocuments, getDocumentFile, removeDocument, expiringDocuments,
   startChecklist, toggleChecklistItem, listChecklists, startOffboarding,

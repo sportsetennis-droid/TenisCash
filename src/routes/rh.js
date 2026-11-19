@@ -94,6 +94,7 @@ const admin = express.Router();
 admin.use(authMiddleware, adminMiddleware, (req, res, next) => (['admin', 'superadmin'].includes(req.userRole) ? next() : res.status(403).json({ error: 'RH restrito ao dono e à administração.' })));
 admin.get('/dashboard', (req, res) => send(res, rh.dashboard(prisma)));
 admin.get('/meta', async (req, res) => send(res, (async () => ({
+  screeningTemplates: Object.fromEntries(Object.entries(rh.screening.TEMPLATES).map(([k, t]) => [k, { label: t.label, cutoff: t.cutoff, max: rh.screening.maxScore(t.screening), open: t.open, text: rh.screening.toText(t.screening) }])),
   stages: rh.STAGES, docTypes: rh.DOC_TYPES, requiredDocs: rh.REQUIRED_DOCS, checklists: rh.CHECKLISTS, criteria: rh.REVIEW_CRITERIA,
   stores: await prisma.store.findMany({ where: { active: true }, select: { id: true, code: true, name: true }, orderBy: { code: 'asc' } }),
 }))()));
@@ -108,6 +109,7 @@ admin.get('/candidates/:id/resume', async (req, res) => {
   if (!c || !c.resumeFile) return res.status(404).json({ error: 'Sem currículo anexado.' });
   sendFile(res, store.resolve(c.resumeFile), c.resumeName, c.resumeMime);
 });
+admin.post('/candidates/:id/scorecard', (req, res) => send(res, rh.saveScorecard(prisma, req.params.id, req.body || {}, req.userId)));
 admin.post('/candidates/:id/move', (req, res) => send(res, rh.moveCandidate(prisma, req.params.id, req.body || {}, req.userId)));
 admin.delete('/candidates/:id', (req, res) => send(res, rh.deleteCandidate(prisma, req.params.id, req.userId)));
 admin.post('/candidates/:id/hire', (req, res) => send(res, rh.hire(prisma, req.params.id, req.body || {}, req.userId)));

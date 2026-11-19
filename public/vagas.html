@@ -55,6 +55,10 @@ textarea{min-height:90px;resize:vertical}
 .ia{min-height:170px;margin-top:14px}
 .nav{display:flex;gap:10px}.nav .btn{flex:1}.btn.g{background:var(--fill);color:var(--ink)}
 .hint{color:var(--muted);font-size:13px;margin-top:8px}
+.sq{margin-top:16px;padding-top:4px}
+.sq .t{font-size:15px;font-weight:700;color:var(--ink);line-height:1.3}
+.sq .opt span{font-weight:500}
+.sh{margin-top:22px;font-size:13px;font-weight:800;text-transform:uppercase;color:var(--muted);letter-spacing:.4px}
 .hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
 .done{text-align:center;padding:50px 10px}
 .done .big{font-size:56px}
@@ -98,8 +102,14 @@ async function jobView(slug) {
   try { const r = await fetch('/api/rh/public/jobs/' + encodeURIComponent(slug), { cache: 'no-store' }); if (r.ok) j = await r.json(); } catch (_) {}
   if (!j) { $app.innerHTML = '<button class="back" id="bk">← Todas as vagas</button><div class="empty">Esta vaga foi encerrada.</div>'; document.getElementById('bk').onclick = goList; return; }
   document.title = j.title + ' · Sports & Tennis';
+  jobPostingLd(j);
   const lojas = (j.storeOptions || []).length ? '<div style="margin-top:14px;font-size:13px;font-weight:700;color:#3a3a3c">Em qual loja você quer trabalhar? (pode marcar mais de uma)</div>' +
     j.storeOptions.map((o, i) => '<label class="opt"><input type="checkbox" name="loja" value="' + i + '"><span>' + esc(o) + '</span></label>').join('') : '';
+  // Questionário de toque: as alternativas aparecem embaralhadas (a ordem certa nunca é a mesma), mas o envio usa o índice original.
+  const shuffle = (n) => { const a = [...Array(n).keys()]; for (let k = n - 1; k > 0; k--) { const r = Math.floor(Math.random() * (k + 1)); [a[k], a[r]] = [a[r], a[k]]; } return a; };
+  const scr = (j.screening || []).map((q, qi) => '<div class="sq" data-q="' + qi + '"><div class="t">' + (qi + 1) + '. ' + esc(q.text) + '</div>' +
+    shuffle(q.options.length).map((oi) => '<label class="opt"><input type="radio" name="s' + qi + '" value="' + oi + '"><span>' + esc(q.options[oi]) + '</span></label>').join('') + '</div>').join('');
+  const scrBlock = scr ? '<div class="sh">Perguntas rápidas · toque na sua resposta</div><div class="hint">Não existe pegadinha: responda do jeito que você faria de verdade.</div>' + scr : '';
   const qs = (j.questions || []).map((q, i) => '<label>' + esc(q) + '<textarea name="q' + i + '" maxlength="1000"></textarea></label>').join('');
   $app.innerHTML = bar + '<button class="back" id="bk">← Todas as vagas</button>' +
     '<h2>' + esc(j.title) + '</h2>' + [j.storeName, j.salaryText, j.schedule].filter(Boolean).map((t) => '<span class="tag">' + esc(t) + '</span>').join('') +
@@ -110,9 +120,12 @@ async function jobView(slug) {
     '<label>WhatsApp com DDD<input name="phone" required inputmode="tel" autocomplete="tel" placeholder="(83) 9 9999-9999"></label>' +
     '<label>E-mail (opcional)<input name="email" type="email" inputmode="email" autocomplete="email"></label>' +
     '<label>Cidade / bairro<input name="city" maxlength="80"></label>' + lojas +
+    scrBlock + '<div class="sh">Sobre você</div>' +
     '<label>Sua experiência (onde trabalhou, quanto tempo, o que fazia)<textarea name="experience" maxlength="3000"></textarea></label>' + qs +
+    '<label>Alguém da nossa equipe indicou você? Nome de quem indicou (opcional)<input name="referredBy" maxlength="120"></label>' +
     '<div style="margin-top:12px;font-size:13px;font-weight:700;color:#3a3a3c">Anexe o seu currículo (PDF ou foto)</div><div class="file" id="fl"><span>📎</span><span id="fn">Toque para anexar</span><input type="file" name="resume" accept="application/pdf,image/jpeg,image/png,image/webp"></div>' +
     '<div class="hp" aria-hidden="true"><label>Site<input name="website" tabindex="-1" autocomplete="off"></label></div>' +
+    '<label class="chk"><input type="checkbox" name="talentPool"><span>Se eu não for chamado agora, quero ficar no banco de talentos da Sports &amp; Tennis para as próximas vagas (por até 12 meses).</span></label>' +
     '<label class="chk"><input type="checkbox" name="consent"><span>Autorizo a Sports &amp; Tennis a usar meus dados só para este processo seletivo e a falar comigo pelo WhatsApp. Posso pedir para apagar quando quiser; se eu não for chamado, meus dados são apagados em 12 meses.</span></label>' +
     '<button class="btn" id="send" type="submit">' + (j.interviewCount ? 'Enviar e ir para a entrevista' : 'Enviar candidatura') + '</button><div class="msg" id="m"></div></form>' +
     '<div class="foot">Sports &amp; Tennis · Seus dados são protegidos pela LGPD.</div>';
@@ -129,10 +142,18 @@ async function jobView(slug) {
     if (phone.length < 10) { m.className = 'msg bad'; m.textContent = 'Informe seu WhatsApp com DDD.'; f.phone.focus(); return; }
     const picked = [...f.querySelectorAll('input[name=loja]:checked')].map((el) => j.storeOptions[+el.value]);
     if ((j.storeOptions || []).length && !picked.length) { m.className = 'msg bad'; m.textContent = 'Escolha em qual loja você quer trabalhar.'; f.querySelector('input[name=loja]').focus(); return; }
+    const sAns = {};
+    for (let qi = 0; qi < (j.screening || []).length; qi++) {
+      const el = f.querySelector('input[name=s' + qi + ']:checked');
+      if (!el) { m.className = 'msg bad'; m.textContent = 'Responda a pergunta rápida ' + (qi + 1) + '.'; f.querySelector('[data-q="' + qi + '"]').scrollIntoView({ block: 'center' }); return; }
+      sAns[j.screening[qi].id] = +el.value;
+    }
     if (!f.consent.checked) { m.className = 'msg bad'; m.textContent = 'Marque a autorização para enviar.'; return; }
     if (fileInput.files[0] && fileInput.files[0].size > 8 * 1024 * 1024) { m.className = 'msg bad'; m.textContent = 'Currículo grande demais (máx. 8 MB).'; return; }
     const fd = new FormData();
-    ['name', 'phone', 'email', 'city', 'experience', 'website'].forEach((k) => fd.append(k, f[k].value));
+    ['name', 'phone', 'email', 'city', 'experience', 'website', 'referredBy'].forEach((k) => fd.append(k, f[k].value));
+    fd.append('screening', JSON.stringify(sAns));
+    if (f.talentPool.checked) fd.append('talentPool', 'true');
     fd.append('consent', 'true');
     fd.append('storeChoices', JSON.stringify(picked));
     fd.append('answers', JSON.stringify((j.questions || []).map((_, i) => f['q' + i].value)));
@@ -221,7 +242,18 @@ async function interviewView(token, fromLink) {
   };
   show();
 }
-function goList() { history.pushState({}, '', location.pathname); document.title = 'Trabalhe conosco · Sports & Tennis'; listView(); }
+// Marcação de vaga do Google (JobPosting): a vaga pode aparecer na busca "vagas vendedor João Pessoa".
+function jobPostingLd(j) {
+  const old = document.getElementById('ld-job'); if (old) old.remove();
+  const desc = [j.description, j.requirements && ('O que procuramos: ' + j.requirements), j.schedule && ('Horário: ' + j.schedule), j.salaryText && ('Salário: ' + j.salaryText)].filter(Boolean).join('\n\n') || j.title;
+  const ld = { '@context': 'https://schema.org/', '@type': 'JobPosting', title: j.title, description: desc.replace(/[<>]/g, ''),
+    datePosted: String(j.createdAt || new Date().toISOString()).slice(0, 10), employmentType: 'FULL_TIME', directApply: true,
+    hiringOrganization: { '@type': 'Organization', name: 'Sports & Tennis', sameAs: 'https://sportsetennis.com.br', logo: location.origin + '/brand/sports-tennis-icon.svg' },
+    jobLocation: { '@type': 'Place', address: { '@type': 'PostalAddress', addressLocality: /borborema|campina/i.test([j.title, j.storeName].join(' ')) ? 'Campina Grande' : 'João Pessoa', addressRegion: 'PB', addressCountry: 'BR' } } };
+  const sc = document.createElement('script'); sc.type = 'application/ld+json'; sc.id = 'ld-job'; sc.textContent = JSON.stringify(ld).replace(/</g, '\\u003c');
+  document.head.appendChild(sc);
+}
+function goList() { const o = document.getElementById('ld-job'); if (o) o.remove(); history.pushState({}, '', location.pathname); document.title = 'Trabalhe conosco · Sports & Tennis'; listView(); }
 function route() { const q = new URLSearchParams(location.search); const e = q.get('e'), v = q.get('v'); e ? interviewView(e, true) : v ? jobView(v) : listView(); }
 window.onpopstate = route;
 route();
