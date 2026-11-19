@@ -7,6 +7,7 @@
 //   MC   = múltipla escolha com pontos. A nota é a soma. Os pontos e a resposta certa nunca vão para a página pública.
 // Proibido perguntar: estado civil, filhos, gravidez, religião, orientação, antecedentes, idade sem justificativa
 // legal (Lei 9.029/95, CLT 373-A). Por isso não há pergunta de idade nos modelos.
+// Não falar de escala (6x1/5x2): vai mudar com a lei (dono 19/11/2026: "Então não fala de escala").
 const httpErr = (status, message) => Object.assign(new Error(message), { status });
 const clean = (v, n) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, n);
 
@@ -102,7 +103,7 @@ function score(list, answers) {
 
 // ───────── MODELOS ─────────
 const T_VENDEDOR = [
-  { id: 'E1', type: 'ELIM', text: 'A escala é 6x1 com revezamento e inclui sábados, domingos e feriados conforme a escala da loja. Você tem essa disponibilidade?', options: [{ label: 'Sim', ok: true }, { label: 'Não', ok: false }] },
+  { id: 'E1', type: 'ELIM', text: 'Você tem disponibilidade para trabalhar aos sábados, domingos e feriados?', options: [{ label: 'Sim', ok: true }, { label: 'Não', ok: false }] },
   { id: 'E2', type: 'ELIM', text: 'O horário pode ir até o fechamento do shopping. Você pode trabalhar nesse horário?', options: [{ label: 'Sim', ok: true }, { label: 'Só pela manhã', ok: false }, { label: 'Não', ok: false }] },
   { id: 'M1', type: 'MC', text: 'Qual é a sua experiência com vendas?', options: [{ label: 'Nenhuma', points: 0 }, { label: 'Informal ou negócio próprio', points: 1 }, { label: 'Loja, menos de 1 ano', points: 2 }, { label: 'Loja, 1 ano ou mais', points: 3 }] },
   { id: 'M2', type: 'MC', text: 'Já trabalhou com meta e comissão?', options: [{ label: 'Não', points: 0 }, { label: 'Sim, às vezes bati a meta', points: 2 }, { label: 'Sim, bati na maioria dos meses', points: 3 }] },
@@ -118,7 +119,7 @@ const T_VENDEDOR = [
   { id: 'M12', type: 'MC', text: 'Vender é só uma parte: tem repor, arrumar, contar e bipar estoque, limpar vitrine. Como você vê isso?', options: [{ label: 'Não é minha função', points: 0 }, { label: 'Faço se mandarem', points: 1 }, { label: 'Faz parte, gosto de loja organizada', points: 3 }] },
 ];
 const T_LOGISTICA = [
-  { id: 'E1', type: 'ELIM', text: 'A função tem escala com sábados e, às vezes, inventário fora do horário. Você tem essa disponibilidade?', options: [{ label: 'Sim', ok: true }, { label: 'Não', ok: false }] },
+  { id: 'E1', type: 'ELIM', text: 'A função inclui sábados e, às vezes, inventário fora do horário. Você tem essa disponibilidade?', options: [{ label: 'Sim', ok: true }, { label: 'Não', ok: false }] },
   { id: 'M1', type: 'MC', text: 'Qual é a sua experiência com estoque e recebimento de mercadoria?', options: [{ label: 'Nenhuma', points: 0 }, { label: 'Já fui ajudante', points: 1 }, { label: 'Recebia mercadoria e conferia a nota', points: 2 }, { label: '1 ano ou mais com coletor e sistema', points: 3 }] },
   { id: 'M2', type: 'MC', text: 'A nota diz 12 pares e você contou 11 na caixa. O que você faz?', options: [{ label: 'Dá entrada nos 12', points: 0 }, { label: 'Anota a diferença, avisa o responsável e não confirma o recebimento total', points: 3 }, { label: 'Completa com um par do estoque', points: 0 }] },
   { id: 'M3', type: 'MC', text: 'Chegaram 7 caixas com 12 pares cada e mais 5 pares avulsos. Quantos pares chegaram?', options: [{ label: '84', points: 0 }, { label: '89', points: 3 }, { label: '91', points: 0 }, { label: '79', points: 0 }] },
@@ -128,14 +129,14 @@ const T_LOGISTICA = [
 ];
 const T_SUPERVISOR = [
   { id: 'E1', type: 'ELIM', text: 'Você já liderou equipe no varejo (como líder formal ou informal) por 1 ano ou mais?', options: [{ label: 'Sim', ok: true }, { label: 'Não', ok: false }] },
-  { id: 'E2', type: 'ELIM', text: 'A função tem abertura e fechamento da loja, escala e fins de semana de movimento forte. Você tem essa disponibilidade?', options: [{ label: 'Sim', ok: true }, { label: 'Não', ok: false }] },
+  { id: 'E2', type: 'ELIM', text: 'A função inclui abertura e fechamento da loja e fins de semana de movimento forte. Você tem essa disponibilidade?', options: [{ label: 'Sim', ok: true }, { label: 'Não', ok: false }] },
   { id: 'M1', type: 'MC', text: 'Qual foi o tamanho da maior equipe que você liderou?', options: [{ label: '1 a 3 pessoas', points: 1 }, { label: '4 a 8 pessoas', points: 2 }, { label: '9 ou mais', points: 3 }] },
   { id: 'M2', type: 'MC', text: 'A loja vendeu R$ 30.000 em 150 vendas e 360 peças. Qual é o ticket médio e o número de peças por venda?', options: [{ label: 'R$ 200 e 2,4 peças', points: 3 }, { label: 'R$ 200 e 2,0 peças', points: 1 }, { label: 'R$ 83 e 2,4 peças', points: 1 }, { label: 'R$ 83 e 0,4 peça', points: 0 }] },
   { id: 'M3', type: 'MC', text: 'São 15h e a loja fez menos de 60% da meta do dia. O que você faz?', options: [{ label: 'Espera o movimento melhorar', points: 0 }, { label: 'Cobra a equipe em público', points: 0 }, { label: 'Olha fluxo e conversão, redistribui a equipe, puxa uma ação (abordagem na porta, venda adicional, WhatsApp para clientes) e acompanha de hora em hora', points: 3 }] },
   { id: 'M4', type: 'MC', text: 'O cliente pede 20% de desconto. O que você faz?', options: [{ label: 'Dá na hora', points: 0 }, { label: 'Segue a política: oferece o que está na sua alçada e leva acima disso para quem aprova', points: 3 }, { label: 'Recusa sem conversa', points: 1 }] },
   { id: 'M5', type: 'MC', text: 'Dois vendedores brigam pelo mesmo cliente por causa da comissão. O que você faz?', options: [{ label: 'Deixa eles resolverem', points: 0 }, { label: 'Resolve na hora pela regra combinada, conversa em particular depois e deixa a regra clara para todos', points: 3 }, { label: 'Dá a venda para o melhor vendedor', points: 0 }] },
   { id: 'M6', type: 'MC', text: 'O seu melhor vendedor chega atrasado toda semana. O que você faz?', options: [{ label: 'Ignora porque ele vende', points: 0 }, { label: 'Dá retorno em particular com fatos, combina prazo e registra; se repetir, aplica a política', points: 3 }, { label: 'Expõe o caso para a equipe', points: 0 }] },
-  { id: 'M7', type: 'MC', text: 'Sábado de movimento e faltam 2 vendedores. O que você faz?', options: [{ label: 'Remaneja escala e pausas, pede apoio de outra loja e prioriza caixa e atendimento', points: 3 }, { label: 'Fecha uma área da loja', points: 1 }, { label: 'Não faz nada', points: 0 }] },
+  { id: 'M7', type: 'MC', text: 'Sábado de movimento e faltam 2 vendedores. O que você faz?', options: [{ label: 'Remaneja horários e pausas, pede apoio de outra loja e prioriza caixa e atendimento', points: 3 }, { label: 'Fecha uma área da loja', points: 1 }, { label: 'Não faz nada', points: 0 }] },
 ];
 
 const TEMPLATES = {
@@ -161,7 +162,7 @@ const GUIDE = {
     { k: 'organizacao', c: 'Organização', q: 'Como você ajuda a manter a loja e o estoque em ordem?', good: 'Repõe, organiza, segue processo', bad: '"Não é comigo"' },
     { k: 'integridade', c: 'Integridade', q: 'Quando você teve que dizer "não" a um cliente para fazer o certo?', good: 'Honestidade, mesmo perdendo a venda', bad: 'Vende a qualquer custo' },
     { k: 'produto', c: 'Aprendizado de produto', q: 'Como você aprende sobre um produto novo?', good: 'Estuda, testa, pergunta, pratica esporte', bad: 'Passivo' },
-    { k: 'rotina', c: 'Disponibilidade real', q: 'Como fica a sua rotina com escala 6x1 e domingos? Quem te apoia?', good: 'Plano concreto (transporte, família)', bad: 'Hesita (risco de sair cedo)' },
+    { k: 'rotina', c: 'Disponibilidade real', q: 'Como fica a sua rotina para trabalhar fins de semana e feriados? Quem te apoia?', good: 'Plano concreto (transporte, família)', bad: 'Hesita (risco de sair cedo)' },
     { k: 'motivacao', c: 'Motivação', q: 'Por que loja de esporte e por que a Sports & Tennis?', good: 'Liga a paixão pelo esporte ao atendimento', bad: '"Qualquer emprego"' },
   ],
   LOGISTICA: [
@@ -181,7 +182,7 @@ const GUIDE = {
     { k: 'dia-fraco', c: 'Reação no dia', q: 'O que você faz quando às 15h a loja está abaixo de 60% da meta?', good: 'Diagnóstico + ação + acompanhamento', bad: 'Espera' },
     { k: 'conflito', c: 'Conflito e justiça', q: 'Conte um conflito na equipe que você resolveu.', good: 'Regra clara, conversa em particular', bad: 'Favoritismo' },
     { k: 'margem', c: 'Política de desconto', q: 'Como você lida com pedido de desconto acima da sua alçada?', good: 'Segue a política e leva para quem aprova', bad: 'Dá para não perder a venda' },
-    { k: 'operacao', c: 'Operação', q: 'Como você monta a escala para cobrir pico e folgas?', good: 'Fluxo por hora, folga de domingo, banco de horas', bad: 'Improvisa' },
+    { k: 'operacao', c: 'Operação', q: 'Como você organiza os horários da equipe para cobrir o pico e as folgas?', good: 'Fluxo por hora, folga de domingo, banco de horas', bad: 'Improvisa' },
     { k: 'integridade', c: 'Integridade', q: 'Quando você teve que tomar uma decisão impopular por ser o certo?', good: 'Explica o motivo, mantém o padrão', bad: 'Cede para agradar' },
   ],
 };

@@ -36,7 +36,7 @@ const JOB = {
     '[Vendas] Conte sobre uma meta que você bateu ou deixou de bater. O que você fez e o que aprendeu?',
     '[Rotina da loja] Além de vender, o dia a dia tem arrumar vitrine, repor e organizar o estoque e manter a loja limpa. Como você vê essa parte do trabalho?',
     '[Rotina da loja] Quando a loja está sem movimento, o que você faz?',
-    '[Rotina da loja] Como você se organiza para chegar no horário e cumprir a escala?',
+    '[Rotina da loja] Como você se organiza para chegar sempre no horário?',
     '[Rotina da loja] Você recebeu uma tarefa e percebeu que não vai conseguir terminar no prazo. O que você faz?',
     '[Equipe e postura] Como você reage quando recebe uma crítica ou correção de quem lidera a loja? Dê um exemplo.',
     '[Equipe e postura] Conte uma situação em que você discordou de um colega ou de um chefe. Como resolveu?',
@@ -84,9 +84,30 @@ const { TEMPLATES } = require('./screening');
 JOB.screening = TEMPLATES.VENDEDOR.screening;
 JOB.cutoff = TEMPLATES.VENDEDOR.cutoff;
 
+// Dono 19/11/2026: "Então não fala de escala" (a escala vai mudar de 6x1 para 5x2 pela lei).
+// Troca só o texto antigo exato; pergunta editada pelo dono não é tocada. Resposta já dada acompanha a pergunta.
+const RENAMES = {
+  screening: [["A escala é 6x1 com revezamento e inclui sábados, domingos e feriados conforme a escala da loja. Você tem essa disponibilidade?", "Você tem disponibilidade para trabalhar aos sábados, domingos e feriados?"]],
+  interview: [["[Rotina da loja] Como você se organiza para chegar no horário e cumprir a escala?", "[Rotina da loja] Como você se organiza para chegar sempre no horário?"]],
+};
+async function renameTexts(prisma, job) {
+  const scr = Array.isArray(job.screening) ? job.screening : [];
+  let changed = false;
+  const nextScr = scr.map((q) => { const r = RENAMES.screening.find(([a]) => a === q.text); if (r) { changed = true; return { ...q, text: r[1] }; } return q; });
+  const iq = Array.isArray(job.interviewQuestions) ? job.interviewQuestions : [];
+  const nextIq = iq.map((q) => { const r = RENAMES.interview.find(([a]) => a === q); if (r) { changed = true; return r[1]; } return q; });
+  if (!changed) return;
+  await prisma.$executeRaw`UPDATE "HrJob" SET "screening"=${JSON.stringify(nextScr)}::jsonb, "interviewQuestions"=${JSON.stringify(nextIq)}::jsonb, "updatedAt"=NOW() WHERE "id"=${job.id}`;
+  for (const [a, b] of RENAMES.interview) {
+    await prisma.$executeRaw`UPDATE "HrCandidate" SET "interview" = ("interview" - ${a}) || jsonb_build_object(${b}, "interview"->${a})
+      WHERE "jobId"=${job.id} AND "interview" ? ${a} AND NOT ("interview" ? ${b})`;
+  }
+}
+
 async function seed(prisma) {
   const [has] = await prisma.$queryRaw`SELECT "id", "interviewQuestions", "questions", "screening", "screeningSeeded" FROM "HrJob" WHERE "slug"=${SLUG} LIMIT 1`;
   if (has) {
+    await renameTexts(prisma, has);
     if (JSON.stringify(has.interviewQuestions) === JSON.stringify(INTERVIEW_V1)) {
       await prisma.$executeRaw`UPDATE "HrJob" SET "interviewQuestions"=${JSON.stringify(JOB.interviewQuestions)}::jsonb, "updatedAt"=NOW() WHERE "id"=${has.id}`;
     }
@@ -107,4 +128,4 @@ async function seed(prisma) {
   return true;
 }
 
-module.exports = { seed, SLUG, JOB, INTERVIEW_V1, QUESTIONS_V1 };
+module.exports = { RENAMES, seed, SLUG, JOB, INTERVIEW_V1, QUESTIONS_V1 };
