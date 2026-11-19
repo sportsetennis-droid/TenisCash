@@ -714,7 +714,8 @@
     try { await authenticationRecovery; } finally { authenticationRecovery = null; }
   }
   function canUploadStocktake(item) {
-    if (!isInventory()) return false;
+    // 14/11/2026 (dono): leitura de contagem já guardada no aparelho SEMPRE sobe, em qualquer modo da tela.
+    // A identidade vem do item (rodada/loja/operador originais), nunca do modo atual.
     let operation = item.operationType;
     if (!operation) {
       // Older saved reads predate operationType. Resolve their original round
