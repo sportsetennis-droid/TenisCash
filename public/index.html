@@ -277,6 +277,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 .pt-chart .pt-bar-lbl{font-size:9px;letter-spacing:.5px;color:rgba(255,255,255,0.5);text-transform:uppercase}
 </style>
 <script src="/stock-verification.js?v=1"></script>
+<script src="/catalog-offline.js?v=1"></script>
 </head>
 <body>
 
@@ -604,6 +605,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
     </div>
     <p class="balance-equiv" id="home-equiv"></p>
   </div>
+  <button type="button" id="gwallet-btn" onclick="addToGoogleWallet()" style="display:none;width:100%;margin-top:10px;min-height:48px;border:0;border-radius:24px;background:#000;color:#fff;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;align-items:center;justify-content:center;gap:8px"><span aria-hidden="true" style="font-size:18px">▣</span><span>Adicionar à Carteira do Google</span></button>
   <div class="actions" id="home-actions">
     <div class="action-btn" onclick="showScreen('transfer')"><span>↑</span><span>Transferir</span></div>
     <div class="action-btn" onclick="showScreen('qr')"><span>⬡</span><span>QR Code</span></div>
@@ -716,9 +718,10 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   <div class="actions" style="margin-top:16px" id="seller-actions">
     <div class="action-btn" onclick="showScreen('seller-agent')"><span>IA</span><span>Meu Assistente</span></div>
     <div class="action-btn" onclick="showScreen('seller-commission-cycles')"><span>%</span><span>Comissões</span></div>
-    <div class="action-btn" onclick="showScreen('seller-schedule')"><span>📅</span><span>Minha escala</span></div>
+    <div class="action-btn" onclick="showScreen('seller-schedule')"><span>📅</span><span>Escala e folgas</span></div>
     <div class="action-btn" onclick="showScreen('seller-production')"><span>✓</span><span>Produção diária</span></div>
     <div class="action-btn" onclick="showScreen('seller-clock')"><span>⏱</span><span>Ponto</span></div>
+    <div class="action-btn" onclick="showScreen('seller-payment')"><span>💵</span><span>Meu pagamento</span></div>
     <div class="action-btn" onclick="showScreen('seller-portfolio')"><span>👥</span><span>Minha Carteira</span></div>
     <div class="action-btn" onclick="showScreen('seller-interview')"><span>📝</span><span>Entrevista</span></div>
   </div>
@@ -740,7 +743,26 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 
 <!-- SELLER MONTHLY SCHEDULE -->
 <div id="seller-schedule" class="screen">
-  <div class="back-header"><span class="back-arrow" onclick="showScreen('seller-home')">←</span><p style="font-size:18px;font-weight:700">Minha escala</p></div>
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('seller-home')">←</span><p style="font-size:18px;font-weight:700">Escala e folgas</p></div>
+  <button type="button" class="btn-primary" onclick="location.href='/minha-escala.html'" style="margin-top:14px">📝 PREENCHER MINHA ESCALA DO MÊS</button>
+  <div style="margin-top:14px;padding:14px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);border-radius:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><strong style="font-size:14px">Minha agenda</strong><button type="button" class="btn-secondary" onclick="toggleSellerAgendaForm()" style="width:auto;padding:0 14px;min-height:44px">+ MARCAR</button></div>
+    <div id="sa-form" style="display:none;margin-top:12px">
+      <label class="input-label" style="margin-top:0">O QUE É</label>
+      <select id="sa-type" class="input-field"></select>
+      <div style="display:flex;gap:10px"><div style="flex:1"><label class="input-label">DIA</label><input id="sa-date" class="input-field" type="date"></div><div style="flex:1"><label class="input-label">ATÉ (opcional)</label><input id="sa-end" class="input-field" type="date"></div></div>
+      <div style="display:flex;gap:10px"><div style="flex:1"><label class="input-label">DAS (opcional)</label><input id="sa-start-time" class="input-field" type="time"></div><div style="flex:1"><label class="input-label">ATÉ AS</label><input id="sa-end-time" class="input-field" type="time"></div></div>
+      <label class="input-label">OBSERVAÇÃO</label><input id="sa-note" class="input-field" maxlength="300" placeholder="opcional">
+      <div id="sa-msg" style="font-size:12px;margin-top:8px"></div>
+      <button type="button" class="btn-primary" onclick="sendSellerAgenda()" style="margin-top:10px">ENVIAR PARA APROVAÇÃO</button>
+    </div>
+    <div id="sa-list" style="display:grid;gap:8px;margin-top:12px"><div class="loading">Carregando...</div></div>
+  </div>
+  <div style="margin-top:12px;padding:14px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);border-radius:14px">
+    <strong style="font-size:14px">📆 Escala no meu calendário</strong>
+    <p style="font-size:12px;color:rgba(255,255,255,.7);margin-top:4px;line-height:1.4">Seus turnos e folgas aprovadas aparecem sozinhos no Google Agenda ou no calendário do iPhone. O link é pessoal: não compartilhe.</p>
+    <div id="tcal-box" style="margin-top:10px"><button type="button" class="btn-secondary" onclick="loadTeamCalendarLink(false)" style="min-height:44px">MOSTRAR MEU LINK</button></div>
+  </div>
   <div style="display:flex;gap:10px;align-items:flex-end;margin-top:15px">
     <label style="font-size:11px;color:rgba(255,255,255,.65);flex:1">MÊS<br><input id="seller-schedule-month" class="input-field" type="month" onchange="loadSellerSchedule()" style="margin-top:6px"></label>
     <button type="button" class="btn-secondary" onclick="loadSellerSchedule()" style="width:auto;padding:0 14px;min-height:48px">ATUALIZAR</button>
@@ -796,6 +818,11 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 </div>
 
 <!-- SELLER CLOCK-IN -->
+<div id="seller-payment" class="screen" style="padding:0">
+  <div class="back-header" style="padding-left:20px;padding-right:20px"><span class="back-arrow" onclick="showScreen(isSeller() ? 'seller-home' : 'home')">←</span><p style="font-size:18px;font-weight:700">Meu pagamento</p></div>
+  <iframe id="seller-payment-frame" title="Meu pagamento" style="display:block;width:100%;height:calc(100vh - 64px);height:calc(100dvh - 64px);border:0;background:#fff"></iframe>
+</div>
+
 <div id="seller-clock" class="screen">
   <div class="back-header"><span class="back-arrow" onclick="showScreen('seller-home')">←</span><p style="font-size:18px;font-weight:700">Ponto Digital</p></div>
 
@@ -1632,6 +1659,7 @@ function showScreen(id) {
   if (id === 'seller-home') loadSellerHome();
   if (id === 'seller-agent') initSellerAgent();
   if (id === 'seller-clock') initSellerClock();
+  if (id === 'seller-payment') { const f = document.getElementById('seller-payment-frame'); if (f) f.src = '/meu-pagamento.html?embed=1&_=' + Date.now(); }
   if (id === 'seller-messages') initSellerMessages();
   if (id === 'seller-message-new') initSellerMessageNew();
   if (id === 'seller-catalog') initSellerCatalogAi();
@@ -1808,6 +1836,7 @@ function setupSellerStoreStock() {
   if (more) more.addEventListener('click', function () { loadSellerStoreStock(false); });
   if (open) open.addEventListener('click', function () { showScreen('seller-catalog-search'); });
   loadSellerStoreOptions();
+  sellerOfflineCatalogPrepare();
   updateSellerStoreStockControls();
 }
 
@@ -1918,6 +1947,49 @@ function renderSellerStoreStockCard(p) {
   return row;
 }
 
+// ---- Busca tolerante a erro + catálogo offline (consulta de estoque do vendedor) ----
+function sellerStockScopeStoreId() {
+  if (sellerStoreStockState.scope === 'store') return sellerStoreStockState.selectedStoreId || '';
+  if (sellerStoreStockState.scope === 'mine') return (sellerStoreStockState.store && sellerStoreStockState.store.id) || '';
+  return '';
+}
+function sellerStockScoped(p) {
+  const storeId = sellerStockScopeStoreId();
+  if (!storeId) return p;
+  return Object.assign({}, p, { sizes: (p.sizes || []).map(function (s) {
+    return Object.assign({}, s, { storeStocks: (s.storeStocks || []).filter(function (ss) { return ss.storeId === storeId; }) });
+  }) });
+}
+function sellerStockRenderOffline(list, meta, more, query) {
+  const found = CatalogOffline.search(query, 30).map(sellerStockScoped);
+  const when = CatalogOffline.savedAt() ? new Date(CatalogOffline.savedAt()).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+  list.innerHTML = '<div class="seller-store-stock-sub" style="color:#FFD180">Sem internet — catálogo salvo neste aparelho' + (when ? ' em ' + when : '') + '. Estoque pode ter mudado.</div>';
+  if (!found.length) list.insertAdjacentHTML('beforeend', '<div class="seller-store-stock-sub">Nada encontrado no catálogo salvo.</div>');
+  found.forEach(function (p) { list.appendChild(renderSellerStoreStockCard(p)); });
+  meta.textContent = found.length + ' produto(s) no catálogo offline para "' + query + '".';
+  if (more) more.style.display = 'none';
+}
+function sellerStockFuzzySuggest(list, query) {
+  api('/search/products?q=' + encodeURIComponent(query) + '&limit=12').then(function (data) {
+    if (!data || data.error || !(data.products || []).length) return;
+    if (sellerStoreStockState.query !== query) return; // usuário já digitou outra coisa
+    list.insertAdjacentHTML('beforeend', '<div class="seller-store-stock-sub" style="margin-top:8px;font-weight:800">Você quis dizer?</div>');
+    data.products.map(sellerStockScoped).forEach(function (p) { list.appendChild(renderSellerStoreStockCard(p)); });
+  }).catch(function () {});
+}
+function sellerOfflineCatalogPrepare() {
+  if (!window.CatalogOffline || !isSeller()) return;
+  const go = function () { CatalogOffline.sync(token).catch(function () {}); };
+  if (window.MiniSearch) { CatalogOffline.restore().then(go); return; }
+  const sc = document.createElement('script');
+  sc.src = 'https://cdn.jsdelivr.net/npm/minisearch@7.2.0/dist/umd/index.js';
+  sc.async = true;
+  sc.onload = function () { CatalogOffline.restore().then(go); };
+  sc.onerror = function () { CatalogOffline.restore().then(go); }; // sem MiniSearch: busca simples
+  document.head.appendChild(sc);
+  window.addEventListener('online', go);
+}
+
 function loadSellerStoreStock(reset) {
   if (!isSeller() || sellerStoreStockState.loading) return;
   const list = document.getElementById('seller-store-stock-list');
@@ -1939,11 +2011,21 @@ function loadSellerStoreStock(reset) {
     sellerStoreStockState.totalPages = 1;
     list.innerHTML = '<div class="loading">Carregando estoque...</div>';
   }
-  sellerStoreStockState.loading = true;
   const query = (qEl && qEl.value ? qEl.value.trim() : '');
   sellerStoreStockState.query = query;
+  if (navigator.onLine === false && query && window.CatalogOffline && CatalogOffline.ready()) {
+    sellerStockRenderOffline(list, meta, more, query);
+    return;
+  }
+  sellerStoreStockState.loading = true;
   const params = buildSellerStoreStockParams(sellerStoreStockState.page);
-  api('/catalog/products?' + params.join('&')).then(function (data) {
+  api('/catalog/products?' + params.join('&')).catch(function () {
+    // sem rede: busca no catálogo salvo no aparelho
+    sellerStoreStockState.loading = false;
+    if (query && window.CatalogOffline && CatalogOffline.ready()) { sellerStockRenderOffline(list, meta, more, query); return { _handled: true }; }
+    return { error: 'Sem conexão. ' + (window.CatalogOffline && CatalogOffline.ready() ? 'Digite o produto para buscar no catálogo salvo.' : 'O catálogo offline ainda não foi baixado neste aparelho.') };
+  }).then(function (data) {
+    if (data && data._handled) return;
     sellerStoreStockState.loading = false;
     if (data.error) {
       list.innerHTML = '<div class="error-msg">' + escapeHtmlSellerMsg(data.error) + '</div>';
@@ -1957,6 +2039,7 @@ function loadSellerStoreStock(reset) {
     if (reset) list.innerHTML = '';
     if (!products.length && sellerStoreStockState.page === 1) {
       list.innerHTML = '<div class="seller-store-stock-sub">Nenhum produto com estoque para esse filtro.</div>';
+      if (query) sellerStockFuzzySuggest(list, query);
     } else {
       products.forEach(function (p) { list.appendChild(renderSellerStoreStockCard(p)); });
     }
@@ -3065,6 +3148,7 @@ async function loadHome() {
   document.getElementById('home-name').textContent = user.name.split(' ')[0];
   document.getElementById('home-initial').textContent = user.name[0];
   updateBalance();
+  setupGoogleWalletButton();
   // Profile banner
   document.getElementById('profile-banner').style.display = user.profileComplete ? 'none' : 'block';
   // Admin button
@@ -3088,6 +3172,52 @@ async function loadHome() {
     const bdc = tx.type.includes('out')||tx.type==='used'||tx.type==='admin_debit' ? 'rgba(255,82,82,0.25)' : 'rgba(255,255,255,0.15)';
     return '<div class="tx-item"><div class="tx-icon" style="background:'+bgc+';border:1px solid '+bdc+';color:'+c+'">'+(icons[tx.type]||'•')+'</div><div class="tx-info"><p>'+tx.description+'</p><p>'+date+' · '+time+'</p></div><span class="tx-amount" style="color:'+c+'">'+(signs[tx.type]||'')+' '+tx.amount+'</span></div>';
   }).join('');
+}
+
+// Escala no calendário do celular (.ics pessoal)
+async function loadTeamCalendarLink(rotate) {
+  const box = document.getElementById('tcal-box');
+  if (!box) return;
+  if (rotate && !confirm('Gerar um link novo? O link antigo para de funcionar no calendário onde você assinou.')) return;
+  box.innerHTML = '<div class="loading">Carregando...</div>';
+  const data = rotate ? await api('/team-calendar/my-link/rotate', 'POST') : await api('/team-calendar/my-link');
+  if (data.error || !data.url) { box.innerHTML = '<p style="font-size:12px;color:#FF8A80">' + escapeHtmlSellerMsg(data.error || 'Não foi possível gerar o link.') + '</p>'; return; }
+  const safe = escapeHtmlSellerMsg(data.url);
+  const gcal = 'https://calendar.google.com/calendar/r?cid=' + encodeURIComponent(data.webcal);
+  box.innerHTML = '<input class="input-field" readonly value="' + safe + '" onclick="this.select()" style="margin-top:0;font-size:12px">' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">' +
+    '<a class="btn-secondary" href="' + escapeHtmlSellerMsg(data.webcal) + '" style="min-height:44px;display:flex;align-items:center;justify-content:center;text-decoration:none">iPhone / Outlook</a>' +
+    '<a class="btn-secondary" href="' + escapeHtmlSellerMsg(gcal) + '" target="_blank" rel="noopener" style="min-height:44px;display:flex;align-items:center;justify-content:center;text-decoration:none">Google Agenda</a></div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">' +
+    '<button type="button" class="btn-secondary" id="tcal-copy" style="min-height:44px">COPIAR LINK</button>' +
+    '<button type="button" class="btn-secondary" onclick="loadTeamCalendarLink(true)" style="min-height:44px">GERAR NOVO</button></div>';
+  document.getElementById('tcal-copy').onclick = function () {
+    (navigator.clipboard ? navigator.clipboard.writeText(data.url) : Promise.reject()).then(function () { this.textContent = 'COPIADO ✓'; }.bind(this)).catch(function () { alert(data.url); });
+  };
+}
+
+// Cartão TenisCash na Carteira do Google — o botão só aparece se o servidor tiver a credencial.
+let gwalletEnabled = null;
+async function setupGoogleWalletButton() {
+  const btn = document.getElementById('gwallet-btn');
+  if (!btn) return;
+  if (gwalletEnabled === null) {
+    try { const r = await fetch(API + '/google-wallet/status', { cache: 'no-store' }); gwalletEnabled = r.ok && !!(await r.json()).enabled; } catch (_) { gwalletEnabled = false; }
+  }
+  btn.style.display = gwalletEnabled ? 'flex' : 'none';
+}
+async function addToGoogleWallet() {
+  const btn = document.getElementById('gwallet-btn');
+  if (btn) btn.disabled = true;
+  try {
+    const data = await api('/google-wallet/save-link');
+    if (data.error || !data.url) throw new Error(data.error || 'Não foi possível gerar o cartão.');
+    window.location.href = data.url;
+  } catch (e) {
+    alert(e.message || 'Não foi possível gerar o cartão.');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 // SELLER HOME
@@ -3721,6 +3851,16 @@ function showAdminButton() {
       btn.style.background = 'rgba(255,255,255,0.2)';
       btn.style.border = '2px solid rgba(255,255,255,0.4)';
       actions.appendChild(btn);
+    }
+    if (!document.getElementById('pay-btn')) {
+      const pb = document.createElement('div');
+      pb.id = 'pay-btn';
+      pb.className = 'action-btn';
+      pb.onclick = () => showScreen('seller-payment');
+      pb.innerHTML = '<span>💵</span><span>Meu pagamento</span>';
+      pb.style.background = 'rgba(255,255,255,0.2)';
+      pb.style.border = '2px solid rgba(255,255,255,0.4)';
+      actions.appendChild(pb);
     }
   }
 }
@@ -5432,6 +5572,37 @@ function initSellerSchedule(){
   if(!isSeller()){ showScreen('seller-home'); return; }
   const month=document.getElementById('seller-schedule-month'); if(month&&!month.value)month.value=sellerScheduleCurrentMonth();
   loadSellerSchedule();
+  loadSellerAgenda();
+}
+const SA_STATUS={PENDENTE:['Aguardando aprovação','#FFD180','rgba(255,193,7,.13)'],RECUSADO:['Recusado','#FF8A80','rgba(255,82,82,.13)'],CANCELADO:['Cancelado','rgba(255,255,255,.55)','rgba(255,255,255,.06)']};
+const SA_ACT={folga:'🌴 Folga',ferias:'🏖️ Férias',treinamento:'🎓 Treinamento',reuniao:'👥 Reunião',feriado:'🎉 Feriado',meta:'🎯 Meta',evento:'📣 Evento',outro:'📌'};
+function saDate(v){ const y=String(v||'').slice(0,10); return y?y.split('-').reverse().slice(0,2).join('/'):''; }
+function saPeriod(a,b){ const x=saDate(a), y=b?saDate(b):''; return y&&y!==x?x+' a '+y:x; }
+function toggleSellerAgendaForm(){ const f=document.getElementById('sa-form'); if(!f)return; f.style.display=f.style.display==='none'?'block':'none'; const d=document.getElementById('sa-date'); if(d&&!d.value)d.value=new Date(Date.now()-3*3600000).toISOString().slice(0,10); }
+async function loadSellerAgenda(){
+  const box=document.getElementById('sa-list'); if(!box)return;
+  try{
+    const r=await fetch(API+'/seller/schedule/agenda',{headers:token?{Authorization:'Bearer '+token}:{},cache:'no-store'}); const j=await r.json(); if(!r.ok)throw new Error(j.error||'Não foi possível carregar.');
+    const sel=document.getElementById('sa-type'); if(sel&&!sel.options.length) sel.innerHTML=(j.types||[]).map(t=>'<option value="'+srcEscape(t.value)+'">'+srcEscape(t.emoji+' '+t.label)+'</option>').join('');
+    const items=[];
+    (j.activities||[]).forEach(a=>items.push({ymd:String(a.date).slice(0,10),html:'<div style="padding:11px;background:rgba(76,175,80,.13);border:1px solid rgba(139,255,139,.28);border-radius:11px"><div style="display:flex;justify-content:space-between;gap:8px"><strong style="font-size:13px">'+srcEscape(a.type==='outro'?'📌 '+a.title:(SA_ACT[a.type]||a.type))+'</strong><span style="font-size:11px;color:#8BFF8B">✓ Confirmado</span></div><p style="font-size:12px;margin-top:4px">'+srcEscape(saPeriod(a.date,a.endDate))+(a.startTime?' · '+srcEscape(a.startTime)+(a.endTime?'–'+srcEscape(a.endTime):''):'')+'</p></div>'}));
+    (j.requests||[]).forEach(q=>{ const st=SA_STATUS[q.status]||[q.status,'#fff','rgba(255,255,255,.06)']; items.push({ymd:q.date,html:'<div style="padding:11px;background:'+st[2]+';border:1px solid rgba(255,255,255,.16);border-radius:11px"><div style="display:flex;justify-content:space-between;gap:8px"><strong style="font-size:13px">'+srcEscape(q.title)+'</strong><span style="font-size:11px;color:'+st[1]+'">'+st[0]+'</span></div><p style="font-size:12px;margin-top:4px">'+srcEscape(saPeriod(q.date,q.endDate))+(q.startTime?' · '+srcEscape(q.startTime)+(q.endTime?'–'+srcEscape(q.endTime):''):'')+'</p>'+(q.decisionNote?'<p style="font-size:11px;color:rgba(255,255,255,.7);margin-top:4px">'+srcEscape(q.decisionNote)+'</p>':'')+(q.status==='PENDENTE'?'<button type="button" onclick="cancelSellerAgenda(\''+srcEscape(q.id)+'\')" style="margin-top:8px;min-height:40px;background:transparent;border:1px solid rgba(255,255,255,.35);color:#fff;border-radius:9px;padding:0 12px;font-size:12px">Cancelar pedido</button>':'')+'</div>'}); });
+    items.sort((a,b)=>a.ymd.localeCompare(b.ymd));
+    box.innerHTML=items.length?items.map(i=>i.html).join(''):'<p style="font-size:12px;color:rgba(255,255,255,.6)">Nenhuma folga ou compromisso marcado. Toque em + MARCAR para pedir.</p>';
+  }catch(e){ box.innerHTML='<div class="error-msg">'+srcEscape(e.message)+'</div>'; }
+}
+async function sendSellerAgenda(){
+  const msg=document.getElementById('sa-msg'); const v=id=>(document.getElementById(id)||{}).value||'';
+  const body={type:v('sa-type'),date:v('sa-date'),endDate:v('sa-end'),startTime:v('sa-start-time'),endTime:v('sa-end-time'),note:v('sa-note')};
+  if(!body.date){ msg.innerHTML='<span style="color:#FF8A80">Escolha o dia.</span>'; return; }
+  msg.textContent='Enviando...';
+  try{ const r=await fetch(API+'/seller/schedule/agenda',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify(body)}); const j=await r.json(); if(!r.ok)throw new Error(j.error||'Não foi possível enviar.');
+    msg.innerHTML='<span style="color:#8BFF8B">Enviado. Vale depois que a empresa aprovar.</span>'; ['sa-end','sa-start-time','sa-end-time','sa-note'].forEach(id=>{const el=document.getElementById(id); if(el)el.value='';}); loadSellerAgenda();
+  }catch(e){ msg.innerHTML='<span style="color:#FF8A80">'+srcEscape(e.message)+'</span>'; }
+}
+async function cancelSellerAgenda(id){
+  if(!confirm('Cancelar este pedido?'))return;
+  try{ const r=await fetch(API+'/seller/schedule/agenda/'+encodeURIComponent(id),{method:'DELETE',headers:token?{Authorization:'Bearer '+token}:{}}); const j=await r.json(); if(!r.ok)throw new Error(j.error||'Não foi possível cancelar.'); loadSellerAgenda(); }catch(e){ alert(e.message); }
 }
 async function loadSellerSchedule(){
   const list=document.getElementById('seller-schedule-list'), status=document.getElementById('seller-schedule-status'); if(!list||!status)return;

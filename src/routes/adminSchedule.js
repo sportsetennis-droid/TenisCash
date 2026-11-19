@@ -473,4 +473,150 @@ router.get('/week', async (req, res) => {
   } catch (err) { console.error('[schedule/week]', err); res.status(500).json({ error: err.message }); }
 });
 
+// =====================================================================
+// PEDIDOS DOS VENDEDORES (folga/compromisso pelo app) + AGENDA DO DIA NO GRUPO
+// =====================================================================
+const agendaDaily = require('../services/agendaDaily');
+
+// METAS DO MÊS por vendedor (base da meta do dia e da mensagem de 1h antes do expediente).
+router.get('/goals', async (req, res) => {
+  try {
+    const sellerPulse = require('../services/sellerPulse');
+    const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(req.query.month || '')) ? String(req.query.month) : agendaDaily.todayYmd().slice(0, 7);
+    const [sellers, goals] = await Promise.all([
+      prisma.user.findMany({ where: { role: 'seller', active: true }, select: { id: true, name: true, phone: true, store: { select: { code: true, name: true } } }, orderBy: { name: 'asc' } }),
+      sellerPulse.getGoals(prisma, month),
+    ]);
+    const map = Object.fromEntries(goals.map((g) => [g.sellerId, Number(g.goalCents)]));
+    res.json({ month, sellers: sellers.map((s) => ({ id: s.id, name: s.name, store: s.store ? s.store.code + ' · ' + s.store.name : '', hasPhone: !!(s.phone && /\d{10,}/.test(String(s.phone).replace(/\D/g, ''))), goalCents: map[s.id] ?? null })) });
+  } catch (err) { console.error('[schedule/goals]', err); res.status(500).json({ error: err.message }); }
+});
+
+router.put('/goals', async (req, res) => {
+  try {
+    const sellerPulse = require('../services/sellerPulse');
+    const month = String((req.body || {}).month || '');
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return res.status(400).json({ error: 'Mês inválido.' });
+    const rows = Array.isArray(req.body.goals) ? req.body.goals : [];
+    let saved = 0;
+    for (const g of rows.slice(0, 200)) {
+      const cents = g.goalCents == null || g.goalCents === '' ? null : Math.round(Number(g.goalCents));
+      if (cents != null && !(cents >= 0 && cents <= 1e10)) return res.status(400).json({ error: 'Valor de meta inválido.' });
+      await sellerPulse.setGoal(prisma, String(g.sellerId), month, cents, req.userId); saved++;
+    }
+    res.json({ ok: true, saved, month });
+  } catch (err) { console.error('[schedule/goals:put]', err); res.status(500).json({ error: err.message }); }
+});
+
+// CARGO do colaborador (Vendedor / Logística / Supervisor). Acesso continua o de vendedor.
+router.get('/job-titles', async (req, res) => {
+  try {
+    const jobTitle = require('../services/jobTitle');
+    res.json({ titles: jobTitle.TITLES, byUser: await jobTitle.all(prisma) });
+  } catch (err) { console.error('[schedule/job-titles]', err); res.status(500).json({ error: err.message }); }
+});
+router.put('/job-titles/:userId', async (req, res) => {
+  try {
+    const jobTitle = require('../services/jobTitle');
+    const user = await prisma.user.findUnique({ where: { id: String(req.params.userId) }, select: { id: true, role: true } });
+    if (!user || user.role !== 'seller') return res.status(404).json({ error: 'Colaborador não encontrado entre os vendedores.' });
+    const title = await jobTitle.set(prisma, user.id, (req.body || {}).title, req.userId);
+    res.json({ ok: true, title });
+  } catch (err) { console.error('[schedule/job-titles:put]', err); res.status(err.statusCode || 500).json({ error: err.message }); }
+});
+
+// WhatsApp do vendedor (dono 18/11/2026: cadastro do Cecilio estava com código de e-mail no telefone).
+router.put('/seller-phone/:userId', async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: String(req.params.userId) }, select: { id: true, role: true, name: true } });
+    if (!user || user.role !== 'seller') return res.status(404).json({ error: 'Vendedor não encontrado.' });
+    let d = String((req.body || {}).phone || '').replace(/\D/g, '');
+    if (d.startsWith('55') && d.length >= 12) d = d.slice(2);
+    if (d.length !== 10 && d.length !== 11) return res.status(400).json({ error: 'Número inválido. Use DDD + número, ex.: 83 99999-9999.' });
+    const taken = await prisma.user.findFirst({ where: { phone: d, NOT: { id: user.id } }, select: { name: true } });
+    if (taken) return res.status(409).json({ error: 'Esse número já está no cadastro de ' + taken.name + '.' });
+    await prisma.user.update({ where: { id: user.id }, data: { phone: d } });
+    await prisma.adminAction.create({ data: { adminId: req.userId, action: 'seller_phone', targetUserId: user.id, description: 'Atualizou o WhatsApp do vendedor ' + user.name } }).catch(() => {});
+    res.json({ ok: true, phone: d });
+  } catch (err) { console.error('[schedule/seller-phone]', err); res.status(500).json({ error: err.message }); }
+});
+
+// Envia ao vendedor o link pessoal para preencher a escala do mês (data, entrada, saída, intervalo).
+router.post('/escala-link/:userId', async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: String(req.params.userId) }, select: { id: true, role: true, active: true, name: true, phone: true } });
+    if (!user || user.role !== 'seller' || !user.active) return res.status(404).json({ error: 'Vendedor não encontrado.' });
+    const { validPhone } = require('../services/sellerPulse');
+    if (!validPhone(user.phone)) return res.status(400).json({ error: 'Esse vendedor está sem WhatsApp no cadastro. Corrija o número primeiro.' });
+    const link = require('../services/selfSchedule').signedLink(user.id, 'https://teniscash.com.br');
+    const first = String(user.name || '').trim().split(/\s+/)[0].toLowerCase().replace(/^./, (c) => c.toUpperCase());
+    const msg = 'Oi, ' + first + '! 🧡 Preencha aqui os dias e horários que você vai trabalhar este mês (entrada, saída e intervalo). Leva 2 minutos:\n\n' + link +
+      '\n\nÉ só tocar nos dias, conferir o horário e salvar. Com isso você recebe sua meta e seu resultado 1 hora antes de cada expediente.';
+    const r = await require('../whatsapp').sendCustomMessage(user.phone, msg).catch((e) => ({ ok: false, error: e.message }));
+    if (!r || !r.ok) return res.status(502).json({ error: 'O WhatsApp não enviou: ' + ((r && r.error) || 'erro') });
+    res.json({ ok: true });
+  } catch (err) { console.error('[schedule/escala-link]', err); res.status(500).json({ error: err.message }); }
+});
+
+// Sinais dos vendedores (dono 18/11/2026): vendas perdidas e pedidos de transferência feitos pelo WhatsApp.
+router.get('/sinais-vendedores', async (req, res) => {
+  try {
+    await require('../services/sellerPowers').ensureSchema(prisma);
+    const dias = Math.min(90, Math.max(1, parseInt(req.query.dias, 10) || 30));
+    const lost = await prisma.$queryRaw`SELECT lower("product") AS chave, min("product") AS produto, count(*)::int AS vezes,
+        string_agg(DISTINCT coalesce("size", '-'), ', ') AS tamanhos, string_agg(DISTINCT "reason", ', ') AS motivos,
+        string_agg(DISTINCT coalesce("storeId", ''), ',') AS lojas, max("createdAt") AS ultima
+      FROM "LostSale" WHERE "createdAt" > NOW() - make_interval(days => ${dias}::int)
+      GROUP BY lower("product") ORDER BY count(*) DESC, max("createdAt") DESC LIMIT 100`;
+    const stores = await prisma.store.findMany({ select: { id: true, code: true } });
+    const code = Object.fromEntries(stores.map((s) => [s.id, s.code]));
+    const transfers = await prisma.sellerInternalRequest.findMany({
+      where: { title: { startsWith: 'Transferência' }, createdAt: { gte: new Date(Date.now() - dias * 86400000) } },
+      orderBy: { createdAt: 'desc' }, take: 100,
+      select: { id: true, title: true, status: true, urgency: true, createdAt: true, seller: { select: { name: true } } },
+    });
+    res.json({ dias,
+      vendasPerdidas: lost.map((l) => ({ produto: l.produto, vezes: l.vezes, tamanhos: l.tamanhos, motivos: l.motivos, lojas: String(l.lojas || '').split(',').filter(Boolean).map((id) => code[id] || '?').join(', '), ultima: l.ultima })),
+      transferencias: transfers.map((t) => ({ titulo: t.title, status: t.status, urgente: t.urgency !== 'NORMAL', vendedor: t.seller ? t.seller.name : null, quando: t.createdAt })) });
+  } catch (err) { console.error('[schedule/sinais]', err); res.status(500).json({ error: err.message }); }
+});
+
+router.get('/requests', async (req, res) => {
+  try {
+    const status = ['PENDENTE', 'APROVADO', 'RECUSADO', 'CANCELADO'].includes(req.query.status) ? req.query.status : 'PENDENTE';
+    const rows = await agendaDaily.listRequests(prisma, { status, fromYmd: status === 'PENDENTE' ? null : agendaDaily.todayYmd() });
+    const ids = [...new Set(rows.map((r) => r.sellerId))];
+    const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }) : [];
+    const names = Object.fromEntries(users.map((u) => [u.id, u.name]));
+    res.json({ requests: rows.map((r) => ({ ...r, sellerName: names[r.sellerId] || '?', typeLabel: (agendaDaily.REQUEST_TYPES[r.type] || {}).label || r.type })) });
+  } catch (err) { console.error('[schedule/requests]', err); res.status(500).json({ error: err.message }); }
+});
+
+router.post('/requests/:id/:decision', async (req, res) => {
+  try {
+    const decision = req.params.decision;
+    if (!['approve', 'reject'].includes(decision)) return res.status(400).json({ error: 'decisão inválida' });
+    const r = await agendaDaily.decideRequest(prisma, String(req.params.id), decision === 'approve', req.userId, (req.body || {}).note);
+    if (r.error) return res.status(r.status || 400).json({ error: r.error });
+    res.json(r);
+  } catch (err) { console.error('[schedule/requests:decide]', err); res.status(500).json({ error: err.message }); }
+});
+
+router.get('/daily-preview', async (req, res) => {
+  try {
+    const ymd = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date || '')) ? String(req.query.date) : agendaDaily.todayYmd();
+    const day = await agendaDaily.buildDay(prisma, ymd);
+    res.json({ ymd, message: agendaDaily.formatMessage(day), hasContent: agendaDaily.hasContent(day), source: day.source, last: await agendaDaily.lastSend(prisma) });
+  } catch (err) { console.error('[schedule/daily-preview]', err); res.status(500).json({ error: err.message }); }
+});
+
+router.post('/daily-send', async (req, res) => {
+  try {
+    const r = await agendaDaily.sendDaily(prisma, { force: true });
+    if (r.skipped) return res.status(409).json({ error: 'Não enviado: ' + r.skipped });
+    if (!r.ok) return res.status(502).json({ error: 'WhatsApp não enviou: ' + (r.error || 'erro') });
+    res.json(r);
+  } catch (err) { console.error('[schedule/daily-send]', err); res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;

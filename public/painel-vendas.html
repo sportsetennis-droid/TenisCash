@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#111111">
+<meta name="robots" content="noindex">
+<title>Painel de vendas</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.6.1/dist/chart.umd.min.js"></script>
+<style>
+  :root { --bg:#f2f2f7; --card:#fff; --ink:#1d1d1f; --mute:#6e6e73; --line:#e5e5ea; --brand:#E5571E; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+  body { padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+  header { background: #111; color: #fff; padding: 14px 16px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+  header h1 { font-size: 18px; margin: 0; }
+  header .sub { font-size: 12px; color: #bbb; margin-top: 2px; }
+  .seg { display: flex; background: #2a2a2a; border-radius: 10px; padding: 3px; gap: 3px; }
+  .seg button { min-height: 40px; min-width: 64px; border: 0; border-radius: 8px; background: transparent; color: #ddd; font-weight: 800; font-size: 14px; cursor: pointer; }
+  .seg button.on { background: var(--brand); color: #fff; }
+  main { max-width: 1200px; margin: 0 auto; padding: 16px; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+  .kpi { background: var(--card); border-radius: 14px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+  .kpi .l { font-size: 11px; font-weight: 800; color: var(--mute); text-transform: uppercase; letter-spacing: .4px; }
+  .kpi .v { font-size: 24px; font-weight: 900; margin-top: 4px; }
+  .grid2 { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; margin-top: 12px; }
+  @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border-radius: 14px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.05); min-width: 0; }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .5px; color: var(--mute); margin: 0 0 10px; }
+  .chart { position: relative; height: 320px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); }
+  th { font-size: 11px; color: var(--mute); text-transform: uppercase; letter-spacing: .4px; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+  .note { font-size: 12px; color: var(--mute); margin-top: 12px; line-height: 1.5; }
+  .err { background: #ffe5e7; color: #a00012; padding: 12px; border-radius: 10px; margin-bottom: 12px; }
+  .empty { color: var(--mute); padding: 20px 0; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <div><h1>📊 Painel de vendas</h1><div class="sub" id="range">Carregando…</div></div>
+  <div class="seg" id="seg">
+    <button data-d="7">7 dias</button><button data-d="30" class="on">30 dias</button><button data-d="90">90 dias</button>
+  </div>
+</header>
+<main>
+  <div id="msg"></div>
+  <div class="kpis">
+    <div class="kpi"><div class="l">Faturamento</div><div class="v" id="k-rev">—</div></div>
+    <div class="kpi"><div class="l">Vendas</div><div class="v" id="k-sales">—</div></div>
+    <div class="kpi"><div class="l">Ticket médio</div><div class="v" id="k-ticket">—</div></div>
+    <div class="kpi"><div class="l">Lojas com venda</div><div class="v" id="k-stores">—</div></div>
+  </div>
+  <div class="grid2">
+    <div class="card"><h2>Vendas por loja / dia (R$)</h2><div class="chart"><canvas id="c-days" aria-label="Faturamento por loja e dia"></canvas></div></div>
+    <div class="card"><h2>Top marcas (R$)</h2><div class="chart"><canvas id="c-brands" aria-label="Top marcas por faturamento"></canvas></div></div>
+  </div>
+  <div class="card" style="margin-top:12px">
+    <h2>Por loja</h2>
+    <table><thead><tr><th>Loja</th><th class="n">Vendas</th><th class="n">Faturamento</th><th class="n">Ticket médio</th></tr></thead><tbody id="t-stores"></tbody></table>
+  </div>
+  <p class="note">Dados reais do banco, dia contado no horário de João Pessoa (America/Fortaleza). Entram só vendas concluídas; canceladas e aguardando pagamento ficam de fora. Faturamento da loja = valor líquido da venda (já com desconto); marcas = soma dos itens das mesmas vendas.</p>
+</main>
+<script>
+const TOKEN = localStorage.getItem('tc_admin_token') || '';
+const COLORS = ['#E5571E', '#1f6feb', '#0a843d', '#b06b00', '#7a2bd6', '#d70015', '#00838f', '#5d4037'];
+const brl = (n) => Number(n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const br = (ymd) => ymd.split('-').reverse().slice(0, 2).join('/');
+let charts = {};
+let days = 30;
+
+async function load() {
+  document.getElementById('msg').innerHTML = '';
+  if (!TOKEN) { document.getElementById('msg').innerHTML = '<div class="err">Entre no <a href="/admin.html">admin</a> primeiro.</div>'; return; }
+  try {
+    const r = await fetch('/api/sales-dashboard/summary?days=' + days, { headers: { Authorization: 'Bearer ' + TOKEN }, cache: 'no-store' });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || ('Erro ' + r.status));
+    render(d);
+  } catch (e) {
+    document.getElementById('msg').innerHTML = '<div class="err">' + esc(e.message) + '</div>';
+  }
+}
+
+function render(d) {
+  document.getElementById('range').textContent = br(d.from) + ' a ' + br(d.to) + ' · horário de João Pessoa';
+  document.getElementById('k-rev').textContent = brl(d.totals.revenue);
+  document.getElementById('k-sales').textContent = d.totals.sales.toLocaleString('pt-BR');
+  document.getElementById('k-ticket').textContent = brl(d.totals.avgTicket);
+  document.getElementById('k-stores').textContent = d.stores.filter((s) => s.sales > 0).length;
+  const tb = document.getElementById('t-stores');
+  tb.innerHTML = d.stores.length ? d.stores.map((s) => '<tr><td>' + esc((s.code ? s.code + ' · ' : '') + s.name) + '</td><td class="n">' + s.sales + '</td><td class="n">' + brl(s.revenue) + '</td><td class="n">' + brl(s.avgTicket) + '</td></tr>').join('')
+    : '<tr><td colspan="4" class="empty">Nenhuma venda no período.</td></tr>';
+
+  Object.values(charts).forEach((c) => c.destroy());
+  charts = {};
+  if (!window.Chart) { document.getElementById('msg').innerHTML = '<div class="err">Não carregou a biblioteca de gráficos (sem internet?). A tabela abaixo continua valendo.</div>'; return; }
+  charts.days = new Chart(document.getElementById('c-days'), {
+    type: 'bar',
+    data: {
+      labels: d.days.map(br),
+      datasets: d.stores.map((s, i) => ({ label: s.code || s.name, data: s.daily, backgroundColor: COLORS[i % COLORS.length], stack: 'v' })),
+    },
+    options: {
+      maintainAspectRatio: false,
+      scales: { x: { stacked: true, ticks: { maxRotation: 0, autoSkip: true } }, y: { stacked: true, ticks: { callback: (v) => brl(v) } } },
+      plugins: { tooltip: { callbacks: { label: (c) => c.dataset.label + ': ' + brl(c.parsed.y) } } },
+    },
+  });
+  charts.brands = new Chart(document.getElementById('c-brands'), {
+    type: 'bar',
+    data: { labels: d.topBrands.map((b) => b.brand), datasets: [{ label: 'Faturamento', data: d.topBrands.map((b) => b.revenue), backgroundColor: '#E5571E' }] },
+    options: {
+      indexAxis: 'y', maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => brl(c.parsed.x) + ' · ' + d.topBrands[c.dataIndex].units + ' un.' } } },
+      scales: { x: { ticks: { callback: (v) => brl(v) } } },
+    },
+  });
+}
+
+document.getElementById('seg').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  days = Number(b.dataset.d);
+  document.querySelectorAll('#seg button').forEach((x) => x.classList.toggle('on', x === b));
+  load();
+});
+load();
+</script>
+</body>
+</html>

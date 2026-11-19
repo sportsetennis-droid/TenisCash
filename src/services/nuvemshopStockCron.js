@@ -16,6 +16,12 @@ const {
 } = require('./nuvemshopEligibility');
 const TZ = 'America/Fortaleza';
 const { remoteStockDiffers } = require('./nuvemshopStockSafety');
+const { mergeAiContext } = require('./aiContextMerge');
+
+// mesma espera crescente do espelho do card: 5, 10, 20… min, no máximo 24 h
+function esperaCardMs(falhas) {
+  return Math.min(24 * 60, 5 * Math.pow(2, Math.max(0, falhas - 1))) * 60 * 1000;
+}
 const { reconcileOrders, getStockAutomationState } = require('./nuvemshopStockAutomation');
 
 function physicalSig(product) {
@@ -237,15 +243,17 @@ async function runNuvemshopStockSync({
           const remote = remoteById.get(String(mapping.nuvemshopProductId));
           const stillPublished = remote && remote.published !== false;
           if ((mapping.syncStatus !== 'hidden-invalid' || stillPublished) && cleanupActions < cleanupLimit) {
-            await nsHandlers.unpublishMappedProduct(
+            const r = await nsHandlers.unpublishMappedProduct(
               mapping.localProductId,
               connection,
               product ? 'produto inativo' : 'produto local inexistente',
               mapping,
             );
-            cleanupActions++;
-            unpublishedInvalid++;
-            if (remote) remote.published = false;
+            if (!r || !r.shared) {
+              cleanupActions++;
+              unpublishedInvalid++;
+              if (remote) remote.published = false;
+            }
           }
           continue;
         }
@@ -255,15 +263,17 @@ async function runNuvemshopStockSync({
           const remote = remoteById.get(String(mapping.nuvemshopProductId));
           const stillPublished = remote && remote.published !== false;
           if ((mapping.syncStatus !== 'hidden-invalid' || stillPublished) && cleanupActions < cleanupLimit) {
-            await nsHandlers.unpublishMappedProduct(
+            const r = await nsHandlers.unpublishMappedProduct(
               mapping.localProductId,
               connection,
               eligibility.reasons.join('; '),
               mapping,
             );
-            cleanupActions++;
-            unpublishedInvalid++;
-            if (remote) remote.published = false;
+            if (!r || !r.shared) {
+              cleanupActions++;
+              unpublishedInvalid++;
+              if (remote) remote.published = false;
+            }
           }
           continue;
         }
@@ -276,15 +286,17 @@ async function runNuvemshopStockSync({
           const remoteEligibility = assessRemoteProductForNuvemshop(remote);
           if (remote && remote.published !== false && !remoteEligibility.eligible) {
             if (cleanupActions < cleanupLimit) {
-              await nsHandlers.unpublishMappedProduct(
+              const r = await nsHandlers.unpublishMappedProduct(
                 mapping.localProductId,
                 connection,
                 `copia remota invalida: ${remoteEligibility.reasons.join('; ')}`,
                 mapping,
               );
-              remote.published = false;
-              cleanupActions++;
-              unpublishedInvalid++;
+              if (!r || !r.shared) {
+                remote.published = false;
+                cleanupActions++;
+                unpublishedInvalid++;
+              }
             }
             continue;
           }
@@ -319,11 +331,7 @@ async function runNuvemshopStockSync({
                   stockProductsChanged++;
                 }
                 if (!(variantResult.errors || []).length) {
-                  ctx.nsPhysicalStockVerifiedSig = stockSignature;
-                  await prisma.product.update({
-                    where: { id: product.id },
-                    data: { aiContext: ctx },
-                  });
+                  await mergeAiContext(prisma, product.id, { nsPhysicalStockVerifiedSig: stockSignature });
                 }
                 cronState.progress.stockProductsProcessed = stockProductsProcessed;
                 cronState.progress.stockProductsChanged = stockProductsChanged;
@@ -346,24 +354,28 @@ async function runNuvemshopStockSync({
         // A card that was hidden-invalid and is now valid must be republished.
         if (mapping.syncStatus !== 'hidden-invalid' && ctx.nsCardSig === signature) continue;
 
-        const result = await nsHandlers.pushProductToNuvemshop(mapping.localProductId, connection);
-        if (!result?.skipped) synced++;
+        // Envio que falhou para ESTA versão do card espera (5 min → 24 h) antes de tentar de novo;
+        // card editado de novo tenta já. Sem isso, erro permanente reenviava tudo a cada 5 min (auditoria 9).
+        const falhasCard = ctx.nsCardFailSig === signature ? Number(ctx.nsCardFails || 0) : 0;
+        if (falhasCard > 0 && ctx.nsCardFailAt && Date.now() - new Date(ctx.nsCardFailAt).getTime() < esperaCardMs(falhasCard)) continue;
 
-        const fresh = await prisma.product.findUnique({
-          where: { id: mapping.localProductId },
-          select: { aiContext: true },
-        });
-        let freshCtx = {};
+        let result = null;
+        let erroEnvio = null;
         try {
-          freshCtx = (typeof fresh?.aiContext === 'string'
-            ? JSON.parse(fresh.aiContext)
-            : fresh?.aiContext) || {};
-        } catch (_) {}
-        freshCtx.nsCardSig = signature;
-        await prisma.product.update({
-          where: { id: mapping.localProductId },
-          data: { aiContext: freshCtx },
-        });
+          result = await nsHandlers.pushProductToNuvemshop(mapping.localProductId, connection);
+        } catch (e) {
+          erroEnvio = e.message;
+        }
+        if (result && !result.skipped) synced++;
+
+        // só dá o card por enviado se variantes e fotos foram de fato (senão tenta de novo depois da espera)
+        const falhouEnvio = !!erroEnvio || (result?.variantSync?.errors?.length || 0) > 0 || (result?.imageSync?.errors?.length || 0) > 0 || !!result?.imageSync?.error;
+        if (!falhouEnvio) {
+          await mergeAiContext(prisma, mapping.localProductId, { nsCardSig: signature }, ['nsCardFailSig', 'nsCardFails', 'nsCardFailAt']);
+        } else {
+          await mergeAiContext(prisma, mapping.localProductId, { nsCardFailSig: signature, nsCardFails: falhasCard + 1, nsCardFailAt: new Date().toISOString() }).catch(() => {});
+          if (erroEnvio) console.error('[nsStockCron] sync', mapping.localProductId, erroEnvio);
+        }
       } catch (error) {
         console.error('[nsStockCron] sync', mapping.localProductId, error.message);
       } finally {

@@ -101,7 +101,7 @@ function harness(shared, options = {}) {
   const exportCode = 'window.__test = { photoArchive, flushPhotos, showScanPhotos, localPending, authenticate, loadShipments, openCamera, closeCamera, capture, resolveRead, refreshIdentifications, activeReads, scansPayload, contextChanged, storeChanged, prepare, confirmAction, persist, signature, flushSync, queueSync, recoverDrafts, reconcileConflictsFromServer, startNewLot, loadHistory, showHistoryDetail, copyHistory, syncPayload, historyFilters, state:()=>({actor,currentDraft,preview,cameraRead,cameraRetry,busy,stream,scanner,generation,syncJobs,historyData,historyPage,historyMode}) };';
   assert.ok(source.endsWith('})();\n') || source.trimEnd().endsWith('})();'));
   vm.runInContext(source.replace(/\}\)\(\);\s*$/, exportCode + '\n})();'), context, { filename: 'public/bipar-actions.js' });
-  h.api = window.__test; h.window = window; h.boot = () => h.api.authenticate();
+  h.api = window.__test; h.window = window; h.context = context; h.boot = () => h.api.authenticate();
   h.scan = barcode => window.BiparActions.scan(barcode);
   h.archivePhotos = async () => { for (const item of h.api.activeReads().filter(s => s.photoRequired && !s.photoSaved)) await h.api.photoArchive.capture(h.api.state().currentDraft, item, testFrame()); await h.api.flushPhotos(); };
   h.cameraClick = command => h.get('action-camera').emit('click', { target: { closest: () => ({ dataset: { click: command } }) } });
@@ -228,7 +228,7 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
     assert.equal(h.historyRequests.filter(request => request.url.endsWith('/drafts/recover')).length, 1, 'administrator recovery uses the audited recovery endpoint');
     const primary = JSON.parse(shared.getItem('tc_bipar_action_draft_v1:' + older.key)); assert.equal(primary.revision, 103, 'the primary key now holds the merged lot'); assert.equal(primary.syncedRevision, 103, 'the server acknowledged the merged lot'); assert.equal(shared.getItem('tc_bipar_action_archive_v1:' + older.sessionId), null, 'the redundant archive shadow is removed after acknowledgement');
   });
-  await test('server mismatch keeps every divergent original and leaves the scanner locked', async () => {
+  await test('server mismatch keeps every divergent original and moves scanning to a NEW lot (dono 17/11: bipagem não pode travar)', async () => {
     const first = legacyActionDraft(person.id, 'receipt', 2); first.revision = 6; first.status = 'open';
     const second = JSON.parse(JSON.stringify(first)); second.revision = 6; second.syncedRevision = 6; second.scans[0].barcode = '7900373303889'; second.scans[0].createdAt = new Date(Date.parse(second.scans[0].createdAt) + 1000).toISOString(); second.scans[1].barcode = '7900373303889';
     const draftKey = 'tc_bipar_action_draft_v1:' + first.key, archiveKey = 'tc_bipar_action_archive_v1:' + first.sessionId;
@@ -237,7 +237,15 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
     await h.boot(); await flush();
     assert.ok(shared.getItem(draftKey)); assert.ok(shared.getItem(archiveKey));
     assert.match(h.get('action-sync-status').textContent, /cópias divergentes/);
-    await h.api.openCamera(); assert.equal(h.get('action-camera'), undefined);
+    assert.equal(h.api.state().currentDraft.sessionId, first.sessionId, 'the divergent reads stay visible until the operator scans again');
+    h.handler = () => response({ product: lupo, requiresSizeConfirmation: false });
+    await h.api.openCamera(); assert.ok(h.get('action-camera'), 'the scanner is available'); h.api.closeCamera();
+    assert.notEqual(h.api.state().currentDraft.sessionId, first.sessionId, 'opening the camera moved scanning to a new lot');
+    await h.scan(lupo.barcode); assert.equal(h.api.state().currentDraft.scans.length, 1);
+    const preserved = [...shared.data.keys()].filter(k => k.startsWith(archiveKey + ':preservado:'));
+    assert.equal(preserved.length, 1, 'the divergent copy that lived at the shared key was preserved before the new lot took it');
+    assert.deepEqual(JSON.parse(shared.getItem(preserved[0])).scans.map(x => x.barcode), first.scans.map(x => x.barcode));
+    assert.equal(JSON.parse(shared.getItem(archiveKey)).revision, 6, 'the other divergent copy is untouched');
   });
   await test('camera without an EAN keeps reading and neither adds a piece nor sends a lookup', async () => {
     const h = harness(); await h.boot(); await h.api.openCamera(); const before = h.requests.length;
@@ -821,6 +829,39 @@ function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url
     assert.equal(h.api.state().cameraRead.storageError, true); assert.match(h.get('etiq-confirm-status').textContent, /Não foi possível guardar/);
     assert.equal(h.get('action-camera-notice').hidden, true); assert.equal(h.get('etiq-confirm-btn').disabled, true);
     await h.api.capture({ ean: product.barcode }); assert.equal(h.api.activeReads().length, 1); assert.equal(h.get('action-confirm').disabled, true); h.api.closeCamera();
+  });
+  await test('FULL device storage while online never pauses: the read stays in the page and goes straight to the server', async () => {
+    const h = harness(); await h.boot(); h.handler = () => response({ product: lupo, requiresSizeConfirmation: false });
+    await h.api.openCamera(); const originalSet = h.localStorage.setItem.bind(h.localStorage);
+    h.localStorage.setItem = (key, value) => { if (key.startsWith('tc_bipar_action_')) { const e = Error('full'); e.name = 'QuotaExceededError'; throw e; } originalSet(key, value); };
+    await h.api.capture({ ean: lupo.barcode }); for (let i = 0; i < 5; i++) await new Promise(r => setImmediate(r));
+    assert.equal(h.api.activeReads().length, 1, 'the reading is kept');
+    assert.notEqual(h.api.state().cameraRead?.storageError, true, 'camera is not paused');
+    assert.doesNotMatch(h.get('etiq-confirm-status').textContent || '', /Não foi possível guardar/);
+    const sync = h.historyRequests.filter(r => r.url.endsWith('/drafts/sync')).at(-1);
+    assert.ok(sync, 'the lot was sent to the server immediately'); assert.equal(sync.body.scans.length, 1); assert.equal(sync.body.scans[0].barcode, lupo.barcode);
+    let blocked = false; const ev = { preventDefault() { blocked = true; }, returnValue: undefined };
+    const draft = h.api.state().currentDraft; draft.syncedRevision = 0; (h.window.events.beforeunload || []).forEach(fn => fn(ev));
+    assert.equal(blocked, true, 'leaving the page warns while the server copy is behind');
+    h.api.closeCamera();
+  });
+  await test('FULL device storage while OFFLINE still pauses (nowhere safe to keep the read)', async () => {
+    const h = harness(); await h.boot(); h.handler = () => response({ product: lupo, requiresSizeConfirmation: false });
+    await h.api.openCamera(); h.context.navigator.onLine = false;
+    h.localStorage.setItem = () => { const e = Error('full'); e.name = 'QuotaExceededError'; throw e; };
+    await h.api.capture({ ean: lupo.barcode });
+    assert.equal(h.api.state().cameraRead.storageError, true); assert.match(h.get('etiq-confirm-det').textContent, /memória do navegador cheia/); h.api.closeCamera();
+  });
+  await test('after a failed save, the next scan retries and works again without reloading the page', async () => {
+    const h = harness(); await h.boot(); h.handler = () => response({ product: lupo, requiresSizeConfirmation: false });
+    await h.api.openCamera(); const originalSet = h.localStorage.setItem;
+    h.localStorage.setItem = () => { throw Error('Disk error'); };
+    await h.api.capture({ ean: lupo.barcode }); assert.equal(h.api.state().cameraRead.storageError, true);
+    h.localStorage.setItem = originalSet; h.api.closeCamera();
+    await h.api.openCamera(); assert.ok(h.get('action-camera'), 'camera reopens once storage works');
+    await h.api.capture({ ean: product.barcode }); for (let i = 0; i < 5; i++) await new Promise(r => setImmediate(r));
+    assert.notEqual(h.api.state().cameraRead?.storageError, true); assert.ok(h.api.activeReads().some(x => x.barcode === product.barcode), 'the new piece was saved');
+    h.api.closeCamera();
   });
   await test('a storage failure after pending lookup cannot silently resume the camera', async () => {
     const h = harness(); await h.boot(); await h.api.openCamera(); const originalSet = h.localStorage.setItem.bind(h.localStorage); let saves = 0;

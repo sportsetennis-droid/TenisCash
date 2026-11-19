@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Inscrição · Club Sports &amp; Tennis</title>
+<meta name="description" content="Inscrição online no torneio do Club Sports &amp; Tennis.">
+<meta name="theme-color" content="#EA5128">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="/brand/club.webmanifest">
+<link rel="icon" href="/brand/sports-tennis-icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/brand/sports-tennis-icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --o1:#EA5128;--o3:#C93E19;--ink:#2a1206;--mut:#74412c;--dim:#8f6552;
+  --line:rgba(70,22,0,.12);--soft:rgba(234,81,40,.09);--ok:#0B7A4B;--okbg:rgba(11,122,75,.1);
+  --warn:#7a4d00;--warnbg:#FFF1CC;--bad:#B3261E;--badbg:rgba(179,38,30,.09);
+  --r:20px;--sat:env(safe-area-inset-top,0px);--sab:env(safe-area-inset-bottom,0px);
+  --ff:'Archivo',system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{min-height:100vh;background:linear-gradient(205deg,#EF5A31 0%,#EA5128 45%,#E44C24 100%) fixed;color:var(--ink);font-family:var(--ff);font-size:15.5px;line-height:1.45;-webkit-font-smoothing:antialiased;padding:var(--sat) 0 var(--sab)}
+button,input,select,textarea{font:inherit;color:inherit}
+a{color:inherit}
+.app{max-width:480px;margin:0 auto;padding:14px 16px 120px}
+.top{display:flex;align-items:center;gap:10px;padding:6px 0 14px;color:#fff}
+.top img{height:30px;width:auto}
+.top a{margin-left:auto;font-size:13px;font-weight:700;opacity:.92;text-decoration:none;border:1px solid rgba(255,255,255,.45);border-radius:999px;padding:7px 12px}
+.hero{color:#fff;padding:4px 2px 18px}
+.eyebrow{font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;opacity:.85}
+.hero h1{font-size:30px;line-height:1.02;font-weight:900;font-stretch:80%;text-transform:uppercase;margin:6px 0 10px;letter-spacing:-.01em}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{background:rgba(255,255,255,.17);border-radius:999px;padding:5px 11px;font-size:13px;font-weight:600}
+.card{background:#fff;border-radius:var(--r);padding:18px 16px;margin-bottom:12px;box-shadow:0 18px 36px -24px rgba(60,16,0,.7)}
+.card h2{font-size:17px;font-weight:850;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+.card h2 .n{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--o1);color:#fff;font-size:13px}
+.hint{color:var(--mut);font-size:13.5px;margin-bottom:12px}
+label{display:block;font-size:13px;font-weight:700;color:var(--mut);margin:12px 0 5px}
+input,select,textarea{width:100%;min-height:48px;border:1.5px solid var(--line);border-radius:14px;padding:11px 13px;background:#fff;font-size:16px;outline:none}
+textarea{min-height:90px;resize:vertical}
+input:focus,select:focus,textarea:focus{border-color:var(--o1);box-shadow:0 0 0 3px rgba(234,81,40,.16)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.cats{display:grid;gap:8px}
+.cat{display:flex;align-items:center;gap:12px;border:1.5px solid var(--line);border-radius:16px;padding:12px 14px;min-height:60px;cursor:pointer;background:#fff;text-align:left;width:100%}
+.cat.on{border-color:var(--o1);background:var(--soft);box-shadow:inset 0 0 0 1px var(--o1)}
+.cat .nm{font-weight:800}
+.cat .sub{font-size:12.5px;color:var(--mut)}
+.cat .pr{margin-left:auto;font-weight:900;font-size:16px;white-space:nowrap}
+.tag{display:inline-block;font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 8px;margin-left:6px;vertical-align:1px}
+.tag.w{background:var(--warnbg);color:var(--warn)}.tag.ok{background:var(--okbg);color:var(--ok)}
+.btn{display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.2;padding:0 18px;gap:8px;width:100%;min-height:52px;border:0;border-radius:999px;background:var(--o1);color:#fff;font-weight:850;font-size:16px;cursor:pointer;text-decoration:none}
+.btn:disabled{opacity:.55}
+.btn.sec{background:var(--ink)}
+.btn.gho{background:transparent;color:var(--o3);border:1.5px solid rgba(201,62,25,.35)}
+.btn.sm{min-height:44px;font-size:14.5px;width:auto;padding:0 16px}
+.stack{display:grid;gap:8px}
+.check{display:flex;gap:11px;align-items:flex-start;font-size:14px;color:var(--ink);font-weight:500;margin:10px 0}
+.check input{width:24px;min-height:24px;height:24px;flex:0 0 24px;accent-color:var(--o1);margin-top:1px}
+.terms{max-height:180px;overflow:auto;background:#fbf4f0;border:1px solid var(--line);border-radius:14px;padding:12px;font-size:13.5px;white-space:pre-wrap;color:#3d2214}
+.sum{display:flex;justify-content:space-between;padding:6px 0;font-size:14.5px}
+.sum.t{font-weight:900;font-size:18px;border-top:1px dashed var(--line);margin-top:6px;padding-top:10px}
+.err{background:var(--badbg);color:var(--bad);border-radius:12px;padding:10px 12px;font-size:14px;font-weight:600;margin:10px 0;display:none}
+.err.on{display:block}
+.ath{border:1.5px dashed var(--line);border-radius:16px;padding:4px 12px 12px;margin-top:10px}
+.ath h3{font-size:14px;font-weight:850;margin-top:10px}
+.guard{background:var(--warnbg);border-radius:12px;padding:2px 12px 12px;margin-top:10px;display:none}
+.guard.on{display:block}
+.guard p{font-size:13px;color:var(--warn);font-weight:700;margin-top:10px}
+.rp{display:grid;grid-template-columns:62px 1fr 44px 44px;gap:6px;align-items:center;margin-top:6px}
+.rp input{min-height:44px}
+.rp .gk{display:flex;align-items:center;justify-content:center;border:1.5px solid var(--line);border-radius:12px;min-height:44px;font-size:12px;font-weight:800;cursor:pointer}
+.rp .gk.on{background:var(--o1);color:#fff;border-color:var(--o1)}
+.rp .x{min-height:44px;border:0;background:var(--badbg);color:var(--bad);border-radius:12px;font-weight:900;cursor:pointer}
+.coupon{display:flex;gap:8px}
+.coupon input{text-transform:uppercase}
+.st{text-align:center;padding:22px 16px}
+.badge{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:6px 14px;font-weight:850;font-size:14px}
+.badge.ok{background:var(--okbg);color:var(--ok)}.badge.w{background:var(--warnbg);color:var(--warn)}.badge.bad{background:var(--badbg);color:var(--bad)}
+.big{font-size:34px;font-weight:900;margin:10px 0 2px;letter-spacing:-.02em}
+.qr{width:240px;height:240px;margin:12px auto;border-radius:16px;border:1px solid var(--line);padding:8px;background:#fff}
+.code{word-break:break-all;font-size:12.5px;background:#fbf4f0;border-radius:12px;padding:10px;text-align:left;color:#3d2214;margin:8px 0}
+.mut{color:var(--mut);font-size:13.5px}
+.timer{font-variant-numeric:tabular-nums;font-weight:800;color:var(--o3)}
+.footbar{position:fixed;left:0;right:0;bottom:0;padding:10px 16px calc(10px + var(--sab));background:rgba(255,255,255,.97);box-shadow:0 -10px 30px -18px rgba(60,16,0,.6);z-index:5}
+.footbar .in{max-width:480px;margin:0 auto;display:flex;align-items:center;gap:12px}
+.footbar .tot{font-weight:900;font-size:18px;white-space:nowrap}
+.footbar .tot small{display:block;font-size:11.5px;color:var(--mut);font-weight:700}
+.footbar .btn{flex:1}
+.loading{color:#fff;text-align:center;padding:60px 0;font-weight:700}
+.sheetbg{position:fixed;inset:0;background:rgba(30,10,2,.45);display:none;z-index:20;align-items:flex-end}
+.sheetbg.on{display:flex}
+.sheet{background:#fff;width:100%;max-width:480px;margin:0 auto;border-radius:22px 22px 0 0;padding:18px 16px calc(18px + var(--sab));max-height:88vh;overflow:auto}
+.toast{position:fixed;left:50%;bottom:calc(90px + var(--sab));transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:11px 18px;border-radius:999px;font-weight:700;font-size:14px;opacity:0;transition:.25s;z-index:30;pointer-events:none;max-width:90vw;text-align:center}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+@media (min-width:900px){
+  body{padding:28px 0}
+  .app{background:linear-gradient(205deg,#EF5A31 0%,#E44C24 100%);border-radius:34px;box-shadow:0 40px 80px -30px rgba(40,10,0,.8);min-height:calc(100vh - 56px);padding-bottom:110px}
+  .footbar{left:50%;right:auto;width:480px;transform:translateX(-50%);border-radius:0 0 34px 34px;bottom:28px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="top"><img src="/brand/club-sports-tennis.svg" alt="Club Sports &amp; Tennis" width="92" height="30"><a id="backlink" href="/">Ver torneio</a></div>
+  <div id="root"><div class="loading">Carregando…</div></div>
+</div>
+<div class="footbar" id="footbar" style="display:none"><div class="in"><div class="tot" id="ftot"></div><button class="btn" id="fbtn" type="button"></button></div></div>
+<div class="sheetbg" id="sheetbg"><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+<div class="toast" id="toast" role="status"></div>
+<script>
+(function(){
+'use strict';
+var API='/api/tournament-registration';
+var SLUG=(location.pathname.match(/^\/t\/([^/]+)\/inscricao/)||[])[1]||'';
+var QS=new URLSearchParams(location.search);
+var root=document.getElementById('root');
+var TOKEN='';try{TOKEN=localStorage.getItem('tc_token')||'';}catch(e){}
+var KEY='treg:'+SLUG;
+var D=null;          // dados públicos do torneio
+var S={cat:null,coupon:null,roster:[]};
+var POLL=null,TICK=null;
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];});}
+function brl(c){return 'R$ '+(Math.round(c||0)/100).toFixed(2).replace('.',',');}
+function toast(m){var t=document.getElementById('toast');t.textContent=m;t.classList.add('on');clearTimeout(t._t);t._t=setTimeout(function(){t.classList.remove('on');},2800);}
+function api(path,opts){
+  opts=opts||{};
+  var h={'Content-Type':'application/json'};if(TOKEN&&TOKEN!=='mock')h.Authorization='Bearer '+TOKEN;
+  return fetch(API+path,{method:opts.method||(opts.body?'POST':'GET'),headers:h,body:opts.body?JSON.stringify(opts.body):undefined,cache:'no-store'})
+    .then(function(r){return r.json().catch(function(){return {};}).then(function(j){if(!r.ok)throw new Error(j.error||('erro '+r.status));return j;});});
+}
+function foot(show,label,total,sub,onClick,disabled){
+  var f=document.getElementById('footbar');f.style.display=show?'block':'none';if(!show)return;
+  document.getElementById('ftot').innerHTML=esc(total)+(sub?'<small>'+esc(sub)+'</small>':'');
+  var b=document.getElementById('fbtn');b.textContent=label;b.disabled=!!disabled;b.onclick=onClick;
+}
+function openSheet(html){document.getElementById('sheet').innerHTML=html;document.getElementById('sheetbg').classList.add('on');}
+function closeSheet(){document.getElementById('sheetbg').classList.remove('on');}
+document.getElementById('sheetbg').addEventListener('click',function(e){if(e.target.id==='sheetbg')closeSheet();});
+function fmtDate(d){if(!d)return '';var x=new Date(d);return x.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',timeZone:'America/Fortaleza'});}
+function fmtDT(d){var x=new Date(d);return x.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'America/Fortaleza'});}
+function heroHtml(t){
+  var chips=[];if(t.startDate)chips.push('📅 '+fmtDate(t.startDate)+(t.endDate?' a '+fmtDate(t.endDate):''));
+  var place=[t.city,t.state].filter(Boolean).join('/');if(place)chips.push('📍 '+place);
+  return '<div class="hero"><div class="eyebrow">Inscrição</div><h1>'+esc(t.name)+'</h1><div class="chips">'+chips.map(function(c){return '<span class="chip">'+esc(c)+'</span>';}).join('')+'</div></div>';
+}
+
+// ================= formulário =================
+function load(){
+  document.getElementById('backlink').href='/t/'+encodeURIComponent(SLUG);
+  var tk=QS.get('r');
+  if(!tk){try{tk=localStorage.getItem(KEY)||'';}catch(e){}}
+  if(tk&&QS.get('nova')!=='1')return showStatus(tk,true);
+  api('/public/'+encodeURIComponent(SLUG)).then(function(d){D=d;renderForm();}).catch(function(e){root.innerHTML='<div class="card st"><b>'+esc(e.message)+'</b></div>';});
+}
+
+function catSub(c){
+  var s=[];
+  if(c.spotsLeft!=null)s.push(c.spotsLeft>0?(c.spotsLeft+' vaga'+(c.spotsLeft>1?'s':'')):'lotada');
+  if(c.waitlist)s.push(c.waitlist+' na fila');
+  return s.join(' · ');
+}
+function athleteBlock(i,me){
+  var v=me&&i===0?me:{};
+  return '<div class="ath" data-i="'+i+'"><h3>Atleta '+(i+1)+'</h3>'+
+    '<label for="a'+i+'-name">Nome completo</label><input id="a'+i+'-name" autocomplete="name" value="'+esc(v.name||'')+'">'+
+    '<div class="row2"><div><label for="a'+i+'-birth">Nascimento</label><input id="a'+i+'-birth" type="date" max="'+new Date().toISOString().slice(0,10)+'"></div>'+
+    '<div><label for="a'+i+'-phone">WhatsApp</label><input id="a'+i+'-phone" inputmode="tel" autocomplete="tel" placeholder="(83) 9…" value="'+esc(v.phone||'')+'"></div></div>'+
+    '<label for="a'+i+'-email">E-mail (opcional)</label><input id="a'+i+'-email" type="email" inputmode="email" value="'+esc(v.email||'')+'">'+
+    '<label for="a'+i+'-user">@ no app TenisCash (opcional)</label><input id="a'+i+'-user" placeholder="@usuario" value="'+esc(v.username?'@'+v.username:'')+'" autocapitalize="off">'+
+    '<div class="guard" id="a'+i+'-guard"><p>Menor de idade: dados do responsável</p>'+
+      '<label for="a'+i+'-gname">Nome do responsável</label><input id="a'+i+'-gname">'+
+      '<div class="row2"><div><label for="a'+i+'-gphone">Telefone</label><input id="a'+i+'-gphone" inputmode="tel"></div>'+
+      '<div><label for="a'+i+'-grel">Parentesco</label><select id="a'+i+'-grel"><option>Mãe</option><option>Pai</option><option>Avó/Avô</option><option>Tio/Tia</option><option>Outro</option></select></div></div>'+
+    '</div></div>';
+}
+function fieldHtml(f){
+  var id='cf-'+f.key,req=f.required?' *':'';
+  if(f.type==='boolean')return '<label class="check"><input type="checkbox" id="'+id+'"><span>'+esc(f.label)+req+'</span></label>';
+  if(f.type==='select'||f.type==='shirt')return '<label for="'+id+'">'+esc(f.label)+req+'</label><select id="'+id+'"><option value="">Escolha…</option>'+f.options.map(function(o){return '<option>'+esc(o)+'</option>';}).join('')+'</select>';
+  return '<label for="'+id+'">'+esc(f.label)+req+'</label><input id="'+id+'"'+(f.type==='number'?' inputmode="decimal"':'')+'>';
+}
+function renderForm(){
+  var d=D,t=d.tournament,h=heroHtml(t);
+  if(!d.open){
+    root.innerHTML=h+'<div class="card st"><span class="badge w">Inscrições fechadas</span><p class="mut" style="margin-top:12px">'+(d.enabled?'As inscrições deste torneio não estão abertas agora.':'A inscrição online deste torneio não está ativa. Fale com a organização.')+'</p><div style="height:14px"></div><a class="btn gho" href="/t/'+esc(t.slug)+'">Ver o torneio</a></div>';
+    foot(false);return;
+  }
+  var n=1,html=h;
+  if(d.cashbackPct>0)html+='<div class="card" style="background:#2a1206;color:#fff"><b>Ganhe '+d.cashbackPct+'% de cashback TenisCash</b><div style="font-size:13.5px;opacity:.85">Pagando em dinheiro/PIX, o cashback cai no seu saldo pra usar nas lojas Sports &amp; Tennis.</div></div>';
+  html+='<div class="card"><h2><span class="n">'+(n++)+'</span>Categoria</h2><p class="hint">Escolha onde você vai jogar.</p><div class="cats">'+
+    d.categories.map(function(c){var full=c.spotsLeft===0;return '<button type="button" class="cat'+(S.cat===c.id?' on':'')+'" data-cat="'+c.id+'"><div><div class="nm">'+esc(c.name)+(full?'<span class="tag w">lista de espera</span>':'')+'</div><div class="sub">'+esc(catSub(c))+'</div></div><div class="pr">'+(c.feeCents?brl(c.feeCents):'Grátis')+'</div></button>';}).join('')+
+    '</div></div>';
+  if(d.kind==='TEAM'){
+    html+='<div class="card"><h2><span class="n">'+(n++)+'</span>Time</h2>'+
+      '<label for="team">Nome do time</label><input id="team" maxlength="60">'+
+      '<label for="cname">Responsável</label><input id="cname" autocomplete="name" value="'+esc(d.me?d.me.name:'')+'">'+
+      '<div class="row2"><div><label for="cphone">WhatsApp</label><input id="cphone" inputmode="tel" value="'+esc(d.me?d.me.phone:'')+'"></div><div><label for="cemail">E-mail</label><input id="cemail" type="email" inputmode="email" value="'+esc(d.me&&d.me.email||'')+'"></div></div>'+
+      '<label class="check"><input type="checkbox" id="adult"><span>Sou maior de 18 anos e responsável pelo time</span></label>'+
+      '<label style="margin-top:16px">Elenco (opcional — dá pra completar depois)</label><div id="roster"></div>'+
+      '<button type="button" class="btn gho sm" id="addp" style="margin-top:8px">+ Adicionar jogador</button></div>';
+  }else{
+    var k=d.kind==='DOUBLES'?2:1;
+    html+='<div class="card"><h2><span class="n">'+(n++)+'</span>'+(k===2?'Dupla':'Atleta')+'</h2><p class="hint">'+(d.me?'Preenchemos com os dados da sua conta.':'Já tem conta TenisCash? <a href="/club.html" style="font-weight:800">Entre</a> pra pagar com saldo e ganhar cashback.')+'</p>';
+    for(var i=0;i<k;i++)html+=athleteBlock(i,d.me);
+    html+='</div>';
+  }
+  if(d.customFields&&d.customFields.length)html+='<div class="card"><h2><span class="n">'+(n++)+'</span>Informações do torneio</h2>'+d.customFields.map(fieldHtml).join('')+'</div>';
+  html+='<div class="card"><h2><span class="n">'+(n++)+'</span>Cupom</h2><div class="coupon"><label class="sr" for="cpn">Cupom</label><input id="cpn" placeholder="Tem cupom?" autocapitalize="characters"><button type="button" class="btn sec sm" id="cpnb">Aplicar</button></div><div id="cpnmsg" class="mut" style="margin-top:8px"></div></div>';
+  if(d.terms)html+='<div class="card"><h2><span class="n">'+(n++)+'</span>Termo de responsabilidade</h2><div class="terms">'+esc(d.terms.text)+'</div><label class="check"><input type="checkbox" id="terms"><span>Li e aceito o termo e o regulamento (versão '+d.terms.version+').</span></label></div>';
+  html+='<div class="err" id="err"></div>';
+  root.innerHTML=html;
+  root.querySelectorAll('.cat').forEach(function(b){b.onclick=function(){S.cat=b.getAttribute('data-cat');root.querySelectorAll('.cat').forEach(function(x){x.classList.toggle('on',x===b);});S.coupon=null;var m=document.getElementById('cpnmsg');if(m)m.textContent='';updateFoot();};});
+  if(d.kind!=='TEAM'){root.querySelectorAll('.ath').forEach(function(a){var i=a.getAttribute('data-i');var b=document.getElementById('a'+i+'-birth');b.addEventListener('change',function(){document.getElementById('a'+i+'-guard').classList.toggle('on',isMinor(b.value));});});}
+  else{S.roster=[];drawRoster();document.getElementById('addp').onclick=function(){syncRoster();S.roster.push({name:'',number:'',isGoalkeeper:false});drawRoster();};}
+  document.getElementById('cpnb').onclick=applyCoupon;
+  if(d.categories.length===1){S.cat=d.categories[0].id;root.querySelector('.cat').classList.add('on');}
+  updateFoot();
+}
+function isMinor(v){if(!v)return false;var b=new Date(v+'T12:00:00'),ref=D&&D.tournament.startDate?new Date(D.tournament.startDate):new Date();var a=ref.getFullYear()-b.getFullYear();var m=ref.getMonth()-b.getMonth();if(m<0||(m===0&&ref.getDate()<b.getDate()))a--;return a<18;}
+function drawRoster(){
+  var box=document.getElementById('roster');
+  box.innerHTML=S.roster.map(function(p,i){return '<div class="rp" data-i="'+i+'"><input aria-label="Número" inputmode="numeric" placeholder="Nº" value="'+esc(p.number)+'" data-f="number"><input aria-label="Nome do jogador" placeholder="Nome" value="'+esc(p.name)+'" data-f="name"><button type="button" class="gk'+(p.isGoalkeeper?' on':'')+'" aria-label="Goleiro">GOL</button><button type="button" class="x" aria-label="Remover">×</button></div>';}).join('');
+  box.querySelectorAll('.rp').forEach(function(r){var i=+r.getAttribute('data-i');
+    r.querySelector('.gk').onclick=function(){syncRoster();S.roster[i].isGoalkeeper=!S.roster[i].isGoalkeeper;drawRoster();};
+    r.querySelector('.x').onclick=function(){syncRoster();S.roster.splice(i,1);drawRoster();};});
+}
+function syncRoster(){document.querySelectorAll('#roster .rp').forEach(function(r){var i=+r.getAttribute('data-i');S.roster[i].number=r.querySelector('[data-f=number]').value;S.roster[i].name=r.querySelector('[data-f=name]').value;});}
+function curCat(){return D.categories.filter(function(c){return c.id===S.cat;})[0]||null;}
+function updateFoot(){
+  var c=curCat();
+  if(!c){foot(true,'Escolha a categoria','—','',function(){window.scrollTo({top:0,behavior:'smooth'});},false);return;}
+  var fee=c.feeCents,disc=S.coupon?S.coupon.discountCents:0,tot=Math.max(0,fee-disc);
+  var label=c.spotsLeft===0?'Entrar na lista de espera':(tot?'Continuar pro pagamento':'Confirmar inscrição');
+  foot(true,label,tot?brl(tot):'Grátis',disc?('cupom −'+brl(disc)):(c.name),submit,false);
+}
+function applyCoupon(){
+  var code=document.getElementById('cpn').value.trim(),msg=document.getElementById('cpnmsg');
+  if(!S.cat){msg.textContent='Escolha a categoria primeiro.';return;}
+  if(!code){S.coupon=null;msg.textContent='';updateFoot();return;}
+  api('/public/'+encodeURIComponent(SLUG)+'/coupon',{body:{code:code,categoryId:S.cat}}).then(function(r){S.coupon=r;msg.innerHTML='<b style="color:var(--ok)">Cupom '+esc(r.code)+' aplicado: −'+brl(r.discountCents)+'</b>';updateFoot();})
+    .catch(function(e){S.coupon=null;msg.innerHTML='<b style="color:var(--bad)">'+esc(e.message)+'</b>';updateFoot();});
+}
+function val(id){var e=document.getElementById(id);return e?e.value.trim():'';}
+function showErr(m){var e=document.getElementById('err');e.textContent=m;e.classList.add('on');e.scrollIntoView({behavior:'smooth',block:'center'});}
+function submit(){
+  var d=D;if(!S.cat)return showErr('Escolha a categoria.');
+  var body={categoryId:S.cat,acceptTerms:d.terms?!!(document.getElementById('terms')||{}).checked:true,couponCode:S.coupon?S.coupon.code:undefined,answers:{}};
+  if(d.terms&&!body.acceptTerms)return showErr('Aceite o termo de responsabilidade pra continuar.');
+  (d.customFields||[]).forEach(function(f){var el=document.getElementById('cf-'+f.key);if(!el)return;body.answers[f.key]=f.type==='boolean'?el.checked:el.value;});
+  if(d.kind==='TEAM'){
+    syncRoster();
+    body.teamName=val('team');body.contactName=val('cname');body.contactPhone=val('cphone');body.contactEmail=val('cemail');
+    body.responsibleAdult=!!document.getElementById('adult').checked;body.roster=S.roster.filter(function(p){return p.name.trim();});
+    if(!body.teamName)return showErr('Informe o nome do time.');
+    if(!body.responsibleAdult)return showErr('O responsável precisa ser maior de idade.');
+  }else{
+    body.athletes=[];
+    var ok=true;
+    document.querySelectorAll('.ath').forEach(function(a){var i=a.getAttribute('data-i');
+      var at={name:val('a'+i+'-name'),birthDate:val('a'+i+'-birth'),phone:val('a'+i+'-phone'),email:val('a'+i+'-email'),username:val('a'+i+'-user')};
+      if(isMinor(at.birthDate))at.guardian={name:val('a'+i+'-gname'),phone:val('a'+i+'-gphone'),relationship:val('a'+i+'-grel')};
+      if(!at.name||!at.birthDate)ok=false;body.athletes.push(at);});
+    if(!ok)return showErr('Preencha nome e nascimento de cada atleta.');
+    var a0=body.athletes[0];body.contactPhone=(a0.guardian&&a0.guardian.phone)||a0.phone;body.contactEmail=a0.email;
+  }
+  var b=document.getElementById('fbtn');b.disabled=true;b.textContent='Enviando…';
+  api('/public/'+encodeURIComponent(SLUG)+'/register',{body:body}).then(function(r){
+    try{localStorage.setItem(KEY,r.token);}catch(e){}
+    history.replaceState(null,'',location.pathname+'?r='+encodeURIComponent(r.token));
+    showStatus(r.token);
+  }).catch(function(e){updateFoot();showErr(e.message);});
+}
+
+// ================= status / pagamento =================
+function stopTimers(){clearInterval(POLL);clearInterval(TICK);POLL=TICK=null;}
+function showStatus(tk,fromStorage){
+  stopTimers();
+  api('/r/'+encodeURIComponent(tk)).then(function(s){renderStatus(tk,s);}).catch(function(e){
+    if(fromStorage){try{localStorage.removeItem(KEY);}catch(_){}QS.delete('r');history.replaceState(null,'',location.pathname);return load();}
+    root.innerHTML='<div class="card st"><b>'+esc(e.message)+'</b></div>';
+  });
+}
+function countdown(el,until){
+  function f(){var ms=new Date(until)-Date.now();if(ms<=0){el.textContent='prazo encerrado';return;}var h=Math.floor(ms/3600000),m=Math.floor(ms%3600000/60000),s=Math.floor(ms%60000/1000);el.textContent=(h?h+'h ':'')+String(m).padStart(2,'0')+'m '+String(s).padStart(2,'0')+'s';}
+  f();TICK=setInterval(f,1000);
+}
+function renderStatus(tk,s){
+  foot(false);
+  var t=s.tournament,h=heroHtml(t),html=h;
+  var head='<div class="card st">';
+  if(s.status==='CONFIRMED'){
+    head+='<span class="badge ok">✓ Inscrição confirmada</span><div class="big" style="font-size:24px">'+esc(s.displayName)+'</div><div class="mut">'+esc(s.category)+'</div>';
+    if(s.checkin){head+='<img class="qr" alt="QR de check-in" src="'+s.checkin.qrImage+'"><div class="mut">Mostre este QR na mesa no dia do jogo (check-in).</div>';}
+    if(s.cashbackCents)head+='<p style="margin-top:12px;font-weight:800;color:var(--ok)">+'+brl(s.cashbackCents)+' de cashback TenisCash no seu saldo</p>';
+    if(s.cashbackPending)head+='<p style="margin-top:12px;font-weight:700;color:var(--warn)">Você tem '+brl(s.cashbackPending)+' de cashback esperando: crie/entre na sua conta TenisCash com o mesmo telefone e volte aqui.</p>';
+    head+='</div>';
+    html+=head+paidSummary(s);
+    if(s.refundStatus==='REQUESTED')html+='<div class="card"><b>Pedido de reembolso enviado.</b><div class="mut">O organizador vai analisar e registrar o estorno.</div></div>';
+    else if(s.refundStatus==='DENIED')html+='<div class="card"><b>Reembolso não aprovado pelo organizador.</b></div>';
+    else if(s.paidCents||s.tcCents)html+='<div class="card"><button class="btn gho" id="refund" type="button">Pedir reembolso</button><div class="mut" style="margin-top:8px">O organizador analisa conforme o regulamento. O TenisCash volta pro saldo; o dinheiro é devolvido pelo organizador.</div></div>';
+  }else if(s.status==='PENDING_PAYMENT'){
+    head+='<span class="badge w">Aguardando pagamento</span><div class="big">'+brl(s.dueCents)+'</div><div class="mut">'+esc(s.displayName)+' · '+esc(s.category)+'</div>';
+    if(s.paymentExpiresAt)head+='<p style="margin-top:10px" class="mut">'+(s.promotedAt?'Abriu vaga pra você! ':'')+'Sua vaga fica reservada por <span class="timer" id="tmr"></span></p>';
+    else if(s.paymentMethod==='ONSITE'||s.paymentMethod==='MIXED')head+='<p style="margin-top:10px" class="mut">Pagamento combinado no local — a organização confirma quando receber.</p>';
+    head+='</div>';
+    html+=head;
+    if(s.pix){
+      html+='<div class="card st"><h2 style="justify-content:center">Pague com PIX</h2><img class="qr" alt="QR Code PIX" src="'+s.pix.qrImage+'"><div class="code" id="pixcode">'+esc(s.pix.qrText)+'</div><button class="btn" id="copy" type="button">Copiar código PIX</button><p class="mut" style="margin-top:10px">Assim que o banco confirmar, esta tela muda sozinha.</p></div>';
+    }else{
+      html+='<div class="card"><h2>Como você quer pagar?</h2><div class="stack" style="margin-top:10px">';
+      if(s.payment.pix)html+='<button class="btn" data-pay="PIX" type="button">PIX</button>';
+      if(s.payment.tenisCash){
+        if(s.me)html+='<button class="btn sec" data-pay="TENISCASH" type="button"'+(s.me.balanceCents<s.dueCents?' disabled':'')+'>Saldo TenisCash ('+brl(s.me.balanceCents)+')</button>'+(s.me.balanceCents>0&&s.payment.pix?'<button class="btn gho" data-pay="MIXED" type="button">TenisCash + PIX</button>':'');
+        else html+='<a class="btn gho" href="/club.html">Entrar pra pagar com saldo TenisCash</a>';
+      }
+      if(s.payment.onsite&&s.paymentMethod!=='ONSITE')html+='<button class="btn gho" data-pay="ONSITE" type="button">Pagar no local</button>';
+      if(!s.payment.pix&&!s.payment.tenisCash&&!s.payment.onsite)html+='<p class="mut">Pagamento online indisponível — fale com a organização.</p>';
+      html+='</div></div>';
+    }
+    html+=paidSummary(s)+'<div class="card"><button class="btn gho" id="cancel" type="button">Cancelar inscrição</button></div>';
+  }else if(s.status==='WAITLIST'){
+    head+='<span class="badge w">Lista de espera</span><div class="big">'+(s.waitlistPosition||'–')+'º</div><div class="mut">na fila de '+esc(s.category)+'</div><p class="mut" style="margin-top:12px">Se abrir vaga, você é avisado(a) e tem um prazo pra pagar. Não precisa pagar nada agora.</p></div>';
+    html+=head+'<div class="card"><button class="btn gho" id="cancel" type="button">Sair da lista</button></div>';
+  }else{
+    var cls=s.status==='REFUNDED'?'w':'bad';
+    head+='<span class="badge '+cls+'">'+esc(s.statusLabel)+'</span><div class="big" style="font-size:22px">'+esc(s.displayName)+'</div><div class="mut">'+esc(s.category)+'</div>';
+    if(s.status==='EXPIRED')head+='<p class="mut" style="margin-top:10px">O prazo de pagamento acabou e a vaga foi liberada.'+(s.tcCents?' O TenisCash voltou pro seu saldo.':'')+'</p>';
+    if(s.refundStatus==='REQUESTED')head+='<p class="mut" style="margin-top:10px">Recebemos um pagamento depois do prazo: o organizador vai devolver.</p>';
+    head+='</div>';
+    html+=head;
+  }
+  html+='<div class="card"><a class="btn gho" href="/t/'+esc(t.slug)+'">Ver o torneio</a><div style="height:8px"></div><a class="btn gho" href="'+location.pathname+'?nova=1">Fazer outra inscrição</a></div>';
+  root.innerHTML=html;
+  var tm=document.getElementById('tmr');if(tm&&s.paymentExpiresAt)countdown(tm,s.paymentExpiresAt);
+  root.querySelectorAll('[data-pay]').forEach(function(b){b.onclick=function(){pay(tk,s,b.getAttribute('data-pay'));};});
+  var cp=document.getElementById('copy');if(cp)cp.onclick=function(){copyText(s.pix.qrText);};
+  var cc=document.getElementById('cancel');if(cc)cc.onclick=function(){if(!confirm('Cancelar esta inscrição?'))return;api('/r/'+encodeURIComponent(tk)+'/cancel',{body:{}}).then(function(){toast('Inscrição cancelada');showStatus(tk);}).catch(function(e){toast(e.message);});};
+  var rf=document.getElementById('refund');if(rf)rf.onclick=function(){refundSheet(tk);};
+  if(s.status==='PENDING_PAYMENT'){POLL=setInterval(function(){api('/r/'+encodeURIComponent(tk)).then(function(n){if(n.status!==s.status||(!!n.pix)!==(!!s.pix)){stopTimers();renderStatus(tk,n);if(n.status==='CONFIRMED')toast('Pagamento confirmado!');}}).catch(function(){});},5000);}
+}
+function paidSummary(s){
+  var r='<div class="card"><div class="sum"><span>Inscrição</span><b>'+brl(s.feeCents)+'</b></div>';
+  if(s.discountCents)r+='<div class="sum"><span>Cupom '+esc(s.couponCode||'')+'</span><b>−'+brl(s.discountCents)+'</b></div>';
+  if(s.tcCents)r+='<div class="sum"><span>Pago com TenisCash</span><b>−'+brl(s.tcCents)+'</b></div>';
+  if(s.paidCents)r+='<div class="sum"><span>Pago (PIX/local)</span><b>−'+brl(s.paidCents)+'</b></div>';
+  r+='<div class="sum t"><span>'+(s.dueCents?'Falta pagar':'Total pago')+'</span><span>'+brl(s.dueCents||((s.paidCents||0)+(s.tcCents||0)))+'</span></div></div>';
+  return r;
+}
+function copyText(txt){
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(txt).then(function(){toast('Código PIX copiado');},fallback);}else fallback();
+  function fallback(){var ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');toast('Código PIX copiado');}catch(e){toast('Copie o código manualmente');}ta.remove();}
+}
+function pay(tk,s,method){
+  if(method==='MIXED'){
+    var max=Math.min(s.me.balanceCents,s.dueCents-1);
+    openSheet('<h2 style="font-size:18px;font-weight:850">TenisCash + PIX</h2><p class="mut" style="margin:6px 0 4px">Seu saldo: '+brl(s.me.balanceCents)+'. O resto vai no PIX.</p><label for="tcv">Quanto do saldo usar (R$)</label><input id="tcv" inputmode="decimal" value="'+(max/100).toFixed(2).replace('.',',')+'"><div style="height:14px"></div><button class="btn" id="tcgo" type="button">Usar saldo e gerar PIX</button>');
+    document.getElementById('tcgo').onclick=function(){var v=Math.round(parseFloat(document.getElementById('tcv').value.replace(/\./g,'').replace(',','.'))*100);if(!(v>0)||v>max){toast('Valor entre R$ 0,01 e '+brl(max));return;}closeSheet();doPay(tk,{method:'MIXED',tcCents:v});};
+    return;
+  }
+  if(method==='TENISCASH'&&!confirm('Usar '+brl(s.dueCents)+' do seu saldo TenisCash?'))return;
+  doPay(tk,{method:method});
+}
+function doPay(tk,body){
+  root.querySelectorAll('[data-pay]').forEach(function(b){b.disabled=true;});
+  api('/r/'+encodeURIComponent(tk)+'/pay',{body:body}).then(function(s){stopTimers();renderStatus(tk,s);if(s.status==='CONFIRMED')toast('Inscrição confirmada!');}).catch(function(e){toast(e.message);showStatus(tk);});
+}
+function refundSheet(tk){
+  openSheet('<h2 style="font-size:18px;font-weight:850">Pedir reembolso</h2><label for="rr">Motivo</label><textarea id="rr" maxlength="300"></textarea><div style="height:14px"></div><button class="btn" id="rrgo" type="button">Enviar pedido</button>');
+  document.getElementById('rrgo').onclick=function(){api('/r/'+encodeURIComponent(tk)+'/refund-request',{body:{reason:document.getElementById('rr').value}}).then(function(){closeSheet();toast('Pedido enviado');showStatus(tk);}).catch(function(e){toast(e.message);});};
+}
+
+if(!SLUG){root.innerHTML='<div class="card st"><b>Torneio não informado.</b></div>';}else load();
+})();
+</script>
+</body>
+</html>

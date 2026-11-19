@@ -688,6 +688,7 @@ router.post('/troca', async (req, res) => {
       },
     });
     await prisma.fiscalIssuer.update({ where: { id: issuer.id }, data: { nfceNextNumber: nNF + 1 } });
+    if (newSale) require('../ai/rede/ganchos').vendaRegistrada(newSale.id);
 
     res.json({
       ok: true,

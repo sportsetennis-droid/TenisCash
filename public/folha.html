@@ -1,0 +1,1260 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#111111">
+<title>Folha e contracheque</title>
+<style>
+  :root { --bg:#f4f4f6; --card:#fff; --ink:#1d1d1f; --mute:#6e6e73; --line:#e5e5ea; --brand:#E5571E; --brand-soft:#fdeee7;
+    --ok:#0a843d; --ok-soft:#e3f7e9; --bad:#d70015; --bad-soft:#ffe5e7; --warn:#a35f00; --warn-soft:#fff1d6; --info:#1b4fd6; --info-soft:#e8f0ff; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; }
+  body { padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); overflow-x: hidden; }
+  a { color: var(--brand); }
+  header { background: #111; color: #fff; padding: 12px 20px 0; position: sticky; top: 0; z-index: 10; }
+  header .top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; flex: 1; min-width: 200px; }
+  header h1 span { color: var(--brand); }
+  header .who { font-size: 12px; color: #bbb; }
+  .tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; margin-top: 10px; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs button { flex: none; border: none; background: transparent; color: #bbb; font-weight: 700; font-size: 14px; padding: 10px 14px; min-height: 44px; cursor: pointer; border-bottom: 3px solid transparent; }
+  .tabs button.on { color: #fff; border-bottom-color: var(--brand); }
+  .tabs .cnt { background: var(--brand); color: #fff; border-radius: 999px; font-size: 11px; padding: 1px 6px; margin-left: 4px; }
+  main { max-width: 1440px; margin: 0 auto; padding: 16px 20px 40px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .5px; color: var(--mute); margin: 22px 0 8px; }
+  h3 { font-size: 15px; margin: 0 0 8px; }
+  .card { background: var(--card); border-radius: 12px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.06); margin-bottom: 12px; }
+  .filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; align-items: end; }
+  label { display: block; font-size: 11px; font-weight: 800; color: var(--mute); text-transform: uppercase; letter-spacing: .4px; margin: 0 0 4px; }
+  .fld { margin-top: 10px; }
+  input, select, textarea { width: 100%; min-height: 40px; border: 1px solid #d1d1d6; border-radius: 9px; padding: 8px 10px; font-size: 15px; background: #fff; color: var(--ink); font-family: inherit; }
+  input[type=checkbox] { width: 20px; min-height: 20px; height: 20px; padding: 0; flex: none; }
+  textarea { min-height: 70px; resize: vertical; }
+  textarea.code { font-family: ui-monospace, Consolas, monospace; font-size: 12px; min-height: 160px; }
+  input:disabled, select:disabled, textarea:disabled { background: #f2f2f5; color: #555; }
+  .check { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; min-height: 40px; cursor: pointer; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; border: none; border-radius: 9px; background: var(--brand); color: #fff; font-weight: 800; font-size: 14px; cursor: pointer; padding: 8px 14px; white-space: nowrap; text-decoration: none; }
+  .btn.sm { min-height: 32px; padding: 5px 10px; font-size: 13px; }
+  .btn.dark { background: #111; } .btn.ok { background: var(--ok); } .btn.ghost { background: #e9e9ee; color: var(--ink); }
+  .btn.line { background: #fff; color: var(--ink); border: 1px solid #d1d1d6; }
+  .btn.bad { background: #fff; color: var(--bad); border: 1px solid #f3c2c6; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btns { display: flex; flex-wrap: wrap; gap: 8px; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; margin: 12px 0; }
+  .kpi { background: var(--card); border-radius: 12px; padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+  .kpi .l { font-size: 11px; font-weight: 800; color: var(--mute); text-transform: uppercase; letter-spacing: .4px; }
+  .kpi .v { font-size: 20px; font-weight: 900; margin-top: 4px; }
+  .kpi.bad .v { color: var(--bad); } .kpi.ok .v { color: var(--ok); } .kpi.br .v { color: var(--brand); }
+  .tw { overflow-x: auto; -webkit-overflow-scrolling: touch; background: var(--card); border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .3px; color: var(--mute); background: #fafafa; padding: 9px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; position: sticky; top: 0; }
+  td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td.n, th.n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  td.nw { white-space: nowrap; }
+  tr.click { cursor: pointer; } tr.click:hover td { background: #fff8f4; }
+  tr.sub td { background: #fbfbfd; }
+  .tbl-overview { min-width: 1240px; }
+  .tbl-overview td:first-child { min-width: 150px; } .tbl-overview td.pcell { min-width: 220px; max-width: 300px; }
+  .muted { color: var(--mute); } .small { font-size: 12px; } .b { font-weight: 800; }
+  .tag { align-self: flex-start; display: inline-block; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 999px; white-space: nowrap; background: #eef1f6; color: #3a4a63; }
+  .tag.EM_ANDAMENTO { background: #eef1f6; color: #3a4a63; }
+  .tag.COM_PENDENCIAS { background: var(--bad-soft); color: var(--bad); }
+  .tag.EM_CONFERENCIA { background: var(--info-soft); color: var(--info); }
+  .tag.APROVADO { background: #f3e8ff; color: #7a2bd6; }
+  .tag.FECHADO { background: #111; color: #fff; }
+  .tag.PAGO { background: var(--ok-soft); color: var(--ok); }
+  .tag.REABERTO, .tag.CORRIGIDO { background: var(--warn-soft); color: var(--warn); }
+  .tag.CANCELADO, .tag.REVOKED, .tag.off { background: #f2f2f7; color: #8e8e93; text-decoration: line-through; }
+  .tag.ACTIVE, .tag.okk { background: var(--ok-soft); color: var(--ok); }
+  .tag.PENDING_VALIDATION, .tag.wr { background: var(--warn-soft); color: var(--warn); }
+  .tag.bd { background: var(--bad-soft); color: var(--bad); }
+  .tag.br { background: var(--brand-soft); color: var(--brand); }
+  .pb { display: inline-block; font-size: 10.5px; font-weight: 800; padding: 2px 6px; border-radius: 6px; margin: 1px 2px 1px 0; white-space: nowrap; cursor: help; }
+  .pb.BLOQUEIA { background: var(--bad-soft); color: var(--bad); } .pb.ALERTA { background: var(--warn-soft); color: var(--warn); }
+  .note { background: #fff4e5; border: 1px solid #ffd9a8; color: #7a4f00; padding: 10px 12px; border-radius: 10px; font-size: 13px; margin: 10px 0; line-height: 1.45; }
+  .note.info { background: var(--info-soft); border-color: #c4d6ff; color: #173c9e; }
+  .note.bad { background: var(--bad-soft); border-color: #f3c2c6; color: #9b0010; }
+  .note.ok { background: var(--ok-soft); border-color: #b9e6c7; color: #075c2b; }
+  .empty { text-align: center; color: var(--mute); padding: 30px 10px; }
+  .pend { display: flex; gap: 8px; align-items: flex-start; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .pend:last-child { border-bottom: none; }
+  .bar { height: 8px; background: #eee; border-radius: 99px; overflow: hidden; margin: 6px 0 3px; }
+  .bar > i { display: block; height: 100%; background: var(--brand); border-radius: 99px; }
+  .bar.done > i { background: var(--ok); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .kv { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .kv:last-child { border-bottom: none; }
+  .kv > span:first-child { color: var(--mute); } .kv > span:last-child { font-weight: 700; text-align: right; word-break: break-word; }
+  .tot { display: flex; justify-content: space-between; font-weight: 900; font-size: 15px; padding: 6px 0; }
+  .tot.net { font-size: 19px; color: var(--brand); }
+  details { margin-top: 6px; } summary { cursor: pointer; font-weight: 700; font-size: 13px; color: var(--mute); }
+  pre { background: #f6f6f8; border-radius: 8px; padding: 10px; font-size: 11.5px; overflow-x: auto; max-height: 340px; margin: 6px 0 0; white-space: pre; }
+  /* drawer */
+  .dr-bg { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 30; display: flex; justify-content: flex-end; }
+  .dr { background: var(--bg); width: min(1060px, 100vw); height: 100%; overflow-y: auto; overscroll-behavior: contain; }
+  .dr-h { position: sticky; top: 0; z-index: 2; background: #111; color: #fff; padding: 12px 18px; display: flex; gap: 12px; align-items: center; }
+  .dr-h .t { flex: 1; min-width: 0; }
+  .dr-h .t b { font-size: 17px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dr-h .t span { font-size: 12px; color: #bbb; }
+  .dr-h .x { background: #333; color: #fff; border: none; border-radius: 9px; min-width: 44px; min-height: 44px; font-size: 18px; cursor: pointer; }
+  .dr-b { padding: 14px 18px 40px; }
+  .seg { display: inline-flex; background: #e5e5ea; border-radius: 9px; padding: 3px; gap: 3px; }
+  .seg button { min-height: 32px; border: none; border-radius: 7px; background: transparent; font-weight: 800; font-size: 13px; cursor: pointer; padding: 4px 10px; }
+  .seg button.on { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+  .ver { display: flex; gap: 8px; flex-wrap: wrap; }
+  .ver button { border: 1px solid var(--line); background: #fff; border-radius: 9px; padding: 6px 10px; cursor: pointer; font-size: 12px; text-align: left; min-height: 40px; }
+  .ver button.on { border-color: var(--brand); box-shadow: 0 0 0 2px var(--brand-soft); }
+  /* modal */
+  .md-bg { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 50; display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .md { background: #fff; width: 100%; max-width: 640px; max-height: 92vh; overflow-y: auto; border-radius: 14px; padding: 16px 18px 18px; }
+  .md.wide { max-width: 900px; }
+  .md h3 { font-size: 17px; margin: 0 0 6px; }
+  .md .acts { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; flex-wrap: wrap; position: sticky; bottom: -18px; background: #fff; padding: 10px 0 2px; }
+  .fgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+  .fgrid .full { grid-column: 1 / -1; }
+  .ed-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: end; margin-bottom: 6px; }
+  .sp-card { border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-bottom: 8px; }
+  .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(20px + env(safe-area-inset-bottom)); background: #111; color: #fff; padding: 10px 16px; border-radius: 10px; font-weight: 700; z-index: 90; font-size: 14px; max-width: 92vw; box-shadow: 0 6px 20px rgba(0,0,0,.25); }
+  .toast.err { background: var(--bad); }
+  .spin { display: inline-block; width: 14px; height: 14px; border: 2px solid #ccc; border-top-color: var(--brand); border-radius: 50%; animation: sp 0.8s linear infinite; vertical-align: middle; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  @media (max-width: 760px) {
+    header { padding: 10px 14px 0; } main { padding: 12px 14px 40px; }
+    .grid2, .grid3, .fgrid { grid-template-columns: 1fr; }
+    .filters { grid-template-columns: 1fr 1fr; }
+    .dr-b { padding: 12px 14px 40px; }
+    .md-bg { align-items: flex-end; padding: 0; }
+    .md { border-radius: 16px 16px 0 0; max-height: 94vh; padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
+    .btn { min-height: 44px; } .btn.sm { min-height: 38px; }
+    .ed-row { grid-template-columns: 1fr 1fr; } .ed-row > :last-child { grid-column: 1 / -1; }
+    .kpi .v { font-size: 17px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="top">
+    <h1>Folha <span>/</span> Contracheque</h1>
+    <div class="who" id="who"></div>
+  </div>
+  <div class="tabs" id="tabs"></div>
+</header>
+<main id="view"><div class="empty"><span class="spin"></span> Carregando…</div></main>
+
+<script>
+'use strict';
+// ─────────────────────────── base ───────────────────────────
+const TOKEN = localStorage.getItem('tc_admin_token') || localStorage.getItem('tc_token') || '';
+const API = '/api/payroll';
+const S = {
+  tab: 'painel', me: null, comp: '', rows: [], names: {}, stores: {}, issuers: {},
+  f: { storeId: '', issuerId: '', status: '', contractType: '', pendency: false },
+  open: {}, d: null, ccStatus: 'PENDENTE', holYear: '', counts: {},
+};
+
+const STATUS = { EM_ANDAMENTO: 'Em andamento', COM_PENDENCIAS: 'Com pendências', EM_CONFERENCIA: 'Em conferência', APROVADO: 'Aprovado',
+  FECHADO: 'Fechado', PAGO: 'Pago', REABERTO: 'Reaberto', CORRIGIDO: 'Corrigido', CANCELADO: 'Cancelado' };
+const CONTRACT = { MENSALISTA: 'Mensalista', HORISTA: 'Horista', ESCALA_12X36: 'Escala 12x36', APRENDIZ: 'Aprendiz', PARCIAL: 'Tempo parcial', SEM_REGISTRO: 'Sem registro' };
+const ENTRY_LABEL = {
+  ADIANTAMENTO: 'Adiantamento salarial (vale)', PASSAGEM: 'Passagem entregue', VALE_TRANSPORTE: 'Vale-transporte entregue',
+  VALE_ALIMENTACAO: 'Vale-alimentação', DOMINGO_PAGO: 'Domingo pago antecipadamente', FERIADO_PAGO: 'Feriado pago antecipadamente',
+  COMISSAO_ANTECIPADA: 'Comissão adiantada', COMPRA_LOJA: 'Compra na loja', EMPRESTIMO: 'Empréstimo autorizado',
+  PENSAO: 'Pensão alimentícia', OUTRO_DESCONTO: 'Outro desconto', BONUS: 'Bônus salarial', GRATIFICACAO: 'Gratificação', OUTRO_PROVENTO: 'Outro provento',
+};
+const NEEDS_AUTH = ['COMPRA_LOJA', 'EMPRESTIMO', 'PENSAO', 'OUTRO_DESCONTO'];
+const MARK_LABEL = { FOLGA: 'Folga', FOLGA_COMPENSATORIA: 'Folga compensatória (domingo/feriado)', ATESTADO: 'Atestado médico', ABONO: 'Abono',
+  FALTA_CONFIRMADA: 'Falta confirmada', ATRASO_CONFIRMADO: 'Atraso confirmado', FERIAS: 'Férias', AFASTAMENTO: 'Afastamento' };
+const DAY_STATUS = { COMPLETO: 'Completo', INCOMPLETO: 'Ponto incompleto', EM_ANDAMENTO: 'Em andamento', DOMINGO_TRABALHADO: 'Domingo trabalhado', DOMINGO_TROCA: 'Domingo (troca de folga)', FOLGA_TROCA: 'Folga da troca de domingo',
+  FERIADO_TRABALHADO: 'Feriado trabalhado', FOLGA: 'Folga', FOLGA_COMPENSATORIA: 'Folga compensatória', ABONO: 'Abono', ATESTADO: 'Atestado',
+  ATESTADO_PARCIAL: 'Atestado parcial', FALTA_CONFIRMADA: 'Falta confirmada', FERIAS: 'Férias', AFASTAMENTO: 'Afastamento', FUTURO: '—',
+  FERIADO: 'Feriado', DESCANSO: 'Descanso', SEM_PONTO: 'Sem ponto', FORA_DO_VINCULO: 'Fora do vínculo' };
+const DAY_TONE = { COMPLETO: 'okk', INCOMPLETO: 'bd', SEM_PONTO: 'bd', FALTA_CONFIRMADA: 'bd', DOMINGO_TRABALHADO: 'br', FERIADO_TRABALHADO: 'br', EM_ANDAMENTO: 'wr' };
+const SPECIAL_STATUS = { PAGAMENTO_PENDENTE: 'Valor do dia pendente', CONCILIADO: 'Conciliado', DIVERGENTE: 'Divergente (pago a mais)',
+  TRABALHADO_E_PAGO: 'Pago — falta folga', TRABALHADO_E_NAO_PAGO: 'Trabalhado e não pago' };
+const COMPOFF = { FOLGA_UTILIZADA: 'Folga utilizada', FOLGA_PENDENTE: 'Folga pendente', SEM_FOLGA: 'Sem folga prevista' };
+const PUNCH = { entry: 'Entrada', break_start: 'Início do intervalo', break_end: 'Fim do intervalo', exit: 'Saída' };
+const PEND_LABEL = { PONTO_INCOMPLETO: 'Ponto incompleto', SEM_PONTO: 'Dia sem ponto', FOLGA_PENDENTE: 'Folga pendente', DESCONTO_SEM_AUTORIZACAO: 'Desconto sem autorização',
+  LANCAMENTO_SEM_CLASSIFICACAO: 'Lançamento sem classificação', REGRA_COMISSAO: 'Sem regra de comissão', CADASTRO: 'Cadastro de contrato', CONTRATO: 'Tipo de contrato',
+  SALARIO: 'Salário', VALOR_HORA: 'Valor da hora', ADMISSAO: 'Admissão', SEM_REGISTRO: 'Sem registro', APRENDIZ_CONTRATO: 'Contrato de aprendiz',
+  ESCALA_12X36: 'Escala 12x36', ABAIXO_MINIMO: 'Abaixo do mínimo', HE_PENDENTE: 'Hora extra pendente', HORAS_FALTANTES: 'Horas faltantes',
+  ESPECIAL_DIVERGENTE: 'Dia especial divergente', VENDAS_PENDENTES: 'Vendas pendentes', LIQUIDO_NEGATIVO: 'Líquido negativo', PARAM_PENDENTE: 'Parâmetro pendente',
+  ANTECIPADO_SEM_DIA: 'Antecipado sem dia', ANTECIPADO_SEM_PONTO: 'Antecipado sem ponto', ANTECIPADO_SEM_VALOR: 'Antecipado sem valor', PARAM: 'Parâmetro' };
+const PARAM_LABEL = { INSS_EMPREGADO: 'INSS do empregado', IRRF_MENSAL: 'IRRF mensal', IRRF_REDUTOR: 'Redutor do IRRF (Lei 15.270)', SALARIO_MINIMO: 'Salário mínimo',
+  FGTS: 'FGTS', VALE_TRANSPORTE: 'Vale-transporte', HORA_EXTRA: 'Hora extra', ADICIONAL_NOTURNO: 'Adicional noturno', SALARIO_FAMILIA: 'Salário-família',
+  DOMINGO_TRABALHADO: 'Domingo trabalhado', FERIADO_TRABALHADO: 'Feriado trabalhado', VALE_ALIMENTACAO_DIA: 'Vale-alimentação por dia', PASSAGEM_DIA: 'Passagem por dia' };
+const PARAM_STATUS = { ACTIVE: 'Vigente', PENDING_VALIDATION: 'Pendente de validação do DP', REVOKED: 'Revogado' };
+const OPEN_ST = ['EM_CONFERENCIA', 'COM_PENDENCIAS', 'APROVADO'];
+const FROZEN_ST = ['FECHADO', 'PAGO'];
+const HAS_PDF_ST = ['FECHADO', 'PAGO', 'REABERTO', 'CORRIGIDO'];
+
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function brl(c) { return c == null ? '—' : (Number(c) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
+function money(c) { return c == null || c === '' ? '' : (Number(c) / 100).toFixed(2).replace('.', ','); }
+function hm(m) { m = Math.round(Number(m) || 0); const s = m < 0 ? '−' : ''; m = Math.abs(m); return s + Math.floor(m / 60) + 'h' + String(m % 60).padStart(2, '0'); }
+function dmy(k) { if (!k) return '—'; const [y, m, d] = String(k).slice(0, 10).split('-'); return d + '/' + m + '/' + y; }
+function dt(iso) { if (!iso) return '—'; const d = new Date(iso); return d.toLocaleString('pt-BR', { timeZone: 'America/Fortaleza', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+function todayKey() { return new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10); }
+function compLabel(c) { const [y, m] = c.split('-'); return ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'][Number(m) - 1] + '/' + y; }
+function addDay(k) { const d = new Date(k + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10); }
+// Confirmação em dois cliques dentro do próprio formulário (não perde o que foi digitado).
+function confirmStep(md, btn, html) {
+  if (btn.dataset.armed === '1') return true;
+  let box = md.querySelector('.confirm-box');
+  if (!box) { box = document.createElement('div'); box.className = 'note confirm-box'; btn.closest('.acts').before(box); }
+  box.innerHTML = html + '<div class="small" style="margin-top:6px"><b>Confira e clique em “Confirmar”.</b> Mudou algo? A confirmação recomeça.</div>';
+  btn.dataset.armed = '1'; btn.dataset.label = btn.textContent; btn.textContent = 'Confirmar';
+  box.scrollIntoView({ block: 'nearest' });
+  const reset = () => { btn.dataset.armed = ''; btn.textContent = btn.dataset.label; box.remove(); };
+  md.addEventListener('input', reset, { once: true });
+  return false;
+}
+function lastDayOf(c) { const [y, m] = c.split('-').map(Number); return c + '-' + String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0'); }
+// R$ digitado ("1.621,00", "1621.5", "R$ 30") → centavos inteiros (null se vazio/inválido).
+function toCents(v) {
+  let s = String(v == null ? '' : v).replace(/R\$|\s/g, '');
+  if (!s) return null;
+  if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+  const n = Number(s);
+  return Number.isFinite(n) ? Math.round(n * 100) : NaN;
+}
+function tag(st, label) { return '<span class="tag ' + esc(st) + '">' + esc(label || STATUS[st] || st) + '</span>'; }
+function isOwner() { return !!(S.me && S.me.isOwner); }
+function storeName(id) { const s = S.stores[id]; return s ? s.code + ' · ' + s.name : (id ? 'Loja ' + String(id).slice(0, 6) : '—'); }
+function issuerName(id) { if (!id) return '—'; const named = (S.rows || []).find((r) => r.issuerId === id && r.issuerName); if (named) return named.issuerName + (named.issuerCnpj ? ' · ' + String(named.issuerCnpj).slice(-6, -2) : ''); const list = S.issuers[id] || []; return list.length ? 'Empresa de ' + list.join(', ') : 'Empresa ' + String(id).slice(-6); }
+function userName(id) { return S.names[id] || (id ? 'Funcionário ' + String(id).slice(0, 6) : '—'); }
+
+function toast(msg, err) { const t = document.createElement('div'); t.className = 'toast' + (err ? ' err' : ''); t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), err ? 5200 : 2800); }
+
+async function req(path, { method = 'GET', body, raw } = {}) {
+  const headers = { Authorization: 'Bearer ' + TOKEN };
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  const r = await fetch(API + path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined, cache: 'no-store' });
+  if (raw && r.ok) return r;
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const e = new Error(d.error || ('Erro ' + r.status)); e.status = r.status;
+    if (r.status === 401) authFail('Sessão expirada ou inválida.');
+    throw e;
+  }
+  return d;
+}
+const post = (p, b) => req(p, { method: 'POST', body: b || {} });
+const put = (p, b) => req(p, { method: 'PUT', body: b || {} });
+
+function authFail(msg) {
+  document.getElementById('tabs').innerHTML = '';
+  document.getElementById('view').innerHTML = '<div class="card" style="max-width:560px;margin:40px auto;text-align:center"><h3>' + esc(msg) + '</h3>' +
+    '<p class="muted">Esta área é da administração. Entre no <a href="/admin.html">painel administrativo (/admin.html)</a> neste navegador e volte para esta página.</p>' +
+    '<a class="btn" href="/admin.html">Ir para o login</a></div>';
+}
+
+async function blobOpen(path, { download } = {}) {
+  try {
+    const r = await req(path, { raw: true });
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const cd = r.headers.get('Content-Disposition') || '';
+    const m = /filename="?([^";]+)"?/.exec(cd);
+    const a = document.createElement('a'); a.href = url;
+    if (download) a.download = m ? m[1] : 'arquivo'; else a.target = '_blank';
+    a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) { toast(e.message, true); }
+}
+
+// ─────────────────────────── modal / confirmação ───────────────────────────
+function modal(html, { wide } = {}) {
+  closeModal();
+  const bg = document.createElement('div'); bg.className = 'md-bg'; bg.id = 'md';
+  bg.innerHTML = '<div class="md' + (wide ? ' wide' : '') + '" role="dialog" aria-modal="true">' + html + '</div>';
+  bg.addEventListener('click', (e) => { if (e.target === bg) closeModal(); });
+  document.body.appendChild(bg);
+  const first = bg.querySelector('input:not([type=checkbox]):not(:disabled), select:not(:disabled), textarea:not(:disabled)');
+  if (first) setTimeout(() => first.focus(), 30);
+  return bg.querySelector('.md');
+}
+function closeModal() { const m = document.getElementById('md'); if (m) m.remove(); }
+// ask: diálogo de confirmação com campos opcionais. Resolve com os valores ou null.
+function ask({ title, html = '', fields = [], ok = 'Confirmar', danger = false }) {
+  return new Promise((resolve) => {
+    const f = fields.map((x) => '<div class="fld"><label for="ask_' + x.name + '">' + esc(x.label) + (x.required ? ' *' : '') + '</label>' +
+      (x.type === 'textarea' ? '<textarea id="ask_' + x.name + '" placeholder="' + esc(x.placeholder || '') + '">' + esc(x.value || '') + '</textarea>'
+        : x.type === 'checkbox' ? '<label class="check" style="text-transform:none;font-size:14px;color:var(--ink)"><input type="checkbox" id="ask_' + x.name + '"' + (x.value ? ' checked' : '') + '> ' + esc(x.hint || '') + '</label>'
+        : '<input id="ask_' + x.name + '" type="' + (x.type || 'text') + '" value="' + esc(x.value || '') + '" placeholder="' + esc(x.placeholder || '') + '">') + '</div>').join('');
+    const md = modal('<h3>' + esc(title) + '</h3>' + html + f + '<div class="note bad" id="ask_err" style="display:none"></div>' +
+      '<div class="acts"><button class="btn ghost" id="ask_no">Voltar</button><button class="btn ' + (danger ? 'bad' : '') + '" id="ask_ok">' + esc(ok) + '</button></div>');
+    md.querySelector('#ask_no').onclick = () => { closeModal(); resolve(null); };
+    md.querySelector('#ask_ok').onclick = () => {
+      const out = {};
+      for (const x of fields) {
+        const el = md.querySelector('#ask_' + x.name);
+        out[x.name] = x.type === 'checkbox' ? el.checked : el.value.trim();
+        const min = x.minLength || 1;
+        if (x.required && String(out[x.name]).length < min) {
+          const e = md.querySelector('#ask_err'); e.style.display = 'block';
+          e.textContent = 'Preencha: ' + x.label + (min > 1 ? ' (mínimo ' + min + ' caracteres)' : '') + '.'; el.focus(); return;
+        }
+      }
+      closeModal(); resolve(out);
+    };
+  });
+}
+// run: executa uma ação com o botão travado e mostra o erro do servidor.
+async function run(btn, fn, okMsg) {
+  const old = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spin"></span>'; }
+  try { const r = await fn(); if (okMsg) toast(okMsg); return r; }
+  catch (e) { toast(e.message, true); return undefined; }
+  finally { if (btn && btn.isConnected) { btn.disabled = false; btn.innerHTML = old; } }
+}
+
+// ─────────────────────────── navegação ───────────────────────────
+const TABS = [
+  ['painel', 'Painel do mês'], ['correcoes', 'Correções de ponto'], ['solicitacoes', 'Solicitações'],
+  ['parametros', 'Parâmetros legais'], ['feriados', 'Feriados'], ['comissao', 'Regras de comissão'], ['auditoria', 'Auditoria', true],
+];
+function renderTabs() {
+  document.getElementById('tabs').innerHTML = TABS.filter((t) => !t[2] || isOwner()).map(([k, l]) =>
+    '<button data-act="tab" data-k="' + k + '" class="' + (S.tab === k ? 'on' : '') + '">' + esc(l) + (S.counts[k] ? '<span class="cnt">' + S.counts[k] + '</span>' : '') + '</button>').join('');
+}
+function go(tab) {
+  S.tab = tab; renderTabs();
+  try { sessionStorage.setItem('folha_tab', tab); } catch (_) {}
+  const v = document.getElementById('view'); v.innerHTML = '<div class="empty"><span class="spin"></span> Carregando…</div>';
+  ({ painel: viewPainel, correcoes: viewCorrecoes, solicitacoes: viewSolicitacoes, parametros: viewParametros, feriados: viewFeriados, comissao: viewComissao, auditoria: viewAuditoria })[tab]()
+    .catch((e) => { v.innerHTML = '<div class="note bad">Erro: ' + esc(e.message) + '</div>'; });
+}
+
+// Ações por delegação (nunca monta JS com texto do servidor).
+const ACT = {};
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-act]');
+  if (!b || b.disabled) return;
+  const fn = ACT[b.dataset.act];
+  if (fn) { e.preventDefault(); fn(b.dataset, b); }
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (document.getElementById('md')) closeModal(); else if (document.getElementById('dr')) closeDrawer();
+});
+ACT.tab = (d) => go(d.k);
+
+async function boot() {
+  if (!TOKEN) return authFail('Você não está logado.');
+  try { S.me = await req('/admin/me'); }
+  catch (e) {
+    if (e.status === 401) return;
+    if (e.status === 403) return authFail('Seu usuário não tem acesso à folha.');
+    document.getElementById('view').innerHTML = '<div class="note bad">Erro ao abrir: ' + esc(e.message) + '</div>'; return;
+  }
+  document.getElementById('who').textContent = (isOwner() ? 'Dono' : (S.me.role === 'manager' ? 'Gerente' : 'Administração')) + (isOwner() ? ' · pode fechar e pagar' : ' · conferência (fechar e pagar: só o dono)');
+  S.comp = todayKey().slice(0, 7);
+  S.holYear = S.comp.slice(0, 4);
+  let tab = 'painel'; try { tab = sessionStorage.getItem('folha_tab') || 'painel'; } catch (_) {}
+  if (!TABS.some((t) => t[0] === tab && (!t[2] || isOwner()))) tab = 'painel';
+  // Carrega nomes/lojas uma vez (servem para correções, solicitações e auditoria).
+  loadOverview().catch(() => {});
+  refreshCounts();
+  go(tab);
+}
+async function refreshCounts() {
+  try {
+    const [cc, ds] = await Promise.all([req('/admin/clock-corrections?status=PENDENTE'), req('/admin/disputes?status=ABERTA')]);
+    S.counts.correcoes = cc.corrections.length; S.counts.solicitacoes = ds.disputes.length; renderTabs();
+  } catch (_) {}
+}
+
+// ─────────────────────────── PAINEL DO MÊS ───────────────────────────
+function remember(rows) {
+  for (const r of rows) {
+    S.names[r.userId] = r.name;
+    if (r.store) S.stores[r.store.id] = r.store;
+    if (r.issuerId) { const l = S.issuers[r.issuerId] || (S.issuers[r.issuerId] = []); if (r.store && !l.includes(r.store.code)) l.push(r.store.code); }
+  }
+}
+async function loadOverview() {
+  const q = new URLSearchParams({ competence: S.comp });
+  if (S.f.storeId) q.set('storeId', S.f.storeId);
+  if (S.f.issuerId) q.set('issuerId', S.f.issuerId);
+  if (S.f.status) q.set('status', S.f.status);
+  if (S.f.contractType) q.set('contractType', S.f.contractType);
+  if (S.f.pendency) q.set('pendency', '1');
+  const d = await req('/admin/overview?' + q);
+  S.rows = d.rows || []; remember(S.rows);
+  return S.rows;
+}
+// A mesma pendência de cadastro pode vir duas vezes (prévia + painel): mostra uma só.
+function cleanPend(list) {
+  const seen = new Set(); const out = [];
+  for (const p of list || []) { const k = p.code === 'CADASTRO' ? 'CADASTRO' : p.code + '|' + p.text; if (seen.has(k)) continue; seen.add(k); out.push(p); }
+  return out;
+}
+function pendLabel(code) {
+  if (PEND_LABEL[code]) return PEND_LABEL[code];
+  if (code.startsWith('PARAM_')) return 'Parâmetro ' + code.slice(6).replace(/_/g, ' ').toLowerCase();
+  return code.replace(/_/g, ' ').toLowerCase();
+}
+function pendBadges(list) {
+  const groups = new Map();
+  for (const p of list) {
+    const g = groups.get(p.code) || { code: p.code, n: 0, sev: 'ALERTA', texts: [] };
+    g.n++; if (p.severity === 'BLOQUEIA') g.sev = 'BLOQUEIA'; g.texts.push(p.text); groups.set(p.code, g);
+  }
+  return [...groups.values()].sort((a, b) => (a.sev === b.sev ? 0 : a.sev === 'BLOQUEIA' ? -1 : 1))
+    .map((g) => '<span class="pb ' + g.sev + '" title="' + esc(g.texts.slice(0, 12).join('\n') + (g.texts.length > 12 ? '\n…' : '')) + '">' + esc(pendLabel(g.code)) + (g.n > 1 ? ' ×' + g.n : '') + '</span>').join('');
+}
+function pendItems(list) {
+  if (!list.length) return '<div class="muted small">Sem pendências.</div>';
+  return list.map((p) => '<div class="pend"><span class="pb ' + esc(p.severity) + '">' + (p.severity === 'BLOQUEIA' ? 'Bloqueia' : 'Alerta') + '</span><div><b>' + esc(pendLabel(p.code)) + '</b> — ' + esc(p.text) + '</div></div>').join('');
+}
+
+async function viewPainel() {
+  await loadOverview();
+  renderPainel();
+}
+function opt(v, l, cur) { return '<option value="' + esc(v) + '"' + (String(v) === String(cur) ? ' selected' : '') + '>' + esc(l) + '</option>'; }
+function renderPainel() {
+  if (S.tab !== 'painel') return;
+  const rows = S.rows;
+  const sum = (k) => rows.reduce((s, r) => s + (r[k] || 0), 0);
+  const blocked = rows.filter((r) => cleanPend(r.pendencies).some((p) => p.severity === 'BLOQUEIA')).length;
+  const closed = rows.filter((r) => FROZEN_ST.includes(r.status)).length;
+  const html = [];
+  html.push('<div class="card"><div class="filters">' +
+    '<div><label for="fComp">Competência</label><input type="month" id="fComp" value="' + esc(S.comp) + '"></div>' +
+    '<div><label for="fStore">Loja</label><select id="fStore">' + opt('', 'Todas', S.f.storeId) + Object.values(S.stores).sort((a, b) => a.code.localeCompare(b.code)).map((s) => opt(s.id, s.code + ' · ' + s.name, S.f.storeId)).join('') + '</select></div>' +
+    '<div><label for="fIssuer">Empresa</label><select id="fIssuer">' + opt('', 'Todas', S.f.issuerId) + Object.keys(S.issuers).map((id) => opt(id, issuerName(id), S.f.issuerId)).join('') + '</select></div>' +
+    '<div><label for="fStatus">Situação</label><select id="fStatus">' + opt('', 'Todas', S.f.status) + Object.entries(STATUS).map(([k, l]) => opt(k, l, S.f.status)).join('') + '</select></div>' +
+    '<div><label for="fContract">Tipo de contrato</label><select id="fContract">' + opt('', 'Todos', S.f.contractType) + Object.entries(CONTRACT).map(([k, l]) => opt(k, l, S.f.contractType)).join('') + '</select></div>' +
+    '<div><label class="check" style="text-transform:none;font-size:14px;color:var(--ink);letter-spacing:0"><input type="checkbox" id="fPend"' + (S.f.pendency ? ' checked' : '') + '> Só com pendência</label></div>' +
+    '</div></div>');
+  html.push('<div class="kpis">' +
+    '<div class="kpi"><div class="l">Funcionários</div><div class="v">' + rows.length + '</div></div>' +
+    '<div class="kpi ' + (blocked ? 'bad' : 'ok') + '"><div class="l">Com pendência que bloqueia</div><div class="v">' + blocked + '</div></div>' +
+    '<div class="kpi"><div class="l">Fechados / pagos</div><div class="v">' + closed + '</div></div>' +
+    '<div class="kpi"><div class="l">Proventos</div><div class="v">' + brl(sum('grossCents')) + '</div></div>' +
+    '<div class="kpi"><div class="l">Descontos</div><div class="v">' + brl(sum('deductionsCents')) + '</div></div>' +
+    '<div class="kpi br"><div class="l">Líquido total</div><div class="v">' + brl(sum('netCents')) + '</div></div></div>');
+  if (S.comp >= todayKey().slice(0, 7)) html.push('<div class="note info">Competência em andamento: os valores são <b>prévia</b> e mudam até o fechamento. O fechamento só é aceito depois que o mês terminar.</div>');
+  if (!rows.length) html.push('<div class="card empty">Nenhum funcionário com esses filtros.</div>');
+  else {
+    html.push('<div class="tw"><table class="tbl-overview"><thead><tr>' +
+      '<th>Funcionário</th><th>Empresa / loja</th><th>Situação</th><th class="n">Salário</th><th class="n">Comissão</th><th class="n">Vendas</th><th class="n">Horas</th>' +
+      '<th class="n">Domingos</th><th class="n">Feriados</th><th class="n">Folgas pend.</th><th class="n">Proventos</th><th class="n">Descontos</th><th class="n">Líquido</th><th>Pendências</th><th></th></tr></thead><tbody>');
+    for (const r of rows) {
+      const p = cleanPend(r.pendencies);
+      html.push('<tr class="click" data-act="openEmp" data-u="' + esc(r.userId) + '">' +
+        '<td><b>' + esc(r.name) + '</b><div class="small muted">' + esc(r.role === 'manager' ? 'Gerente' : 'Vendedor') + ' · ' + esc(r.contractType ? CONTRACT[r.contractType] || r.contractType : 'sem cadastro') + '</div></td>' +
+        '<td><div>' + esc(issuerName(r.issuerId)) + '</div><div class="small muted">' + esc(r.store ? r.store.code + ' · ' + r.store.name : 'sem loja') + '</div></td>' +
+        '<td>' + tag(r.status) + (r.version ? '<div class="small muted">versão ' + esc(r.version) + '</div>' : '<div class="small muted">prévia</div>') + '</td>' +
+        '<td class="n">' + brl(r.salaryCents) + '</td><td class="n">' + brl(r.commissionCents) + '</td><td class="n">' + brl(r.salesCents) + '</td>' +
+        '<td class="n">' + hm(r.registeredMinutes) + (r.extraMinutes ? '<div class="small muted">+' + hm(r.extraMinutes) + ' extra</div>' : '') + '</td>' +
+        '<td class="n">' + (r.sundaysWorked || 0) + '</td><td class="n">' + (r.holidaysWorked || 0) + '</td>' +
+        '<td class="n">' + (r.pendingDaysOff ? '<span class="tag wr">' + r.pendingDaysOff + '</span>' : '0') + '</td>' +
+        '<td class="n">' + brl(r.grossCents) + '</td><td class="n">' + brl(r.deductionsCents) + '</td><td class="n b">' + brl(r.netCents) + '</td>' +
+        '<td class="pcell">' + (p.length ? '<button class="btn sm line" data-act="togglePend" data-u="' + esc(r.userId) + '">' + p.length + (S.open[r.userId] ? ' ▲' : ' ▼') + '</button> ' + pendBadges(p) : '<span class="tag okk">Nenhuma</span>') + '</td>' +
+        '<td><button class="btn sm" data-act="openEmp" data-u="' + esc(r.userId) + '">Conferir</button></td></tr>');
+      if (S.open[r.userId] && p.length) html.push('<tr class="sub"><td colspan="15">' + pendItems(p) + '</td></tr>');
+    }
+    html.push('</tbody></table></div>');
+  }
+  const v = document.getElementById('view'); v.innerHTML = html.join('');
+  const onF = async () => {
+    S.comp = v.querySelector('#fComp').value || S.comp;
+    S.f = { storeId: v.querySelector('#fStore').value, issuerId: v.querySelector('#fIssuer').value, status: v.querySelector('#fStatus').value,
+      contractType: v.querySelector('#fContract').value, pendency: v.querySelector('#fPend').checked };
+    v.style.opacity = .5;
+    try { await loadOverview(); renderPainel(); } catch (e) { toast(e.message, true); } finally { v.style.opacity = 1; }
+  };
+  v.querySelectorAll('#fComp,#fStore,#fIssuer,#fStatus,#fContract,#fPend').forEach((el) => el.addEventListener('change', onF));
+}
+ACT.togglePend = (d) => { S.open[d.u] = !S.open[d.u]; renderPainel(); };
+
+// ─────────────────────────── FUNCIONÁRIO (drawer) ───────────────────────────
+ACT.openEmp = (d) => openEmp(d.u);
+function closeDrawer() { const x = document.getElementById('dr'); if (x) x.remove(); S.d = null; document.body.style.overflow = ''; }
+ACT.closeDrawer = () => closeDrawer();
+function drawerShell() {
+  let bg = document.getElementById('dr');
+  if (!bg) {
+    bg = document.createElement('div'); bg.className = 'dr-bg'; bg.id = 'dr';
+    bg.innerHTML = '<div class="dr"><div class="dr-h"><div class="t"><b>…</b><span></span></div><button class="x" data-act="closeDrawer" aria-label="Fechar">✕</button></div><div class="dr-b"><div class="empty"><span class="spin"></span> Calculando…</div></div></div>';
+    bg.addEventListener('click', (e) => { if (e.target === bg) closeDrawer(); });
+    document.body.appendChild(bg); document.body.style.overflow = 'hidden';
+  }
+  return bg;
+}
+// payslipId: versão a mostrar (padrão = a do painel).
+async function openEmp(userId, { payslipId } = {}) {
+  const bg = drawerShell();
+  const row = S.rows.find((r) => r.userId === userId) || { userId, name: userName(userId) };
+  bg.querySelector('.dr-h b').textContent = row.name;
+  const keepView = S.d && S.d.userId === userId && S.d.payslipId === (payslipId || row.payslipId || null) ? S.d.view : null;
+  S.d = { userId, row, comp: S.comp, payslipId: payslipId || row.payslipId || null };
+  const comp = encodeURIComponent(S.comp);
+  try {
+    const [pv, slip, ent, mk] = await Promise.all([
+      req('/admin/employees/' + encodeURIComponent(userId) + '/preview?competence=' + comp),
+      S.d.payslipId ? req('/admin/payslips/' + encodeURIComponent(S.d.payslipId)) : null,
+      req('/admin/entries?userId=' + encodeURIComponent(userId) + '&competence=' + comp),
+      req('/admin/day-marks?userId=' + encodeURIComponent(userId) + '&competence=' + comp),
+    ]);
+    if (!S.d || S.d.userId !== userId) return;
+    Object.assign(S.d, { pv, slip, entries: ent.entries || [], marks: mk.marks || [] });
+    S.d.view = keepView && (keepView === 'preview' || (slip && slip.payslip.result)) ? keepView : (slip && slip.payslip.result ? 'slip' : 'preview');
+    renderDrawer();
+  } catch (e) {
+    if (!S.d) return;
+    bg.querySelector('.dr-b').innerHTML = '<div class="note bad">Erro: ' + esc(e.message) + '</div>';
+  }
+}
+async function refreshEmp(payslipId) {
+  const u = S.d.userId;
+  try { await loadOverview(); renderPainel(); } catch (_) {}
+  const row = S.rows.find((r) => r.userId === u);
+  await openEmp(u, { payslipId: payslipId || (row && row.payslipId) || null });
+}
+ACT.view = (d) => { S.d.view = d.v; renderDrawer(); };
+ACT.version = async (d, b) => { await run(b, async () => { S.d.payslipId = d.id; S.d.slip = await req('/admin/payslips/' + encodeURIComponent(d.id)); S.d.view = S.d.slip.payslip.result ? 'slip' : 'preview'; renderDrawer(); }); };
+
+function renderDrawer() {
+  const D = S.d; if (!D) return;
+  const bg = document.getElementById('dr'); if (!bg) return;
+  const slip = D.slip ? D.slip.payslip : null;
+  const versions = D.slip ? D.slip.versions : [];
+  const latestId = versions.length ? versions[versions.length - 1].id : null;
+  const isLatest = !slip || slip.id === latestId;
+  const st = slip ? slip.status : null;
+  const result = D.view === 'slip' && slip && slip.result ? slip.result : D.pv.result;
+  const prof = D.pv.profile;
+  const own = isOwner();
+  D.locked = versions.some((v) => FROZEN_ST.includes(v.status));
+  bg.querySelector('.dr-h span').textContent = compLabel(D.comp) + ' · ' + (prof && prof.contractType ? CONTRACT[prof.contractType] || prof.contractType : 'sem cadastro de contrato') + (D.row.store ? ' · ' + D.row.store.code + ' ' + D.row.store.name : '');
+  const H = [];
+  // Situação + ações
+  const pend = cleanPend(result.pendencies);
+  const blocking = pend.filter((p) => p.severity === 'BLOQUEIA').length;
+  H.push('<div class="card"><div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between">' +
+    '<div>' + (slip ? tag(st) + ' <span class="muted small">versão ' + esc(slip.version) + (slip.closedAt ? ' · fechado em ' + esc(dt(slip.closedAt)) : '') + (slip.paidAt ? ' · pago em ' + esc(dt(slip.paidAt)) : '') + '</span>' : tag('EM_ANDAMENTO', 'Sem contracheque gravado — prévia')) + '</div>' +
+    '<div style="text-align:right"><div class="small muted">Líquido ' + (D.view === 'slip' && slip && slip.result ? 'da versão' : 'da prévia') + '</div><div style="font-size:24px;font-weight:900;color:var(--brand)">' + brl(result.totals.netCents) + '</div></div></div>');
+  if (slip && slip.paymentRef) H.push('<div class="small muted">Comprovante do pagamento: <b>' + esc(slip.paymentRef) + '</b></div>');
+  if (slip && slip.verifyCode) H.push('<div class="small muted">Código de verificação: <b>' + esc(slip.verifyCode) + '</b></div>');
+  if (slip && slip.reason) H.push('<div class="small muted">Motivo/observação: ' + esc(slip.reason) + '</div>');
+  const A = [];
+  const canReview = isLatest && (!st || OPEN_ST.includes(st));
+  if (canReview) A.push('<button class="btn dark" data-act="review">' + (st ? 'Revisar de novo' : 'Revisar (gerar conferência)') + '</button>');
+  if (own && isLatest && st === 'EM_CONFERENCIA') A.push('<button class="btn ok" data-act="approve">Aprovar</button>');
+  if (own && isLatest && st === 'APROVADO') A.push('<button class="btn" data-act="close">Fechar contracheque</button>');
+  if (own && isLatest && st === 'FECHADO') A.push('<button class="btn ok" data-act="pay">Registrar pagamento</button>');
+  if (own && isLatest && FROZEN_ST.includes(st)) A.push('<button class="btn line" data-act="notify">Reenviar WhatsApp</button><button class="btn bad" data-act="reopen">Reabrir</button>');
+  if (own && isLatest && OPEN_ST.includes(st)) A.push('<button class="btn bad" data-act="cancelSlip">Cancelar rascunho</button>');
+  if (slip && HAS_PDF_ST.includes(st)) A.push('<button class="btn line" data-act="pdf">PDF</button>');
+  if (slip && slip.result) A.push('<button class="btn line" data-act="exp" data-f="csv">CSV</button><button class="btn line" data-act="exp" data-f="json">JSON</button>');
+  if (slip && HAS_PDF_ST.includes(st)) A.push('<button class="btn line" data-act="recompute">Reprodutível?</button>');
+  H.push('<div class="btns" style="margin-top:12px">' + A.join('') + '</div>');
+  if (!own) H.push('<div class="small muted" style="margin-top:8px">Aprovar, fechar, pagar, reabrir e cancelar são só do dono.</div>');
+  if (st === 'APROVADO' && todayKey() <= lastDayOf(D.comp)) H.push('<div class="note">A competência ainda não terminou: o fechamento só é aceito a partir de ' + esc(dmy(addDay(lastDayOf(D.comp)))) + '.</div>');
+  if (st === 'COM_PENDENCIAS') H.push('<div class="note bad">Há pendências que bloqueiam a aprovação. Resolva (cadastro, ponto, lançamentos) e clique em <b>Revisar de novo</b>.</div>');
+  if (slip && !slip.result) H.push('<div class="note info">Esta versão ainda não tem cálculo gravado (nova versão após reabertura). Clique em <b>Revisar</b> para gerar a conferência.</div>');
+  const lk = D.locked ? ' disabled title="Competência fechada: reabra o contracheque para alterar"' : '';
+  H.push('<div class="btns" style="margin-top:10px"><button class="btn sm ghost" data-act="profile">Cadastro de contrato</button><button class="btn sm ghost" data-act="newEntry"' + lk + '>+ Lançamento</button><button class="btn sm ghost" data-act="newMark"' + lk + '>+ Marcação de dia</button></div>');
+  if (D.locked) H.push('<div class="small muted" style="margin-top:6px">Competência fechada: lançamentos e marcações ficam travados. Para corrigir, o dono reabre (gera nova versão).</div>');
+  H.push('</div>');
+  // Versões
+  if (versions.length) {
+    H.push('<h2>Versões desta competência</h2><div class="ver">' + versions.map((v) => '<button data-act="version" data-id="' + esc(v.id) + '" class="' + (slip && v.id === slip.id ? 'on' : '') + '"><b>v' + esc(v.version) + '</b> ' + tag(v.status) +
+      '<div class="small muted">' + brl(v.netCents) + (v.closedAt ? ' · ' + esc(dt(v.closedAt)) : '') + '</div>' + (v.reason ? '<div class="small muted">' + esc(v.reason) + '</div>' : '') + '</button>').join('') + '</div>' +
+      '<div class="small muted" style="margin-top:6px">Reabrir nunca apaga: a versão fechada fica preservada e nasce uma versão nova.</div>');
+  }
+  if (slip && slip.result) {
+    H.push('<div style="margin-top:14px" class="seg"><button data-act="view" data-v="slip" class="' + (D.view === 'slip' ? 'on' : '') + '">Cálculo gravado (v' + esc(slip.version) + ')</button><button data-act="view" data-v="preview" class="' + (D.view === 'preview' ? 'on' : '') + '">Prévia ao vivo</button></div>');
+  }
+  if (result.provisional) H.push('<div class="note info">Prévia: valores calculados até ' + esc(dmy(result.asOfDay)) + '. Não é o contracheque oficial.</div>');
+  // Pendências
+  H.push('<h2>Pendências (' + pend.length + (blocking ? ', ' + blocking + ' bloqueiam' : '') + ')</h2><div class="card">' + pendItems(pend) + '</div>');
+  H.push(renderResult(result));
+  H.push(renderEntriesMarks());
+  bg.querySelector('.dr-b').innerHTML = H.join('');
+}
+
+function renderResult(r) {
+  const H = [];
+  const items = r.items || [];
+  const prov = items.filter((i) => i.type === 'PROVENTO'), desc = items.filter((i) => i.type === 'DESCONTO');
+  const itemRows = (list) => list.map((i) => '<tr><td class="nw small muted">' + esc(i.code) + '</td><td><b>' + esc(i.label) + '</b>' + (i.provisional ? ' <span class="tag wr">provisório</span>' : '') + (i.nonTaxable ? ' <span class="tag">não tributável</span>' : '') +
+    '</td><td class="nw">' + esc(i.refText || '') + '</td><td class="n b">' + brl(i.cents) + '</td><td class="small muted" style="min-width:260px">' + esc(i.memo || '') + '</td></tr>').join('');
+  H.push('<h2>Contracheque — memória de cálculo</h2><div class="tw"><table style="min-width:720px"><thead><tr><th>Código</th><th>Descrição</th><th>Referência</th><th class="n">Valor</th><th>Memória de cálculo</th></tr></thead><tbody>' +
+    '<tr class="sub"><td colspan="5" class="b" style="color:var(--ok)">Proventos</td></tr>' + (itemRows(prov) || '<tr><td colspan="5" class="muted">—</td></tr>') +
+    '<tr class="sub"><td colspan="5" class="b" style="color:var(--bad)">Descontos</td></tr>' + (itemRows(desc) || '<tr><td colspan="5" class="muted">—</td></tr>') +
+    '</tbody></table></div>');
+  const t = r.totals || {};
+  H.push('<div class="card" style="margin-top:10px"><div class="tot"><span>Proventos</span><span>' + brl(t.grossCents) + '</span></div><div class="tot"><span>Descontos</span><span>− ' + brl(t.deductionsCents) + '</span></div><div class="tot net"><span>Líquido</span><span>' + brl(t.netCents) + '</span></div>' +
+    (r.projection ? '<div class="small muted" style="margin-top:6px">Projeção até o fim do mês (' + esc(r.projection.basis || 'ritmo atual') + '): bruto ' + brl(r.projection.grossCents) + ' · líquido ' + brl(r.projection.netCents) + ' — só informativa.</div>' : '') + '</div>');
+  // Bases
+  const b = r.bases || {};
+  if (r.kind === 'MENSAL' || b.inss || b.fgts) {
+    H.push('<h2>Bases e encargos</h2><div class="grid2"><div class="card">' +
+      '<div class="kv"><span>Base de contribuição</span><span>' + brl(b.contributionBaseCents) + '</span></div>' +
+      '<div class="kv"><span>INSS (desconto)</span><span>' + (b.inss ? brl(b.inss.valueCents) + '<div class="small muted">base ' + brl(b.inss.baseCents) + (b.inss.parts ? ' · ' + esc(b.inss.parts.map((p) => p.rate + '% → ' + brl(p.valueCents)).join(' + ')) : '') + '</div>' : 'não se aplica') + '</span></div>' +
+      '<div class="kv"><span>IRRF (desconto)</span><span>' + (b.irrf ? brl(b.irrf.valueCents) + '<div class="small muted">base ' + brl(b.irrf.baseCents) + ' · alíquota ' + esc(b.irrf.rate) + '% · ' + (b.irrf.useSimplified ? 'desconto simplificado' : 'deduções legais') + (b.irrf.reductionCents ? ' · redução ' + brl(b.irrf.reductionCents) : '') + '</div>' : 'não se aplica') + '</span></div>' +
+      '<div class="kv"><span>Dependentes IRRF</span><span>' + esc(b.dependents || 0) + '</span></div></div><div class="card">' +
+      '<div class="kv"><span>FGTS<div class="small">depósito da empresa, <b>não é desconto</b></div></span><span>' + (b.fgts ? brl(b.fgts.valueCents) + '<div class="small muted">' + esc(b.fgts.rate) + '% de ' + brl(b.fgts.baseCents) + '</div>' : 'não se aplica') + '</span></div>' +
+      '<div class="kv"><span>Vale-transporte</span><span>' + (b.vt ? brl(b.vt.valueCents) + '<div class="small muted">teto 6% ' + brl(b.vt.capCents) + ' · custo ' + brl(b.vt.costCents) + '</div>' : '—') + '</span></div>' +
+      (r.contract ? '<div class="kv"><span>Valor da hora</span><span>' + brl(r.contract.hourCents) + (r.contract.divisor ? ' <span class="small muted">(divisor ' + esc(r.contract.divisor) + ')</span>' : '') + '</span></div>' +
+        '<div class="kv"><span>Dias de vínculo no mês</span><span>' + esc(r.contract.bondDays) + '</span></div>' +
+        '<div class="kv"><span>Banco de horas</span><span>' + (r.contract.timeBank ? 'sim (acordo)' : 'não') + '</span></div>' : '') +
+      '</div></div>');
+  }
+  // Comissão
+  const c = r.commission;
+  if (c) {
+    H.push('<h2>Comissão</h2><div class="card">');
+    if (c.missingRule) H.push('<div class="note">Nenhuma regra de comissão vigente para este funcionário.</div>');
+    else {
+      const cf = c.confirmed || {};
+      H.push('<div class="small muted">Regra: <b>' + esc(c.ruleName) + '</b> (versão ' + esc(c.ruleVersion) + ')</div>');
+      H.push('<div class="grid3" style="margin-top:8px"><div class="kpi"><div class="l">Vendas confirmadas</div><div class="v">' + brl(cf.totalCents) + '</div><div class="small muted">' + esc(cf.count || 0) + ' venda(s)</div></div>' +
+        '<div class="kpi"><div class="l">Alíquota atual</div><div class="v">' + esc(cf.generalPct) + '%</div></div>' +
+        '<div class="kpi br"><div class="l">Comissão</div><div class="v">' + brl(cf.commissionCents) + '</div></div></div>');
+      if (cf.nextTier) {
+        const pct = Math.min(100, Math.round((cf.totalCents || 0) / cf.nextTier.aboveCents * 100));
+        H.push('<div style="margin-top:10px"><b>Próxima faixa: ' + esc(cf.nextTier.pct) + '%</b> acima de ' + brl(cf.nextTier.aboveCents) + '<div class="bar"><i style="width:' + pct + '%"></i></div><div class="small muted">' + pct + '% — faltam ' + brl(cf.nextTier.missingCents) + '</div></div>');
+      } else H.push('<div class="small muted" style="margin-top:8px">Já está na faixa mais alta.</div>');
+      for (const sp of cf.specials || []) {
+        const pct = sp.aboveCents ? Math.min(100, Math.round(sp.totalCents / sp.aboveCents * 100)) : 100;
+        H.push('<div style="margin-top:10px"><b>' + esc(sp.name) + '</b> — ' + esc(sp.pct) + '% acima de ' + brl(sp.aboveCents) + ' ' + (sp.reached ? '<span class="tag okk">atingida: ' + brl(sp.commissionCents) + '</span>' : '<span class="tag">não atingida</span>') +
+          '<div class="bar' + (sp.reached ? ' done' : '') + '"><i style="width:' + pct + '%"></i></div><div class="small muted">' + brl(sp.totalCents) + ' vendidos' + (sp.reached ? '' : ' · faltam ' + brl(sp.missingCents)) + '</div></div>');
+      }
+      const pd = c.pending || {}, cc = c.canceled || {};
+      H.push('<div class="grid2" style="margin-top:10px"><div>' +
+        '<div class="kv"><span>Pendentes de pagamento</span><span>' + esc(pd.count || 0) + ' · ' + brl(pd.salesCents) + (pd.extraCommissionCents ? '<div class="small muted">+' + brl(pd.extraCommissionCents) + ' se confirmarem</div>' : '') + '</span></div>' +
+        '<div class="kv"><span>Canceladas (fora)</span><span>' + esc(cc.count || 0) + ' · ' + brl(cc.salesCents) + '</span></div>' +
+        (c.other && c.other.count ? '<div class="kv"><span>Outros status (fora)</span><span>' + esc(c.other.count) + ' · ' + esc((c.other.statuses || []).join(', ')) + '</span></div>' : '') +
+        (c.projection ? '<div class="kv"><span>Projeção (' + esc(c.projection.basis) + ')</span><span>' + brl(c.projection.salesCents) + ' → ' + brl(c.projection.commissionCents) + '</span></div>' : '') +
+        '</div><div>' + ((c.byCategory || []).length ? (c.byCategory.map((x) => '<div class="kv"><span>' + esc(x.category) + '</span><span>' + brl(x.salesCents) + '</span></div>').join('')) : '<div class="small muted">Sem vendas por categoria.</div>') + '</div></div>');
+    }
+    H.push('</div>');
+  }
+  // Dias especiais
+  const sd = r.specialDays || [];
+  if (r.kind === 'MENSAL' || sd.length) {
+    H.push('<h2>Domingos e feriados trabalhados (' + sd.length + ')</h2>');
+    if (!sd.length) H.push('<div class="card muted small">Nenhum no mês.</div>');
+    else H.push('<div class="tw"><table style="min-width:900px"><thead><tr><th>Data</th><th>Tipo</th><th>Horário</th><th class="n">Horas</th><th class="n">Devido</th><th class="n">Pago antes</th><th class="n">Saldo</th><th>Folga compensatória</th><th>Situação</th></tr></thead><tbody>' +
+      sd.map((s) => '<tr><td class="nw">' + esc(dmy(s.date)) + ' <span class="small muted">' + esc(s.weekdayName || '') + '</span></td><td>' + esc(s.type === 'FERIADO' ? 'Feriado' + (s.holiday ? ' — ' + s.holiday : '') : 'Domingo') + '</td>' +
+        '<td class="nw">' + esc((s.entry || '?') + '–' + (s.exit || '?')) + '</td><td class="n">' + hm(s.workedMinutes) + '</td><td class="n">' + (s.dueCents == null ? '<span class="tag wr">pendente</span>' : brl(s.dueCents)) + '</td>' +
+        '<td class="n">' + brl(s.paidCents) + (s.paidAt ? '<div class="small muted">' + esc(dmy(s.paidAt)) + '</div>' : '') + '</td><td class="n">' + (s.balanceCents == null ? '—' : brl(s.balanceCents)) + '</td>' +
+        '<td>' + tag(s.compOffStatus === 'FOLGA_PENDENTE' ? 'wr' : s.compOffStatus === 'FOLGA_UTILIZADA' ? 'okk' : '', COMPOFF[s.compOffStatus] || s.compOffStatus) + (s.compensatoryDayOff ? ' <span class="small muted">' + esc(dmy(s.compensatoryDayOff)) + '</span>' : '') + '</td>' +
+        '<td>' + tag(s.status === 'CONCILIADO' ? 'okk' : s.status === 'DIVERGENTE' || s.status === 'TRABALHADO_E_NAO_PAGO' ? 'bd' : 'wr', SPECIAL_STATUS[s.status] || s.status) + '</td></tr>').join('') + '</tbody></table></div>');
+  }
+  // Jornada
+  const tm = r.time;
+  if (tm) {
+    const T = tm.totals || {};
+    H.push('<h2>Jornada</h2><div class="kpis">' +
+      '<div class="kpi"><div class="l">Registradas</div><div class="v">' + hm(T.registeredMinutes) + '</div></div>' +
+      '<div class="kpi"><div class="l">Previstas</div><div class="v">' + hm(T.expectedMinutes) + '</div></div>' +
+      '<div class="kpi"><div class="l">Horas extras</div><div class="v">' + hm(T.extraMinutes) + '</div><div class="small muted">' + hm(T.extraConfirmedMinutes) + ' confirmadas</div></div>' +
+      '<div class="kpi' + (T.missingMinutes ? ' bad' : '') + '"><div class="l">Faltantes</div><div class="v">' + hm(T.missingMinutes) + '</div></div>' +
+      '<div class="kpi"><div class="l">Creditadas (abono/atestado/folga)</div><div class="v">' + hm(T.creditedMinutes) + '</div></div>' +
+      '<div class="kpi"><div class="l">Noturnas</div><div class="v">' + hm(T.nightMinutes) + '</div></div></div>');
+    if (tm.shifts12x36) {
+      const s = tm.shifts12x36;
+      H.push('<div class="card"><b>Escala 12x36</b><div class="kv"><span>Plantão</span><span>' + hm(s.shiftMinutes) + '</span></div><div class="kv"><span>Plantões na escala / trabalhados</span><span>' + esc(s.scheduledShifts) + ' / ' + esc(s.workedShifts) + '</span></div>' +
+        '<div class="kv"><span>Extra (acima do plantão)</span><span>' + hm(s.extraMinutes) + '</span></div>' + (s.missingShifts.length ? '<div class="kv"><span>Plantões pendentes</span><span>' + esc(s.missingShifts.map(dmy).join(', ')) + '</span></div>' : '') + '</div>');
+    }
+    if ((tm.weeks || []).length) {
+      H.push('<div class="tw"><table style="min-width:820px"><thead><tr><th>Semana (seg–sáb)</th><th class="n">Prevista</th><th class="n">Registrada</th><th class="n">Crédito</th><th class="n">Saldo</th><th class="n">Extra</th><th class="n">Faltante</th><th class="n">Domingo seguinte</th><th>Situação</th></tr></thead><tbody>' +
+        tm.weeks.map((w) => '<tr><td class="nw">' + esc(dmy(w.from)) + ' a ' + esc(dmy(w.to)) + (w.fullWeek ? '' : ' <span class="small muted">(parcial)</span>') + '</td><td class="n">' + hm(w.expectedMinutes) + '</td><td class="n">' + hm(w.registeredMinutes) + '</td><td class="n">' + hm(w.creditedMinutes) + '</td>' +
+          '<td class="n b">' + hm(w.balanceMinutes) + '</td><td class="n">' + hm(w.extraMinutes) + '</td><td class="n">' + hm(w.missingMinutes) + '</td><td class="n">' + (w.sundayWorkedMinutes ? hm(w.sundayWorkedMinutes) : '—') + '</td>' +
+          '<td>' + (w.pendingDays.length ? '<span class="tag bd">' + w.pendingDays.length + ' dia(s) pendente(s)</span>' : w.provisional ? '<span class="tag wr">provisória</span>' : '<span class="tag okk">fechada</span>') + '</td></tr>').join('') + '</tbody></table></div>');
+    }
+    H.push('<details style="margin-top:10px"' + ((T.incompleteDays || []).length ? ' open' : '') + '><summary>Dia a dia (' + (tm.days || []).length + ' dias)</summary><div class="tw" style="margin-top:8px"><table style="min-width:980px"><thead><tr><th>Data</th><th>Situação</th><th>Entrada</th><th>Intervalo</th><th>Saída</th><th class="n">Trabalhado</th><th class="n">Previsto</th><th class="n">Crédito</th><th>Observações</th></tr></thead><tbody>' +
+      (tm.days || []).filter((x) => !x.future || x.marks.length).map((x) => '<tr><td class="nw">' + esc(dmy(x.date)) + ' <span class="small muted">' + esc(x.weekdayName) + '</span>' + (x.holiday ? '<div class="small muted">' + esc(x.holiday) + '</div>' : '') + '</td>' +
+        '<td>' + tag(DAY_TONE[x.status] || '', DAY_STATUS[x.status] || x.status) + (x.pendingCorrections ? ' <span class="tag wr">' + x.pendingCorrections + ' correção pendente</span>' : '') + '</td>' +
+        '<td>' + esc(x.entry || '—') + '</td><td class="nw">' + esc((x.breaks || []).map((b) => b.start + '–' + b.end).join(', ') || (x.breakStart ? x.breakStart + '–?' : '—')) + '</td><td>' + esc(x.exit || '—') + '</td>' +
+        '<td class="n">' + (x.workedMinutes ? hm(x.workedMinutes) : '—') + '</td><td class="n">' + (x.expectedMinutes ? hm(x.expectedMinutes) : '—') + '</td><td class="n">' + (x.creditMinutes ? hm(x.creditMinutes) : '—') + '</td>' +
+        '<td class="small">' + esc([...(x.issues || []), ...(x.marks || []).map((m) => (MARK_LABEL[m.kind] || m.kind) + (m.refDate ? ' (ref. ' + dmy(m.refDate) + ')' : '') + (m.minutes ? ' ' + hm(m.minutes) : '') + (m.note ? ' — ' + m.note : '')), ...((x.origins || []).includes('correcao') ? ['batida por correção aprovada'] : [])].join(' · ')) + '</td></tr>').join('') +
+      '</tbody></table></div></details>');
+  }
+  // Benefícios
+  if ((r.benefits || []).length) {
+    H.push('<h2>Benefícios entregues (não são desconto)</h2><div class="card">' + r.benefits.map((x) => '<div class="kv"><span>' + esc(x.label) + ' · ' + esc(dmy(x.date)) + (x.description ? ' — ' + esc(x.description) : '') + '</span><span>' + brl(x.cents) + '</span></div>').join('') + '</div>');
+  }
+  // Parâmetros
+  if (r.params && Object.keys(r.params).length) {
+    H.push('<details style="margin-top:14px"><summary>Parâmetros legais usados neste cálculo</summary><div class="card" style="margin-top:8px">' +
+      Object.entries(r.params).map(([k, v]) => '<div class="kv"><span>' + esc(PARAM_LABEL[k] || k) + '</span><span class="small" style="font-weight:600">' + esc(v.source || '') + ' <span class="muted">(desde ' + esc(dmy(v.validFrom)) + ')</span></span></div>').join('') + '</div></details>');
+  }
+  return H.join('');
+}
+
+function renderEntriesMarks() {
+  const D = S.d; const own = isOwner(); const H = [];
+  H.push('<h2>Lançamentos de ' + esc(compLabel(D.comp)) + ' (' + D.entries.length + ')</h2>');
+  if (!D.entries.length) H.push('<div class="card muted small">Nenhum lançamento.</div>');
+  else H.push('<div class="tw"><table style="min-width:860px"><thead><tr><th>Data</th><th>Tipo</th><th class="n">Valor</th><th>Descrição</th><th>Referência</th><th>Autorização</th><th>Situação</th><th></th></tr></thead><tbody>' +
+    D.entries.map((e) => '<tr><td class="nw">' + esc(dmy(e.date)) + '</td><td>' + esc(ENTRY_LABEL[e.kind] || e.kind) + '</td><td class="n b">' + brl(e.amountCents) + '</td>' +
+      '<td class="small">' + esc(e.description || '') + (e.receiptRef ? '<div class="muted">recibo ' + esc(e.receiptRef) + '</div>' : '') + (e.pixRef ? '<div class="muted">PIX ' + esc(e.pixRef) + '</div>' : '') + '</td>' +
+      '<td class="nw">' + (e.referenceDate ? esc(dmy(e.referenceDate)) : '—') + '</td>' +
+      '<td>' + (NEEDS_AUTH.includes(e.kind) ? (e.authorized ? '<span class="tag okk">autorizado</span>' + (e.authorizationRef ? '<div class="small muted">' + esc(e.authorizationRef) + '</div>' : '') : '<span class="tag bd">sem autorização</span>') : '—') + '</td>' +
+      '<td>' + (e.status === 'CANCELADO' ? '<span class="tag CANCELADO">cancelado</span>' + (e.canceledReason ? '<div class="small muted">' + esc(e.canceledReason) + '</div>' : '') : '<span class="tag okk">ativo</span>') + '</td>' +
+      '<td>' + (own && e.status !== 'CANCELADO' && !D.locked ? '<button class="btn sm bad" data-act="cancelEntry" data-id="' + esc(e.id) + '">Cancelar</button>' : '') + '</td></tr>').join('') + '</tbody></table></div>');
+  H.push('<h2>Marcações de dia (' + D.marks.length + ')</h2>');
+  if (!D.marks.length) H.push('<div class="card muted small">Nenhuma marcação. Folga, atestado, abono e falta só entram no cálculo quando marcados aqui.</div>');
+  else H.push('<div class="tw"><table style="min-width:720px"><thead><tr><th>Data</th><th>Tipo</th><th>Compensa</th><th class="n">Minutos</th><th>Observação</th><th>Situação</th><th></th></tr></thead><tbody>' +
+    D.marks.map((m) => '<tr><td class="nw">' + esc(dmy(m.date)) + '</td><td>' + esc(MARK_LABEL[m.kind] || m.kind) + '</td><td class="nw">' + (m.refDate ? esc(dmy(m.refDate)) : '—') + '</td><td class="n">' + (m.minutes ? hm(m.minutes) : '—') + '</td>' +
+      '<td class="small">' + esc(m.note || '') + '</td><td>' + (m.status === 'RECUSADO' ? '<span class="tag CANCELADO">revogada</span>' : '<span class="tag okk">' + esc((m.status || '').toLowerCase()) + '</span>') + '</td>' +
+      '<td>' + (m.status !== 'RECUSADO' && !D.locked ? '<button class="btn sm bad" data-act="revokeMark" data-id="' + esc(m.id) + '">Revogar</button>' : '') + '</td></tr>').join('') + '</tbody></table></div>');
+  return H.join('');
+}
+
+// ── ações do contracheque ──
+function curSlip() { return S.d && S.d.slip ? S.d.slip.payslip : null; }
+ACT.review = async (_d, b) => {
+  const r = await run(b, () => post('/admin/payslips/review', { userId: S.d.userId, competence: S.d.comp }));
+  if (r) { toast(r.payslip.status === 'COM_PENDENCIAS' ? 'Conferência gerada — com pendências' : 'Conferência gerada'); await refreshEmp(r.payslip.id); }
+};
+ACT.approve = async (_d, b) => {
+  const p = curSlip();
+  const ok = await ask({ title: 'Aprovar contracheque', html: '<p>' + esc(S.d.row.name) + ' · ' + esc(compLabel(S.d.comp)) + ' · versão ' + esc(p.version) + '</p><div class="tot net"><span>Líquido</span><span>' + brl(p.netCents) + '</span></div>', ok: 'Aprovar' });
+  if (!ok) return;
+  const r = await run(b, () => post('/admin/payslips/' + encodeURIComponent(p.id) + '/approve'), 'Aprovado');
+  if (r) await refreshEmp(p.id);
+};
+ACT.close = async (_d, b) => {
+  const p = curSlip(); const pend = cleanPend(p.result ? p.result.pendencies : []);
+  const v = await ask({ title: 'Fechar contracheque', ok: 'Fechar e congelar', danger: true,
+    html: '<p><b>' + esc(S.d.row.name) + '</b> · ' + esc(compLabel(S.d.comp)) + ' · versão ' + esc(p.version) + '</p>' +
+      '<div class="tot net"><span>Líquido</span><span>' + brl(p.netCents) + '</span></div>' +
+      (pend.length ? '<div class="note"><b>' + pend.length + ' pendência(s) de alerta:</b>' + pendItems(pend) + '</div>' : '<div class="note ok">Sem pendências.</div>') +
+      '<div class="note info">Fechar congela os dados, gera o PDF e avisa o funcionário pelo WhatsApp. Depois disso só dá para corrigir reabrindo (nova versão).</div>',
+    fields: [{ name: 'paymentDate', label: 'Data prevista do pagamento', type: 'date' }, { name: 'note', label: 'Observação', type: 'textarea' }] });
+  if (!v) return;
+  const r = await run(b, () => post('/admin/payslips/' + encodeURIComponent(p.id) + '/close', { paymentDate: v.paymentDate || undefined, note: v.note || undefined }), 'Contracheque fechado');
+  if (r) await refreshEmp(p.id);
+};
+ACT.pay = async (_d, b) => {
+  const p = curSlip();
+  const v = await ask({ title: 'Registrar pagamento', ok: 'Registrar', html: '<div class="tot net"><span>Líquido</span><span>' + brl(p.netCents) + '</span></div>',
+    fields: [{ name: 'paymentRef', label: 'Comprovante (ID do PIX, transferência…)', required: true, placeholder: 'E00000000202611…' }, { name: 'paidAt', label: 'Pago em', type: 'date', value: todayKey() }] });
+  if (!v) return;
+  const r = await run(b, () => post('/admin/payslips/' + encodeURIComponent(p.id) + '/pay', { paymentRef: v.paymentRef, paidAt: v.paidAt ? v.paidAt + 'T12:00:00-03:00' : undefined }), 'Pagamento registrado');
+  if (r) await refreshEmp(p.id);
+};
+ACT.reopen = async (_d, b) => {
+  const p = curSlip();
+  const v = await ask({ title: 'Reabrir contracheque', ok: 'Reabrir (nova versão)', danger: true,
+    html: '<div class="note">A versão ' + esc(p.version) + ' (' + esc(STATUS[p.status]) + ') <b>não é apagada</b>: fica preservada como "Reaberto" e nasce a versão ' + (p.version + 1) + ' para corrigir. Ao fechar a nova, a antiga vira "Corrigido".</div>',
+    fields: [{ name: 'reason', label: 'Motivo da reabertura', type: 'textarea', required: true, minLength: 5 }] });
+  if (!v) return;
+  const r = await run(b, () => post('/admin/payslips/' + encodeURIComponent(p.id) + '/reopen', { reason: v.reason }), 'Reaberto: versão ' + (p.version + 1) + ' criada');
+  if (r) await refreshEmp(r.payslip.id);
+};
+ACT.cancelSlip = async (_d, b) => {
+  const p = curSlip();
+  const v = await ask({ title: 'Cancelar rascunho', ok: 'Cancelar rascunho', danger: true, html: '<p class="muted">Cancela a versão ' + esc(p.version) + ' em aberto. Fica registrado na auditoria.</p>',
+    fields: [{ name: 'reason', label: 'Motivo', type: 'textarea', required: true }] });
+  if (!v) return;
+  const r = await run(b, () => post('/admin/payslips/' + encodeURIComponent(p.id) + '/cancel', { reason: v.reason }), 'Rascunho cancelado');
+  if (r) await refreshEmp(null);
+};
+ACT.notify = async (_d, b) => {
+  const p = curSlip();
+  if (!(await ask({ title: 'Reenviar aviso pelo WhatsApp', html: '<p>Envia de novo para ' + esc(S.d.row.name) + ' o aviso do contracheque com o link do PDF.</p>', ok: 'Enviar' }))) return;
+  const r = await run(b, () => post('/admin/payslips/' + encodeURIComponent(p.id) + '/notify'));
+  if (r) toast(r.ok ? 'Aviso enviado pelo WhatsApp' : 'Não enviado: ' + (r.skipped || r.error || 'sem detalhe'), !r.ok);
+};
+ACT.pdf = () => blobOpen('/admin/payslips/' + encodeURIComponent(curSlip().id) + '/pdf');
+ACT.exp = (d) => blobOpen('/admin/payslips/' + encodeURIComponent(curSlip().id) + '/export?format=' + d.f, { download: true });
+ACT.recompute = async (_d, b) => {
+  const r = await run(b, () => req('/admin/payslips/' + encodeURIComponent(curSlip().id) + '/recompute'));
+  if (r) modal('<h3>Reprodutibilidade</h3>' + (r.reproducible ? '<div class="note ok">Recalculado a partir dos dados congelados: <b>resultado idêntico</b> ao contracheque gravado.</div>'
+    : '<div class="note bad">O recálculo a partir dos dados congelados <b>não bateu</b> com o gravado. Não altere nada e avise o responsável técnico.</div>') + '<div class="acts"><button class="btn" onclick="closeModal()">OK</button></div>');
+};
+
+// ── lançamentos / marcações ──
+ACT.cancelEntry = async (d, b) => {
+  const e = S.d.entries.find((x) => x.id === d.id);
+  const v = await ask({ title: 'Cancelar lançamento', danger: true, ok: 'Cancelar lançamento', html: '<p>' + esc(ENTRY_LABEL[e.kind] || e.kind) + ' · ' + esc(dmy(e.date)) + ' · <b>' + brl(e.amountCents) + '</b></p>',
+    fields: [{ name: 'reason', label: 'Motivo', type: 'textarea', required: true }] });
+  if (!v) return;
+  const r = await run(b, () => post('/admin/entries/' + encodeURIComponent(d.id) + '/cancel', { reason: v.reason }), 'Lançamento cancelado');
+  if (r) await refreshEmp(S.d.payslipId);
+};
+ACT.revokeMark = async (d, b) => {
+  const m = S.d.marks.find((x) => x.id === d.id);
+  const v = await ask({ title: 'Revogar marcação', danger: true, ok: 'Revogar', html: '<p>' + esc(MARK_LABEL[m.kind] || m.kind) + ' em ' + esc(dmy(m.date)) + '</p>', fields: [{ name: 'reason', label: 'Motivo', type: 'textarea' }] });
+  if (!v) return;
+  const r = await run(b, () => post('/admin/day-marks/' + encodeURIComponent(d.id) + '/revoke', { reason: v.reason || undefined }), 'Marcação revogada');
+  if (r) await refreshEmp(S.d.payslipId);
+};
+ACT.newEntry = () => {
+  const md = modal('<h3>Novo lançamento — ' + esc(S.d.row.name) + '</h3><div class="fgrid">' +
+    '<div class="fld full"><label for="e_kind">Tipo</label><select id="e_kind">' + Object.entries(ENTRY_LABEL).map(([k, l]) => opt(k, l, 'ADIANTAMENTO')).join('') + '</select></div>' +
+    '<div class="fld"><label for="e_date">Data</label><input type="date" id="e_date" value="' + esc(S.d.comp === todayKey().slice(0, 7) ? todayKey() : S.d.comp + '-01') + '"></div>' +
+    '<div class="fld"><label for="e_amount">Valor (R$)</label><input id="e_amount" inputmode="decimal" placeholder="0,00"></div>' +
+    '<div class="fld" id="e_refw" style="display:none"><label for="e_ref">Domingo/feriado a que se refere *</label><input type="date" id="e_ref"></div>' +
+    '<div class="fld"><label for="e_comp">Competência (mês da folha)</label><input type="month" id="e_comp" value="' + esc(S.d.comp) + '"></div>' +
+    '<div class="fld full"><label for="e_desc">Descrição</label><input id="e_desc" maxlength="300"></div>' +
+    '<div class="fld"><label for="e_receipt">Recibo / comprovante</label><input id="e_receipt"></div>' +
+    '<div class="fld"><label for="e_pix">ID do PIX</label><input id="e_pix"></div>' +
+    '<div class="fld full" id="e_authw"><label class="check" style="text-transform:none;font-size:14px;color:var(--ink);letter-spacing:0"><input type="checkbox" id="e_auth"> Desconto autorizado por escrito pelo funcionário</label></div>' +
+    '<div class="fld full" id="e_authrw"><label for="e_authref">Referência da autorização</label><input id="e_authref" placeholder="Termo assinado, mensagem, documento…"></div></div>' +
+    '<div class="note info small" id="e_hint"></div><div class="note bad" id="e_err" style="display:none"></div>' +
+    '<div class="acts"><button class="btn ghost" onclick="closeModal()">Voltar</button><button class="btn" id="e_ok">Lançar</button></div>');
+  const kind = md.querySelector('#e_kind');
+  const sync = () => {
+    const k = kind.value;
+    md.querySelector('#e_refw').style.display = ['DOMINGO_PAGO', 'FERIADO_PAGO'].includes(k) ? '' : 'none';
+    const auth = NEEDS_AUTH.includes(k);
+    md.querySelector('#e_authw').style.display = auth ? '' : 'none'; md.querySelector('#e_authrw').style.display = auth ? '' : 'none';
+    md.querySelector('#e_hint').textContent = auth ? 'Sem autorização registrada, este desconto NÃO é aplicado e vira pendência.'
+      : ['ADIANTAMENTO', 'COMISSAO_ANTECIPADA'].includes(k) ? 'É descontado no contracheque (já foi pago antes do fechamento).'
+      : ['DOMINGO_PAGO', 'FERIADO_PAGO'].includes(k) ? 'Pagamento antecipado do dia especial: o devido entra nos proventos e este valor é descontado.'
+      : ['VALE_TRANSPORTE', 'PASSAGEM', 'VALE_ALIMENTACAO'].includes(k) ? 'Benefício entregue: registrado, não é desconto (VT pode gerar o desconto legal de até 6% se o funcionário optou).'
+      : 'Provento: soma no contracheque.';
+  };
+  kind.onchange = sync; sync();
+  md.querySelector('#e_ok').onclick = async (ev) => {
+    const err = md.querySelector('#e_err'); const k = kind.value;
+    const amountCents = toCents(md.querySelector('#e_amount').value);
+    const body = { userId: S.d.userId, kind: k, date: md.querySelector('#e_date').value, amountCents, competence: md.querySelector('#e_comp').value || undefined,
+      description: md.querySelector('#e_desc').value.trim() || undefined, receiptRef: md.querySelector('#e_receipt').value.trim() || undefined, pixRef: md.querySelector('#e_pix').value.trim() || undefined };
+    if (['DOMINGO_PAGO', 'FERIADO_PAGO'].includes(k)) body.referenceDate = md.querySelector('#e_ref').value;
+    if (NEEDS_AUTH.includes(k)) { body.authorized = md.querySelector('#e_auth').checked; body.authorizationRef = md.querySelector('#e_authref').value.trim() || undefined; }
+    const bad = !body.date ? 'Informe a data.' : !(amountCents > 0) ? 'Informe um valor maior que zero.' : (['DOMINGO_PAGO', 'FERIADO_PAGO'].includes(k) && !body.referenceDate) ? 'Informe o domingo/feriado a que o pagamento se refere.' : (body.authorized && !body.authorizationRef) ? 'Informe a referência da autorização.' : '';
+    if (bad) { err.style.display = 'block'; err.textContent = bad; return; }
+    const r = await run(ev.target, () => post('/admin/entries', body), 'Lançamento registrado');
+    if (r) { closeModal(); await refreshEmp(S.d.payslipId); }
+  };
+};
+ACT.newMark = () => {
+  const md = modal('<h3>Marcação de dia — ' + esc(S.d.row.name) + '</h3><div class="fgrid">' +
+    '<div class="fld full"><label for="m_kind">Tipo</label><select id="m_kind">' + Object.entries(MARK_LABEL).map(([k, l]) => opt(k, l, 'FOLGA')).join('') + '</select></div>' +
+    '<div class="fld"><label for="m_date">Data</label><input type="date" id="m_date" value="' + esc(S.d.comp === todayKey().slice(0, 7) ? todayKey() : S.d.comp + '-01') + '"></div>' +
+    '<div class="fld" id="m_refw" style="display:none"><label for="m_ref">Domingo/feriado que ela compensa *</label><input type="date" id="m_ref"></div>' +
+    '<div class="fld" id="m_minw"><label for="m_min">Minutos (atraso ou abono parcial)</label><input id="m_min" inputmode="numeric" placeholder="ex.: 30"></div>' +
+    '<div class="fld full"><label for="m_note">Observação</label><textarea id="m_note" placeholder="CID não é necessário; informe o documento/justificativa"></textarea></div></div>' +
+    '<div class="note info small">Dia sem ponto não é falta: só "Falta confirmada" desconta. Folga compensatória precisa estar ligada ao domingo/feriado trabalhado.</div><div class="note bad" id="m_err" style="display:none"></div>' +
+    '<div class="acts"><button class="btn ghost" onclick="closeModal()">Voltar</button><button class="btn" id="m_ok">Registrar</button></div>');
+  const kind = md.querySelector('#m_kind');
+  const sync = () => { md.querySelector('#m_refw').style.display = kind.value === 'FOLGA_COMPENSATORIA' ? '' : 'none'; md.querySelector('#m_minw').style.display = ['ATRASO_CONFIRMADO', 'ABONO', 'ATESTADO'].includes(kind.value) ? '' : 'none'; };
+  kind.onchange = sync; sync();
+  md.querySelector('#m_ok').onclick = async (ev) => {
+    const err = md.querySelector('#m_err');
+    const body = { userId: S.d.userId, kind: kind.value, date: md.querySelector('#m_date').value, note: md.querySelector('#m_note').value.trim() || undefined };
+    if (kind.value === 'FOLGA_COMPENSATORIA') body.refDate = md.querySelector('#m_ref').value;
+    const min = md.querySelector('#m_min').value.trim();
+    if (min && ['ATRASO_CONFIRMADO', 'ABONO', 'ATESTADO'].includes(kind.value)) body.minutes = Number(min);
+    const bad = !body.date ? 'Informe a data.' : (kind.value === 'FOLGA_COMPENSATORIA' && !body.refDate) ? 'Informe o domingo/feriado compensado.' : (body.minutes != null && !(body.minutes > 0)) ? 'Minutos inválidos.' : (kind.value === 'ATRASO_CONFIRMADO' && !body.minutes) ? 'Informe os minutos de atraso.' : '';
+    if (bad) { err.style.display = 'block'; err.textContent = bad; return; }
+    const r = await run(ev.target, () => post('/admin/day-marks', body), 'Marcação registrada');
+    if (r) { closeModal(); await refreshEmp(S.d.payslipId); }
+  };
+};
+
+// ── cadastro de contrato ──
+ACT.profile = async (_d, b) => {
+  const d = await run(b, () => req('/admin/profiles/' + encodeURIComponent(S.d.userId)));
+  if (!d) return;
+  const p = d.profile || {}; const u = d.user || {}; const own = isOwner(); const dis = own ? '' : ' disabled';
+  const v = (k, fb) => (p[k] != null ? p[k] : fb != null ? fb : '');
+  const hours = (m) => (m != null && m !== '' ? String(+(m / 60).toFixed(2)).replace('.', ',') : '');
+  const stores = Object.values(S.stores);
+  const md = modal('<h3>Cadastro de contrato — ' + esc(u.name || S.d.row.name) + '</h3>' +
+    (d.profile ? '' : '<div class="note">Ainda não há cadastro. Os campos foram pré-preenchidos com o que já existe no usuário (confira).</div>') +
+    (own ? '' : '<div class="note info">Somente leitura: só o dono altera o cadastro de contrato.</div>') +
+    '<div class="fgrid">' +
+    '<div class="fld"><label for="p_ct">Tipo de contratação *</label><select id="p_ct"' + dis + '>' + opt('', 'Selecione…', v('contractType')) + Object.entries(CONTRACT).map(([k, l]) => opt(k, l, v('contractType'))).join('') + '</select></div>' +
+    '<div class="fld"><label for="p_job">Cargo</label><input id="p_job" value="' + esc(v('jobTitle', 'Vendedor')) + '"' + dis + '></div>' +
+    '<div class="fld"><label for="p_adm">Admissão</label><input type="date" id="p_adm" value="' + esc(v('admissionDate', u.hireDate ? String(u.hireDate).slice(0, 10) : '')) + '"' + dis + '></div>' +
+    '<div class="fld"><label for="p_term">Desligamento</label><input type="date" id="p_term" value="' + esc(v('terminationDate')) + '"' + dis + '></div>' +
+    '<div class="fld"><label for="p_sal">Salário contratual (R$)</label><input id="p_sal" inputmode="decimal" value="' + esc(p.baseSalaryCents != null ? money(p.baseSalaryCents) : (u.baseSalary != null ? money(Math.round(u.baseSalary * 100)) : '')) + '"' + dis + '></div>' +
+    '<div class="fld"><label for="p_hr">Valor da hora — horista (R$)</label><input id="p_hr" inputmode="decimal" value="' + esc(money(p.hourlyRateCents)) + '"' + dis + '></div>' +
+    '<div class="fld"><label for="p_wk">Carga semanal (horas)</label><input id="p_wk" inputmode="decimal" value="' + esc(hours(p.weeklyMinutes != null ? p.weeklyMinutes : 2640)) + '"' + dis + '></div>' +
+    '<div class="fld"><label for="p_wd">Dias de trabalho por semana</label><input id="p_wd" inputmode="numeric" value="' + esc(v('workDaysPerWeek', 6)) + '"' + dis + '></div>' +
+    '<div class="fld"><label for="p_sh">Plantão 12x36 (horas)</label><input id="p_sh" inputmode="decimal" value="' + esc(hours(p.shiftMinutes)) + '"' + dis + '></div>' +
+    '<div class="fld"><label for="p_cbo">CBO</label><input id="p_cbo" value="' + esc(v('cbo')) + '"' + dis + '></div>' +
+    '<div class="fld"><label for="p_reg">Matrícula</label><input id="p_reg" value="' + esc(v('registration', u.employeeCode || '')) + '"' + dis + '></div>' +
+    '<div class="fld"><label for="p_store">Loja</label><select id="p_store"' + dis + '>' + opt('', '— (usar a do usuário)', v('storeId')) + stores.map((s) => opt(s.id, s.code + ' · ' + s.name, v('storeId'))).join('') + '</select></div>' +
+    '<div class="fld"><label for="p_iss">Empresa (empregador)</label><select id="p_iss"' + dis + '>' + opt('', '— (a da loja)', v('issuerId')) + Object.keys(S.issuers).map((id) => opt(id, issuerName(id), v('issuerId'))).join('') + '</select></div>' +
+    '<div class="fld"><label for="p_cpf">CPF</label><input id="p_cpf" inputmode="numeric" autocomplete="off" placeholder="' + esc(p.cpfMasked ? 'Cadastrado: ' + p.cpfMasked + ' (digite para trocar)' : '000.000.000-00') + '"' + dis + '></div>' +
+    '<div class="fld"><label for="p_dep">Dependentes IRRF</label><input id="p_dep" inputmode="numeric" value="' + esc(v('irrfDependents', 0)) + '"' + dis + '></div>' +
+    '<div class="fld"><label for="p_fam">Filhos p/ salário-família</label><input id="p_fam" inputmode="numeric" value="' + esc(v('familyAllowanceChildren', 0)) + '"' + dis + '></div>' +
+    '<div class="fld"><label for="p_app">Contrato de aprendizagem (ref.)</label><input id="p_app" value="' + esc(v('apprenticeContractRef')) + '"' + dis + '></div>' +
+    '<div class="fld"><label for="p_tb">Acordo de banco de horas (ref.)</label><input id="p_tb" value="' + esc(v('timeBankAgreementRef')) + '"' + dis + '></div>' +
+    '<div class="fld"><label for="p_un">Sindicato</label><input id="p_un" value="' + esc(v('unionName')) + '"' + dis + '></div>' +
+    '<div class="fld"><label for="p_cct">Convenção coletiva (ref.)</label><input id="p_cct" value="' + esc(v('cctRef')) + '"' + dis + '></div>' +
+    '<div class="fld full"><label class="check" style="text-transform:none;font-size:14px;color:var(--ink);letter-spacing:0"><input type="checkbox" id="p_vt"' + (p.vtOptIn ? ' checked' : '') + dis + '> Optou pelo vale-transporte (desconto de até 6%)</label></div>' +
+    '<div class="fld full"><label for="p_notes">Observações</label><textarea id="p_notes"' + dis + '>' + esc(v('notes')) + '</textarea></div>' +
+    (own ? '<div class="fld full"><label for="p_reason">Motivo da alteração (vai para a auditoria)</label><input id="p_reason"></div>' : '') +
+    '</div>' + (p.updatedAt ? '<div class="small muted">Última alteração: ' + esc(dt(p.updatedAt)) + '</div>' : '') +
+    '<div class="note bad" id="p_err" style="display:none"></div>' +
+    '<div class="acts"><button class="btn ghost" onclick="closeModal()">' + (own ? 'Voltar' : 'Fechar') + '</button>' + (own ? '<button class="btn" id="p_ok">Salvar cadastro</button>' : '') + '</div>', { wide: true });
+  if (!own) return;
+  md.querySelector('#p_ok').onclick = async (ev) => {
+    const g = (id) => md.querySelector('#' + id).value.trim();
+    const err = md.querySelector('#p_err');
+    const num = (s) => (s === '' ? null : Number(s.replace(',', '.')));
+    const sal = toCents(g('p_sal')), hr = toCents(g('p_hr')), wk = num(g('p_wk')), sh = num(g('p_sh'));
+    const body = { contractType: g('p_ct'), jobTitle: g('p_job'), admissionDate: g('p_adm'), terminationDate: g('p_term'),
+      baseSalaryCents: sal, hourlyRateCents: hr, weeklyMinutes: wk == null ? null : Math.round(wk * 60), workDaysPerWeek: num(g('p_wd')),
+      shiftMinutes: sh == null ? null : Math.round(sh * 60), cbo: g('p_cbo'), registration: g('p_reg'), storeId: g('p_store'), issuerId: g('p_iss'),
+      apprenticeContractRef: g('p_app'), timeBankAgreementRef: g('p_tb'), irrfDependents: num(g('p_dep')), familyAllowanceChildren: num(g('p_fam')),
+      vtOptIn: md.querySelector('#p_vt').checked, unionName: g('p_un'), cctRef: g('p_cct'), notes: g('p_notes'), reason: g('p_reason') || undefined };
+    if (g('p_cpf')) body.cpf = g('p_cpf');
+    const bad = !body.contractType ? 'Escolha o tipo de contratação.' : Number.isNaN(sal) || Number.isNaN(hr) ? 'Valor em R$ inválido.' :
+      [wk, sh, body.workDaysPerWeek, body.irrfDependents, body.familyAllowanceChildren].some((x) => x != null && !Number.isFinite(x)) ? 'Número inválido.' :
+      body.cpf && body.cpf.replace(/\D/g, '').length !== 11 ? 'CPF deve ter 11 dígitos.' : '';
+    if (bad) { err.style.display = 'block'; err.textContent = bad; return; }
+    err.style.display = 'none';
+    if (!confirmStep(md, ev.target, 'Salvar cadastro: <b>' + esc(CONTRACT[body.contractType]) + '</b> · salário ' + brl(body.baseSalaryCents) + (body.hourlyRateCents ? ' · hora ' + brl(body.hourlyRateCents) : '') + ' · ' + hm(body.weeklyMinutes || 0) + '/semana' + (body.cpf ? ' · CPF novo' : '') + '. A alteração vale para as competências ainda não fechadas e fica na auditoria.')) return;
+    const r = await run(ev.target, () => put('/admin/profiles/' + encodeURIComponent(S.d.userId), body), 'Cadastro salvo');
+    if (r) { closeModal(); await refreshEmp(S.d.payslipId); }
+  };
+};
+
+// ─────────────────────────── CORREÇÕES DE PONTO ───────────────────────────
+async function viewCorrecoes() {
+  const d = await req('/admin/clock-corrections?status=' + S.ccStatus);
+  const rows = d.corrections || [];
+  if (S.ccStatus === 'PENDENTE') { S.counts.correcoes = rows.length; renderTabs(); }
+  const H = ['<div class="seg" style="margin-bottom:12px">' + [['PENDENTE', 'Pendentes'], ['APROVADA', 'Aprovadas'], ['RECUSADA', 'Recusadas']].map(([k, l]) => '<button data-act="ccStatus" data-k="' + k + '" class="' + (S.ccStatus === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div>',
+    '<div class="note info">Aprovar cria uma batida nova (origem "correção"); a batida original nunca é alterada. Ninguém aprova a própria correção.</div>'];
+  if (!rows.length) H.push('<div class="card empty">Nenhum pedido ' + ({ PENDENTE: 'pendente', APROVADA: 'aprovado', RECUSADA: 'recusado' })[S.ccStatus] + '.</div>');
+  else H.push('<div class="tw"><table style="min-width:900px"><thead><tr><th>Funcionário</th><th>Dia</th><th>Marcação</th><th>Horário</th><th>Justificativa</th><th>Anexo</th><th>Pedido em</th><th>' + (S.ccStatus === 'PENDENTE' ? 'Decisão' : 'Nota') + '</th></tr></thead><tbody>' +
+    rows.map((c) => '<tr><td><b>' + esc(c.name || userName(c.userId)) + '</b><div class="small muted">' + esc(storeName(c.storeId)) + '</div></td><td class="nw">' + esc(dmy(c.date)) + '</td><td>' + esc(PUNCH[c.type] || c.type) + '</td><td class="b">' + esc(c.claimedTime) + '</td>' +
+      '<td class="small" style="min-width:220px">' + esc(c.justification) + '</td><td>' + (c.attachmentMime ? '<button class="btn sm line" data-act="ccFile" data-id="' + esc(c.id) + '" data-m="' + esc(c.attachmentMime) + '">Ver anexo</button>' : '<span class="muted small">—</span>') + '</td>' +
+      '<td class="nw small">' + esc(dt(c.createdAt)) + '</td><td>' + (S.ccStatus === 'PENDENTE' ? '<div class="btns"><button class="btn sm ok" data-act="ccDecide" data-d="approve" data-id="' + esc(c.id) + '">Aprovar</button><button class="btn sm bad" data-act="ccDecide" data-d="reject" data-id="' + esc(c.id) + '">Recusar</button></div>' : '<span class="small">' + esc(c.reviewNote || '—') + '</span>') + '</td></tr>').join('') + '</tbody></table></div>');
+  document.getElementById('view').innerHTML = H.join('');
+}
+ACT.ccStatus = (d) => { S.ccStatus = d.k; go('correcoes'); };
+ACT.ccFile = async (d, b) => {
+  if (!d.m.startsWith('image/')) return blobOpen('/admin/clock-corrections/' + encodeURIComponent(d.id) + '/attachment');
+  const r = await run(b, () => req('/admin/clock-corrections/' + encodeURIComponent(d.id) + '/attachment', { raw: true }));
+  if (!r) return;
+  const url = URL.createObjectURL(await r.blob());
+  modal('<h3>Anexo da correção</h3><img src="' + url + '" alt="Anexo" style="max-width:100%;border-radius:8px"><div class="acts"><button class="btn" onclick="closeModal()">Fechar</button></div>', { wide: true });
+};
+ACT.ccDecide = async (d, b) => {
+  const approve = d.d === 'approve';
+  const v = await ask({ title: approve ? 'Aprovar correção de ponto' : 'Recusar correção de ponto', ok: approve ? 'Aprovar' : 'Recusar', danger: !approve,
+    html: approve ? '<p class="muted">Vai criar a batida corrigida no ponto do funcionário.</p>' : '', fields: [{ name: 'note', label: 'Observação', type: 'textarea', required: !approve }] });
+  if (!v) return;
+  const r = await run(b, () => post('/admin/clock-corrections/' + encodeURIComponent(d.id) + '/' + d.d, { note: v.note || undefined }), approve ? 'Correção aprovada' : 'Correção recusada');
+  if (r) go('correcoes');
+};
+
+// ─────────────────────────── SOLICITAÇÕES ───────────────────────────
+async function viewSolicitacoes() {
+  const d = await req('/admin/disputes');
+  const rows = d.disputes || [];
+  S.counts.solicitacoes = rows.filter((x) => x.status === 'ABERTA').length; renderTabs();
+  const H = ['<div class="note info">Pedidos de revisão enviados pelos funcionários sobre o contracheque.</div>'];
+  if (!rows.length) H.push('<div class="card empty">Nenhuma solicitação.</div>');
+  for (const x of rows) {
+    H.push('<div class="card"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><b>' + esc(userName(x.userId)) + '</b> · ' + esc(compLabel(x.competence)) + ' <span class="small muted">· ' + esc(dt(x.createdAt)) + '</span></div>' +
+      tag(x.status === 'ABERTA' ? 'wr' : x.status === 'ENCERRADA' ? '' : 'okk', ({ ABERTA: 'Aberta', RESPONDIDA: 'Respondida', ENCERRADA: 'Encerrada' })[x.status] || x.status) + '</div>' +
+      '<div style="margin-top:8px;white-space:pre-wrap">' + esc(x.message) + '</div>' +
+      (x.response ? '<div class="note ok" style="white-space:pre-wrap"><b>Resposta</b> (' + esc(dt(x.respondedAt)) + '): ' + esc(x.response) + '</div>' : '') +
+      '<div class="btns" style="margin-top:8px">' + (x.status !== 'ENCERRADA' ? '<button class="btn sm" data-act="respond" data-id="' + esc(x.id) + '">' + (x.response ? 'Responder de novo' : 'Responder') + '</button>' : '') +
+      '<button class="btn sm ghost" data-act="openEmpComp" data-u="' + esc(x.userId) + '" data-c="' + esc(x.competence) + '">Abrir conferência</button></div></div>');
+  }
+  document.getElementById('view').innerHTML = H.join('');
+}
+ACT.respond = async (d, b) => {
+  const v = await ask({ title: 'Responder solicitação', ok: 'Enviar resposta', fields: [{ name: 'response', label: 'Resposta ao funcionário', type: 'textarea', required: true }, { name: 'close', type: 'checkbox', label: 'Encerrar', hint: 'Encerrar a solicitação' }] });
+  if (!v) return;
+  const r = await run(b, () => post('/admin/disputes/' + encodeURIComponent(d.id) + '/respond', { response: v.response, close: v.close }), 'Resposta registrada');
+  if (r) go('solicitacoes');
+};
+ACT.openEmpComp = async (d) => { S.comp = d.c; await loadOverview().catch(() => {}); openEmp(d.u); };
+
+// ─────────────────────────── PARÂMETROS LEGAIS ───────────────────────────
+function paramValue(key, v) {
+  if (!v || typeof v !== 'object') return esc(JSON.stringify(v));
+  if (key === 'DOMINGO_TRABALHADO' || key === 'FERIADO_TRABALHADO') return v.amountCents ? brl(v.amountCents) + ' por dia' + (v.compensatoryDayOff ? ' + folga compensatória' : '') : '<span class="tag wr">valor não cadastrado</span>';
+  if (key === 'SALARIO_MINIMO') return brl(v.cents);
+  if (key === 'FGTS') return esc(v.rate) + '% (aprendiz ' + esc(v.apprenticeRate) + '%)';
+  if (key === 'HORA_EXTRA' || key === 'ADICIONAL_NOTURNO') return esc(v.pct) + '%';
+  if (key === 'VALE_TRANSPORTE') return 'até ' + esc(v.rate) + '%';
+  if (key === 'SALARIO_FAMILIA') return 'cota ' + brl(v.quotaCents) + ' · limite ' + brl(v.incomeLimitCents);
+  if (key === 'INSS_EMPREGADO' && Array.isArray(v.brackets)) return v.brackets.map((b) => esc(b.rate) + '% até ' + brl(b.upToCents)).join(' · ');
+  if (key === 'IRRF_MENSAL' && Array.isArray(v.brackets)) return v.brackets.map((b) => esc(b.rate) + '% ' + (b.upToCents == null ? 'acima' : 'até ' + brl(b.upToCents))).join(' · ');
+  if (key === 'IRRF_REDUTOR') return 'zera o IR até ' + brl(v.fullExemptUpToCents) + ' (redução máx. ' + brl(v.maxReductionCents) + ') · redução decrescente até ' + brl(v.phaseOutUpToCents);
+  return '<code class="small" style="word-break:break-all">' + esc(JSON.stringify(v)) + '</code>';
+}
+async function viewParametros() {
+  const d = await req('/admin/params');
+  S.params = d.params || [];
+  const byKey = new Map();
+  for (const p of S.params) { if (!byKey.has(p.key)) byKey.set(p.key, []); byKey.get(p.key).push(p); }
+  const H = [];
+  const today = todayKey();
+  for (const k of ['DOMINGO_TRABALHADO', 'FERIADO_TRABALHADO']) {
+    const active = (byKey.get(k) || []).some((p) => p.status === 'ACTIVE' && p.value && p.value.amountCents && p.validFrom <= today && (!p.validTo || p.validTo >= today));
+    if (!active) H.push('<div class="note"><b>' + esc(PARAM_LABEL[k]) + ': pendente de validação do DP.</b> O valor fixo por ' + (k === 'DOMINGO_TRABALHADO' ? 'domingo' : 'feriado') + ' trabalhado ainda não foi cadastrado pelo dono — enquanto isso o dia especial não é pago no contracheque e vira pendência.' +
+      (isOwner() ? ' <button class="btn sm" data-act="newParam" data-k="' + k + '">Cadastrar valor</button>' : '') + '</div>');
+  }
+  H.push('<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div class="small muted">Parâmetro nunca é editado no lugar: cria-se uma nova vigência (com fonte) ou revoga-se.</div>' + (isOwner() ? '<button class="btn" data-act="newParam" data-k="">+ Nova vigência</button>' : '') + '</div>');
+  for (const [key, list] of byKey) {
+    H.push('<h2>' + esc(PARAM_LABEL[key] || key) + ' <span class="muted" style="text-transform:none">(' + esc(key) + ')</span></h2><div class="tw"><table style="min-width:900px"><thead><tr><th>Vigência</th><th>Situação</th><th>Valor</th><th>Fonte</th><th>Escopo</th><th></th></tr></thead><tbody>' +
+      list.map((p) => '<tr><td class="nw">' + esc(dmy(p.validFrom)) + ' → ' + (p.validTo ? esc(dmy(p.validTo)) : 'em aberto') + '</td><td>' + tag(p.status, PARAM_STATUS[p.status] || p.status) + '</td>' +
+        '<td style="min-width:200px">' + paramValue(key, p.value) + '<details><summary>JSON</summary><pre>' + esc(JSON.stringify(p.value, null, 2)) + '</pre></details></td>' +
+        '<td class="small" style="min-width:240px">' + esc(p.source) + (p.documentRef ? '<div class="muted">doc: ' + esc(p.documentRef) + '</div>' : '') + (p.notes ? '<div class="muted">' + esc(p.notes) + '</div>' : '') + '</td>' +
+        '<td class="small">' + esc([p.storeId ? storeName(p.storeId) : '', p.issuerId ? issuerName(p.issuerId) : '', p.locality || '', p.unionName || '', p.category || ''].filter(Boolean).join(' · ') || 'Geral') + '</td>' +
+        '<td>' + (isOwner() && p.status !== 'REVOKED' ? '<div class="btns"><button class="btn sm line" data-act="newParam" data-k="' + esc(key) + '" data-from="' + esc(p.id) + '">Nova vigência</button><button class="btn sm bad" data-act="revokeParam" data-id="' + esc(p.id) + '">Revogar</button></div>' : '') + '</td></tr>').join('') + '</tbody></table></div>');
+  }
+  document.getElementById('view').innerHTML = H.join('');
+}
+ACT.revokeParam = async (d, b) => {
+  const p = S.params.find((x) => x.id === d.id);
+  const v = await ask({ title: 'Revogar parâmetro', danger: true, ok: 'Revogar', html: '<p><b>' + esc(PARAM_LABEL[p.key] || p.key) + '</b> desde ' + esc(dmy(p.validFrom)) + '</p><div class="note">Revogado não é usado em nenhum cálculo novo. Contracheques já fechados não mudam (dados congelados).</div>', fields: [{ name: 'reason', label: 'Motivo', type: 'textarea', required: true }] });
+  if (!v) return;
+  const r = await run(b, () => post('/admin/params/' + encodeURIComponent(d.id) + '/revoke', { reason: v.reason }), 'Parâmetro revogado');
+  if (r) go('parametros');
+};
+ACT.newParam = (d) => {
+  const keys = Object.keys(PARAM_LABEL);
+  const base = d.from ? S.params.find((x) => x.id === d.from) : (d.k ? S.params.find((x) => x.key === d.k) : null);
+  const md = modal('<h3>Nova vigência de parâmetro</h3><div class="fgrid">' +
+    '<div class="fld"><label for="q_key">Parâmetro</label><select id="q_key">' + keys.map((k) => opt(k, PARAM_LABEL[k], d.k || 'DOMINGO_TRABALHADO')).join('') + opt('__other', 'Outro (chave livre)', '') + '</select></div>' +
+    '<div class="fld" id="q_otherw" style="display:none"><label for="q_other">Chave</label><input id="q_other" placeholder="EX: AJUDA_CUSTO"></div>' +
+    '<div class="fld"><label for="q_from">Vigente a partir de *</label><input type="date" id="q_from" value="' + esc(S.comp + '-01') + '"></div>' +
+    '<div class="fld"><label for="q_to">Até (opcional)</label><input type="date" id="q_to"></div>' +
+    '<div class="fld full" id="q_fixedw"><label for="q_amount">Valor fixo por dia trabalhado (R$) *</label><input id="q_amount" inputmode="decimal" placeholder="0,00">' +
+    '<label class="check" style="text-transform:none;font-size:14px;color:var(--ink);letter-spacing:0;margin-top:6px"><input type="checkbox" id="q_comp" checked> Dá direito a folga compensatória</label></div>' +
+    '<div class="fld full" id="q_jsonw"><label for="q_json">Valor (JSON)</label><textarea class="code" id="q_json"></textarea></div>' +
+    '<div class="fld full"><label for="q_src">Fonte (lei, portaria, convenção, decisão do dono) *</label><input id="q_src"></div>' +
+    '<div class="fld"><label for="q_doc">Documento (ref.)</label><input id="q_doc"></div>' +
+    '<div class="fld"><label for="q_status">Situação</label><select id="q_status">' + opt('ACTIVE', 'Vigente', 'ACTIVE') + opt('PENDING_VALIDATION', 'Pendente de validação do DP', '') + '</select></div>' +
+    '<div class="fld"><label for="q_store">Só para a loja (opcional)</label><select id="q_store">' + opt('', 'Todas', '') + Object.values(S.stores).map((s) => opt(s.id, s.code + ' · ' + s.name, '')).join('') + '</select></div>' +
+    '<div class="fld"><label for="q_iss">Só para a empresa (opcional)</label><select id="q_iss">' + opt('', 'Todas', '') + Object.keys(S.issuers).map((id) => opt(id, issuerName(id), '')).join('') + '</select></div>' +
+    '<div class="fld full"><label for="q_notes">Observações</label><textarea id="q_notes"></textarea></div></div>' +
+    '<div class="note bad" id="q_err" style="display:none"></div>' +
+    '<div class="acts"><button class="btn ghost" onclick="closeModal()">Voltar</button><button class="btn" id="q_ok">Salvar vigência</button></div>', { wide: true });
+  const keyEl = md.querySelector('#q_key');
+  const fillJson = () => {
+    const k = keyEl.value;
+    const last = (base && base.key === k ? base : S.params.find((x) => x.key === k));
+    md.querySelector('#q_json').value = last ? JSON.stringify(last.value, null, 2) : '{\n  \n}';
+    if (last && last.value && last.value.amountCents) md.querySelector('#q_amount').value = money(last.value.amountCents);
+  };
+  const sync = () => {
+    const k = keyEl.value; const fixed = k === 'DOMINGO_TRABALHADO' || k === 'FERIADO_TRABALHADO';
+    md.querySelector('#q_fixedw').style.display = fixed ? '' : 'none';
+    md.querySelector('#q_jsonw').style.display = fixed ? 'none' : '';
+    md.querySelector('#q_otherw').style.display = k === '__other' ? '' : 'none';
+    fillJson();
+  };
+  keyEl.onchange = sync; sync();
+  md.querySelector('#q_ok').onclick = async (ev) => {
+    const err = md.querySelector('#q_err'); const fail = (m) => { err.style.display = 'block'; err.textContent = m; };
+    let key = keyEl.value; if (key === '__other') key = md.querySelector('#q_other').value.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+    if (!key) return fail('Informe a chave.');
+    let value;
+    if (key === 'DOMINGO_TRABALHADO' || key === 'FERIADO_TRABALHADO') {
+      const c = toCents(md.querySelector('#q_amount').value);
+      if (!(c > 0)) return fail('Informe o valor fixo em R$ (maior que zero).');
+      value = { mode: 'FIXED', amountCents: c, compensatoryDayOff: md.querySelector('#q_comp').checked };
+    } else {
+      try { value = JSON.parse(md.querySelector('#q_json').value); } catch (e) { return fail('JSON inválido: ' + e.message); }
+      if (!value || typeof value !== 'object') return fail('O valor precisa ser um objeto JSON.');
+    }
+    const body = { key, value, validFrom: md.querySelector('#q_from').value, validTo: md.querySelector('#q_to').value || undefined, source: md.querySelector('#q_src').value.trim(),
+      documentRef: md.querySelector('#q_doc').value.trim() || undefined, notes: md.querySelector('#q_notes').value.trim() || undefined, status: md.querySelector('#q_status').value,
+      storeId: md.querySelector('#q_store').value || undefined, issuerId: md.querySelector('#q_iss').value || undefined };
+    if (!body.validFrom) return fail('Informe o início da vigência.');
+    if (!body.source) return fail('Informe a fonte da regra.');
+    err.style.display = 'none';
+    if (!confirmStep(md, ev.target, '<b>' + esc(PARAM_LABEL[key] || key) + '</b> a partir de ' + esc(dmy(body.validFrom)) + (body.validTo ? ' até ' + esc(dmy(body.validTo)) : '') + ': ' + paramValue(key, value) + ' · ' + esc(PARAM_STATUS[body.status]) + '<div class="small">Vale para os cálculos ainda não fechados. Contracheque fechado não muda.</div>')) return;
+    const r = await run(ev.target, () => post('/admin/params', body), 'Parâmetro salvo');
+    if (r) { closeModal(); go('parametros'); }
+  };
+};
+
+// ─────────────────────────── FERIADOS ───────────────────────────
+async function viewFeriados() {
+  const d = await req('/admin/holidays?year=' + encodeURIComponent(S.holYear));
+  const rows = d.holidays || [];
+  S.holidays = rows;
+  const H = ['<div class="card" style="display:flex;gap:10px;align-items:end;flex-wrap:wrap"><div style="width:140px"><label for="hYear">Ano</label><input id="hYear" type="number" min="2020" max="2100" value="' + esc(S.holYear) + '"></div>' +
+    (isOwner() ? '<button class="btn" data-act="newHoliday">+ Feriado</button>' : '') + '<div class="small muted" style="flex:1;min-width:200px">Feriados municipais/estaduais e da loja entram aqui com a fonte (lei/decreto). Feriados lançados na Agenda também são considerados.</div></div>'];
+  if (!rows.length) H.push('<div class="card empty">Nenhum feriado cadastrado em ' + esc(S.holYear) + '.</div>');
+  else H.push('<div class="tw"><table style="min-width:820px"><thead><tr><th>Data</th><th>Feriado</th><th>Abrangência</th><th>Localidade / loja</th><th>Fonte</th><th>Situação</th><th></th></tr></thead><tbody>' +
+    rows.map((h) => '<tr><td class="nw">' + esc(dmy(h.date)) + '</td><td><b>' + esc(h.name) + '</b></td><td>' + esc(({ NACIONAL: 'Nacional', ESTADUAL: 'Estadual', MUNICIPAL: 'Municipal', LOJA: 'Loja' })[h.scope] || h.scope) + '</td>' +
+      '<td>' + esc([h.locality, h.storeId ? storeName(h.storeId) : ''].filter(Boolean).join(' · ') || '—') + '</td><td class="small" style="min-width:220px">' + esc(h.source) + '</td>' +
+      '<td>' + (h.active ? '<span class="tag okk">ativo</span>' : '<span class="tag off">desativado</span>') + '</td>' +
+      '<td>' + (isOwner() && h.active ? '<button class="btn sm bad" data-act="offHoliday" data-id="' + esc(h.id) + '">Desativar</button>' : '') + '</td></tr>').join('') + '</tbody></table></div>');
+  const v = document.getElementById('view'); v.innerHTML = H.join('');
+  v.querySelector('#hYear').addEventListener('change', (e) => { if (/^\d{4}$/.test(e.target.value)) { S.holYear = e.target.value; go('feriados'); } });
+}
+ACT.newHoliday = () => {
+  const md = modal('<h3>Novo feriado</h3><div class="fgrid">' +
+    '<div class="fld"><label for="h_date">Data *</label><input type="date" id="h_date" value="' + esc(S.holYear + '-01-01') + '"></div>' +
+    '<div class="fld"><label for="h_name">Nome *</label><input id="h_name"></div>' +
+    '<div class="fld"><label for="h_scope">Abrangência</label><select id="h_scope">' + opt('MUNICIPAL', 'Municipal', 'MUNICIPAL') + opt('ESTADUAL', 'Estadual', '') + opt('NACIONAL', 'Nacional', '') + '</select></div>' +
+    '<div class="fld"><label for="h_loc">Localidade</label><input id="h_loc" placeholder="João Pessoa/PB"></div>' +
+    '<div class="fld full"><label for="h_src">Fonte (lei/decreto/convenção) *</label><input id="h_src"></div></div>' +
+    '<div class="note bad" id="h_err" style="display:none"></div>' +
+    '<div class="acts"><button class="btn ghost" onclick="closeModal()">Voltar</button><button class="btn" id="h_ok">Cadastrar</button></div>');
+  md.querySelector('#h_ok').onclick = async (ev) => {
+    const g = (id) => md.querySelector('#' + id).value.trim();
+    const body = { date: g('h_date'), name: g('h_name'), scope: g('h_scope'), locality: g('h_loc') || null, source: g('h_src') };
+    if (!body.date || !body.name || !body.source) { const e = md.querySelector('#h_err'); e.style.display = 'block'; e.textContent = 'Informe data, nome e fonte.'; return; }
+    md.querySelector('#h_err').style.display = 'none';
+    if (!confirmStep(md, ev.target, 'Cadastrar <b>' + esc(body.name) + '</b> em ' + esc(dmy(body.date)) + ' (' + esc(body.scope.toLowerCase()) + ').')) return;
+    const r = await run(ev.target, () => post('/admin/holidays', body), 'Feriado cadastrado');
+    if (r) { closeModal(); S.holYear = body.date.slice(0, 4); go('feriados'); }
+  };
+};
+ACT.offHoliday = async (d, b) => {
+  const h = S.holidays.find((x) => x.id === d.id);
+  const v = await ask({ title: 'Desativar feriado', danger: true, ok: 'Desativar', html: '<p>' + esc(h.name) + ' — ' + esc(dmy(h.date)) + '</p>', fields: [{ name: 'reason', label: 'Motivo', type: 'textarea', required: true }] });
+  if (!v) return;
+  const r = await run(b, () => post('/admin/holidays/' + encodeURIComponent(d.id) + '/deactivate', { reason: v.reason }), 'Feriado desativado');
+  if (r) go('feriados');
+};
+
+// ─────────────────────────── REGRAS DE COMISSÃO ───────────────────────────
+function ruleSummary(cfg) {
+  const tiers = [...(cfg.tiers || [])].sort((a, b) => a.aboveCents - b.aboveCents);
+  return tiers.map((t) => (t.aboveCents ? 'acima de ' + brl(t.aboveCents) : 'desde R$ 0') + ' → <b>' + esc(t.pct) + '%</b>').join(' · ') +
+    ' <span class="tag">' + ((cfg.tierMode || 'ALL') === 'MARGINAL' ? 'por faixa (marginal)' : 'alíquota sobre o total') + '</span>';
+}
+async function viewComissao() {
+  const d = await req('/admin/commission-rules');
+  S.rules = d.rules || [];
+  const today = todayKey();
+  const H = ['<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px"><div class="small muted">Nova versão encerra a anterior na véspera; nada é reescrito. Contracheques fechados guardam a regra usada.</div>' + (isOwner() ? '<button class="btn" data-act="newRule">+ Nova regra</button>' : '') + '</div>'];
+  if (!S.rules.length) H.push('<div class="card empty">Nenhuma regra cadastrada.</div>');
+  for (const r of S.rules) {
+    const cfg = r.config || {};
+    const live = r.active !== false && r.validFrom <= today && (!r.validTo || r.validTo >= today);
+    H.push('<div class="card"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><b>' + esc(r.name) + '</b><div class="small muted">versão ' + esc(r.version) + ' · ' + esc(dmy(r.validFrom)) + ' → ' + (r.validTo ? esc(dmy(r.validTo)) : 'em aberto') +
+      ' · ' + esc([r.userId ? 'só ' + userName(r.userId) : '', r.storeId ? 'loja ' + storeName(r.storeId) : '', r.issuerId ? issuerName(r.issuerId) : ''].filter(Boolean).join(' · ') || 'todos os vendedores') + '</div></div>' +
+      (live ? '<span class="tag okk">vigente</span>' : r.validFrom > today ? '<span class="tag wr">futura</span>' : '<span class="tag off">encerrada</span>') + '</div>' +
+      '<div style="margin-top:8px">' + ruleSummary(cfg) + '</div>' +
+      (cfg.special || []).map((s) => '<div class="small" style="margin-top:4px">Especial <b>' + esc(s.name) + '</b>: ' + esc(s.pct) + '% quando passar de ' + brl(s.aboveCents) + (s.match && s.match.brands && s.match.brands.length ? ' · marcas: ' + esc(s.match.brands.join(', ')) : '') + (s.match && s.match.categories && s.match.categories.length ? ' · categorias: ' + esc(s.match.categories.join(', ')) : '') + '</div>').join('') +
+      (r.notes ? '<div class="small muted" style="margin-top:6px">' + esc(r.notes) + '</div>' : '') +
+      '<details><summary>Configuração (JSON)</summary><pre>' + esc(JSON.stringify(cfg, null, 2)) + '</pre></details>' +
+      (isOwner() ? '<div class="btns" style="margin-top:8px"><button class="btn sm line" data-act="newRule" data-from="' + esc(r.id) + '">Nova versão desta regra</button></div>' : '') + '</div>');
+  }
+  document.getElementById('view').innerHTML = H.join('');
+}
+ACT.newRule = (d) => {
+  const prev = d.from ? S.rules.find((x) => x.id === d.from) : null;
+  const cfg0 = prev ? JSON.parse(JSON.stringify(prev.config || {})) : { tierMode: 'ALL', tiers: [{ aboveCents: 0, pct: 1 }], special: [],
+    confirmedStatuses: ['completed'], pendingStatuses: ['pending', 'pending_payment'], canceledStatuses: ['canceled', 'cancelled'], returns: 'EXCLUI_DEVOLVIDO', closingDay: 'ULTIMO_DIA' };
+  const st = { tiers: (cfg0.tiers || []).map((t) => ({ above: money(t.aboveCents), pct: String(t.pct) })), special: (cfg0.special || []).map((s) => ({ name: s.name, above: money(s.aboveCents), pct: String(s.pct),
+    brands: ((s.match || {}).brands || []).join(', '), categories: ((s.match || {}).categories || []).join(', '), nameIncludes: ((s.match || {}).nameIncludes || []).join(', ') })) };
+  const nextMonth = (() => { const [y, m] = todayKey().split('-').map(Number); return m === 12 ? (y + 1) + '-01-01' : y + '-' + String(m + 1).padStart(2, '0') + '-01'; })();
+  const md = modal('<h3>' + (prev ? 'Nova versão — ' + esc(prev.name) : 'Nova regra de comissão') + '</h3>' +
+    (prev ? '<div class="note info">A versão ' + esc(prev.version) + ' será encerrada na véspera do início desta.</div>' : '') +
+    '<div class="fgrid"><div class="fld full"><label for="r_name">Nome *</label><input id="r_name" value="' + esc(prev ? prev.name : '') + '"></div>' +
+    '<div class="fld"><label for="r_from">Vigente a partir de *</label><input type="date" id="r_from" value="' + esc(nextMonth) + '"></div>' +
+    '<div class="fld"><label for="r_to">Até (opcional)</label><input type="date" id="r_to"></div>' +
+    '<div class="fld"><label for="r_store">Só para a loja</label><select id="r_store">' + opt('', 'Todas', prev ? prev.storeId || '' : '') + Object.values(S.stores).map((s) => opt(s.id, s.code + ' · ' + s.name, prev ? prev.storeId || '' : '')).join('') + '</select></div>' +
+    '<div class="fld"><label for="r_user">Só para o vendedor</label><select id="r_user">' + opt('', 'Todos', prev ? prev.userId || '' : '') + Object.entries(S.names).map(([id, n]) => opt(id, n, prev ? prev.userId || '' : '')).join('') + '</select></div>' +
+    '<div class="fld full"><label for="r_mode">Como as faixas se aplicam</label><select id="r_mode">' + opt('ALL', 'Alíquota da faixa atingida sobre TODAS as vendas', cfg0.tierMode || 'ALL') + opt('MARGINAL', 'Cada faixa só sobre o que passou dela (marginal)', cfg0.tierMode || 'ALL') + '</select></div></div>' +
+    '<h2>Faixas</h2><div id="r_tiers"></div><button class="btn sm ghost" data-act="ruleAddTier">+ Faixa</button>' +
+    '<h2>Regras especiais (por marca/categoria)</h2><div id="r_specials"></div><button class="btn sm ghost" data-act="ruleAddSpecial">+ Regra especial</button>' +
+    '<div class="fld"><label for="r_notes">Observações</label><textarea id="r_notes">' + esc(prev ? prev.notes || '' : '') + '</textarea></div>' +
+    '<details open><summary>JSON que será gravado</summary><pre id="r_json"></pre></details>' +
+    '<div class="note bad" id="r_err" style="display:none"></div>' +
+    '<div class="acts"><button class="btn ghost" onclick="closeModal()">Voltar</button><button class="btn" id="r_ok">Salvar regra</button></div>', { wide: true });
+  S.ruleEd = { st, cfg0, md, prev };
+  drawRuleEditor();
+  md.addEventListener('input', () => { readRuleEditor(); updRuleJson(); });
+  md.addEventListener('change', () => { readRuleEditor(); updRuleJson(); });
+  md.querySelector('#r_ok').onclick = async (ev) => {
+    readRuleEditor();
+    const err = md.querySelector('#r_err'); const fail = (m) => { err.style.display = 'block'; err.textContent = m; };
+    const built = buildRuleConfig(); if (built.error) return fail(built.error);
+    const body = { name: md.querySelector('#r_name').value.trim(), validFrom: md.querySelector('#r_from').value, validTo: md.querySelector('#r_to').value || undefined,
+      storeId: md.querySelector('#r_store').value || undefined, userId: md.querySelector('#r_user').value || undefined, previousId: prev ? prev.id : undefined,
+      notes: md.querySelector('#r_notes').value.trim() || undefined, config: built.config };
+    if (!body.name) return fail('Informe o nome.');
+    if (!body.validFrom) return fail('Informe o início da vigência.');
+    err.style.display = 'none';
+    if (!confirmStep(md, ev.target, '<b>' + esc(body.name) + '</b> vigente a partir de ' + esc(dmy(body.validFrom)) + '<div style="margin-top:4px">' + ruleSummary(body.config) + '</div>' + (prev ? '<div class="small">A versão ' + esc(prev.version) + ' termina em ' + esc(dmy(new Date(Date.parse(body.validFrom + 'T12:00:00Z') - 86400000).toISOString().slice(0, 10))) + '.</div>' : ''))) return;
+    const r = await run(ev.target, () => post('/admin/commission-rules', body), 'Regra salva');
+    if (r) { closeModal(); go('comissao'); }
+  };
+};
+function drawRuleEditor() {
+  const { st, md } = S.ruleEd;
+  md.querySelector('#r_tiers').innerHTML = st.tiers.map((t, i) => '<div class="ed-row"><div><label>Acima de (R$)</label><input data-t="' + i + '" data-f="above" inputmode="decimal" value="' + esc(t.above) + '"' + (i === 0 ? ' title="A primeira faixa começa em R$ 0"' : '') + '></div>' +
+    '<div><label>Percentual (%)</label><input data-t="' + i + '" data-f="pct" inputmode="decimal" value="' + esc(t.pct) + '"></div><button class="btn sm bad" data-act="ruleDelTier" data-i="' + i + '"' + (st.tiers.length < 2 ? ' disabled' : '') + '>Remover</button></div>').join('');
+  md.querySelector('#r_specials').innerHTML = st.special.length ? st.special.map((s, i) => '<div class="sp-card"><div class="fgrid">' +
+    '<div class="fld full"><label>Nome</label><input data-s="' + i + '" data-f="name" value="' + esc(s.name) + '"></div>' +
+    '<div class="fld"><label>Quando passar de (R$)</label><input data-s="' + i + '" data-f="above" inputmode="decimal" value="' + esc(s.above) + '"></div>' +
+    '<div class="fld"><label>Percentual (%)</label><input data-s="' + i + '" data-f="pct" inputmode="decimal" value="' + esc(s.pct) + '"></div>' +
+    '<div class="fld"><label>Marcas (separe por vírgula)</label><input data-s="' + i + '" data-f="brands" value="' + esc(s.brands) + '"></div>' +
+    '<div class="fld"><label>Categorias (separe por vírgula)</label><input data-s="' + i + '" data-f="categories" value="' + esc(s.categories) + '"></div>' +
+    '<div class="fld full"><label>Nome do produto contém (opcional)</label><input data-s="' + i + '" data-f="nameIncludes" value="' + esc(s.nameIncludes) + '"></div></div>' +
+    '<button class="btn sm bad" data-act="ruleDelSpecial" data-i="' + i + '" style="margin-top:8px">Remover regra especial</button></div>').join('') : '<div class="small muted">Nenhuma.</div>';
+  updRuleJson();
+}
+function readRuleEditor() {
+  const { st, md } = S.ruleEd;
+  md.querySelectorAll('[data-t]').forEach((el) => { st.tiers[+el.dataset.t][el.dataset.f] = el.value; });
+  md.querySelectorAll('[data-s]').forEach((el) => { st.special[+el.dataset.s][el.dataset.f] = el.value; });
+}
+function buildRuleConfig() {
+  const { st, cfg0, md } = S.ruleEd;
+  const list = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
+  const pctOf = (s) => Number(String(s).replace(',', '.'));
+  const tiers = st.tiers.map((t, i) => ({ aboveCents: i === 0 && !String(t.above).trim() ? 0 : toCents(t.above), pct: pctOf(t.pct) }));
+  if (!tiers.length) return { error: 'Informe ao menos uma faixa.' };
+  if (tiers.some((t) => !Number.isFinite(t.aboveCents) || t.aboveCents < 0 || !Number.isFinite(t.pct) || t.pct < 0 || t.pct > 100)) return { error: 'Faixa com valor ou percentual inválido.' };
+  tiers.sort((a, b) => a.aboveCents - b.aboveCents);
+  if (tiers[0].aboveCents !== 0) return { error: 'A primeira faixa precisa começar em R$ 0.' };
+  if (new Set(tiers.map((t) => t.aboveCents)).size !== tiers.length) return { error: 'Duas faixas com o mesmo valor inicial.' };
+  const special = [];
+  for (const s of st.special) {
+    const sp = { name: String(s.name || '').trim(), aboveCents: toCents(s.above) || 0, pct: pctOf(s.pct), match: {} };
+    if (!sp.name) return { error: 'Regra especial sem nome.' };
+    if (!Number.isFinite(sp.pct) || sp.pct < 0 || sp.pct > 100 || !Number.isFinite(sp.aboveCents)) return { error: 'Regra especial "' + sp.name + '" com valor inválido.' };
+    if (list(s.brands).length) sp.match.brands = list(s.brands);
+    if (list(s.categories).length) sp.match.categories = list(s.categories);
+    if (list(s.nameIncludes).length) sp.match.nameIncludes = list(s.nameIncludes);
+    if (!Object.keys(sp.match).length) return { error: 'Regra especial "' + sp.name + '" precisa de marca, categoria ou nome.' };
+    special.push(sp);
+  }
+  return { config: { ...cfg0, tierMode: md.querySelector('#r_mode').value, tiers, special } };
+}
+function updRuleJson() { const b = buildRuleConfig(); S.ruleEd.md.querySelector('#r_json').textContent = b.error ? '⚠ ' + b.error : JSON.stringify(b.config, null, 2); }
+ACT.ruleAddTier = () => { readRuleEditor(); const t = S.ruleEd.st.tiers; t.push({ above: '', pct: '' }); drawRuleEditor(); };
+ACT.ruleDelTier = (d) => { readRuleEditor(); S.ruleEd.st.tiers.splice(+d.i, 1); drawRuleEditor(); };
+ACT.ruleAddSpecial = () => { readRuleEditor(); S.ruleEd.st.special.push({ name: '', above: '', pct: '', brands: '', categories: '', nameIncludes: '' }); drawRuleEditor(); };
+ACT.ruleDelSpecial = (d) => { readRuleEditor(); S.ruleEd.st.special.splice(+d.i, 1); drawRuleEditor(); };
+
+// ─────────────────────────── AUDITORIA ───────────────────────────
+S.auditUser = '';
+const AUDIT_ACTION = { CREATE: 'Criou', UPDATE: 'Alterou', VIEW: 'Visualizou', VIEW_ADMIN: 'Visualizou (adm.)', REVIEW_CREATE: 'Gerou conferência', REVIEW_UPDATE: 'Revisou',
+  APPROVE: 'Aprovou', CLOSE: 'Fechou', PAY: 'Registrou pagamento', REOPEN: 'Reabriu', CANCEL: 'Cancelou', SUPERSEDED: 'Substituído por correção', REVOKE: 'Revogou',
+  DEACTIVATE: 'Desativou', REJECT: 'Recusou', REQUEST: 'Pediu', RESPOND: 'Respondeu', ACKNOWLEDGE: 'Deu ciência', EXPORT_PDF: 'Baixou PDF', EXPORT_CSV: 'Exportou CSV',
+  EXPORT_JSON: 'Exportou JSON', DOWNLOAD_SIGNED_LINK: 'Abriu link do WhatsApp', NOTIFY: 'Avisou' };
+async function viewAuditoria() {
+  if (!isOwner()) { document.getElementById('view').innerHTML = '<div class="card empty">Auditoria é só do dono.</div>'; return; }
+  const d = await req('/admin/audit' + (S.auditUser ? '?userId=' + encodeURIComponent(S.auditUser) : ''));
+  const rows = d.logs || [];
+  const H = ['<div class="card" style="display:flex;gap:10px;align-items:end;flex-wrap:wrap"><div style="min-width:240px"><label for="aUser">Funcionário</label><select id="aUser">' + opt('', 'Todos', S.auditUser) + Object.entries(S.names).map(([id, n]) => opt(id, n, S.auditUser)).join('') + '</select></div><div class="small muted">Últimos 300 registros. Toda alteração, visualização e exportação fica registrada.</div></div>'];
+  if (!rows.length) H.push('<div class="card empty">Sem registros.</div>');
+  else H.push('<div class="tw"><table style="min-width:1000px"><thead><tr><th>Quando</th><th>Ação</th><th>O quê</th><th>Funcionário</th><th>Quem fez</th><th>Motivo</th><th>Detalhes</th></tr></thead><tbody>' +
+    rows.map((l) => '<tr><td class="nw small">' + esc(dt(l.at)) + '</td><td class="b">' + esc(AUDIT_ACTION[l.action] || l.action) + '</td><td class="small">' + esc(l.entity) + '<div class="muted">' + esc(String(l.entityId).slice(0, 40)) + '</div></td>' +
+      '<td>' + esc(l.subjectUserId ? userName(l.subjectUserId) : '—') + '</td><td class="small">' + esc(l.actorId ? userName(l.actorId) : 'sistema') + (l.actorRole ? '<div class="muted">' + esc(l.actorRole) + '</div>' : '') + (l.ip ? '<div class="muted">' + esc(l.ip) + '</div>' : '') + '</td>' +
+      '<td class="small">' + esc(l.reason || '') + '</td><td>' + (l.before || l.after ? '<details><summary>ver</summary><pre>' + esc(JSON.stringify({ antes: l.before, depois: l.after }, null, 2).slice(0, 6000)) + '</pre></details>' : '') + '</td></tr>').join('') + '</tbody></table></div>');
+  const v = document.getElementById('view'); v.innerHTML = H.join('');
+  v.querySelector('#aUser').addEventListener('change', (e) => { S.auditUser = e.target.value; go('auditoria'); });
+}
+
+boot();
+</script>
+</body>
+</html>

@@ -183,6 +183,21 @@ function groupFacet(rows, field, keyOf) {
     .sort((a, b) => String(a.label).localeCompare(String(b.label), 'pt-BR'));
 }
 
+// Busca sem diferenciar acento: compara nome/marca/categoria/cor sem acento.
+// translate() não depende da extensão unaccent. As duas listas têm 48 letras.
+const ACCENT_FROM = 'áàâãäéèêëíìîïóòôõöúùûüçñÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑ';
+const ACCENT_TO = 'aaaaaeeeeiiiiooooouuuucnaaaaaeeeeiiiiooooouuuucn';
+async function accentInsensitiveIds(term) {
+  const folded = String(term || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[%_\\]/g, '').trim();
+  if (folded.length < 2) return [];
+  try {
+    const rows = await prisma.$queryRaw`SELECT id FROM "Product"
+      WHERE translate(lower(coalesce(name,'') || ' ' || coalesce(brand,'') || ' ' || coalesce(category,'') || ' ' || coalesce(subcategory,'') || ' ' || coalesce("aiContext"->>'color','')), ${ACCENT_FROM}, ${ACCENT_TO})
+      LIKE ${'%' + folded + '%'} LIMIT 3000`;
+    return rows.map(r => r.id);
+  } catch (e) { console.warn('[catalog] busca sem acento:', e.message); return []; }
+}
+
 router.get('/products', optionalCatalogAuth, async (req, res) => {
   try {
     // preço/estoque mudam o tempo todo — nunca deixar o navegador servir do cache
@@ -305,6 +320,7 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
     const stopWords = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'em', 'no', 'na', 'nos', 'nas', 'com', 'sem', 'para', 'pra', 'por', 'um', 'uma', 'uns', 'umas']);
     const salesTerms = (search.match(/[\p{L}\p{N}]+/gu) || [])
       .filter(s => s.length >= 2 && !stopWords.has(s.toLocaleLowerCase('pt-BR')));
+    const foldedIds = new Map();
     const fields = t => ([
       { name: { contains: t, mode: 'insensitive' } },
       { sku: { contains: t, mode: 'insensitive' } },
@@ -317,13 +333,17 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
       { aiContext: { path: ['classification', 'tier'], string_contains: t } },
       { aiContext: { path: ['color'], string_contains: t } },
       { sizes: { some: { barcode: { contains: t, mode: 'insensitive' } } } },
+      ...(foldedIds.get(t)?.length ? [{ id: { in: foldedIds.get(t) } }] : []),
     ]);
     // BUSCA INTELIGENTE multi-palavra: "bola reebok" acha quem tem bola E reebok (qualquer ordem/campo).
     if (search) {
       const termos = salesSearch
         ? salesTerms
         : search.split(/\s+/).map(s => s.trim()).filter(s => s.length >= 2);
-      for (const t of (termos.length ? termos : [search])) andConds.push({ OR: fields(t) });
+      const lista = termos.length ? termos : [search];
+      // Acento não importa: "meiao" acha "Meião" e vice-versa (dono 15/11/2026).
+      await Promise.all(lista.map(async t => foldedIds.set(t, await accentInsensitiveIds(t))));
+      for (const t of lista) andConds.push({ OR: fields(t) });
     }
     const where = { AND: andConds };
     const productSelect = {

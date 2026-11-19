@@ -507,6 +507,11 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <div class="hub-card-desc">Creators + cupons interligados à Nuvemshop</div>
         <span class="hub-card-badge">CREATION</span>
       </button>
+      <button class="hub-card" onclick="location.href='/folha.html'" style="--cat-color:#E5571E">
+        <div class="hub-card-icon">💵</div>
+        <div class="hub-card-title">Folha / Contracheque</div>
+        <div class="hub-card-desc">Prévia do mês, conferência, fechamento, PDF e pagamento</div>
+      </button>
       <button class="hub-card" onclick="switchTabByName('clockin')">
         <div class="hub-card-icon">⏰</div>
         <div class="hub-card-title">Ponto Digital</div>
@@ -1589,6 +1594,9 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       <span class="section-title">Gerenciar Vendedores e Gerentes</span>
       <button class="refresh-btn" onclick="loadSellers(); loadManagers()">↻</button>
     </div>
+    <button type="button" onclick="setSalaryForAll()" style="width:100%;margin:0 0 8px;padding:12px;background:#FFF4EE;border:1px solid #F6C9B3;border-radius:12px;font-size:14px;font-weight:800;color:#C2410C;cursor:pointer">💵 Salário igual para todos</button>
+    <button type="button" onclick="openSellerSignals()" style="width:100%;margin:0 0 8px;padding:12px;background:#fff;border:1px solid #e5e5ea;border-radius:12px;font-size:14px;font-weight:800;color:#1d1d1f;cursor:pointer">📉 Vendas perdidas e pedidos de transferência</button>
+    <button type="button" onclick="openSellerGoals()" style="width:100%;margin:0 0 12px;padding:12px;background:#FFF4EE;border:1px solid #F6C9B3;border-radius:12px;font-size:14px;font-weight:800;color:#C2410C;cursor:pointer">🎯 Metas do mês dos vendedores</button>
 
     <div style="background:rgba(0,0,0,0.02);border:1px solid rgba(0,0,0,0.06);border-radius:14px;padding:16px">
       <div style="font-size:12px;letter-spacing:2px;color:var(--text3);margin-bottom:10px">TORNAR VENDEDOR</div>
@@ -3229,6 +3237,22 @@ tr:hover td{background:rgba(0,0,0,0.02)}
   <h2 style="margin:0 0 2px;">📅 Agenda da equipe</h2>
   <p style="color:#666;margin:0 0 14px;font-size:12px;">Monte o mês em rascunho, confira datas, lojas e horários e publique. Cada vendedor recebe a escala completa no cadastro pessoal. O mês publicado também orienta o robô das atividades diárias.</p>
 
+  <!-- pedidos dos vendedores + agenda do dia no grupo -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-bottom:18px;">
+    <div style="background:#fff;border:1px solid #fed7aa;border-radius:14px;padding:14px;">
+      <h3 style="margin:0 0 3px;">🙋 Pedidos dos vendedores</h3>
+      <p style="font-size:11px;color:#777;margin:0 0 10px;">Folga e compromisso que o vendedor marcou no app. Só entra na agenda (e no grupo) depois de aprovar.</p>
+      <div id="ag-req-list"><div style="color:#999;">Carregando…</div></div>
+    </div>
+    <div style="background:#fff;border:1px solid #d1fae5;border-radius:14px;padding:14px;">
+      <h3 style="margin:0 0 3px;">💬 Agenda do dia no grupo</h3>
+      <p style="font-size:11px;color:#777;margin:0 0 10px;">Vai sozinha todo dia às 7h para o grupo de WhatsApp da equipe. Prévia de hoje:</p>
+      <pre id="ag-daily-preview" style="white-space:pre-wrap;font-family:inherit;font-size:12px;background:#f7f7f9;border:1px solid #eee;border-radius:10px;padding:10px;margin:0;max-height:300px;overflow:auto;">Carregando…</pre>
+      <div id="ag-daily-last" style="font-size:11px;color:#777;margin-top:8px;"></div>
+      <button id="ag-daily-send" onclick="agDailySend()" style="margin-top:10px;height:40px;background:#0a7d3b;color:#fff;border:0;border-radius:8px;padding:0 16px;font-weight:800;cursor:pointer;">Enviar agora para o grupo</button>
+    </div>
+  </div>
+
   <!-- escala mensal oficial -->
   <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:14px;padding:14px;margin-bottom:18px;">
     <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
@@ -3396,6 +3420,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
   <h2 style="margin:0 0 2px;color:#1d1d1f;">💰 Financeiro — Lucro Real trimestral</h2>
   <p style="color:#666;margin:0 0 16px;font-size:12px;">Margem por produto e apuração tributária por CNPJ. O resultado diário abaixo é operacional; o lucro líquido fiscal está no fechamento trimestral.</p>
   <a href="/contas-a-pagar.html" style="display:inline-block;margin:0 8px 16px 0;background:#111;color:#fff;text-decoration:none;font-weight:800;padding:10px 16px;border-radius:10px;">💸 Contas a pagar por loja (despesas fixas, liberar e pagar) →</a>
+  <a href="/painel-vendas.html" style="display:inline-block;margin:0 8px 16px 0;background:#E5571E;color:#fff;text-decoration:none;font-weight:800;padding:10px 16px;border-radius:10px;">📊 Painel de vendas (loja/dia, ticket médio, top marcas) →</a>
   <a href="/financeiro.html" style="display:inline-block;margin:0 0 16px;background:#E5571E;color:#fff;text-decoration:none;font-weight:800;padding:10px 16px;border-radius:10px;">📒 Abrir o novo Financeiro (plano de contas e contas financeiras) →</a>
   <a href="/config-stone.html" style="display:inline-block;margin:0 0 16px 8px;background:#0a843d;color:#fff;text-decoration:none;font-weight:800;padding:10px 16px;border-radius:10px;">💳 Configurar maquininha Stone (integração) →</a>
 
@@ -7626,6 +7651,7 @@ async function loadSellers() {
   wrap.innerHTML = '<div class=\"loading-spinner\">Carregando vendedores...</div>';
   const data = await api('/admin/sellers');
   if (data.error) { wrap.innerHTML = '<div class=\"empty-state\">Erro: ' + data.error + '</div>'; return; }
+  const jt = await api('/admin/schedule/job-titles'); const jobTitles = (jt && jt.byUser) || {};
 
   const sellers = data.sellers || [];
   const countEl = document.getElementById('seller-count');
@@ -7649,14 +7675,168 @@ async function loadSellers() {
     html += '</div></div>';
     html += '<div style="font-size:12px;color:#8e8e93;">📱 ' + escapeHtml(s.phone || '—') + '</div>';
     if (sStores.length) html += '<div style="font-size:12px;color:#1d1d1f;padding:6px 10px;background:#f5f5f7;border-radius:8px;line-height:1.6;">🏬 ' + sStores.map(st => '<strong>' + escapeHtml(st.code) + '</strong> ' + escapeHtml(st.name)).join(' · ') + (sStores.length > 1 ? ' <span style="color:#0a843d;font-weight:700;">(' + sStores.length + ' lojas)</span>' : '') + '</div>';
+    const cargo = jobTitles[s.id] || 'VENDEDOR';
+    html += '<label style="font-size:11px;font-weight:700;color:#555;display:flex;align-items:center;gap:8px">Cargo <select class="js-job-title" data-seller-id="' + s.id + '" style="flex:1;height:34px;border:1px solid #ddd;border-radius:8px;padding:0 8px;font-size:13px">' + [['VENDEDOR','Vendedor'],['LOGISTICA','Logística'],['SUPERVISOR','Supervisor de vendas']].map(([v, l]) => '<option value="' + v + '"' + (cargo === v ? ' selected' : '') + '>' + l + '</option>').join('') + '</select></label>';
+    html += '<div style="display:flex;gap:6px"><button class="js-seller-phone" data-seller-id="' + s.id + '" data-seller-name="' + escapeHtml(s.name || '') + '" data-phone="' + escapeHtml(s.phone || '') + '" style="flex:1;padding:8px;background:#fff;border:1px solid #e5e5ea;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">✏️ WhatsApp</button><button class="js-escala-link" data-seller-id="' + s.id + '" data-seller-name="' + escapeHtml(s.name || '') + '" style="flex:1;padding:8px;background:#fff;border:1px solid #e5e5ea;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">📲 Enviar link da escala</button></div>';
+    html += '<button class="js-pay-contract" data-seller-id="' + s.id + '" data-seller-name="' + escapeHtml(s.name || '') + '" style="padding:8px;background:#FFF4EE;border:1px solid #F6C9B3;border-radius:8px;font-size:12px;font-weight:700;color:#C2410C;cursor:pointer;margin-top:auto;">💵 Contrato e salário</button>';
     html += '<button class="js-remove-seller" data-seller-id="' + s.id + '" data-seller-name="' + escapeHtml(s.name || '') + '" style="padding:8px;background:white;border:1px solid #e5e5ea;border-radius:8px;font-size:12px;color:#d70015;cursor:pointer;margin-top:auto;">🗑 Remover</button>';
     html += '</div>';
   });
   html += '</div>';
   wrap.innerHTML = html;
+  Array.from(wrap.querySelectorAll('.js-job-title')).forEach(sel => {
+    sel.onchange = async () => {
+      const r = await api('/admin/schedule/job-titles/' + encodeURIComponent(sel.dataset.sellerId), 'PUT', { title: sel.value });
+      if (r.error) { alert('Erro: ' + r.error); loadSellers(); return; }
+      sel.style.borderColor = '#0a843d'; setTimeout(() => { sel.style.borderColor = '#ddd'; }, 1500);
+    };
+  });
+  Array.from(wrap.querySelectorAll('.js-seller-phone')).forEach(btn => {
+    btn.onclick = async () => {
+      const cur = /^[0-9]+$/.test(btn.dataset.phone || '') ? btn.dataset.phone : '';
+      const v = prompt('WhatsApp de ' + btn.dataset.sellerName + ' (DDD + número):', cur);
+      if (v === null) return;
+      const r = await api('/admin/schedule/seller-phone/' + encodeURIComponent(btn.dataset.sellerId), 'PUT', { phone: v });
+      if (r.error) { alert(r.error); return; }
+      alert('WhatsApp salvo: ' + r.phone); loadSellers();
+    };
+  });
+  Array.from(wrap.querySelectorAll('.js-escala-link')).forEach(btn => {
+    btn.onclick = async () => {
+      if (!confirm('Enviar para ' + btn.dataset.sellerName + ', no WhatsApp, o link pessoal para preencher a escala do mês?')) return;
+      const r = await api('/admin/schedule/escala-link/' + encodeURIComponent(btn.dataset.sellerId), 'POST', {});
+      alert(r.error ? r.error : 'Link enviado para ' + btn.dataset.sellerName + '.');
+    };
+  });
+  Array.from(wrap.querySelectorAll('.js-pay-contract')).forEach(btn => {
+    btn.onclick = () => openPayContract(btn.dataset.sellerId, btn.dataset.sellerName);
+  });
   Array.from(wrap.querySelectorAll('.js-remove-seller')).forEach(btn => {
     btn.onclick = () => removeSellerConfirm(btn.dataset.sellerId, btn.dataset.sellerName);
   });
+}
+
+// Contrato do vendedor (folha/contracheque) — grava em PayrollEmployeeProfile.
+const PAY_CONTRACTS = [['MENSALISTA','Mensalista (CLT)'],['HORISTA','Horista'],['ESCALA_12X36','Escala 12x36'],['APRENDIZ','Aprendiz'],['PARCIAL','Tempo parcial'],['SEM_REGISTRO','Sem registro']];
+// Metas do mês (dono 17/11/2026): base da "meta de hoje" que vai 1 hora antes do expediente.
+// Dono 18/11/2026: "Salário é o mesmo para todos" — grava o mesmo salário mensal no contrato de cada vendedor ativo.
+async function setSalaryForAll() {
+  const v = prompt('Salário mensal igual para todos os vendedores ativos (R$). Ex: 1790,00');
+  if (v == null) return;
+  const sal = Number(String(v).trim().replace(/\./g, '').replace(',', '.'));
+  if (!(sal > 0)) { alert('Valor inválido.'); return; }
+  const data = await api('/admin/sellers');
+  if (data.error) { alert(data.error); return; }
+  const list = (data.sellers || []).filter((s) => s.active !== false);
+  const brlTxt = sal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  if (!confirm('Gravar ' + brlTxt + ' como salário de ' + list.length + ' pessoa(s)?\n\n' + list.map((s) => s.name).join(', '))) return;
+  let ok = 0; const erros = [];
+  for (const s of list) {
+    const r = await api('/payroll/admin/profiles/' + encodeURIComponent(s.id), 'PUT', { baseSalaryCents: Math.round(sal * 100), reason: 'Salário igual para todos (dono)' });
+    if (r && !r.error) ok++; else erros.push(s.name + ': ' + (r && r.error));
+  }
+  alert('Salário gravado para ' + ok + ' de ' + list.length + '.' + (erros.length ? '\n\nNão gravou:\n' + erros.join('\n') : '') + '\n\nFalta a data de admissão de cada um (botão 💵 Contrato e salário).');
+}
+
+// Sinais dos vendedores pelo WhatsApp: o que o cliente queria e não tinha + transferências pedidas.
+async function openSellerSignals() {
+  let ov = document.getElementById('seller-signals-ov');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'seller-signals-ov'; document.body.appendChild(ov); }
+  ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.innerHTML = '<div style="background:#fff;border-radius:14px;padding:20px;width:100%;max-width:640px;max-height:90vh;overflow:auto;color:#1d1d1f">Carregando…</div>';
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  const box = ov.firstChild;
+  const d = await api('/admin/schedule/sinais-vendedores?dias=30');
+  if (d.error) { box.innerHTML = '<div style="color:#d70015">' + escapeHtml(d.error) + '</div>'; return; }
+  const dt = (v) => v ? new Date(v).toLocaleDateString('pt-BR', { timeZone: 'America/Fortaleza' }) : '';
+  const lost = (d.vendasPerdidas || []).map((l) => '<tr><td style="padding:6px"><b>' + escapeHtml(l.produto) + '</b><div style="font-size:11px;color:#8e8e93">' + escapeHtml(l.motivos) + ' · ' + escapeHtml(l.lojas) + ' · última ' + dt(l.ultima) + '</div></td><td style="padding:6px;text-align:center">' + escapeHtml(l.tamanhos) + '</td><td style="padding:6px;text-align:center;font-weight:800;color:#C2410C">' + l.vezes + '</td></tr>').join('');
+  const tr = (d.transferencias || []).map((t) => '<div style="border:1px solid #eee;border-radius:10px;padding:8px;margin-bottom:6px"><b>' + escapeHtml(t.titulo) + '</b>' + (t.urgente ? ' <span style="color:#d70015;font-size:11px;font-weight:700">URGENTE</span>' : '') + '<div style="font-size:12px;color:#8e8e93">' + escapeHtml(t.vendedor || '') + ' · ' + dt(t.quando) + ' · ' + escapeHtml(t.status) + '</div></div>').join('');
+  box.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center"><div style="font-weight:800;font-size:16px">📉 Últimos 30 dias</div><button type="button" class="btn" onclick="document.getElementById(\'seller-signals-ov\').remove()">Fechar</button></div>' +
+    '<h3 style="margin:14px 0 6px;font-size:14px">Vendas perdidas (o cliente queria e não tinha)</h3>' + (lost ? '<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="color:#8e8e93;text-align:left"><th style="padding:6px">Produto</th><th style="padding:6px;text-align:center">Tamanhos</th><th style="padding:6px;text-align:center">Vezes</th></tr></thead><tbody>' + lost + '</tbody></table>' : '<div style="color:#8e8e93;font-size:13px">Nenhuma registrada ainda. Os vendedores registram pelo WhatsApp: "cliente queria X tamanho Y e não tinha".</div>') +
+    '<h3 style="margin:16px 0 6px;font-size:14px">Pedidos de transferência</h3>' + (tr || '<div style="color:#8e8e93;font-size:13px">Nenhum pedido ainda.</div>');
+}
+
+async function openSellerGoals(month) {
+  let ov = document.getElementById('seller-goals-ov');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'seller-goals-ov'; document.body.appendChild(ov); }
+  ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.innerHTML = '<div style="background:#fff;border-radius:14px;padding:20px;width:100%;max-width:520px;max-height:90vh;overflow:auto;color:#1d1d1f">Carregando…</div>';
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  const box = ov.firstChild;
+  const data = await api('/admin/schedule/goals' + (month ? '?month=' + encodeURIComponent(month) : ''));
+  if (data.error) { box.innerHTML = '<div style="color:#d70015">' + escapeHtml(data.error) + '</div>'; return; }
+  const money = (c) => c == null ? '' : (c / 100).toFixed(2).replace('.', ',');
+  const inp = 'width:130px;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;text-align:right';
+  box.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><div style="font-weight:800;font-size:16px">🎯 Metas do mês</div><input id="sg-month" type="month" value="' + escapeHtml(data.month) + '" style="height:36px;border:1px solid #ddd;border-radius:8px;padding:0 8px"></div>' +
+    '<div style="font-size:12px;color:#8e8e93;margin:6px 0 12px">Meta do dia: R$ 1.000 para todos. Meta do mês: o valor que você digitar; vazio = R$ 1.000 × dias de escala do vendedor no mês.</div>' +
+    data.sellers.map((s) => '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f2f2f2"><div style="min-width:0"><div style="font-weight:700;font-size:13px">' + escapeHtml(s.name) + '</div><div style="font-size:11px;color:#8e8e93">' + escapeHtml(s.store || 'sem loja') + (s.hasPhone ? '' : ' · <span style="color:#d70015">sem WhatsApp no cadastro</span>') + '</div></div><input class="sg-goal" data-id="' + s.id + '" inputmode="decimal" placeholder="R$" value="' + money(s.goalCents) + '" style="' + inp + '"></div>').join('') +
+    '<div id="sg-msg" style="margin-top:10px;font-size:13px"></div><div style="display:flex;gap:8px;margin-top:12px"><button type="button" id="sg-save" class="btn btn-primary" style="flex:1">Salvar metas</button><button type="button" class="btn" style="flex:1" onclick="document.getElementById(\'seller-goals-ov\').remove()">Fechar</button></div>';
+  document.getElementById('sg-month').onchange = (e) => openSellerGoals(e.target.value);
+  document.getElementById('sg-save').onclick = async () => {
+    const msg = document.getElementById('sg-msg'); const goals = [];
+    for (const el of document.querySelectorAll('.sg-goal')) {
+      const t = String(el.value || '').trim().replace(/\./g, '').replace(',', '.');
+      if (t !== '' && !(Number(t) >= 0)) { msg.innerHTML = '<span style="color:#d70015">Confira o valor de ' + escapeHtml(el.closest('div').parentElement.querySelector('div div').textContent) + '.</span>'; return; }
+      goals.push({ sellerId: el.dataset.id, goalCents: t === '' ? null : Math.round(Number(t) * 100) });
+    }
+    msg.textContent = 'Salvando…';
+    const r = await api('/admin/schedule/goals', 'PUT', { month: document.getElementById('sg-month').value, goals });
+    msg.innerHTML = r.error ? '<span style="color:#d70015">' + escapeHtml(r.error) + '</span>' : '<span style="color:#0a843d;font-weight:700">Metas salvas. Já valem na próxima mensagem antes do expediente.</span>';
+  };
+}
+
+async function openPayContract(userId, name) {
+  let ov = document.getElementById('pay-contract-ov');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'pay-contract-ov'; document.body.appendChild(ov); }
+  ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.innerHTML = '<div style="background:#fff;border-radius:14px;padding:20px;width:100%;max-width:440px;color:#1d1d1f">Carregando…</div>';
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  const box = ov.firstChild;
+  const data = await api('/payroll/admin/profiles/' + encodeURIComponent(userId));
+  if (data.error) { box.innerHTML = '<div style="color:#d70015">' + escapeHtml(data.error) + '</div><button type="button" class="btn" style="margin-top:12px" onclick="document.getElementById(\'pay-contract-ov\').remove()">Fechar</button>'; return; }
+  const p = data.profile || {}; const u = data.user || {};
+  const cents = p.baseSalaryCents != null ? p.baseSalaryCents : (u.baseSalary != null ? Math.round(Number(u.baseSalary) * 100) : null);
+  const money = (c) => c == null ? '' : (c / 100).toFixed(2).replace('.', ',');
+  const adm = p.admissionDate || (u.hireDate ? String(u.hireDate).slice(0, 10) : '');
+  const inp = 'width:100%;height:40px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;box-sizing:border-box';
+  const lab = 'display:block;font-size:11px;font-weight:700;color:#555;margin-top:10px';
+  box.style.cssText = 'background:#fff;border-radius:14px;padding:20px;width:100%;max-width:440px;max-height:90vh;overflow:auto;color:#1d1d1f';
+  box.innerHTML =
+    '<div style="font-weight:800;font-size:16px">💵 Contrato e salário</div><div style="font-size:13px;color:#8e8e93;margin-top:2px">' + escapeHtml(name || '') + '</div>' +
+    '<label style="' + lab + '">Tipo de contrato<select id="pc-type" style="' + inp + '">' + PAY_CONTRACTS.map(([v, l]) => '<option value="' + v + '"' + ((p.contractType || 'MENSALISTA') === v ? ' selected' : '') + '>' + l + '</option>').join('') + '</select></label>' +
+    '<label style="' + lab + '">Data de admissão<input id="pc-adm" type="date" value="' + escapeHtml(adm) + '" style="' + inp + '"></label>' +
+    '<label style="' + lab + '">Salário mensal (R$)<input id="pc-sal" inputmode="decimal" placeholder="ex: 1790,00" value="' + money(cents) + '" style="' + inp + '"></label>' +
+    '<label style="' + lab + '">Valor da hora (R$) — só horista<input id="pc-hour" inputmode="decimal" value="' + money(p.hourlyRateCents) + '" style="' + inp + '"></label>' +
+    '<div style="display:flex;gap:10px"><label style="' + lab + ';flex:1">Horas por semana<input id="pc-wh" inputmode="numeric" value="' + (p.weeklyMinutes ? p.weeklyMinutes / 60 : 44) + '" style="' + inp + '"></label>' +
+    '<label style="' + lab + ';flex:1">Dias por semana<input id="pc-wd" inputmode="numeric" value="' + (p.workDaysPerWeek || 6) + '" style="' + inp + '"></label></div>' +
+    '<label style="' + lab + '">CPF ' + (p.cpfLast4 ? '(já cadastrado, final ' + escapeHtml(p.cpfLast4) + ' — deixe vazio para manter)' : '') + '<input id="pc-cpf" inputmode="numeric" placeholder="só números" style="' + inp + '"></label>' +
+    '<div style="display:flex;gap:10px"><label style="' + lab + ';flex:1">Dependentes (IR)<input id="pc-dep" inputmode="numeric" value="' + (p.irrfDependents || 0) + '" style="' + inp + '"></label>' +
+    '<label style="' + lab + ';flex:1">Filhos até 14 anos<input id="pc-kids" inputmode="numeric" value="' + (p.familyAllowanceChildren || 0) + '" style="' + inp + '"></label></div>' +
+    '<label style="display:flex;gap:8px;align-items:center;margin-top:12px;font-size:13px"><input id="pc-vt" type="checkbox"' + (p.vtOptIn ? ' checked' : '') + '> Usa vale-transporte (desconta até 6%)</label>' +
+    '<div id="pc-msg" style="margin-top:10px;font-size:13px"></div>' +
+    '<div style="display:flex;gap:8px;margin-top:14px"><button type="button" id="pc-save" class="btn btn-primary" style="flex:1">Salvar</button><button type="button" class="btn" style="flex:1" onclick="document.getElementById(\'pay-contract-ov\').remove()">Fechar</button></div>';
+  const num = (v) => { const t = String(v || '').trim().replace(/\./g, '').replace(',', '.'); return t === '' ? null : Number(t); };
+  document.getElementById('pc-save').onclick = async () => {
+    const msg = document.getElementById('pc-msg');
+    const sal = num(document.getElementById('pc-sal').value); const hr = num(document.getElementById('pc-hour').value);
+    const wh = num(document.getElementById('pc-wh').value); const wd = num(document.getElementById('pc-wd').value);
+    if ((sal != null && !(sal >= 0)) || (hr != null && !(hr >= 0)) || !(wh > 0) || !(wd > 0)) { msg.innerHTML = '<span style="color:#d70015">Confira os números.</span>'; return; }
+    const body = {
+      contractType: document.getElementById('pc-type').value,
+      admissionDate: document.getElementById('pc-adm').value || null,
+      baseSalaryCents: sal == null ? null : Math.round(sal * 100),
+      hourlyRateCents: hr == null ? null : Math.round(hr * 100),
+      weeklyMinutes: Math.round(wh * 60), workDaysPerWeek: Math.round(wd),
+      irrfDependents: Math.round(num(document.getElementById('pc-dep').value) || 0),
+      familyAllowanceChildren: Math.round(num(document.getElementById('pc-kids').value) || 0),
+      vtOptIn: document.getElementById('pc-vt').checked, active: true, reason: 'Cadastro do vendedor (admin)',
+    };
+    const cpf = document.getElementById('pc-cpf').value.replace(/\D/g, '');
+    if (cpf) body.cpf = cpf;
+    msg.textContent = 'Salvando…';
+    const r = await api('/payroll/admin/profiles/' + encodeURIComponent(userId), 'PUT', body);
+    msg.innerHTML = r.error ? '<span style="color:#d70015">' + escapeHtml(r.error) + '</span>' : '<span style="color:#0a843d;font-weight:700">Salvo. Já vale no contracheque.</span>';
+  };
 }
 
 async function assignSeller() {
@@ -15827,7 +16007,7 @@ async function loadAgenda(){
   const aEl=document.getElementById('ag-ac-date'); if(aEl && !aEl.value) aEl.value=agTodayYmd();
   const mEl=document.getElementById('ag-month'); if(mEl && !mEl.value) mEl.value=agTodayYmd().slice(0,7);
   const msDate=document.getElementById('ag-ms-date'); if(msDate && !msDate.value) msDate.value=agTodayYmd();
-  await Promise.all([agLoadMonth(), agLoadWeek(), agLoadShifts(), agLoadActivities()]);
+  await Promise.all([agLoadMonth(), agLoadWeek(), agLoadShifts(), agLoadActivities(), agLoadRequests(), agLoadDaily()]);
 }
 
 function agMonthValue(){ return (document.getElementById('ag-month')||{}).value||agTodayYmd().slice(0,7); }
@@ -15936,6 +16116,33 @@ async function agLoadShifts(){
     html+='</tbody></table></div>';
     box.innerHTML=html;
   }catch(e){ box.innerHTML='<div style="color:#d70015;padding:10px;">Erro: '+agEsc(e.message)+'</div>'; }
+}
+function agReqPeriod(r){ const f=v=>String(v||'').split('-').reverse().join('/'); return f(r.date)+(r.endDate?' a '+f(r.endDate):'')+(r.startTime?' · '+r.startTime+(r.endTime?'–'+r.endTime:''):''); }
+async function agLoadRequests(){
+  const box=document.getElementById('ag-req-list'); if(!box) return;
+  try{
+    const r=await fetch('/api/admin/schedule/requests?status=PENDENTE',{headers:agH()}); const j=await r.json(); if(!r.ok) throw new Error(j.error||'erro');
+    const rows=j.requests||[];
+    if(!rows.length){ box.innerHTML='<div style="color:#999;padding:10px;background:#fafafa;border:1px dashed #ddd;border-radius:10px;">Nenhum pedido pendente.</div>'; return; }
+    box.innerHTML=rows.map(q=>'<div style="border:1px solid #eee;border-radius:10px;padding:10px;margin-bottom:8px;"><div style="display:flex;justify-content:space-between;gap:8px;"><b>'+agEsc(q.sellerName)+'</b><span style="font-size:11px;color:#b45309;">'+agEsc(q.typeLabel)+'</span></div><div style="font-size:13px;margin-top:3px;">'+agEsc(q.title)+' — '+agEsc(agReqPeriod(q))+'</div>'+(q.note?'<div style="font-size:12px;color:#777;margin-top:3px;">'+agEsc(q.note)+'</div>':'')+'<div style="display:flex;gap:8px;margin-top:8px;"><button class="ag-actbtn" onclick="agDecide(\''+q.id+'\',\'approve\')" style="flex:1;height:38px;background:#0a7d3b;color:#fff;border:0;border-radius:8px;font-weight:800;cursor:pointer;">Aprovar</button><button class="ag-actbtn" onclick="agDecide(\''+q.id+'\',\'reject\')" style="flex:1;height:38px;background:#fff;color:#c0271f;border:1px solid #c0271f;border-radius:8px;font-weight:800;cursor:pointer;">Recusar</button></div></div>').join('');
+  }catch(e){ box.innerHTML='<div style="color:#d70015;">Erro: '+agEsc(e.message)+'</div>'; }
+}
+async function agDecide(id, decision){
+  let note=null; if(decision==='reject'){ note=prompt('Motivo (o vendedor vê):',''); if(note===null) return; }
+  try{ const r=await fetch('/api/admin/schedule/requests/'+encodeURIComponent(id)+'/'+decision,{method:'POST',headers:agH(),body:JSON.stringify({note})}); const j=await r.json(); if(!r.ok){ alert('Erro: '+(j.error||'')); } await Promise.all([agLoadRequests(),agLoadActivities(),agLoadWeek(),agLoadDaily()]); }catch(e){ alert('Erro: '+e.message); }
+}
+async function agLoadDaily(){
+  const pre=document.getElementById('ag-daily-preview'), last=document.getElementById('ag-daily-last'); if(!pre) return;
+  try{ const r=await fetch('/api/admin/schedule/daily-preview',{headers:agH()}); const j=await r.json(); if(!r.ok) throw new Error(j.error||'erro');
+    pre.textContent=j.hasContent?j.message:'Nada para hoje: nenhuma escala nem marcação. Nesse caso o grupo não recebe mensagem.';
+    const l=j.last; last.innerHTML=l?('Último envio: '+agEsc(String(l.day).split('-').reverse().join('/'))+' — '+(l.ok?'<span style="color:#0a7d3b;font-weight:700;">enviado</span>':'<span style="color:#c0271f;font-weight:700;">falhou'+(l.error?' ('+agEsc(l.error)+')':'')+'</span>')):'Ainda não enviou nenhuma vez.';
+  }catch(e){ pre.textContent='Erro: '+e.message; }
+}
+async function agDailySend(){
+  if(!confirm('Enviar a agenda de hoje agora para o grupo de WhatsApp?')) return;
+  const b=document.getElementById('ag-daily-send'); if(b){ b.disabled=true; b.textContent='Enviando…'; }
+  try{ const r=await fetch('/api/admin/schedule/daily-send',{method:'POST',headers:agH(),body:'{}'}); const j=await r.json(); alert(r.ok?'Enviado para o grupo.':('Não enviou: '+(j.error||''))); }catch(e){ alert('Erro: '+e.message); }
+  if(b){ b.disabled=false; b.textContent='Enviar agora para o grupo'; } agLoadDaily();
 }
 async function agAddShift(){
   const sellerId=(document.getElementById('ag-sh-seller')||{}).value, storeId=(document.getElementById('ag-sh-store')||{}).value, weekday=(document.getElementById('ag-sh-weekday')||{}).value, startTime=(document.getElementById('ag-sh-start')||{}).value, endTime=(document.getElementById('ag-sh-end')||{}).value;

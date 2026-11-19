@@ -12,13 +12,19 @@
   const requestedMode=new URLSearchParams(window.location?.search||'').get('mode');
   let action = ['inventory', 'replacement', 'transfer', 'receipt'].includes(requestedMode||settings.mode) ? requestedMode||settings.mode : 'inventory';
   let token = sessionStorage.getItem('tc_transfer_token') || localStorage.getItem('loja_token') || localStorage.getItem('tc_token') || localStorage.getItem('tc_admin_token') || '';
-  let actor = null, stores = [], allowed = [], shipments = [], generation = 0, shipmentRequest = 0, busy = false, storageFailed = false, preview = null, interaction = false;
+  let actor = null, stores = [], allowed = [], shipments = [], generation = 0, shipmentRequest = 0, busy = false, storageFailed = false, storageReason = '', preview = null, interaction = false;
   let expiredActor = null, authenticationRecoveryTimer = null, authenticationRecovery = null;
   const automaticAuthenticationAttempts = new Set();
   let currentDraft = null, stream = null, scanner = null, cameraTimer = null, cameraGeneration = 0, cameraAttempt = 0, cameraRead = null, cameraRetry = null, cameraPendingRead = null;
   const cameraOcrReads = new Map();
   const inflight = new Set(), drafts = new Map(), lookups = new Map();
   const syncJobs = new Map(), draftBases = new Map(), archivePrefix = 'tc_bipar_action_archive_v1:';
+  // Texto lido da etiqueta guardado em cada peça do lote. O texto inteiro continua na foto
+  // arquivada (IndexedDB); no lote basta o começo (onde estão referência e tamanho). Antes eram
+  // 12 mil caracteres por peça, em duas cópias, e isso enchia a memória do celular da loja.
+  const OCR_KEEP = 2500;
+  // Lotes que, com a memória do aparelho cheia, ficaram só na memória da página e vão direto pro servidor.
+  const memoryOnlyDrafts = new Set();
   let legacyRecoveryInventory = [];
   const recoveryConflicts = new Map();
   let historyMode = action === 'receipt' ? 'receipt' : 'transfer', historyPage = 1, historyRequest = 0, historyData = null, historyBusy = false, historyRefreshTimer = null;
@@ -161,22 +167,63 @@
     localStorage.removeItem(candidates[0].key);
     return true;
   }
+  function isQuotaError(error) { return error?.name === 'QuotaExceededError' || error?.name === 'NS_ERROR_DOM_QUOTA_REACHED' || error?.code === 22 || error?.code === 1014; }
+  // Celular compartilhado da loja (dono 17/11/2026: "Não foi possível guardar o lote"): os lotes
+  // FECHADOS de todos os vendedores ficavam no aparelho e só os do próprio operador eram apagados.
+  // Segunda faxina, só quando a memória enche: apaga cópias de lote fechado que o SERVIDOR já
+  // confirmou (de qualquer operador) e recibos antigos da fila de reenvio que não estão mais na fila.
+  // Lote aberto, não sincronizado ou em recuperação NUNCA é apagado.
+  function freeSyncedLocalSpace(protectedSessionIds = []) {
+    const protectedIds = new Set(protectedSessionIds.filter(Boolean)), remove = [];
+    const retryQueue = localStorage.getItem('tc_bipe_retry_queue') || '';
+    const cutoff = Date.now() - 2 * 86400000;
+    for (let index = 0; index < localStorage.length; index++) {
+      const key = localStorage.key(index);
+      if (!key) continue;
+      if (key.startsWith('tc_bipe_retry_ack_v1:')) {
+        const id = key.slice('tc_bipe_retry_ack_v1:'.length), when = Date.parse(localStorage.getItem(key) || '');
+        if (Number.isFinite(when) && when < cutoff && !localStorage.getItem('tc_bipe_retry_piece_v1:' + id) && !retryQueue.includes(id)) remove.push(key);
+        continue;
+      }
+      if (!key.startsWith('tc_bipar_action_draft_v1:') && !key.startsWith(archivePrefix)) continue;
+      const snapshot = read(key, null), revision = Number(snapshot?.revision) || 1;
+      if (!snapshot?.sessionId || protectedIds.has(snapshot.sessionId) || recoveryConflicts.has(snapshot.sessionId)) continue;
+      const closedAndSynced = ['archived', 'confirmed'].includes(snapshot.status) && Number(snapshot.syncedRevision || 0) >= revision;
+      if (closedAndSynced || supersededBySyncedArchive(key, snapshot)) remove.push(key);
+    }
+    remove.forEach(key => localStorage.removeItem(key));
+    return remove.length > 0;
+  }
+  function localStorageReport() {
+    let total = 0; const groups = {};
+    try {
+      for (let index = 0; index < localStorage.length; index++) {
+        const key = localStorage.key(index) || '', size = key.length + (localStorage.getItem(key) || '').length;
+        total += size; const group = key.split(':')[0]; groups[group] = (groups[group] || 0) + size;
+      }
+    } catch (_) { return ''; }
+    const top = Object.entries(groups).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([k, v]) => k + ' ' + Math.round(v / 1024) + ' KB').join(', ');
+    return Math.round(total / 1024) + ' KB usados' + (top ? ' (' + top + ')' : '');
+  }
   function setDraftSnapshot(key, value, protectedSessionIds = []) {
     for (;;) {
       try { localStorage.setItem(key, value); return true; }
       catch (error) {
-        const quotaExceeded = error?.name === 'QuotaExceededError' || error?.name === 'NS_ERROR_DOM_QUOTA_REACHED' || error?.code === 22 || error?.code === 1014;
-        if (!quotaExceeded || !pruneSyncedClosedDraftCopy(protectedSessionIds)) throw error;
+        if (!isQuotaError(error) || !(pruneSyncedClosedDraftCopy(protectedSessionIds) || freeSyncedLocalSpace(protectedSessionIds))) throw error;
       }
     }
   }
   function persist(draft = currentDraft) {
     if (!draft) return false;
-    if (recoveryConflicts.has(draft.sessionId)) { storageFailed = true; message('Este lote está sendo recuperado com segurança. Aguarde a conferência das cópias antes de continuar bipando.', true); return false; }
+    if (recoveryConflicts.has(draft.sessionId)) { storageFailed = true; storageReason = 'este lote tem cópias divergentes em recuperação'; message('Este lote está sendo recuperado com segurança. Aguarde a conferência das cópias antes de continuar bipando.', true); return false; }
     draft.status ||= 'open';
     try {
       const saved = read(draftStorageKey(draft), null), base = draftBases.get(draft.sessionId) || new Map();
-      if (saved?.sessionId && saved.sessionId !== draft.sessionId && saved.scans?.length) {
+      if (saved?.sessionId && saved.sessionId !== draft.sessionId && saved.scans?.length && recoveryConflicts.has(saved.sessionId)) {
+        // Lote travado (cópias divergentes): a cópia desta chave vai inteira para uma chave própria
+        // antes do lote novo ocupar o lugar. Se não couber, o lote novo não grava (nada se perde).
+        setDraftSnapshot(archivePrefix + saved.sessionId + ':preservado:' + Date.now(), JSON.stringify(saved), [saved.sessionId, draft.sessionId]);
+      } else if (saved?.sessionId && saved.sessionId !== draft.sessionId && saved.scans?.length) {
         const checkpoint = read(archivePrefix + saved.sessionId, null);
         if (!checkpoint || Number(checkpoint.revision || 0) < Number(saved.revision || 0)) {
           const savedRevision = Number(saved.revision) || 1;
@@ -210,9 +257,23 @@
         try { localStorage.setItem(checkpointKey, serialized); } catch (_) { /* active draft is already durable */ }
       }
       draftBases.set(draft.sessionId, new Map(draft.scans.map(item => [item.clientScanId, JSON.stringify(item)])));
-      storageFailed = false; queueSync(draft); return true;
+      storageFailed = false; if (memoryOnlyDrafts.delete(draft.sessionId)) message('Memória do aparelho liberada: o lote voltou a ser guardado no celular.', false); queueSync(draft); return true;
     }
-    catch (_) { storageFailed = true; message('Não foi possível guardar o lote neste aparelho. Libere espaço no navegador e tente salvar novamente.', true); return false; }
+    catch (error) {
+      // Memória cheia mesmo depois da faxina: NÃO para a bipagem. Com internet, a leitura segue
+      // na página e vai na hora pro servidor (que é a cópia oficial do lote). Só pausa se não
+      // houver como guardar em lugar nenhum (sem internet ou sem login).
+      if (isQuotaError(error) && navigator.onLine !== false && token && canSyncDraft(draft) && ['transfer', 'receipt'].includes(draft.context?.mode) && draft.status !== 'confirmed') {
+        memoryOnlyDrafts.add(draft.sessionId);
+        draftBases.set(draft.sessionId, new Map(draft.scans.map(item => [item.clientScanId, JSON.stringify(item)])));
+        storageFailed = false; storageReason = '';
+        message('Memória do celular cheia: os bipes estão indo direto para o sistema. Não feche esta página até aparecer "Bipes salvos no sistema".', true);
+        queueSync(draft, true); return true;
+      }
+      storageFailed = true;
+      storageReason = isQuotaError(error) ? 'memória do navegador cheia: ' + localStorageReport() : 'erro do navegador: ' + String(error?.name || '') + ' ' + String(error?.message || '').slice(0, 120);
+      message('Não foi possível guardar o lote neste aparelho (' + storageReason + ').', true); return false;
+    }
   }
   function syncPayload(draft) {
     return { sessionId: draft.sessionId, mode: draft.context.mode, fromStoreId: draft.context.fromStoreId || '', toStoreId: draft.context.toStoreId, transferId: draft.context.transferId || '', revision: draft.revision, status: draft.status === 'archived' ? 'archived' : 'open', scans: draft.scans.map(item => ({ clientScanId: item.clientScanId, barcode: item.barcode, createdAt: item.createdAt, removed: !!item.removed, product: item.product, confirmedSize: item.confirmedSize || '', photoRequired: item.photoRequired === true, requiresSizeConfirmation: item.requiresSizeConfirmation !== false, error: item.error || '' })) };
@@ -332,6 +393,9 @@
       recovered.get(draft.sessionId).push(draft);
     }
     for (const [sessionId, copies] of recovered) {
+      // Lote que está só na memória da página (aparelho cheio): a versão da página é a mais nova;
+      // a cópia antiga do celular não pode substituí-la.
+      if (memoryOnlyDrafts.has(sessionId)) continue;
       const first = copies[0];
       const header = draft => stable({ context: draft.context, status: draft.status || 'open' });
       const evidence = new Map(); let conflicting = copies.some(copy => header(copy) !== header(first));
@@ -358,6 +422,12 @@
       }
       target.revision = revision; queueSync(target, true);
     }
+    // Faxina preventiva: acima de ~3 MB usados, tira as cópias que o servidor já confirmou.
+    try {
+      let used = 0;
+      for (let index = 0; index < localStorage.length; index++) { const key = localStorage.key(index) || ''; used += key.length + (localStorage.getItem(key) || '').length; }
+      if (used > 1500000) freeSyncedLocalSpace([currentDraft?.sessionId]);
+    } catch (_) { /* faxina é opcional */ }
     syncStatus();
     void reconcileConflictsFromServer();
   }
@@ -470,13 +540,27 @@
       } catch (error) {
         if (token !== authToken || actor?.id !== owner || recoveryConflicts.get(sessionId) !== issue) continue;
         issue.reconciling = false; issue.error = error.message || 'Não foi possível conferir o lote no servidor.';
-        if (currentDraft?.sessionId === sessionId) { storageFailed = true; message('O lote continua preservado, mas há diferenças que o servidor não confirmou. Novas leituras ficam pausadas para evitar perda de bipes.', true); refresh(); }
+        if (currentDraft?.sessionId === sessionId) { storageFailed = true; storageReason = 'o servidor não confirmou diferenças deste lote'; message('O lote continua preservado, mas há diferenças que o servidor não confirmou. Novas leituras ficam pausadas para evitar perda de bipes.', true); refresh(); }
         syncStatus();
       }
     }
   }
+  // Dono 17/11/2026 ("isso não pode acontecer"): um lote com cópias divergentes ou que o servidor
+  // não confirmou travava a câmera para sempre — nem "começar outro lote" funcionava, porque precisava
+  // regravar o lote travado. Agora o lote travado fica guardado intacto para conferência e a bipagem
+  // continua num lote novo, sem perguntar.
+  function escapeBrokenLot(reason) {
+    const broken = currentDraft;
+    if (!broken || !actor || isInventory()) return false;
+    const key = contextKey(), next = newDraft(key);
+    currentDraft = next; drafts.set(key, next); storageFailed = false; storageReason = '';
+    invalidate(); renderReadings(); refresh();
+    message('O lote anterior ficou guardado para conferência (' + reason + '), com todas as leituras. Pode continuar bipando: este é um lote novo. Se a última peça não aparece na lista, bipe ela de novo.', true);
+    return true;
+  }
   function startNewLot(status = 'archived') {
     const previous = currentDraft, key = contextKey(), oldStatus = previous?.status;
+    if (previous?.scans.length && recoveryConflicts.has(previous.sessionId)) return escapeBrokenLot('cópias divergentes neste aparelho');
     if (previous?.scans.length) {
       previous.status = status;
       if (!persist(previous)) { previous.status = oldStatus; return false; }
@@ -718,7 +802,7 @@
       if (!current()) return false;
       return resolveRead(draft, item, ocrText);
     }
-    if (String(ocrText).trim()) item.ocrText = String(ocrText).trim().slice(0, 12000);
+    if (String(ocrText).trim()) item.ocrText = String(ocrText).trim().slice(0, OCR_KEEP);
     inflight.add(item.clientScanId); item.error = ''; invalidate(); refresh();
     const job = { gen, selected, barcode, authToken };
     job.promise = (async () => { const release = await lookupSlot(); try {
@@ -755,7 +839,11 @@
     return job.promise;
   }
   async function scan(barcode, ocrText = '', options = {}) {
-    if (storageFailed || (currentDraft && recoveryConflicts.has(currentDraft.sessionId))) { message('O lote ainda está sendo recuperado. Aguarde a conferência antes de continuar bipando.', true); return null; }
+    // Nunca fica preso: lote travado vira lote novo; falha anterior de gravação é tentada de novo
+    // (a faxina pode ter liberado espaço) em vez de recusar todo bipe até recarregar a página.
+    if (currentDraft && recoveryConflicts.has(currentDraft.sessionId)) escapeBrokenLot('cópias divergentes neste aparelho');
+    if (storageFailed) { if (currentDraft?.scans?.length) persist(currentDraft); else storageFailed = false; }
+    if (storageFailed) { message('Não foi possível guardar o lote neste aparelho (' + (storageReason || 'motivo desconhecido') + ').', true); return null; }
     if (isInventory() || !validContext() || busy || read(pendingKey, null)) { message('Escolha a ação, entre na sua conta e confira as lojas antes de bipar.', true); return null; }
     barcode = String(barcode || '').trim(); if (!barcodePolicy.isScanCode(barcode)) { message('Leia o código de barras numérico da etiqueta. A referência do modelo não substitui o código.', true); return null; }
     const draft = currentDraft;
@@ -763,7 +851,7 @@
     // Every intentional scan is one physical piece. The camera engine still
     // suppresses repeated frames; retryRead retains the existing scan identity.
     const duplicateConfirmed = true;
-    const item = { clientScanId: crypto.randomUUID(), barcode, confirmedSize: '', duplicateConfirmed, photoRequired: true, ocrText: String(ocrText || '').trim().slice(0, 12000), createdAt: new Date().toISOString() };
+    const item = { clientScanId: crypto.randomUUID(), barcode, confirmedSize: '', duplicateConfirmed, photoRequired: true, ocrText: String(ocrText || '').trim().slice(0, OCR_KEEP), createdAt: new Date().toISOString() };
     draft.scans.push(item); invalidate(); if (!persist(draft)) { renderReadings(); refresh(); return null; }
     renderReadings(); refresh();
     if (options.background === true) { void resolveRead(draft, item, ocrText); return item; }
@@ -1019,7 +1107,7 @@
         if (sameRead()) showCameraRead(item);
         else if (currentFrame()) { if (storageFailed) pauseCameraStorage(); else updateCameraSummary(); }
       } else {
-        item.ocrText = text;
+        item.ocrText = text.slice(0, OCR_KEEP);
         const br = text.match(/\bBR\s*0*(\d{2}(?:[.,]5)?)\b/i);
         if (br && normalizedSize(br[1]) === normalizedSize(item.product.size)) item.ocrSize = br[1];
         if (!persist(draft)) { pauseCameraStorage(); return; }
@@ -1029,9 +1117,13 @@
     }).catch(() => {});
   }
   function pauseCameraStorage() {
+    // Lote travado já foi trocado por um lote novo: só libera a câmera para reler a peça.
+    if (!storageFailed && currentDraft && !recoveryConflicts.has(currentDraft.sessionId)) {
+      cameraRead = null; $('etiq-confirm').style.display = 'none'; $('action-camera-size')?.remove(); $('action-camera-pending')?.remove(); scanner?.reset(); updateCameraSummary(); return;
+    }
     scanner?.stop(); cameraRead = { working: true, storageError: true };
     $('etiq-confirm').style.display = 'flex'; $('etiq-confirm-status').textContent = 'Não foi possível guardar o lote';
-    $('etiq-confirm-det').textContent = 'A leitura não foi salva. A câmera foi pausada para não perder peças. Feche a câmera e resolva o aviso do lote antes de continuar.';
+    $('etiq-confirm-det').textContent = 'A leitura não foi salva. A câmera foi pausada para não perder peças. Motivo: ' + (storageReason || 'desconhecido') + '. Toque em FECHAR e abra a câmera de novo.';
     $('etiq-confirm-btn').disabled = true; $('etiq-confirm-btn').textContent = 'LEITURA PAUSADA';
     $('action-camera-size')?.remove(); $('action-camera-pending')?.remove();
   }
@@ -1119,6 +1211,8 @@
     if (item.product && requiresSizeInput(item) && item.ocrSize) $('etiq-confirm-det').textContent += ' · OCR sugeriu BR ' + item.ocrSize + '; confira na caixa.';
   }
   async function openCamera(retryItem = null) {
+    // Lote travado (cópias divergentes / servidor não confirmou): fica guardado e a câmera abre num lote novo.
+    if (currentDraft && recoveryConflicts.has(currentDraft.sessionId) && !retryItem) escapeBrokenLot('cópias divergentes neste aparelho');
     if (currentDraft && recoveryConflicts.has(currentDraft.sessionId)) { message('O lote está sendo conferido no histórico sincronizado. Aguarde antes de continuar bipando.', true); return; }
     // Retry persistence on the next scan attempt. A transient full-storage
     // condition must not leave the scanner permanently disabled after the
@@ -1205,6 +1299,11 @@
   });
   document.addEventListener('pointerdown', event => { interaction = !!event.target.closest('#action-setup,#action-workspace,#action-camera,#action-history'); });
   document.addEventListener('focusin', event => { if (event.target !== document.body) interaction = !!event.target.closest('#action-setup,#action-workspace,#action-camera,#action-history'); });
+  // Com bipes só na memória da página ainda não confirmados pelo servidor, avisa antes de sair.
+  window.addEventListener('beforeunload', event => {
+    const unsynced = [...memoryOnlyDrafts].some(id => { const job = syncJobs.get(id); return job && Number(job.draft.syncedRevision || 0) < Number(job.draft.revision || 1); });
+    if (unsynced) { event.preventDefault(); event.returnValue = ''; }
+  });
   document.addEventListener('visibilitychange', () => { if (document.hidden) closeCamera(); else { if (!actor && expiredActor) void resumeAuthentication(); refreshLegacyReads(); recoverDrafts(); } });
   window.addEventListener('online', () => { if (!actor && expiredActor) void resumeAuthentication(); else recoverDrafts(); });
   window.addEventListener('online', schedulePhotos);

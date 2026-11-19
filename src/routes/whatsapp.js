@@ -33,6 +33,42 @@ function alreadyHandled(id) {
 function isOwnerPhone(phone) {
   return waFunctions.phoneVariants(phone).includes(String(CEO.whatsapp).replace(/\D/g, ''));
 }
+// ---- Agentes dos vendedores: interruptor próprio (Config 'wa_agentes_vendedores'; padrão LIGADO) ----
+const agentManager = require('../services/agentManager');
+const sellerAgentRoute = require('./sellerAgent');
+let _agSwitch = null, _agAt = 0;
+async function agentesOn() {
+  if (Date.now() - _agAt > 60000) {
+    try { const row = await prisma.config.findUnique({ where: { key: 'wa_agentes_vendedores' } }); _agSwitch = row ? row.value === 'on' : null; _agAt = Date.now(); } catch (_) {}
+  }
+  return _agSwitch === null ? true : _agSwitch;
+}
+async function setAgentesSwitch(on) {
+  const value = on ? 'on' : 'off';
+  await prisma.config.upsert({ where: { key: 'wa_agentes_vendedores' }, update: { value }, create: { id: 'wa_agentes_vendedores', key: 'wa_agentes_vendedores', value } });
+  _agSwitch = !!on; _agAt = Date.now();
+}
+// Só mídia que a pessoa mandou de propósito pede "manda por texto". Reação, figurinha, edição,
+// apagar mensagem, enquete etc. ficam em silêncio.
+function isMediaMessage(m) {
+  return !!(m && (m.audioMessage || m.pttMessage || m.imageMessage || m.videoMessage || m.documentMessage || m.documentWithCaptionMessage));
+}
+function parseAgentesCmd(text) {
+  const t = String(text || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[!.]+$/, '').trim();
+  if (/^agentes? ?(off|desligar|desliga)$/.test(t)) return 'off';
+  if (/^agentes? ?(on|ligar|liga)$/.test(t)) return 'on';
+  if (/^agentes? ?(status|\?)$|^perguntas$/.test(t)) return 'status';
+  return null;
+}
+const _sellerByPhone = new Map();
+async function findSellerByPhone(phone) {
+  const hit = _sellerByPhone.get(phone);
+  if (hit && Date.now() - hit.at < 5 * 60000) return hit.seller;
+  const variants = waFunctions.phoneVariants(phone);
+  const seller = variants.length ? await prisma.user.findFirst({ where: { role: 'seller', active: true, phone: { in: variants } }, select: { id: true, name: true, phone: true } }).catch(() => null) : null;
+  _sellerByPhone.set(phone, { seller, at: Date.now() });
+  return seller;
+}
 function parseRoboCmd(text) {
   const t = String(text || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[!.]+$/, '').trim();
   if (/^(ia|robo) ?(off|desligar|desliga|desligada)$|^(desligar|desliga) (a )?(ia|robo)$/.test(t)) return 'off';
@@ -135,6 +171,8 @@ router.post('/webhook', async (req, res) => {
           const text = msg.text?.body || msg.button?.text || msg.interactive?.button_reply?.title || '(mídia/outro tipo)';
           console.log(`[whatsapp/webhook] mensagem recebida | from=${from} (${profileName}) | type=${msg.type} | text="${text.slice(0, 120)}"`);
 
+          if (msg.text && msg.text.body) require('../ai/rede/ganchos').whatsappMensagem({ empresa: 'meta-cloud', telefone: from, texto: msg.text.body });
+
           // Auto-resposta inicial
           try {
             const reply = `Olá ${profileName}! 👋\n\nRecebemos sua mensagem na Sports & Tennis. Em instantes um atendente vai te responder.\n\nEnquanto isso, dá uma olhada na nossa loja: https://www.sportsetennis.com.br`;
@@ -161,6 +199,41 @@ router.post('/webhook', async (req, res) => {
 // caem aqui e sao respondidas pelo atendente de IA (automatico).
 // Interruptor: env AI_ATTENDANT_ENABLED='false' desliga a IA.
 // =====================================================================
+// Auditoria 18/11/2026: o webhook é público. Antes de qualquer poder (comando do dono, agente do
+// vendedor), confirma que a mensagem é de verdade: apikey da Evolution no corpo OU a própria
+// Evolution confirma que a mensagem existe (findMessages). Forjada = ignorada.
+const webhookAuthStats = { apikey: 0, evolution: 0, rejeitada: 0, ultimaRejeicao: null };
+function safeEq(a, b) {
+  const x = Buffer.from(String(a)); const y = Buffer.from(String(b));
+  return x.length === y.length && require('crypto').timingSafeEqual(x, y);
+}
+async function webhookGenuine(body, instance, data) {
+  const k = String(body.apikey || '');
+  const keys = [process.env.EVOLUTION_API_KEY, ...String(process.env.EVOLUTION_WEBHOOK_KEYS || '').split(',')].map((s) => String(s || '').trim()).filter(Boolean);
+  if (k && keys.some((x) => safeEq(x, k))) { webhookAuthStats.apikey++; return true; }
+  const key = (data && data.key) || {};
+  const base = process.env.EVOLUTION_API_URL; const apikey = process.env.EVOLUTION_API_KEY;
+  if (key.id && instance && base && apikey) {
+    try {
+      const r = await fetch(`${base}/chat/findMessages/${encodeURIComponent(instance)}`, {
+        method: 'POST', headers: { apikey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ where: { key: { id: key.id } } }), signal: AbortSignal.timeout(8000),
+      });
+      if (r.ok) {
+        const j = await r.json().catch(() => null);
+        const recs = Array.isArray(j) ? j : (j && j.messages && (j.messages.records || j.messages)) || (j && j.records) || [];
+        const hit = (Array.isArray(recs) ? recs : []).find((x) => x && x.key && x.key.id === key.id);
+        if (hit && (!hit.key.remoteJid || !key.remoteJid || hit.key.remoteJid === key.remoteJid || hit.key.remoteJidAlt === key.remoteJid)) { webhookAuthStats.evolution++; return true; }
+      }
+    } catch (_) {}
+  }
+  webhookAuthStats.rejeitada++; webhookAuthStats.ultimaRejeicao = new Date().toISOString();
+  console.warn('[whatsapp/evolution] mensagem NÃO confirmada (possível forjada) — sem comando/agente', instance, key.id || '?');
+  return false;
+}
+router.webhookAuthStats = webhookAuthStats;
+router.webhookGenuine = webhookGenuine;
+
 router.post('/evolution', async (req, res) => {
   res.json({ received: true }); // responde rapido (Evolution nao espera)
 
@@ -188,6 +261,7 @@ router.post('/evolution', async (req, res) => {
     // MONITOR: grava toda mensagem (todas as instancias) pro dono acompanhar no admin.
     // Fire-and-forget + try/catch interno: NUNCA atrapalha o atendente de IA.
     captureEvolutionMessages(body).catch(() => {});
+    require('../ai/rede/ganchos').whatsappEvolution(instance, body);
 
     // NÚMEROS DAS LOJAS S&T (Bessa, Tambiá, Rainha, Manaíra...): a equipe atende pelo
     // celular. O sistema só cadastra quem chega no CRM da S&T e pergunta o nome.
@@ -265,7 +339,11 @@ router.post('/evolution', async (req, res) => {
     const crmReg = !isGroup ? await crm.registerFromEvolution(instance, body).catch(() => null) : null;
 
     // DONO: "IA OFF" / "IA ON" / "IA STATUS" — funciona com o robô ligado ou desligado.
+    // Só confere na Evolution quando a mensagem pediria um poder (dono ou vendedor) — cliente comum segue igual.
+    let genuine = null;
+    const isGenuine = async () => (genuine == null ? (genuine = await webhookGenuine(body, instance, data)) : genuine);
     const roboCmd = !isGroup && text && isOwnerPhone(phone) ? parseRoboCmd(text) : null;
+    if (roboCmd && !(await isGenuine())) return;
     if (roboCmd) {
       if (roboCmd !== 'status') await setRoboSwitch(roboCmd === 'on');
       const on = await isMainRoboOn();
@@ -275,6 +353,77 @@ router.post('/evolution', async (req, res) => {
         : '⏸️ *IA DESLIGADA* no WhatsApp da Sports & Tennis.\nNenhuma resposta automática: a equipe atende na mão.\n\nPra ligar de novo: *IA ON*').catch(() => {});
       return;
     }
+    // ===== AGENTES DOS VENDEDORES (dono 17/11/2026) — separados da IA de cliente =====
+    // Dono: "R12 resposta" responde a pergunta #12 que o agente gerente encaminhou; "AGENTES OFF/ON" liga/desliga.
+    if (!isGroup && text && isOwnerPhone(phone) && (agentManager.parseOwnerAnswer(text) || parseAgentesCmd(text)) && !(await isGenuine())) return;
+    if (!isGroup && text && isOwnerPhone(phone)) {
+      const ans = agentManager.parseOwnerAnswer(text);
+      if (ans) {
+        const r = await agentManager.ownerAnswer(prisma, ans.id, ans.answer).catch((e) => ({ error: e.message }));
+        await sendToClient(r.error ? '⚠️ ' + r.error : '✅ Resposta #' + ans.id + ' enviada pro ' + r.seller + (r.delivered ? '' : ' (não consegui entregar no WhatsApp dele)') + '. Ficou guardada: todos os agentes passam a saber.' + (r.alreadyAnswered ? ' (essa pergunta já tinha resposta; atualizei.)' : '')).catch(() => {});
+        return;
+      }
+      const ag = parseAgentesCmd(text);
+      if (ag) {
+        if (ag !== 'status') await setAgentesSwitch(ag === 'on');
+        const on = await agentesOn();
+        const pend = await agentManager.pending(prisma).catch(() => []);
+        await sendToClient((on ? '🤖 *AGENTES DOS VENDEDORES LIGADOS*' : '⏸️ *AGENTES DOS VENDEDORES DESLIGADOS*') + '\nPerguntas esperando sua resposta: ' + pend.length + (pend.length ? '\n' + pend.slice(0, 10).map((p) => '#' + p.id + ' ' + String(p.sellerName || '').split(' ')[0] + ': ' + String(p.question).slice(0, 80)).join('\n') : '')).catch(() => {});
+        return;
+      }
+    }
+    // Vendedor falando com o PRÓPRIO agente (reconhecido pelo telefone do cadastro).
+    if (!isGroup && !isOwnerPhone(phone)) {
+      const seller = await findSellerByPhone(phone);
+      if (seller && await agentesOn() && await isGenuine()) {
+        // Reação (❤️), figurinha, edição, mensagem apagada etc. NÃO pedem resposta (dono 18/11/2026:
+        // o vendedor reagiu ❤️ e recebeu "me manda por texto"). Só áudio/foto/vídeo/documento.
+        const first = String(seller.name || '').split(' ')[0];
+        let input = text, heard = '';
+        if (!input) {
+          // Áudio → transcreve; foto → identifica o produto (dono 18/11/2026: "Faça tudo do 1 ao 8").
+          const media = require('../services/waMediaReader');
+          try {
+            if (m.audioMessage || m.pttMessage) {
+              const { base64, mimetype } = await media.downloadMedia(instance, data);
+              // Sem API (dono 18/11/2026): Whisper rodando no próprio servidor. API só se o local falhar.
+              if (base64) await sendToClient('🎧 Ouvindo seu áudio, ' + first + '…').catch(() => {});
+              let r = base64 ? await require('../services/localTranscriber').transcribeBase64(base64) : { ok: false };
+              if (!r.ok && base64 && r.reason !== 'curto' && r.reason !== 'vazio') r = await media.transcribeAudio(base64, mimetype).catch((e) => ({ ok: false, reason: e.message }));
+              if (!r.ok || !r.text) { console.warn('[agente-vendedor] áudio', r.reason); await sendToClient('Não consegui entender o áudio, ' + first + '. Pode mandar de novo, mais perto do celular, ou escrever? 🙏').catch(() => {}); return; }
+              input = '[Audio do vendedor] ' + r.text; heard = '🎙️ _Entendi: "' + r.text.slice(0, 200) + '"_\n\n';
+            } else if (m.imageMessage) {
+              const cap = String(m.imageMessage.caption || '').trim();
+              const { base64, mimetype } = await media.downloadMedia(instance, data);
+              const desc = base64 ? await require('../services/sellerPowers').identifyProductPhoto(base64, mimetype, cap).catch(() => null) : null;
+              if (!desc) { await sendToClient('Não consegui ler a foto, ' + first + '. Tenta de novo mostrando a etiqueta ou o código de barras. 🙏').catch(() => {}); return; }
+              input = '[Foto enviada pelo vendedor] Identificacao: ' + desc + '. Pergunta: ' + (cap || 'tem em estoque? em quais lojas e tamanhos?');
+            } else if (isMediaMessage(m)) {
+              await sendToClient('Me manda por *texto*, áudio ou foto, ' + first + ', que eu te respondo. 🧡').catch(() => {}); return;
+            } else return; // reação, figurinha, edição: silêncio
+          } catch (e) {
+            console.error('[agente-vendedor] mídia', e.message);
+            await sendToClient('Não consegui abrir essa mídia agora, ' + first + '. Me manda por texto? 🙏').catch(() => {}); return;
+          }
+        }
+        try {
+          const out = await sellerAgentRoute.runSellerAgentChat({ userId: seller.id, userRole: 'seller', query: {}, body: {}, headers: {} }, input.slice(0, 1500), { channel: 'whatsapp' });
+          await sendToClient((heard + String(out.reply || '')).slice(0, 3500) || 'Não consegui responder agora. Tenta de novo em instantes.').catch(() => {});
+          // Fotos oficiais pedidas pelo vendedor (foto_do_produto) vão logo depois da resposta.
+          const { sendEvolutionImage } = require('../whatsapp');
+          for (const f of (replyJid ? [] : (out.media || []).slice(0, 3))) {
+            const img = String(f.image || '');
+            const payload = img.startsWith('data:') ? img.replace(/^data:[^;]+;base64,/, '') : img;
+            await sendEvolutionImage(phone, payload, f.caption || '').catch((e) => console.error('[agente-vendedor] foto', e.message));
+          }
+        } catch (e) {
+          console.error('[agente-vendedor]', e.message);
+          await sendToClient('Tive um problema pra responder agora. Tenta de novo em instantes. 🙏').catch(() => {});
+        }
+        return;
+      }
+    }
+
     const roboOn = await isMainRoboOn();
 
     if (!isGroup && roboOn) {
@@ -305,7 +454,7 @@ router.post('/evolution', async (req, res) => {
 
     if (!text) {
       // Em grupo, ignora midia em silencio (nao poluir). No privado, pede texto.
-      if (!isGroup && roboOn) {
+      if (!isGroup && roboOn && isMediaMessage(m)) {
         await sendToClient('Oi! No momento consigo te atender por *texto*. Pode escrever o que voce procura? 🙂').catch(() => {});
       }
       return;

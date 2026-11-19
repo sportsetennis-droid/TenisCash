@@ -993,10 +993,9 @@ async function persistSellerAgentTurn(req, text, reply, metadata = {}) {
   }
 }
 
+// Anthropic com reserva automática na OpenAI (dono 18/11/2026): o agente não para se a chave cair.
 function anthropicClient() {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) return null;
-  return new Anthropic({ apiKey: key });
+  return require('../services/aiResilientClient').resilientClient();
 }
 
 function buildCostBRL(usage) {
@@ -2254,6 +2253,51 @@ function offlineCoachReply(message, snapshot) {
   return `${snapshot.plan.firstAction} Produto foco: ${snapshot.plan.focus}. Depois de cada atendimento, registre resumo e proxima acao para eu aprender com seu ritmo.`;
 }
 
+// ---- Agente do vendedor no WhatsApp (dono 17/11/2026): resultado, escala e gerente ----
+const sellerPulse = require('../services/sellerPulse');
+const agendaDaily = require('../services/agendaDaily');
+const agentManager = require('../services/agentManager');
+
+async function myResultsForAgent(snapshot) {
+  const p = await sellerPulse.buildPulse(prisma, snapshot.seller.id);
+  const todayStart = new Date(p.today + 'T03:00:00.000Z');
+  const todaySales = await prisma.sale.aggregate({ where: { sellerId: snapshot.seller.id, createdAt: { gte: todayStart }, status: { not: 'canceled' } }, _sum: { totalAmount: true }, _count: { _all: true } });
+  return {
+    hoje: { data: p.today, vendas: todaySales._count._all, valor: Number(todaySales._sum.totalAmount || 0) },
+    ontem: { data: p.yesterday, vendas: p.yesterdayResult.count, valor: p.yesterdayResult.revenue, ticketMedio: p.yesterdayResult.ticket, pecas: p.yesterdayResult.pieces },
+    mesAteOntem: { total: p.month.total, posicaoNaRede: p.month.position, vendedoresComVenda: p.month.sellers, pertoDeSubirDePosicao: p.month.gapToNext != null && p.month.gapToNext < 1000, faltaParaComissao2pct: p.month.tierMissing, faixaComissao: 'comissao do mes inteiro: 1% ate R$ 20 mil; acima disso 2% sobre o mes inteiro', diasRestantesNoMes: p.month.daysLeft },
+    observacao: 'Somente dados do proprio vendedor. Nunca informe valores de outros vendedores.',
+  };
+}
+
+async function myScheduleForAgent(snapshot) {
+  const sellerId = snapshot.seller.id;
+  const today = agendaDaily.todayYmd();
+  const last = new Date(Date.parse(today + 'T12:00:00Z') + 13 * 86400000).toISOString().slice(0, 10);
+  const from = new Date(today + 'T00:00:00Z'), to = new Date(last + 'T23:59:59Z');
+  const ymdOf = (d) => new Date(d).toISOString().slice(0, 10);
+  const [shifts, acts, requests] = await Promise.all([
+    sellerPulse.shiftsBetween(prisma, sellerId, today, last),
+    prisma.agendaActivity.findMany({ where: { sellerId, date: { lte: to }, OR: [{ endDate: { gte: from } }, { endDate: null, date: { gte: from } }] }, select: { type: true, title: true, date: true, endDate: true } }),
+    agendaDaily.listRequests(prisma, { sellerId, fromYmd: today }),
+  ]);
+  const out = shifts.map((s) => ({
+    data: s.ymd,
+    trabalho: s.start ? { loja: s.store || null, entrada: s.start, saida: s.end, intervalo: s.breakStart ? s.breakStart + '-' + s.breakEnd : null } : null,
+    folga: s.off || null,
+    compromissos: acts.filter((a) => a.type !== 'folga' && a.type !== 'ferias' && s.ymd >= ymdOf(a.date) && s.ymd <= ymdOf(a.endDate || a.date)).map((a) => a.title),
+  }));
+  return { fonte: 'escala publicada do mes; senao a informada pelo vendedor no link; senao a fixa', proximos14dias: out, pedidosDeFolga: requests.map((r) => ({ tipo: r.type, data: r.date, ate: r.endDate, status: r.status })), comoPedirFolga: 'App TenisCash > Escala e folgas > + MARCAR (o dono aprova).', comoInformarEscala: 'Link pessoal recebido no WhatsApp ou app > Escala e folgas > Preencher minha escala.' };
+}
+
+async function askManagerForAgent(input, snapshot) {
+  const seller = { id: snapshot.seller.id, name: snapshot.seller.name, store: snapshot.seller.store || null };
+  const r = await agentManager.escalate(prisma, { seller, question: input && input.question, context: input && input.what_i_know, client: anthropicClient(), model: process.env.SELLER_AGENT_MODEL || process.env.AI_MODEL || 'claude-haiku-4-5-20251001' });
+  if (r.answered) return { respostaDoGerente: r.answer, instrucao: 'Repasse essa resposta ao vendedor dizendo que e orientacao do Douglas.' };
+  if (r.escalated) return { encaminhada: true, numero: r.id, instrucao: 'Diga ao vendedor que a pergunta #' + r.id + ' foi encaminhada ao Douglas e que a resposta chega aqui pelo WhatsApp. Nao invente resposta.' };
+  return r;
+}
+
 const TOOLS = [
   {
     name: 'search_products',
@@ -2343,9 +2387,80 @@ const TOOLS = [
       required: ['detail'],
     },
   },
+  {
+    name: 'get_my_results',
+    description: 'Resultado REAL do proprio vendedor: vendas de hoje ate agora, de ontem, total do mes, posicao no ranking da rede, quanto falta para passar o da frente e para a comissao subir de 1% para 2% (R$ 20 mil no mes). Use para qualquer pergunta sobre vendas, meta, comissao ou ranking dele.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'get_my_schedule',
+    description: 'Escala do proprio vendedor nos proximos 14 dias (loja e horario), folgas/ferias aprovadas e pedidos de folga pendentes. Use para perguntas de escala, folga, horario, em que loja trabalha.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'ficha_do_cliente',
+    description: 'Ficha do CLIENTE pelo telefone: nome, saldo de TenisCash, total comprado, ultimas compras (data, loja, itens e tamanhos). Use quando o vendedor perguntar sobre um cliente ("ja comprou?", "o que ele levou?", "quanto tem de TenisCash?"). Sugira o que oferecer com base no historico. Nunca repasse dado do cliente a terceiros.',
+    input_schema: { type: 'object', properties: { telefone: { type: 'string', description: 'Telefone do cliente com DDD.' } }, required: ['telefone'] },
+  },
+  {
+    name: 'tenis_cash_do_cliente',
+    description: 'Saldo de TenisCash do cliente + mensagem pronta (rascunho) para o VENDEDOR enviar ao cliente explicando como usar. Nao gasta saldo: o uso e no caixa (cliente informa o telefone) ou cupom no app.',
+    input_schema: { type: 'object', properties: { telefone: { type: 'string' } }, required: ['telefone'] },
+  },
+  {
+    name: 'foto_do_produto',
+    description: 'Manda pro vendedor, no WhatsApp, a FOTO OFICIAL do produto (ate 3) pra ele repassar ao cliente. Use quando pedirem foto/imagem de um produto.',
+    input_schema: { type: 'object', properties: { produto: { type: 'string', description: 'Modelo, marca, referencia ou codigo de barras.' }, cor: { type: 'string' } }, required: ['produto'] },
+  },
+  {
+    name: 'pedir_transferencia',
+    description: 'Registra um PEDIDO de transferencia de produto de outra loja para a loja do vendedor e avisa quem esta trabalhando na loja de origem. O estoque NAO muda agora (so quando a origem bipar o envio). Antes de chamar, confira com search_store_stock se a loja de origem tem o tamanho e CONFIRME com o vendedor; chame com confirmar=true so depois do "sim" dele.',
+    input_schema: { type: 'object', properties: { produto: { type: 'string' }, tamanho: { type: 'string' }, quantidade: { type: 'number' }, de_loja: { type: 'string', description: 'Codigo (LOJA06) ou nome (Tambia) da loja de origem.' }, observacao: { type: 'string' }, urgente: { type: 'boolean' }, confirmar: { type: 'boolean' } }, required: ['produto', 'de_loja', 'confirmar'] },
+  },
+  {
+    name: 'venda_perdida',
+    description: 'Registra uma VENDA PERDIDA: o que o cliente queria e nao tinha (produto, tamanho, motivo: sem_estoque | sem_tamanho | sem_cor | preco | outro). Isso vira sinal para compra. Use sempre que o vendedor contar que perdeu uma venda.',
+    input_schema: { type: 'object', properties: { produto: { type: 'string' }, tamanho: { type: 'string' }, motivo: { type: 'string' }, observacao: { type: 'string' } }, required: ['produto'] },
+  },
+  {
+    name: 'placar_da_loja',
+    description: 'Placar da LOJA do vendedor hoje: vendas e valor da loja, meta da loja hoje (R$ 1.000 por pessoa com ponto), quanto falta, e o resultado do proprio vendedor hoje. Nunca informe valores de colegas.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'ask_manager',
+    description: 'Encaminha a pergunta ao GERENTE dos agentes (e, se ele nao souber, ao dono Douglas). Use SEMPRE que nao houver dado real nas tools/contexto para responder, ou quando for decisao da empresa: desconto fora da regra, excecao, troca/devolucao especial, regra de RH/salario/comissao nao coberta, politica nova. Nunca invente nesses casos.',
+    input_schema: { type: 'object', properties: { question: { type: 'string', description: 'A pergunta do vendedor, clara e completa.' }, what_i_know: { type: 'string', description: 'O que voce ja sabe/encontrou que ajuda o gerente (opcional).' } }, required: ['question'] },
+  },
 ];
 
 async function execTool(name, input, snapshot) {
+  const powers = require('../services/sellerPowers');
+  const sellerOf = () => ({ id: snapshot.seller.id, name: snapshot.seller.name, storeId: snapshot.seller.storeId || (snapshot.seller.store && snapshot.seller.store.id) || null });
+  if (name === 'ficha_do_cliente') return powers.clientFile(prisma, input && input.telefone, { sellerId: snapshot.seller.id });
+  if (name === 'tenis_cash_do_cliente') {
+    const f = await powers.clientFile(prisma, input && input.telefone, { sellerId: snapshot.seller.id });
+    if (!f.encontrado) return f;
+    return { nome: f.nome, saldoTenisCash: f.saldoTenisCash, comoUsar: f.comoUsarTenisCash, mensagemProntaParaOVendedorEnviar: powers.tenisCashDraft(f.nome, f.saldoTenisCash) || 'Cliente sem saldo de TenisCash no momento.' };
+  }
+  if (name === 'foto_do_produto') {
+    const r = await powers.productPhotos(prisma, input && input.produto, input && input.cor);
+    if (r.encontrado && r.escolhido) {
+      (snapshot.outbox ||= []).push(...r.escolhido.fotos.slice(0, 3).map((f, i) => ({ image: f, caption: i === 0 ? [r.escolhido.nome, r.escolhido.cor].filter(Boolean).join(' · ') : '' })));
+      return { enviadas: Math.min(3, r.escolhido.fotos.length), produto: r.escolhido.nome, cor: r.escolhido.cor, outrasOpcoes: r.opcoes.slice(1), instrucao: snapshot.channel === 'whatsapp' ? 'As fotos vao logo depois da sua resposta.' : 'As fotos estao disponiveis no WhatsApp.' };
+    }
+    return r;
+  }
+  if (name === 'pedir_transferencia') {
+    if (!input || input.confirmar !== true) return { precisaConfirmar: true, instrucao: 'Confirme com o vendedor produto, tamanho, quantidade e loja de origem antes de registrar.' };
+    const wa = require('../whatsapp');
+    return powers.requestTransfer(prisma, sellerOf(), input, { send: (phone, msg) => wa.sendCustomMessage(phone, msg) });
+  }
+  if (name === 'venda_perdida') return powers.lostSale(prisma, sellerOf(), input || {});
+  if (name === 'placar_da_loja') return powers.storeScoreboard(prisma, sellerOf());
+  if (name === 'get_my_results') return myResultsForAgent(snapshot);
+  if (name === 'get_my_schedule') return myScheduleForAgent(snapshot);
+  if (name === 'ask_manager') return askManagerForAgent(input, snapshot);
   if (name === 'search_products') return searchProductsForAI(input?.query);
   if (name === 'list_catalog') return listCatalogSummary();
   if (name === 'search_store_stock') return searchStoreStockForAgent(input, snapshot);
@@ -2376,6 +2491,15 @@ Regras:
 - Nao afirme que enviou WhatsApp, nao aprove desconto e nao prometa condicao comercial sem confirmacao da loja.
 - Se o vendedor pedir produto sem falar de estoque, use recommend_products antes de recomendar; use search_products apenas para busca simples/listagem.
 - Diga no maximo 180 palavras. Nada de texto motivacional generico.
+- Para vendas, meta, comissao ou ranking DO VENDEDOR use get_my_results. Para escala, folga e horario use get_my_schedule. So mostre dados do proprio vendedor; nunca de colegas.
+- Cliente: use ficha_do_cliente (historico + TenisCash) e sugira o proximo produto pelo que ele ja levou. Foto pedida: foto_do_produto. Venda perdida: venda_perdida. "Como ta a loja?": placar_da_loja. Transferencia: confira o estoque da origem, confirme com o vendedor e so entao pedir_transferencia com confirmar=true.
+- Se a mensagem trouxer "[Foto enviada pelo vendedor]", use os codigos/modelo identificados para consultar search_store_stock (codigo de barras primeiro) e diga em que lojas e tamanhos tem. Se a identificacao for incerta, diga o que conseguiu ler e peca a etiqueta/codigo.
+- Se a mensagem vier de "[Audio do vendedor]", responda ao conteudo normalmente.
+- Se nao houver dado real para responder, ou se for decisao da empresa (desconto fora da regra, excecao, troca especial, RH, politica nova), use ask_manager. Nunca invente. As respostas oficiais do dono abaixo valem como regra da empresa.
+${snapshot.channel === 'whatsapp' ? '- Canal: WhatsApp. Sem titulos markdown nem tabelas; use *negrito* do WhatsApp e listas curtas. Nao cite botoes do app, exceto para pedir folga (Escala e folgas > + MARCAR).' : ''}
+
+Respostas oficiais do dono (perguntas ja respondidas por ele):
+${snapshot.ownerAnswersPrompt || '(nenhuma)'}
 
 Memoria persistente carregada:
 ${snapshot.companyMemoryPrompt || '(sem memoria carregada)'}
@@ -2610,219 +2734,229 @@ router.post('/tasks/apply', requireSeller, async (req, res) => {
   }
 });
 
+// Conversa com a IA ST Vendedor. Usada pelo app (POST /chat) e pelo WhatsApp (agente de cada vendedor).
+async function runSellerAgentChat(req, text, { channel = 'app' } = {}) {
+
+  const snapshot = await loadSellerSnapshot(req);
+  snapshot.channel = channel;
+  snapshot.outbox = [];
+  snapshot.ownerAnswersPrompt = await agentManager.knowledgePrompt(prisma);
+  const whatsappDraft = channel === 'whatsapp' ? null : sellerAssistant.parseWhatsappDraft(text);
+  if (whatsappDraft) {
+    const reply = 'Preparei o telefone e a mensagem no formulario de WhatsApp. Confira os dados, confirme que a pessoa autorizou o contato ou ja esta em atendimento e toque em Abrir WhatsApp. O envio so acontece quando voce confirmar no WhatsApp.';
+    const conversationId = await persistSellerAgentTurn(req, text, reply, {
+      intent: 'whatsapp_draft',
+      phone: whatsappDraft.phone,
+    });
+    return ({
+      conversationId,
+      reply,
+      whatsappDraft,
+      suggestions: ['Quem eu chamo primeiro?', 'Ver produtos de hoje', 'Montar uma abordagem'],
+    });
+  }
+  if (isInternalMessageIntent(text)) {
+    const messageResult = await handleInternalMessageIntent(req, text);
+    const conversationId = await persistSellerAgentTurn(req, text, messageResult.reply, { intent: 'internal_message' });
+    return ({
+      conversationId,
+      reply: messageResult.reply,
+      suggestions: messageResult.suggestions,
+      message: messageResult.message || null,
+    });
+  }
+
+  // No WhatsApp o modelo decide com as ferramentas (os atalhos por palavra-chave atropelavam foto, cliente, transferência…).
+  if (channel !== 'whatsapp' && isStockIntent(text)) {
+    const stockInput = await parseStockInputFromText(text);
+    if (!stockInput.query) {
+      const reply = isStockSizeDisplayComplaint(text) ? stockSizeDisplayHelpReply() : stockNeedsProductReply();
+      const conversationId = await persistSellerAgentTurn(req, text, reply, { intent: 'stock_help' });
+      return ({
+        conversationId,
+        reply,
+        suggestions: ['Consultar Nimbus 27 tamanho 41', 'Consultar bolsa yoga tote', 'Buscar em uma loja especifica'],
+        stock: null,
+      });
+    }
+    const stockResult = await searchStoreStockForAgent(stockInput, snapshot);
+    const reply = formatStockReply(stockResult);
+    const conversationId = await persistSellerAgentTurn(req, text, reply, { intent: 'stock_lookup', stock: stockResult });
+    return ({
+      conversationId,
+      reply,
+      suggestions: ['Ver outro tamanho', 'Buscar em uma loja especifica', 'Montar abordagem com esse produto'],
+      stock: stockResult,
+    });
+  }
+
+  if (channel !== 'whatsapp' && isWebResearchIntent(text)) {
+    const researchInput = {
+      query: cleanProductNeed(text) || text,
+      webQuery: text,
+      force: /\b(novo|nova|atualiza|atualizar|refaz|refaca|refaça|de novo)\b/i.test(text),
+    };
+    const researchResult = await researchProductWebForAgent(researchInput, snapshot);
+    const reply = formatResearchReply(researchResult);
+    const conversationId = await persistSellerAgentTurn(req, text, reply, { intent: 'product_research', productId: researchResult.product?.id || null });
+    return ({
+      conversationId,
+      reply,
+      suggestions: ['Indique esse produto para cliente', 'Ver estoque desse produto', 'Pesquisar outro produto na internet'],
+      research: researchResult,
+    });
+  }
+
+  if (channel !== 'whatsapp' && isProductRecommendationIntent(text)) {
+    const recommendation = await recommendProductsForAgent({ need: text, limit: 5 }, snapshot);
+    const reply = formatRecommendationReply(recommendation);
+    const conversationId = await persistSellerAgentTurn(req, text, reply, { intent: 'product_recommendation', productIds: recommendation.products?.map((p) => p.id) || [] });
+    return ({
+      conversationId,
+      reply,
+      suggestions: ['Pesquisar esse produto na internet', 'Ver estoque do primeiro produto', 'Montar abordagem para cliente'],
+      recommendation,
+    });
+  }
+
+  if (channel !== 'whatsapp' && isLearningIntent(text)) {
+    const saved = await saveSellerLearningForAgent({ detail: text, title: text.slice(0, 120), importance: 2 }, snapshot);
+    const reply = saved.saved
+      ? 'Salvei esse aprendizado na memoria da empresa. Vou considerar isso nas proximas recomendacoes e respostas da IA ST Vendedor.'
+      : saved.message;
+    const conversationId = await persistSellerAgentTurn(req, text, reply, { intent: 'seller_learning', memoryId: saved.memoryId || null });
+    return ({
+      conversationId,
+      reply,
+      suggestions: ['Indicar produto com esse aprendizado', 'Montar tarefa de venda', 'Pesquisar produto na internet'],
+      learning: saved,
+    });
+  }
+
+  const client = anthropicClient();
+  if (!client) {
+    const reply = offlineCoachReply(text, snapshot);
+    const conversationId = await persistSellerAgentTurn(req, text, reply, { intent: 'offline_reply' });
+    return ({
+      conversationId,
+      reply,
+      suggestions: ['Quem eu chamo primeiro?', 'Crie um plano curto', 'Como responder objecao de preco?'],
+      offline: true,
+    });
+  }
+
+  const conv = await prisma.aIConversation.findFirst({
+    where: {
+      id: snapshot.conversationId,
+      userId: snapshot.seller.id,
+      userType: 'seller-agent',
+      active: true,
+    },
+  });
+  if (!conv) { const e = new Error('Conversa principal do assistente nao encontrada'); e.statusCode = 404; throw e; }
+
+  let msgs = parseMessages(conv.messages);
+  msgs.push({ role: 'user', content: text, timestamp: new Date().toISOString() });
+  await prisma.aIConversation.update({
+    where: { id: conv.id },
+    data: { messages: msgs, updatedAt: new Date() },
+  });
+
+  const anthropicMessages = msgs
+    .filter((m) => m.role === 'user' || m.role === 'assistant')
+    .slice(-18)
+    .map((m) => ({ role: m.role, content: m.content }));
+
+  const model = process.env.SELLER_AGENT_MODEL || process.env.AI_MODEL || 'claude-haiku-4-5-20251001';
+  const maxTokens = parseInt(process.env.SELLER_AGENT_MAX_TOKENS || '700', 10);
+  const system = buildSystemPrompt(snapshot);
+
+  let currentMessages = anthropicMessages.map((m) => ({ ...m }));
+  let finalText = '';
+  let totalIn = 0;
+  let totalOut = 0;
+  let turn = 0;
+  let providerFallback = false;
+
+  try {
+    while (turn < 6) {
+      turn += 1;
+      const resp = await client.messages.create({
+        model,
+        max_tokens: maxTokens,
+        system,
+        tools: TOOLS,
+        messages: currentMessages,
+      });
+
+      totalIn += resp.usage?.input_tokens || 0;
+      totalOut += resp.usage?.output_tokens || 0;
+
+      if (resp.stop_reason === 'tool_use') {
+        currentMessages.push({ role: 'assistant', content: resp.content });
+        const toolResults = [];
+        for (const block of resp.content || []) {
+          if (block.type !== 'tool_use') continue;
+          const out = await execTool(block.name, block.input, snapshot);
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: block.id,
+            content: JSON.stringify(out),
+          });
+        }
+        currentMessages.push({ role: 'user', content: toolResults });
+        continue;
+      }
+
+      finalText = (resp.content || [])
+        .filter((b) => b.type === 'text')
+        .map((b) => b.text)
+        .join('\n')
+        .trim();
+      break;
+    }
+  } catch (providerError) {
+    providerFallback = true;
+    console.warn('[seller-agent] provedor IA indisponivel; usando resposta local:', providerError.message);
+    finalText = offlineCoachReply(text, snapshot);
+  }
+
+  if (!finalText) finalText = offlineCoachReply(text, snapshot);
+
+  const fresh = await prisma.aIConversation.findUnique({
+    where: { id: conv.id },
+    select: { messages: true },
+  });
+  msgs = parseMessages(fresh.messages);
+  msgs.push({ role: 'assistant', content: finalText, timestamp: new Date().toISOString() });
+
+  const cost = buildCostBRL({ input_tokens: totalIn, output_tokens: totalOut });
+  await prisma.aIConversation.update({
+    where: { id: conv.id },
+    data: {
+      messages: msgs,
+      totalTokensIn: { increment: totalIn },
+      totalTokensOut: { increment: totalOut },
+      totalCostBRL: { increment: cost.brl },
+      updatedAt: new Date(),
+    },
+  });
+
+  return ({
+    conversationId: conv.id,
+    reply: finalText,
+    media: snapshot.outbox || [],
+    suggestions: ['Indique produto para cliente', 'Pesquisar produto na internet', 'Ver estoque por loja'],
+    offline: providerFallback || undefined,
+    providerUnavailable: providerFallback || undefined,
+  });
+}
+
 router.post('/chat', requireSeller, chatLimiter, async (req, res) => {
   try {
     const text = safeText(req.body?.message, 1200);
     if (!text) return res.status(400).json({ error: 'Mensagem obrigatoria' });
-
-    const snapshot = await loadSellerSnapshot(req);
-    const whatsappDraft = sellerAssistant.parseWhatsappDraft(text);
-    if (whatsappDraft) {
-      const reply = 'Preparei o telefone e a mensagem no formulario de WhatsApp. Confira os dados, confirme que a pessoa autorizou o contato ou ja esta em atendimento e toque em Abrir WhatsApp. O envio so acontece quando voce confirmar no WhatsApp.';
-      const conversationId = await persistSellerAgentTurn(req, text, reply, {
-        intent: 'whatsapp_draft',
-        phone: whatsappDraft.phone,
-      });
-      return res.json({
-        conversationId,
-        reply,
-        whatsappDraft,
-        suggestions: ['Quem eu chamo primeiro?', 'Ver produtos de hoje', 'Montar uma abordagem'],
-      });
-    }
-    if (isInternalMessageIntent(text)) {
-      const messageResult = await handleInternalMessageIntent(req, text);
-      const conversationId = await persistSellerAgentTurn(req, text, messageResult.reply, { intent: 'internal_message' });
-      return res.json({
-        conversationId,
-        reply: messageResult.reply,
-        suggestions: messageResult.suggestions,
-        message: messageResult.message || null,
-      });
-    }
-
-    if (isStockIntent(text)) {
-      const stockInput = await parseStockInputFromText(text);
-      if (!stockInput.query) {
-        const reply = isStockSizeDisplayComplaint(text) ? stockSizeDisplayHelpReply() : stockNeedsProductReply();
-        const conversationId = await persistSellerAgentTurn(req, text, reply, { intent: 'stock_help' });
-        return res.json({
-          conversationId,
-          reply,
-          suggestions: ['Consultar Nimbus 27 tamanho 41', 'Consultar bolsa yoga tote', 'Buscar em uma loja especifica'],
-          stock: null,
-        });
-      }
-      const stockResult = await searchStoreStockForAgent(stockInput, snapshot);
-      const reply = formatStockReply(stockResult);
-      const conversationId = await persistSellerAgentTurn(req, text, reply, { intent: 'stock_lookup', stock: stockResult });
-      return res.json({
-        conversationId,
-        reply,
-        suggestions: ['Ver outro tamanho', 'Buscar em uma loja especifica', 'Montar abordagem com esse produto'],
-        stock: stockResult,
-      });
-    }
-
-    if (isWebResearchIntent(text)) {
-      const researchInput = {
-        query: cleanProductNeed(text) || text,
-        webQuery: text,
-        force: /\b(novo|nova|atualiza|atualizar|refaz|refaca|refaça|de novo)\b/i.test(text),
-      };
-      const researchResult = await researchProductWebForAgent(researchInput, snapshot);
-      const reply = formatResearchReply(researchResult);
-      const conversationId = await persistSellerAgentTurn(req, text, reply, { intent: 'product_research', productId: researchResult.product?.id || null });
-      return res.json({
-        conversationId,
-        reply,
-        suggestions: ['Indique esse produto para cliente', 'Ver estoque desse produto', 'Pesquisar outro produto na internet'],
-        research: researchResult,
-      });
-    }
-
-    if (isProductRecommendationIntent(text)) {
-      const recommendation = await recommendProductsForAgent({ need: text, limit: 5 }, snapshot);
-      const reply = formatRecommendationReply(recommendation);
-      const conversationId = await persistSellerAgentTurn(req, text, reply, { intent: 'product_recommendation', productIds: recommendation.products?.map((p) => p.id) || [] });
-      return res.json({
-        conversationId,
-        reply,
-        suggestions: ['Pesquisar esse produto na internet', 'Ver estoque do primeiro produto', 'Montar abordagem para cliente'],
-        recommendation,
-      });
-    }
-
-    if (isLearningIntent(text)) {
-      const saved = await saveSellerLearningForAgent({ detail: text, title: text.slice(0, 120), importance: 2 }, snapshot);
-      const reply = saved.saved
-        ? 'Salvei esse aprendizado na memoria da empresa. Vou considerar isso nas proximas recomendacoes e respostas da IA ST Vendedor.'
-        : saved.message;
-      const conversationId = await persistSellerAgentTurn(req, text, reply, { intent: 'seller_learning', memoryId: saved.memoryId || null });
-      return res.json({
-        conversationId,
-        reply,
-        suggestions: ['Indicar produto com esse aprendizado', 'Montar tarefa de venda', 'Pesquisar produto na internet'],
-        learning: saved,
-      });
-    }
-
-    const client = anthropicClient();
-    if (!client) {
-      const reply = offlineCoachReply(text, snapshot);
-      const conversationId = await persistSellerAgentTurn(req, text, reply, { intent: 'offline_reply' });
-      return res.json({
-        conversationId,
-        reply,
-        suggestions: ['Quem eu chamo primeiro?', 'Crie um plano curto', 'Como responder objecao de preco?'],
-        offline: true,
-      });
-    }
-
-    const conv = await prisma.aIConversation.findFirst({
-      where: {
-        id: snapshot.conversationId,
-        userId: snapshot.seller.id,
-        userType: 'seller-agent',
-        active: true,
-      },
-    });
-    if (!conv) return res.status(404).json({ error: 'Conversa principal do assistente nao encontrada' });
-
-    let msgs = parseMessages(conv.messages);
-    msgs.push({ role: 'user', content: text, timestamp: new Date().toISOString() });
-    await prisma.aIConversation.update({
-      where: { id: conv.id },
-      data: { messages: msgs, updatedAt: new Date() },
-    });
-
-    const anthropicMessages = msgs
-      .filter((m) => m.role === 'user' || m.role === 'assistant')
-      .slice(-18)
-      .map((m) => ({ role: m.role, content: m.content }));
-
-    const model = process.env.SELLER_AGENT_MODEL || process.env.AI_MODEL || 'claude-haiku-4-5-20251001';
-    const maxTokens = parseInt(process.env.SELLER_AGENT_MAX_TOKENS || '700', 10);
-    const system = buildSystemPrompt(snapshot);
-
-    let currentMessages = anthropicMessages.map((m) => ({ ...m }));
-    let finalText = '';
-    let totalIn = 0;
-    let totalOut = 0;
-    let turn = 0;
-    let providerFallback = false;
-
-    try {
-      while (turn < 6) {
-        turn += 1;
-        const resp = await client.messages.create({
-          model,
-          max_tokens: maxTokens,
-          system,
-          tools: TOOLS,
-          messages: currentMessages,
-        });
-
-        totalIn += resp.usage?.input_tokens || 0;
-        totalOut += resp.usage?.output_tokens || 0;
-
-        if (resp.stop_reason === 'tool_use') {
-          currentMessages.push({ role: 'assistant', content: resp.content });
-          const toolResults = [];
-          for (const block of resp.content || []) {
-            if (block.type !== 'tool_use') continue;
-            const out = await execTool(block.name, block.input, snapshot);
-            toolResults.push({
-              type: 'tool_result',
-              tool_use_id: block.id,
-              content: JSON.stringify(out),
-            });
-          }
-          currentMessages.push({ role: 'user', content: toolResults });
-          continue;
-        }
-
-        finalText = (resp.content || [])
-          .filter((b) => b.type === 'text')
-          .map((b) => b.text)
-          .join('\n')
-          .trim();
-        break;
-      }
-    } catch (providerError) {
-      providerFallback = true;
-      console.warn('[seller-agent] provedor IA indisponivel; usando resposta local:', providerError.message);
-      finalText = offlineCoachReply(text, snapshot);
-    }
-
-    if (!finalText) finalText = offlineCoachReply(text, snapshot);
-
-    const fresh = await prisma.aIConversation.findUnique({
-      where: { id: conv.id },
-      select: { messages: true },
-    });
-    msgs = parseMessages(fresh.messages);
-    msgs.push({ role: 'assistant', content: finalText, timestamp: new Date().toISOString() });
-
-    const cost = buildCostBRL({ input_tokens: totalIn, output_tokens: totalOut });
-    await prisma.aIConversation.update({
-      where: { id: conv.id },
-      data: {
-        messages: msgs,
-        totalTokensIn: { increment: totalIn },
-        totalTokensOut: { increment: totalOut },
-        totalCostBRL: { increment: cost.brl },
-        updatedAt: new Date(),
-      },
-    });
-
-    res.json({
-      conversationId: conv.id,
-      reply: finalText,
-      suggestions: ['Indique produto para cliente', 'Pesquisar produto na internet', 'Ver estoque por loja'],
-      offline: providerFallback || undefined,
-      providerUnavailable: providerFallback || undefined,
-    });
+    res.json(await runSellerAgentChat(req, text));
   } catch (err) {
     console.error('[seller/agent/chat] erro:', err);
     res.status(500).json({ error: 'Erro ao conversar com a IA ST Vendedor. Tente novamente.' });
@@ -2830,4 +2964,6 @@ router.post('/chat', requireSeller, chatLimiter, async (req, res) => {
 });
 
 router._test = Object.freeze({ buildNextBestActions });
+router.runSellerAgentChat = runSellerAgentChat;
+router._agentTools = { execTool };
 module.exports = router;

@@ -389,6 +389,10 @@ router.post('/clockin-as', sellerOnly, async (req, res) => {
       type,
       at: created.timestamp,
     }).catch(() => {});
+    // Aviso pessoal no WhatsApp do vendedor (dono 17/11/2026)
+    prisma.store.findUnique({ where: { id: finalStoreId }, select: { name: true } }).catch(() => null)
+      .then((st) => require('../services/sellerPulse').notifyClock(prisma, { userId: vendor.id, storeName: st && st.name, type, at: created.timestamp }))
+      .catch(() => {});
 
     res.json({
       ok: true,
@@ -613,6 +617,8 @@ router.post('/clockin', authMiddleware, sellerOnly, async (req, res) => {
       type,
       at: clockIn.timestamp,
     }).catch(() => {});
+    // Aviso pessoal no WhatsApp do vendedor (dono 17/11/2026)
+    require('../services/sellerPulse').notifyClock(prisma, { userId: u.id, storeName: store?.name, type, at: clockIn.timestamp }).catch(() => {});
 
     res.json({ success: true, clockIn });
   } catch (err) {
@@ -1189,6 +1195,8 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
       throw e;
     }
 
+    require('../ai/rede/ganchos').vendaRegistrada(result.sale.id);
+
     // Registra a chave de idempotência (bloqueia duplicação no re-clique do mesmo carrinho)
     if (idemKey) {
       _recentSaleKeys.set(idemKey, { saleId: result.sale.id, at: Date.now() });
@@ -1762,7 +1770,8 @@ router.get('/rankings', sellerOnly, async (req, res) => {
         : (s.sellerId === owner?.id && selectedStore) || u?.store;
       const commission = commissionBySeller.get(s.sellerId) || { baseAmount: 0, at50kAmount: 0,
         clothingSalesAmount: 0, clothingBaseAmount: 0, at20kClothingAmount: 0, totalAt1Percent: 0,
-        totalAt2And4Percent: 0, earnedAmount: 0, clothingItems: [], months: [] };
+        totalAt2And4Percent: 0, earnedAmount: 0, clothingItems: [], months: [],
+        socksQuantity: 0, socksAmount: 0, socksItems: [] };
       return {
         position: i + 1,
         sellerId: s.sellerId,

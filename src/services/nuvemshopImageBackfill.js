@@ -1,6 +1,7 @@
 const { prisma } = require('../middleware');
 const ns = require('./nuvemshop');
 const nsHandlers = require('./nuvemshopHandlers');
+const { mergeAiContext } = require('./aiContextMerge');
 
 function usableImageUrls(remoteProduct) {
   const seen = new Set();
@@ -64,7 +65,7 @@ async function backfillLocalImagesFromNuvemshop(options = {}) {
     context.imageRecoveredAt = new Date().toISOString();
     // A imagem já está no destino remoto: evita que a reconciliação apague e
     // reenvie o mesmo arquivo CDN desnecessariamente.
-    context.nsImagesSig = nsHandlers.imageSignature(urls.slice(0, 8));
+    context.nsImagesSig = nsHandlers.imageSignature(urls.slice(0, 5)); // no máximo 5 fotos (regra do dono)
     try {
       // updateMany preserva uma imagem que possa ter sido escolhida enquanto a
       // reconciliação estava rodando.
@@ -72,10 +73,11 @@ async function backfillLocalImagesFromNuvemshop(options = {}) {
         where: { id: product.id, OR: [{ imageUrl: null }, { imageUrl: '' }] },
         data: {
           imageUrl: urls[0],
-          imageUrls: urls.slice(1, 8),
-          aiContext: context,
+          imageUrls: urls.slice(1, 5),
         },
       });
+      // contexto: só as chaves desta recuperação, de forma atômica (não desfaz edição do dono)
+      if (result.count) await mergeAiContext(prisma, product.id, { imageSource: context.imageSource, imageRecoveredAt: context.imageRecoveredAt, nsImagesSig: context.nsImagesSig });
       recovered += result.count;
     } catch (error) {
       errors.push({ productId: product.id, sku: product.sku, error: error.message });

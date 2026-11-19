@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Gerentes de Marca · TenisCash</title>
+<meta name="description" content="Um agente por marca: estoque, venda na loja e no site, site e cadastro de cada marca da Sports &amp; Tennis.">
+<meta name="theme-color" content="#EA5128">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex,nofollow">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Marcas S&amp;T">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/brand/sports-tennis-icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/brand/sports-tennis-icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --o1:#EA5128; --o2:#E5571E; --o3:#C93E19;
+  --tx:#fff; --mut:#fff;
+  --wtx:#2a1206; --wmut:#74412c; --wline:rgba(70,22,0,.12);
+  --ok:#0B7A4B; --okbg:rgba(11,122,75,.12); --warn:#8a5a00; --warnbg:#FFF1CC; --bad:#B3261E; --badbg:rgba(179,38,30,.1);
+  --sat:env(safe-area-inset-top,0px); --sab:env(safe-area-inset-bottom,0px);
+  --ff:'Archivo',system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{min-height:100vh;background:linear-gradient(205deg,#EF5A31 0%,#EA5128 45%,#E44C24 100%);background-attachment:fixed;color:var(--tx);font-family:var(--ff);font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased;padding-top:var(--sat);padding-bottom:calc(76px + var(--sab))}
+button,input{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer}
+:focus-visible{outline:2px solid #fff;outline-offset:2px;border-radius:8px}
+.sheet :focus-visible,.marca:focus-visible,nav.baixo :focus-visible{outline:3px solid var(--o3)}
+.app{max-width:480px;margin:0 auto;padding:14px 16px 0}
+header h1{font-weight:900;font-stretch:115%;font-size:26px;letter-spacing:-.01em;line-height:1.1}
+header p{color:var(--mut);font-size:13px;margin-top:4px}
+.busca{margin:14px 0 10px;display:flex;gap:8px}
+.busca input{flex:1;min-height:44px;border-radius:14px;border:0;padding:0 14px;background:#fff;color:var(--wtx);font-weight:600;font-size:16px}
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:10px;scrollbar-width:none}
+.chip{flex:0 0 auto;min-height:44px;padding:0 12px;border-radius:999px;background:rgba(255,255,255,.18);color:#fff;font-weight:800;font-size:13px}
+.chip[aria-pressed=true]{background:#fff;color:var(--o3)}
+.info{font-size:12.5px;color:var(--mut);margin:0 0 10px}
+.lista{display:grid;gap:10px}
+.marca{display:block;width:100%;text-align:left;background:#fff;color:var(--wtx);border-radius:18px;padding:14px;box-shadow:0 6px 18px rgba(80,20,0,.18);min-height:44px}
+.marca .topo{display:flex;align-items:center;gap:10px}
+.marca .nome{font-weight:900;font-stretch:110%;font-size:18px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nota{min-width:44px;height:30px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px}
+.n3{background:var(--badbg);color:var(--bad)} .n2{background:var(--warnbg);color:var(--warn)} .n1{background:var(--okbg);color:var(--ok)}
+.nums{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}
+.num{background:#FFF4EE;border-radius:12px;padding:8px}
+.num b{display:block;font-size:16px;font-weight:900}
+.num span{font-size:11.5px;color:var(--wmut)}
+.alerta{margin-top:10px;font-size:13px;color:var(--wtx);display:flex;gap:6px}
+.alerta i{font-style:normal;font-weight:900}
+.prop{margin-top:8px;font-size:12.5px;font-weight:800;color:var(--o3)}
+.conf{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;font-size:12px}
+.conf span{background:var(--okbg);color:var(--ok);border-radius:999px;padding:4px 9px}
+.conf span.risco{background:var(--badbg);color:var(--bad)}
+.vazio{background:rgba(255,255,255,.16);border-radius:16px;padding:18px;text-align:center;color:#fff}
+.erro{background:#fff;color:var(--bad);border-radius:14px;padding:14px;font-weight:700}
+.demo{margin:0 0 12px;padding:9px 12px;border-radius:12px;background:#2a1206;color:#FFE3C2;font-size:12.5px;font-weight:700}
+/* bottom sheet do detalhe */
+.veu{position:fixed;inset:0;z-index:4;background:rgba(30,8,0,.45);opacity:0;pointer-events:none;transition:opacity .2s}
+.veu.on{opacity:1;pointer-events:auto}
+.sheet{position:fixed;left:0;right:0;bottom:0;max-width:480px;margin:0 auto;max-height:92vh;max-height:92dvh;background:#fff;color:var(--wtx);border-radius:22px 22px 0 0;transform:translateY(100%);transition:transform .25s cubic-bezier(.22,.8,.24,1);display:flex;flex-direction:column;padding-bottom:var(--sab);z-index:5}
+.sheet.on{transform:none}
+.sheet .cab{display:flex;align-items:center;gap:10px;padding:14px 16px 10px;border-bottom:1px solid var(--wline)}
+.sheet .cab h2{flex:1;font-weight:900;font-stretch:110%;font-size:21px}
+.fechar{min-width:44px;min-height:44px;border-radius:12px;background:#FFF4EE;font-weight:900;font-size:18px}
+.sheet .corpo{overflow-y:auto;padding:12px 16px 20px;-webkit-overflow-scrolling:touch}
+.sec{margin-top:16px}
+.sec h3{font-size:13px;font-weight:900;letter-spacing:.04em;text-transform:uppercase;color:var(--o3);margin-bottom:6px}
+.tab{width:100%;border-collapse:collapse;font-size:13.5px}
+.tab td{padding:7px 4px;border-bottom:1px solid var(--wline)}
+.tab td:last-child{text-align:right;font-weight:800}
+.al{padding:9px 10px;border-radius:12px;margin-bottom:6px;font-size:13.5px}
+.al.g3{background:var(--badbg)} .al.g2{background:var(--warnbg)} .al.g1{background:#F6EFEA}
+.al ul{margin:6px 0 0 18px;font-size:12.5px;color:var(--wmut)}
+.ficha dt{font-weight:900;font-size:12.5px;margin-top:8px}
+.ficha dd{font-size:13px;color:var(--wmut)}
+.btn{display:block;width:100%;min-height:48px;border-radius:14px;background:var(--o2);color:#fff;font-weight:900;margin-top:16px}
+.btn:disabled{opacity:.6}
+.mut{color:var(--wmut);font-size:12.5px}
+nav.baixo{position:fixed;left:0;right:0;bottom:0;background:#fff;color:var(--wtx);padding:8px 16px calc(8px + var(--sab));display:flex;gap:8px;max-width:480px;margin:0 auto;border-radius:18px 18px 0 0;box-shadow:0 -6px 18px rgba(80,20,0,.18);z-index:3}
+nav.baixo a{flex:1;min-height:44px;display:flex;align-items:center;justify-content:center;border-radius:12px;font-weight:900;font-size:13px;text-decoration:none;color:var(--wtx)}
+nav.baixo a.ativo{background:#FFF4EE;color:var(--o3)}
+@media (min-width:900px){
+  body{padding-top:24px}
+  .app{background:rgba(0,0,0,.06);border-radius:28px;box-shadow:0 20px 60px rgba(60,15,0,.35);padding:20px 16px 90px;min-height:calc(100vh - 48px)}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Gerentes de Marca</h1>
+    <p>Um agente por marca: estoque, venda na loja e no site, site e cadastro. Ele só aponta — quem decide é você.</p>
+  </header>
+  <div id="demoBar"></div>
+  <div class="busca"><input id="q" type="search" placeholder="Buscar marca" aria-label="Buscar marca" autocomplete="off"></div>
+  <div class="chips" role="group" aria-label="Filtro">
+    <button class="chip" data-f="todas" aria-pressed="true">Todas</button>
+    <button class="chip" data-f="atencao" aria-pressed="false">Precisam de mim</button>
+    <button class="chip" data-f="estoque" aria-pressed="false">Com estoque</button>
+    <button class="chip" data-f="propostas" aria-pressed="false">Com propostas</button>
+  </div>
+  <p class="info" id="info">Carregando…</p>
+  <div class="lista" id="lista"></div>
+</div>
+<div class="veu" id="veu"></div>
+<section class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="shTit">
+  <div class="cab"><h2 id="shTit">Marca</h2><button class="fechar" id="fechar" aria-label="Fechar">✕</button></div>
+  <div class="corpo" id="shCorpo"></div>
+</section>
+<nav class="baixo" aria-label="Navegação">
+  <a href="/marcas.html" class="ativo">Marcas</a>
+  <a href="/rede.html">Rede</a>
+  <a href="/admin.html">Admin</a>
+</nav>
+<script>
+/* Gerentes de Marca — API /api/admin/rede/marcas (src/routes/rede.js). Token: localStorage 'tc_token'.
+   ?demo=1 → dados fictícios locais (só para conferir a tela; nada é lido nem gravado). */
+var QS = new URLSearchParams(location.search);
+var DEMO = QS.get('demo') === '1';
+var BASE = '/api/admin/rede';
+var DADOS = [];
+var FILTRO = 'todas';
+function $(s) { return document.querySelector(s); }
+function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+// aceita o login do app (tc_token) e o do admin (tc_admin_token)
+function token() { try { return localStorage.getItem('tc_admin_token') || localStorage.getItem('tc_token') || ''; } catch (e) { return ''; } }
+var LOJAS = { LOJA01: 'Baratão', LOJA02: 'Bessa', LOJA03: 'Campina Grande', LOJA04: 'Fábrica', LOJA05: 'Pirâmide', LOJA06: 'Tambiá', LOJA07: 'Manaíra', SITE: 'Site (Nuvemshop)' };
+function loja(k) { return LOJAS[k] ? LOJAS[k] + (k === 'SITE' ? '' : ' (' + k + ')') : k; }
+var RISCO = { low: 'baixo', medium: 'médio', high: 'alto' };
+function idade(iso) { var d = Math.floor((Date.now() - new Date(iso).getTime()) / 864e5); return d <= 0 ? 'hoje' : d === 1 ? 'ontem' : 'há ' + d + ' dias'; }
+function rs(v) { return v == null ? '—' : 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }); }
+function n(v) { return v == null ? '—' : Number(v).toLocaleString('pt-BR'); }
+function classeNota(a) { return a >= 50 ? 'n3' : a >= 20 ? 'n2' : 'n1'; }
+
+function api(path, opts) {
+  if (DEMO) return demoApi(path, opts);
+  var tk = token();
+  if (!tk) return Promise.reject(Object.assign(new Error('Entre no admin para ver as marcas.'), { login: true }));
+  var o = Object.assign({ headers: { Accept: 'application/json', Authorization: 'Bearer ' + tk }, cache: 'no-store' }, opts || {});
+  if (o.body) o.headers['Content-Type'] = 'application/json';
+  return fetch(BASE + path, o).then(function (r) {
+    if (r.status === 401 || r.status === 403) throw Object.assign(new Error('Sessão sem permissão de admin. Entre no admin e volte.'), { login: true });
+    return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || 'Erro ' + r.status); return j; });
+  });
+}
+
+function carregar() {
+  $('#info').textContent = 'Carregando…';
+  api('/marcas').then(function (j) {
+    DADOS = j.marcas || [];
+    var quando = j.ultimaGeracao ? new Date(j.ultimaGeracao).toLocaleString('pt-BR') : null;
+    $('#info').textContent = DADOS.length ? (DADOS.length + ' marcas · último relatório ' + idade(j.ultimaGeracao) + ' (' + quando + ') · o gerente roda todo dia de manhã') : '';
+    desenhar();
+  }).catch(function (e) {
+    $('#info').textContent = '';
+    $('#lista').innerHTML = '<div class="erro">' + esc(e.message) + (e.login ? ' <a href="/admin.html" style="color:inherit">Abrir admin</a>' : '') + '</div>';
+  });
+}
+
+function passa(m) {
+  var q = ($('#q').value || '').trim().toUpperCase();
+  if (q && m.marca.indexOf(q) < 0) return false;
+  if (FILTRO === 'atencao') return m.atencao >= 20;
+  if (FILTRO === 'estoque') return m.localizado > 0;
+  if (FILTRO === 'propostas') return m.propostasPendentes > 0;
+  return true;
+}
+
+function desenhar() {
+  var l = DADOS.filter(passa);
+  if (!DADOS.length) { $('#lista').innerHTML = '<div class="vazio">Ainda não há relatório recente. Os gerentes de marca rodam todo dia de manhã; se faltar, abra uma marca e toque em Atualizar.</div>'; return; }
+  if (!l.length) { $('#lista').innerHTML = '<div class="vazio">Nenhuma marca neste filtro.</div>'; return; }
+  $('#lista').innerHTML = l.map(function (m) {
+    var v = m.vendas30 || {};
+    var al = m.alertaPrincipal;
+    return '<button class="marca" data-m="' + esc(m.marca) + '">' +
+      '<div class="topo"><span class="nome">' + esc(m.marca) + '</span><span class="nota ' + classeNota(m.atencao) + '" title="Atenção">' + n(m.atencao) + '</span></div>' +
+      '<div class="nums"><div class="num"><b>' + n(m.localizado) + '</b><span>localizado de ' + n(m.comprado) + '</span></div>' +
+      '<div class="num"><b>' + n(v.un) + '</b><span>vendidos 30 dias</span></div>' +
+      '<div class="num"><b>' + rs(v.rs) + '</b><span>vendas 30 dias</span></div></div>' +
+      (m.conferencia ? '<div class="conf"><span><b>' + (m.conferencia.pctCardsBipados == null ? '—' : n(m.conferencia.pctCardsBipados) + '%') + '</b> bipado no estoque novo</span>' +
+        '<span><b>' + n(m.conferencia.bipadosNaNuvemshop) + '</b> bipados no site</span>' +
+        (m.conferencia.publicadosNaoBipados ? '<span class="risco"><b>' + n(m.conferencia.publicadosNaoBipados) + '</b> no site sem bipe</span>' : '') + '</div>' : '') +
+      (al ? '<div class="alerta"><i>!</i><span>' + esc(al.texto) + '</span></div>' : '<div class="alerta"><span class="mut">Sem alerta hoje.</span></div>') +
+      (m.propostasPendentes ? '<div class="prop">' + n(m.propostasPendentes) + ' proposta(s) esperando você</div>' : '') +
+      '</button>';
+  }).join('');
+}
+
+function abrir(marca) {
+  $('#shTit').textContent = marca;
+  $('#shCorpo').innerHTML = '<p class="mut">Carregando…</p>';
+  $('#veu').classList.add('on'); $('#sheet').classList.add('on');
+  setTimeout(function () { var f = $('#fechar'); if (f) f.focus(); }, 50);
+  api('/marcas/' + encodeURIComponent(marca)).then(function (j) { $('#shCorpo').innerHTML = detalhe(j); ligarAtualizar(marca); })
+    .catch(function (e) { $('#shCorpo').innerHTML = '<div class="erro">' + esc(e.message) + '</div>'; });
+}
+function fechar() { $('#veu').classList.remove('on'); $('#sheet').classList.remove('on'); }
+
+function linhas(obj, fmt) {
+  var ks = Object.keys(obj || {});
+  if (!ks.length) return '<p class="mut">Nada registrado.</p>';
+  return '<table class="tab">' + ks.sort().map(function (k) { return '<tr><td>' + esc(loja(k)) + '</td><td>' + fmt(obj[k]) + '</td></tr>'; }).join('') + '</table>';
+}
+
+function detalhe(j) {
+  var r = j.relatorio;
+  if (!r) return '<p class="mut">Ainda não há relatório desta marca.</p><button class="btn" id="atualizar">Gerar relatório agora</button>';
+  var v = r.vendas || {}, d30 = v.d30 || {}, d7 = v.d7 || {};
+  var h = '<p class="mut">Relatório de ' + new Date(r.geradoEm).toLocaleString('pt-BR') + (r.sobDemanda ? ' (pedido agora)' : '') + ' · ' + n(r.cards) + ' cards ativos, ' + n(r.cardsComEstoque) + ' com estoque</p>';
+  h += '<div class="sec"><h3>O que precisa de você</h3>' + ((r.alertas || []).length ? r.alertas.map(function (a) {
+    var itens = (a.itens || []).slice(0, 5).map(function (i) { return '<li>' + esc(i.nome) + (i.loja ? ' · ' + esc(loja(i.loja)) : '') + (i.unidades != null ? ' · ' + n(i.unidades) + ' un' : '') + (i.vendidos30 != null ? ' · vendeu ' + n(i.vendidos30) : '') + (i.dias != null ? ' · ' + n(i.dias) + ' dias' : '') + (i.preco != null ? ' · preço ' + rs(i.preco) + ' / custo ' + rs(i.custo) : '') + (i.motivo ? ' · ' + esc(i.motivo) : '') + '</li>'; }).join('');
+    return '<div class="al g' + (Number(a.gravidade) || 1) + '">' + esc(a.texto) + (itens ? '<ul>' + itens + '</ul>' : '') + '</div>';
+  }).join('') : '<p class="mut">Nada pendente hoje.</p>') + '</div>';
+  h += '<div class="sec"><h3>Estoque</h3><table class="tab"><tr><td>Comprado (NF-e de entrada)</td><td>' + n(r.comprado) + '</td></tr><tr><td>Localizado nas lojas</td><td>' + n(r.localizado) + '</td></tr><tr><td>Cobertura (dias de venda)</td><td>' + n(r.coberturaDias) + '</td></tr><tr><td>Parados 90+ dias</td><td>' + n(r.parados && r.parados.cards) + ' cards · ' + rs(r.parados && r.parados.valorCustoRS) + '</td></tr></table>' +
+    '<p class="mut" style="margin-top:8px">Por loja (localizado):</p>' + linhas(r.porLoja, function (x) { return n(x) + ' un'; }) + '</div>';
+  h += '<div class="sec"><h3>Venda — loja física × site</h3><table class="tab"><tr><td>Últimos 7 dias</td><td>' + n(d7.un) + ' un · ' + rs(d7.rs) + '</td></tr><tr><td>Últimos 30 dias</td><td>' + n(d30.un) + ' un · ' + rs(d30.rs) + '</td></tr><tr><td>Margem bruta 30 dias</td><td>' + (d30.margemPct == null ? '—' : n(d30.margemPct) + '%') + '</td></tr></table>' +
+    (d30.unSemCusto ? '<p class="mut">' + n(d30.unSemCusto) + ' un vendidas sem custo gravado ficaram fora da margem.</p>' : '') +
+    '<p class="mut" style="margin-top:8px">Por canal (30 dias):</p>' + linhas(v.porCanal30, function (x) { return n(x.un) + ' un · ' + rs(x.rs); }) + '</div>';
+  var lc = r.local;
+  if (lc) {
+    var mot = Object.keys(lc.motivos || {}).sort(function (x, y) { return lc.motivos[y] - lc.motivos[x]; });
+    h += '<div class="sec"><h3>Lugar certo no site</h3><table class="tab">' +
+      '<tr><td>Cards conferidos</td><td>' + n(lc.conferidos) + '</td></tr>' +
+      '<tr><td>No lugar certo</td><td>' + n(lc.noLugarCerto) + '</td></tr>' +
+      '<tr><td>Fora do lugar (categoria, público ou modalidade)</td><td>' + n(lc.foraDoLugar) + (lc.foraDoLugarNoSite ? ' · ' + n(lc.foraDoLugarNoSite) + ' já no site' : '') + '</td></tr>' +
+      '<tr><td>Sem as 4 classificações</td><td>' + n(lc.incompletos) + '</td></tr>' +
+      (r.cuidado ? '<tr><td>Preenchidos pelo gerente da marca (com prova escrita)</td><td>' + n(r.cuidado.preenchidosPeloGerente) + '</td></tr>' : '') + '</table>' +
+      (mot.length ? '<p class="mut" style="margin-top:8px">O que está fora do lugar:</p><table class="tab">' + mot.map(function (k) { return '<tr><td>' + esc(k.replace(/^local: /, '')) + '</td><td>' + n(lc.motivos[k]) + '</td></tr>'; }).join('') + '</table>' : '') +
+      ((lc.itens || []).length ? '<ul style="margin:6px 0 0 18px;font-size:12.5px;color:var(--wmut)">' + lc.itens.slice(0, 8).map(function (i) { return '<li>' + esc(i.nome) + ' · ' + esc(i.motivo) + (i.noSite ? ' · <b>no site</b>' : '') + '</li>'; }).join('') + '</ul>' : '') +
+      '<p class="mut" style="margin-top:6px">Regra do dono: cada produto no lugar certo. A classificação do card (categoria, público, modalidade, especialidade) é o endereço dele no menu da loja online; ela tem que bater com o que o nome do produto diz.</p></div>';
+  }
+  var cf = r.conferencia;
+  if (cf) {
+    var lst = function (arr, fmt) { return (arr || []).length ? '<ul style="margin:4px 0 0 18px;font-size:12.5px;color:var(--wmut)">' + arr.slice(0, 6).map(function (i) { return '<li>' + esc(i.nome) + ' · ' + fmt(i) + '</li>'; }).join('') + '</ul>' : ''; };
+    h += '<div class="sec"><h3>Bipado no estoque novo × Nuvemshop</h3><table class="tab">' +
+      '<tr><td>Cards comprados</td><td>' + n(cf.cardsComprados) + '</td></tr>' +
+      '<tr><td>Comprados já bipados no estoque novo</td><td>' + n(cf.compradosBipados) + (cf.pctCardsBipados == null ? '' : ' (' + n(cf.pctCardsBipados) + '%)') + '</td></tr>' +
+      (cf.bipadosSemCompra ? '<tr><td>Bipados sem compra registrada (sem NF-e)</td><td>' + n(cf.bipadosSemCompra) + '</td></tr>' : '') +
+      '<tr><td>Unidades bipadas</td><td>' + n(cf.unidadesBipadas) + (cf.bipesPendentes ? ' · ' + n(cf.bipesPendentes) + ' pendentes' : '') + '</td></tr>' +
+      '<tr><td>Bipados e na Nuvemshop</td><td>' + n(cf.bipadosNaNuvemshop) + '</td></tr>' +
+      '<tr><td>Na Nuvemshop SEM bipe</td><td>' + n(cf.publicadosNaoBipados) + '</td></tr>' +
+      '<tr><td>Bipados e fora da Nuvemshop</td><td>' + n(cf.bipadosForaNuvemshop) + '</td></tr>' +
+      '<tr><td>Comprados e não bipados</td><td>' + n(cf.compradosNaoBipados) + '</td></tr>' +
+      '<tr><td>Bipados com menos de 5 fotos</td><td>' + n(cf.bipadosMenosDe5Fotos) + '</td></tr></table>' +
+      (cf.bipadosMenosDe5Fotos ? '<p class="mut" style="margin-top:8px">Bipados com menos de 5 fotos (regra: todo produto tem 5):</p>' + lst(cf.itensMenosDe5Fotos, function (i) { return n(i.fotos) + ' foto(s)' + (i.noSite ? ' · já está no site' : ''); }) : '') +
+      (cf.compradosNaoBipados ? '<p class="mut" style="margin-top:8px">Comprados e ainda não bipados:</p>' + lst(cf.itensCompradosNaoBipados, function (i) { return 'comprado ' + n(i.comprado); }) : '') +
+      '<p class="mut" style="margin-top:8px">Bipado por loja:</p>' + linhas(cf.porLoja, function (x) { return n(x) + ' un'; }) +
+      (cf.publicadosNaoBipados ? '<p class="mut" style="margin-top:8px">Na Nuvemshop sem bipe:</p>' + lst(cf.itensPublicadosNaoBipados, function (i) { return 'localizado ' + n(i.localizado) + ' / comprado ' + n(i.comprado); }) : '') +
+      (cf.bipadosForaNuvemshop ? '<p class="mut" style="margin-top:8px">Bipados fora da Nuvemshop:</p>' + lst(cf.itensBipadosForaNuvemshop, function (i) { return n(i.unidades) + ' un · ' + Object.keys(i.lojas || {}).map(loja).join(', ') + (i.nasLojasDoSite ? '' : ' (loja que não vende no site)'); }) : '') +
+      '<p class="mut" style="margin-top:6px">Bipado = estoque novo: bipes aplicados das contagens de substituição abertas a partir de 09/11 (rodada cancelada, bipe de antes de 09/11 e bipe pendente não contam). Lojas que vendem no site: as que o sistema usa hoje para o estoque da loja online.</p></div>';
+    var cs = cf.conserto;
+    if (cs && (cs.prontosParaSubir || (cs.passos || []).length)) {
+      h += '<div class="sec"><h3>Como colocar tudo no site</h3>' +
+        (cs.prontosParaSubir ? '<div class="al g1"><b>' + n(cs.prontosParaSubir) + ' pronto(s) para subir</b> — já passam em todas as travas do site; a subida automática (de hora em hora) leva, se nada mudar até lá.' + lst(cs.itensProntos, function () { return 'pronto'; }) + '</div>' : '') +
+        (cs.passos || []).map(function (p, i) {
+          return '<div class="al ' + (p.precisaDono ? 'g2' : 'g1') + '"><b>' + (i + 1) + '. ' + esc(p.titulo) + ' — ' + n(p.cards) + ' card(s)</b>' +
+            '<div style="margin-top:4px">' + esc(p.como) + '</div>' +
+            '<div class="mut" style="margin-top:4px">Quem resolve: ' + esc(p.quem) + (p.precisaDono ? ' · precisa de você' : '') + '</div>' +
+            (p.dicaDaMarca ? '<div class="mut" style="margin-top:4px">Nesta marca: ' + esc(p.dicaDaMarca) + '</div>' : '') +
+            lst(p.itens, function () { return 'travado aqui'; }) + '</div>';
+        }).join('') + '</div>';
+    }
+  }
+  var s = r.site || {};
+  h += '<div class="sec"><h3>Site (Nuvemshop)</h3><table class="tab"><tr><td>Publicados</td><td>' + n(s.publicados) + '</td></tr><tr><td>Publicados sem estoque físico</td><td>' + n(s.publicadosSemEstoque) + '</td></tr><tr><td>Prontos para subir</td><td>' + n(s.prontosParaSubir) + '</td></tr><tr><td>Com estoque e barrados pelo cadastro</td><td>' + n(s.bloqueados) + '</td></tr></table>' +
+    (Object.keys(s.motivos || {}).length ? '<p class="mut" style="margin-top:8px">Motivos de barrar:</p>' + linhas(s.motivos, n) : '') + '</div>';
+  var c = r.cadastro || {};
+  h += '<div class="sec"><h3>Cadastro</h3><table class="tab"><tr><td>Sem foto</td><td>' + n(c.semFoto) + '</td></tr><tr><td>Menos de 5 fotos</td><td>' + n(c.menosDe5Fotos) + '</td></tr><tr><td>Sem cor</td><td>' + n(c.semCor) + '</td></tr><tr><td>Sem custo</td><td>' + n(c.semCusto) + '</td></tr><tr><td>Preço ≤ custo</td><td>' + n(c.precoAbaixoCusto) + '</td></tr><tr><td>Tamanho ainda sem número confirmado (T-) com estoque</td><td>' + n(c.tamanhoTecnicoComEstoque) + '</td></tr></table></div>';
+  h += '<div class="sec"><h3>Propostas esperando você</h3>' + ((j.propostas || []).length ? '<table class="tab">' + j.propostas.slice(0, 15).map(function (p) { return '<tr><td>' + esc(p.titulo) + '</td><td>risco ' + esc(RISCO[p.risco] || p.risco || '—') + '</td></tr>'; }).join('') + '</table><p class="mut" style="margin-top:6px">Aprovar ou recusar em <a href="/rede.html" style="color:var(--o3)">Rede › Propostas</a>.</p>' : '<p class="mut">Nenhuma proposta pendente desta marca.</p>') + '</div>';
+  var f = j.ficha;
+  h += '<div class="sec"><h3>Ficha da marca</h3>' + (f ? '<dl class="ficha">' +
+    (f.fornecedores ? '<dt>Fornecedores</dt><dd>' + esc(f.fornecedores.join(', ')) + '</dd>' : '') +
+    (f.nfe ? '<dt>Como a NF-e escreve</dt><dd>' + esc(f.nfe) + '</dd>' : '') +
+    (f.tamanho ? '<dt>Tamanho</dt><dd>' + esc(f.tamanho) + '</dd>' : '') +
+    (f.cor ? '<dt>Cor</dt><dd>' + esc(f.cor) + '</dd>' : '') +
+    (f.foto ? '<dt>Foto oficial</dt><dd>' + esc(f.foto) + '</dd>' : '') +
+    ((f.armadilhas || []).length ? '<dt>Armadilhas conhecidas</dt><dd>' + f.armadilhas.map(esc).join('<br>') + '</dd>' : '') + '</dl>'
+    : '<p class="mut">Sem ficha ainda: o que se aprender desta marca entra aqui.</p>') + '</div>';
+  h += '<button class="btn" id="atualizar">Atualizar esta marca agora</button>';
+  return h;
+}
+
+function ligarAtualizar(marca) {
+  var b = $('#atualizar'); if (!b) return;
+  b.onclick = function () {
+    var antes = Date.now();
+    b.disabled = true; b.textContent = 'Pedindo ao gerente da marca…';
+    api('/marcas/' + encodeURIComponent(marca) + '/atualizar', { method: 'POST', body: '{}' }).then(function (j) {
+      if (j.aviso) { b.textContent = j.aviso; return; }
+      b.textContent = 'Pedido feito. Esperando o relatório novo…';
+      var tentativas = 0;
+      (function esperar() {
+        tentativas++;
+        api('/marcas/' + encodeURIComponent(marca)).then(function (d) {
+          var novo = d.relatorio && d.relatorio.geradoEm && new Date(d.relatorio.geradoEm).getTime() >= antes - 5000;
+          if (novo) { $('#shCorpo').innerHTML = detalhe(d); ligarAtualizar(marca); carregar(); return; }
+          if (tentativas >= 30) { b.disabled = false; b.textContent = 'O relatório ainda não ficou pronto. Tente de novo em instantes.'; return; }
+          setTimeout(esperar, 4000);
+        }).catch(function (e) { b.disabled = false; b.textContent = e.message; });
+      })();
+    }).catch(function (e) { b.disabled = false; b.textContent = e.message; });
+  };
+}
+
+document.addEventListener('click', function (e) {
+  var m = e.target.closest('.marca'); if (m) { abrir(m.getAttribute('data-m')); return; }
+  var c = e.target.closest('.chip');
+  if (c) { FILTRO = c.getAttribute('data-f'); document.querySelectorAll('.chip').forEach(function (x) { x.setAttribute('aria-pressed', x === c ? 'true' : 'false'); }); desenhar(); }
+});
+$('#q').addEventListener('input', desenhar);
+$('#fechar').addEventListener('click', fechar);
+$('#veu').addEventListener('click', fechar);
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape') fechar(); });
+
+/* ===================== DEMONSTRAÇÃO (?demo=1) ===================== */
+function demoApi(path, opts) {
+  var marcas = ['FILA', 'UMBRO', 'PENALTY', 'ADIDAS', 'NIKE', 'PUMA', 'CONVERSE', 'OLYMPIKUS'];
+  function rel(k, i) {
+    return { marca: k, atencao: 70 - i * 9, geradoEm: new Date().toISOString(), cards: 120 + i * 10, cardsComEstoque: 40 + i, comprado: 900 + i * 50, localizado: 300 - i * 20, coberturaDias: 90 + i * 20,
+      porLoja: { LOJA02: 40, LOJA04: 120, LOJA05: 90, LOJA06: 20 },
+      vendas: { d7: { un: 9, rs: 2100 }, d30: { un: 40 - i, rs: 12000 - i * 900, margemPct: 38.5, unSemCusto: 2 }, porCanal30: { LOJA02: { un: 10, rs: 3000 }, LOJA05: { un: 25, rs: 7500 }, SITE: { un: 5, rs: 1500 } } },
+      parados: { cards: 12, valorCustoRS: 18450 }, site: { publicados: 30, publicadosSemEstoque: 3, prontosParaSubir: 2, bloqueados: 9, motivos: { 'sem cor (risco de foto da cor errada)': 5, 'sem descricao': 4 } },
+      local: { conferidos: 120, noLugarCerto: 70, foraDoLugar: 9, foraDoLugarNoSite: 2, incompletos: 41, motivos: { 'local: categoria errada': 5, 'local: publico errado': 3, 'local: modalidade errada': 1 },
+        itens: [{ nome: 'CHUTEIRA FUTSAL EXEMPLO JR (demo)', motivo: 'publico errado (nome diz infantil, card está em Mulher)', noSite: true }, { nome: 'BOLA SOCIETY EXEMPLO (demo)', motivo: 'categoria errada (nome diz acessório, card está em Chuteiras)', noSite: false }] },
+      cadastro: { semFoto: 4, menosDe5Fotos: 20, semCor: 11, semCusto: 3, precoAbaixoCusto: i === 0 ? 1 : 0, tamanhoTecnicoComEstoque: 2 },
+      conferencia: { cardsComprados: 100, cardsBipados: 60 - i * 5, compradosBipados: 58 - i * 5, bipadosSemCompra: 2, unidadesBipadas: 240, bipesPendentes: 6, porLoja: { LOJA02: 60, LOJA04: 120, LOJA05: 60 }, bipadosNaNuvemshop: 22, publicadosNaoBipados: 8 - i, bipadosForaNuvemshop: 38, foraNuvemshopNasLojasDoSite: 10, foraNuvemshopSoEmOutrasLojas: 28, compradosNaoBipados: 40, bipadosMenosDe5Fotos: 12, pctCardsBipados: 60 - i * 5,
+        conserto: { prontosParaSubir: 3, itensProntos: [{ nome: 'Tênis Exemplo pronto (demo)' }], passos: [
+          { titulo: 'Bipado só em loja que não abastece o site', cards: 20, como: 'Liberar a loja para o site ou transferir para uma loja do site (demo).', quem: 'dono', precisaDono: true, itens: [{ nome: 'Chuteira Exemplo (demo)' }] },
+          { titulo: 'Cor ausente, abreviada ou crua', cards: 9, como: 'Cor por extenso em português, pela NF-e, caixa ou site oficial (demo).', quem: 'cadastro', precisaDono: false, dicaDaMarca: 'Cor sai da referência oficial (demo).', itens: [] }] },
+        itensPublicadosNaoBipados: [{ nome: 'Tênis Exemplo no site sem bipe (demo)', localizado: 0, comprado: 6 }], itensBipadosForaNuvemshop: [{ nome: 'Chuteira Exemplo bipada (demo)', unidades: 4, lojas: { LOJA04: 4 }, nasLojasDoSite: true }] },
+      alertas: [{ gravidade: 3, area: 'lugar', texto: '2 card(s) NO SITE no lugar errado (demo)', itens: [{ nome: 'CHUTEIRA FUTSAL EXEMPLO JR (demo)', motivo: 'publico errado (nome diz infantil, card está em Mulher)', noSite: true }] }, { gravidade: 2, area: 'venda', texto: '5 card(s) venderam nos últimos 30 dias e estão sem estoque localizado — falta repor OU falta contar na loja (demo)', itens: [{ nome: 'Tênis Exemplo Run (demo)', vendidos30: 4 }] }, { gravidade: 2, area: 'estoque', texto: '12 card(s) parados há 90+ dias (demo)', itens: [{ nome: 'Chuteira Exemplo (demo)', unidades: 8, dias: 140 }] }],
+      sobDemanda: false };
+  }
+  return new Promise(function (ok) {
+    setTimeout(function () {
+      if (path === '/marcas') return ok({ total: marcas.length, ultimaGeracao: new Date().toISOString(), marcas: marcas.map(function (k, i) { var r = rel(k, i); return { marca: k, atencao: r.atencao, geradoEm: r.geradoEm, cards: r.cards, cardsComEstoque: r.cardsComEstoque, comprado: r.comprado, localizado: r.localizado, vendas30: r.vendas.d30, vendas7: r.vendas.d7, coberturaDias: r.coberturaDias, alertas: 2, alertaPrincipal: r.alertas[0], propostasPendentes: i % 3, temFicha: true, conferencia: r.conferencia }; }) });
+      var mm = path.match(/^\/marcas\/([^/]+)(\/atualizar)?$/);
+      if (mm && mm[2]) return ok({ marca: decodeURIComponent(mm[1]), traceId: 'tr_demo', aviso: 'Modo demonstração: nada foi pedido.' });
+      if (mm) { var k = decodeURIComponent(mm[1]); return ok({ marca: k, ficha: { fornecedores: ['FORNECEDOR (demo)'], nfe: 'Formato da NF-e (demo).', foto: 'Fonte da foto oficial (demo).' }, relatorio: rel(k, Math.max(0, marcas.indexOf(k))), historico: [], propostas: [{ id: 'ap1', titulo: 'Transferir 4 pares de LOJA05 para LOJA02 (demo)', risco: 'low' }] }); }
+      ok({});
+    }, 250);
+  });
+}
+$('#demoBar').innerHTML = DEMO ? '<div class="demo" role="note">Modo demonstração: dados fictícios gerados no navegador. Nada é lido nem gravado no sistema.</div>' : '';
+carregar();
+</script>
+</body>
+</html>

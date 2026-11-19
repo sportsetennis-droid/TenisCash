@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#E5571E">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Meu pagamento">
+<link rel="manifest" href="/manifest.json">
+<title>Meu pagamento · TenisCash</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --brand:#E5571E; --brand-dark:#c4461a; --brand-soft:#fff1e8;
+  --ink:#1d1d1f; --muted:#6e6e73; --faint:#8e8e93; --line:#e8e8ed; --bg:#ffffff; --fill:#f6f6f8;
+  --bad:#b42318; --bad-soft:#fde8e8; --warn:#a8420e; --warn-soft:#fff1e8; --info:#33475e; --info-soft:#eef2f7;
+  --nav-h:62px; --safe-b:env(safe-area-inset-bottom,0px); --safe-t:env(safe-area-inset-top,0px);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html{-webkit-text-size-adjust:100%}
+body{font-family:'Barlow',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.4;
+  padding-top:var(--safe-t);padding-bottom:var(--safe-b);overflow-x:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+#app{max-width:480px;margin:0 auto;position:relative;background:var(--bg);min-height:100vh}
+#scroll{padding-bottom:calc(var(--nav-h) + var(--safe-b) + 24px)}
+
+/* Cabeçalho */
+.top{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.96);backdrop-filter:saturate(1.4) blur(10px);-webkit-backdrop-filter:saturate(1.4) blur(10px);border-bottom:1px solid var(--line);padding:10px 16px 8px}
+.top-row{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:36px}
+.top h1{font-size:20px;font-weight:800;letter-spacing:-.2px}
+.top .who{font-size:13px;color:var(--muted);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:55%}
+.month{display:flex;align-items:center;justify-content:space-between;margin-top:6px;background:var(--fill);border-radius:12px;padding:2px}
+.month button{min-width:44px;min-height:44px;border:0;background:transparent;border-radius:10px;font-size:22px;font-weight:700;color:var(--brand)}
+.month button:disabled{color:#c7c7cc}
+.month .m-label{font-weight:700;font-size:16px;text-align:center}
+.month .m-sub{display:block;font-size:12px;font-weight:500;color:var(--muted);text-transform:none}
+
+main{padding:12px 16px 0}
+.section{display:none}
+.section.on{display:block}
+h2{font-size:17px;font-weight:800;margin:20px 2px 8px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+h2 small{font-size:12px;font-weight:600;color:var(--muted)}
+h3{font-size:14px;font-weight:700;margin:14px 0 6px}
+
+/* Aviso */
+.notice{background:var(--brand-soft);border:1px solid #f6c9b3;border-radius:14px;padding:12px 14px;color:#7a2e0e;font-size:14px}
+.notice strong{display:block;font-weight:700;margin-bottom:2px;color:#5f230a}
+.notice details{margin-top:6px}
+.notice summary{cursor:pointer;font-weight:700;color:var(--brand-dark);min-height:32px;display:flex;align-items:center;list-style:none}
+.notice summary::-webkit-details-marker{display:none}
+.notice summary::after{content:'+';margin-left:6px;font-size:16px}
+.notice details[open] summary::after{content:'−'}
+.notice ul{margin:4px 0 2px 18px;font-size:13px}
+.notice li{margin:2px 0}
+
+/* Herói */
+.hero{margin-top:12px;background:linear-gradient(135deg,#E5571E 0%,#cf4614 100%);color:#fff;border-radius:18px;padding:18px 18px 16px;box-shadow:0 8px 24px rgba(229,87,30,.25)}
+.hero .lbl{font-size:13px;font-weight:600;opacity:.9}
+.hero .big{font-size:36px;font-weight:800;letter-spacing:-.5px;line-height:1.1;margin-top:2px;word-break:break-word}
+.hero .row{display:flex;justify-content:space-between;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.3)}
+.hero .row div{flex:1;min-width:0}
+.hero .mid{font-size:21px;font-weight:800;word-break:break-word}
+.hero .tiny{font-size:12px;opacity:.88;margin-top:2px}
+
+/* Cards */
+.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px;margin-top:10px}
+.card-title{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:800;font-size:15px;margin-bottom:6px}
+.kv{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:7px 0;border-top:1px solid #f0f0f3;font-size:14px}
+.kv:first-of-type{border-top:0}
+.kv .k{color:var(--muted);min-width:0}
+.kv .v{font-weight:700;text-align:right;white-space:nowrap}
+.kv .v.wrap{white-space:normal}
+.muted{color:var(--muted)}
+.small{font-size:12.5px}
+.note{font-size:12.5px;color:var(--muted);margin-top:6px}
+.neg{color:var(--bad)}
+.pos{color:var(--ink)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.stat{background:var(--fill);border-radius:12px;padding:10px}
+.stat .s-l{font-size:12px;color:var(--muted);font-weight:600}
+.stat .s-v{font-size:18px;font-weight:800;margin-top:2px;word-break:break-word}
+
+/* Chips */
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;border-radius:999px;padding:3px 9px;white-space:nowrap;line-height:1.3}
+.t-ok{background:#f1f1f4;color:var(--ink)}
+.t-warn{background:var(--warn-soft);color:var(--warn)}
+.t-bad{background:var(--bad-soft);color:var(--bad)}
+.t-info{background:var(--info-soft);color:var(--info)}
+.t-muted{background:#f4f4f6;color:var(--faint)}
+.t-brand{background:var(--brand);color:#fff}
+
+/* Barra de progresso */
+.prog{margin-top:8px}
+.prog .p-head{display:flex;justify-content:space-between;gap:8px;font-size:13px;font-weight:600}
+.bar{height:10px;background:#f0f0f3;border-radius:999px;overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;background:var(--brand);border-radius:999px;transition:width .5s ease}
+.bar.done i{background:var(--brand-dark)}
+.prog .p-foot{font-size:12.5px;color:var(--muted);margin-top:4px}
+
+/* Listas de cálculo */
+.line{padding:9px 0;border-top:1px solid #f0f0f3}
+.line:first-child{border-top:0}
+.line .l-top{display:flex;justify-content:space-between;gap:10px;font-size:14px;font-weight:700}
+.line .l-top span:last-child{white-space:nowrap}
+.line .memo{font-size:12.5px;color:var(--muted);margin-top:2px;word-break:break-word}
+.total{display:flex;justify-content:space-between;font-weight:800;padding-top:10px;margin-top:4px;border-top:2px solid var(--ink);font-size:15px}
+
+/* Pendências */
+.pend{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid #f0f0f3;font-size:14px}
+.pend:first-child{border-top:0}
+.pend .chip{flex-shrink:0;margin-top:1px}
+
+/* Ponto */
+.seg{display:flex;background:var(--fill);border-radius:12px;padding:3px;gap:3px;margin-top:10px}
+.seg button{flex:1;min-height:40px;border:0;border-radius:9px;background:transparent;font-weight:700;font-size:14px;color:var(--muted)}
+.seg button.on{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.day{border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:8px;background:#fff}
+.day.alert{border-color:#f3c3a9;background:#fffaf7}
+.day.bad{border-color:#f2b8b5;background:#fffafa}
+.day-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.day-date{font-weight:800;font-size:15px}
+.day-date span{font-weight:600;color:var(--muted);font-size:13px;margin-left:4px}
+.times{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px}
+.times div{background:var(--fill);border-radius:10px;padding:6px 4px;text-align:center}
+.times .t-l{font-size:10.5px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.2px}
+.times .t-v{font-size:16px;font-weight:800;margin-top:1px}
+.times .t-v.none{color:#c7c7cc}
+.day-meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:8px;font-size:12.5px;color:var(--muted)}
+.day-meta b{color:var(--ink);font-weight:700}
+.issues{margin-top:8px;font-size:13px;color:var(--bad);font-weight:600}
+.week{border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:8px}
+.week-head{display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:800}
+
+/* Botões */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:0 16px;border-radius:12px;border:1px solid var(--line);background:#fff;font-weight:700;font-size:14.5px;color:var(--ink);text-decoration:none}
+.btn:active{transform:scale(.98)}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+.btn.ghost{border-color:#f3c3a9;color:var(--brand-dark);background:var(--brand-soft)}
+.btn.block{width:100%}
+.btn:disabled{opacity:.55}
+.btn.sm{min-height:44px;padding:0 12px;font-size:13.5px}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.day .btn{margin-top:10px}
+
+/* Histórico / pedidos */
+.item{display:block;width:100%;text-align:left;border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-top:8px;background:#fff;min-height:44px}
+.item-row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.item-title{font-weight:800;font-size:15px}
+.item-sub{font-size:12.5px;color:var(--muted);margin-top:3px}
+.item .val{font-weight:800;font-size:17px;white-space:nowrap}
+.quote{background:var(--fill);border-radius:10px;padding:8px 10px;margin-top:8px;font-size:13.5px;white-space:pre-wrap;word-break:break-word}
+.quote.resp{background:var(--brand-soft);color:#5f230a}
+
+/* Estados */
+.state{text-align:center;padding:40px 16px;color:var(--muted)}
+.state .s-t{font-weight:800;color:var(--ink);font-size:16px;margin-bottom:4px}
+.spin{width:28px;height:28px;border:3px solid #f0d2c4;border-top-color:var(--brand);border-radius:50%;margin:0 auto 10px;animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.skel{background:linear-gradient(90deg,#f3f3f5 0%,#ebebee 50%,#f3f3f5 100%);background-size:200% 100%;animation:sk 1.2s ease-in-out infinite;border-radius:14px}
+@keyframes sk{to{background-position:-200% 0}}
+
+/* Navegação inferior */
+.nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;z-index:30;background:rgba(255,255,255,.98);border-top:1px solid var(--line);
+  display:grid;grid-template-columns:repeat(4,1fr);padding-bottom:var(--safe-b);height:calc(var(--nav-h) + var(--safe-b))}
+.nav button{border:0;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:44px;font-size:11.5px;font-weight:700;color:var(--faint);position:relative}
+.nav button svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.nav button.on{color:var(--brand)}
+.nav .dot{position:absolute;top:7px;left:calc(50% + 8px);min-width:16px;height:16px;border-radius:8px;background:var(--bad);color:#fff;font-size:10px;line-height:16px;padding:0 4px}
+
+/* Bottom-sheet */
+.backdrop{position:fixed;inset:0;background:rgba(0,0,0,.38);z-index:40;opacity:0;pointer-events:none;transition:opacity .2s}
+.backdrop.on{opacity:1;pointer-events:auto}
+.sheet{position:fixed;left:50%;bottom:0;transform:translate(-50%,105%);width:100%;max-width:480px;z-index:41;background:#fff;border-radius:20px 20px 0 0;
+  max-height:92%;display:flex;flex-direction:column;transition:transform .25s ease,visibility 0s linear .25s;visibility:hidden;box-shadow:0 -6px 30px rgba(0,0,0,.18)}
+.sheet.on{transform:translate(-50%,0);visibility:visible;transition:transform .25s ease,visibility 0s}
+.sheet-grab{width:40px;height:5px;border-radius:3px;background:#d6d6db;margin:8px auto 0;flex-shrink:0}
+.sheet-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px 6px 16px;flex-shrink:0;border-bottom:1px solid var(--line)}
+.sheet-head h4{font-size:17px;font-weight:800}
+.sheet-x{min-width:44px;min-height:44px;border:0;background:transparent;font-size:26px;color:var(--muted);line-height:1}
+.sheet-body{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 16px calc(16px + var(--safe-b));overscroll-behavior:contain}
+label.f{display:block;font-size:13px;font-weight:700;margin:12px 0 5px}
+.in{width:100%;min-height:44px;border:1px solid #d8d8de;border-radius:12px;padding:10px 12px;background:#fff;font-size:16px}
+textarea.in{min-height:96px;resize:vertical}
+.in:focus{outline:2px solid #f6b997;border-color:var(--brand)}
+.err{color:var(--bad);font-size:13.5px;font-weight:600;margin-top:10px}
+.ok-box{background:var(--brand-soft);border-radius:12px;padding:10px 12px;font-size:13.5px;color:#5f230a;margin-top:10px}
+
+/* Toast */
+.toast{position:fixed;left:50%;bottom:calc(var(--nav-h) + var(--safe-b) + 14px);transform:translate(-50%,20px);background:var(--ink);color:#fff;padding:11px 16px;border-radius:12px;font-size:14px;font-weight:600;
+  z-index:60;opacity:0;pointer-events:none;transition:all .2s;max-width:calc(100% - 32px);width:max-content;text-align:center}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+
+/* Tela de login */
+.gate{padding:60px 24px;text-align:center}
+.gate .logo{width:64px;height:64px;border-radius:18px;background:var(--brand);color:#fff;font-weight:800;font-size:26px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px}
+.gate h2{justify-content:center;font-size:20px}
+.gate p{color:var(--muted);margin:6px 0 20px}
+
+/* Desktop: moldura de celular */
+@media (min-width:900px){
+  body{background:#eceef2;padding:24px 0}
+  #app{transform:translateZ(0);height:calc(100vh - 48px);min-height:0;max-height:900px;width:430px;border-radius:36px;overflow:hidden;
+    box-shadow:0 30px 80px rgba(0,0,0,.22),0 0 0 10px #1d1d1f}
+  #scroll{height:100%;overflow-y:auto}
+  .nav,.sheet{max-width:none}
+  .backdrop{border-radius:36px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<script>if (/[?&]embed=1/.test(location.search)) document.documentElement.classList.add('embed');</script>
+<style>.embed .top-row{display:none}</style>
+<div id="app">
+  <div id="scroll">
+    <header class="top" id="top">
+      <div class="top-row">
+        <h1>Meu pagamento</h1>
+        <div class="who" id="who"></div>
+      </div>
+      <div class="month" id="monthBar">
+        <button type="button" id="prevM" aria-label="Mês anterior">‹</button>
+        <div class="m-label" id="mLabel">—</div>
+        <button type="button" id="nextM" aria-label="Próximo mês">›</button>
+      </div>
+    </header>
+    <main>
+      <section class="section on" id="sec-mes" aria-label="Mês atual"></section>
+      <section class="section" id="sec-ponto" aria-label="Ponto"></section>
+      <section class="section" id="sec-hist" aria-label="Histórico"></section>
+      <section class="section" id="sec-pedidos" aria-label="Pedidos"></section>
+    </main>
+  </div>
+
+  <nav class="nav" id="nav" aria-label="Navegação">
+    <button type="button" data-tab="mes" class="on">
+      <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10h18"/><path d="M7 15h4"/></svg>
+      <span>Mês atual</span>
+    </button>
+    <button type="button" data-tab="ponto">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+      <span>Ponto</span><b class="dot" id="dotPonto" hidden></b>
+    </button>
+    <button type="button" data-tab="hist">
+      <svg viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/><path d="M10 12h5M10 16h5"/></svg>
+      <span>Histórico</span>
+    </button>
+    <button type="button" data-tab="pedidos">
+      <svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg>
+      <span>Pedidos</span>
+    </button>
+  </nav>
+
+  <div class="backdrop" id="backdrop"></div>
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+    <div class="sheet-grab"></div>
+    <div class="sheet-head"><h4 id="sheetTitle"></h4><button type="button" class="sheet-x" id="sheetX" aria-label="Fechar">×</button></div>
+    <div class="sheet-body" id="sheetBody"></div>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  // ───────────── utilitários ─────────────
+  const $ = (s, r) => (r || document).querySelector(s);
+  const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+  const brl = (c) => (c == null || isNaN(Number(c)) ? '—' : BRL.format(Number(c) / 100));
+  const mins = (m) => {
+    if (m == null || isNaN(Number(m))) return '—';
+    const n = Math.round(Number(m)); const a = Math.abs(n);
+    return (n < 0 ? '−' : '') + Math.floor(a / 60) + 'h' + String(a % 60).padStart(2, '0');
+  };
+  const signedMins = (m) => (m > 0 ? '+' + mins(m) : mins(m));
+  const TZ = 'America/Fortaleza';
+  const nowParts = () => {
+    const p = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+    const g = (t) => p.find((x) => x.type === t).value;
+    return { y: g('year'), m: g('month'), d: g('day') };
+  };
+  const todayKey = () => { const p = nowParts(); return `${p.y}-${p.m}-${p.d}`; };
+  const currentComp = () => { const p = nowParts(); return `${p.y}-${p.m}`; };
+  const MONTHS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+  const compLabel = (c) => { const m = /^(\d{4})-(\d{2})$/.exec(c || ''); return m ? `${MONTHS[Number(m[2]) - 1]} de ${m[1]}` : String(c || ''); };
+  const shiftComp = (c, k) => { const [y, m] = c.split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 + k, 1)); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`; };
+  const dmy = (k) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(k || ''); return m ? `${m[3]}/${m[2]}/${m[1]}` : (k ? String(k) : '—'); };
+  const dm = (k) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(k || ''); return m ? `${m[3]}/${m[2]}` : (k ? String(k) : '—'); };
+  const dt = (iso) => { if (!iso) return '—'; const d = new Date(iso); return isNaN(d) ? '—' : d.toLocaleString('pt-BR', { timeZone: TZ, day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); };
+  const dateOnly = (iso) => { if (!iso) return '—'; const d = new Date(iso); return isNaN(d) ? '—' : d.toLocaleDateString('pt-BR', { timeZone: TZ }); };
+  const isoDatesToBr = (t) => String(t || '').replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, '$3/$2/$1');
+  const cap = (s) => (s ? String(s).charAt(0).toUpperCase() + String(s).slice(1) : '');
+  const pct = (a, b) => (b > 0 ? Math.max(0, Math.min(100, (a / b) * 100)) : 0);
+  const num = (v) => String(v).replace('.', ',');
+
+  // ───────────── rótulos ─────────────
+  const CONTRACT = { MENSALISTA: 'Mensalista', HORISTA: 'Horista', ESCALA_12X36: 'Escala 12x36', APRENDIZ: 'Jovem aprendiz', PARCIAL: 'Tempo parcial', SEM_REGISTRO: 'Sem registro em carteira' };
+  const DAY = {
+    COMPLETO: ['Completo', 't-ok'], INCOMPLETO: ['Incompleto', 't-bad'], SEM_PONTO: ['Sem ponto (não é falta)', 't-warn'],
+    FOLGA: ['Folga', 't-info'], FOLGA_COMPENSATORIA: ['Folga compensatória', 't-info'], DOMINGO_TRABALHADO: ['Domingo trabalhado', 't-brand'], DOMINGO_TROCA: ['Domingo (troca de folga)', 't-info'], FOLGA_TROCA: ['Folga da troca de domingo', 't-info'],
+    FERIADO_TRABALHADO: ['Feriado trabalhado', 't-brand'], ATESTADO: ['Atestado', 't-info'], ATESTADO_PARCIAL: ['Atestado parcial', 't-info'],
+    FALTA_CONFIRMADA: ['Falta confirmada', 't-bad'], ABONO: ['Abono', 't-info'], DESCANSO: ['Descanso', 't-muted'], FERIADO: ['Feriado', 't-muted'],
+    FUTURO: ['Ainda não chegou', 't-muted'], EM_ANDAMENTO: ['Em andamento', 't-info'], FERIAS: ['Férias', 't-info'], AFASTAMENTO: ['Afastamento', 't-info'],
+    FORA_DO_VINCULO: ['Fora do vínculo', 't-muted'],
+  };
+  const SPECIAL = {
+    PAGAMENTO_PENDENTE: ['Valor ainda não definido pelo DP', 't-warn'], CONCILIADO: ['Conciliado', 't-ok'], DIVERGENTE: ['Divergente — pago a mais', 't-bad'],
+    TRABALHADO_E_PAGO: ['Trabalhado e pago', 't-ok'], TRABALHADO_E_NAO_PAGO: ['A receber', 't-warn'],
+  };
+  const COMPOFF = { FOLGA_UTILIZADA: 'Folga usada', FOLGA_PENDENTE: 'Folga ainda não marcada', SEM_FOLGA: 'Não tem folga compensatória' };
+  const SLIP = {
+    FECHADO: ['Fechado', 't-info', 'Contracheque oficial fechado. Aguardando pagamento.'],
+    PAGO: ['Pago', 't-ok', 'Contracheque oficial com pagamento registrado.'],
+    REABERTO: ['Reaberto', 't-warn', 'Reaberto para correção: uma nova versão vai substituir esta.'],
+    CORRIGIDO: ['Corrigido', 't-muted', 'Substituído por uma versão mais nova. Vale a versão mais recente.'],
+  };
+  const KIND = { MENSAL: 'Mensal', FERIAS: 'Férias', DECIMO_TERCEIRO_1: '13º — 1ª parcela', DECIMO_TERCEIRO_2: '13º — 2ª parcela' };
+  const CORR = { PENDENTE: ['Aguardando análise', 't-warn'], APROVADA: ['Aprovada', 't-ok'], RECUSADA: ['Recusada', 't-bad'] };
+  const DISP = { ABERTA: ['Aberta', 't-warn'], RESPONDIDA: ['Respondida', 't-ok'], ENCERRADA: ['Encerrada', 't-muted'] };
+  const PUNCH = { entry: 'Entrada', break_start: 'Início do intervalo', break_end: 'Retorno do intervalo', exit: 'Saída' };
+  const ORIGIN = { app: 'App', correcao: 'Correção aprovada', manual: 'Lançamento manual', kiosk: 'Totem', admin: 'Administração' };
+  const chip = (map, k) => { const v = map[k] || [k || '—', 't-muted']; return `<span class="chip ${v[1]}">${esc(v[0])}</span>`; };
+
+  // ───────────── estado / API ─────────────
+  const TOKEN = (() => { try { return localStorage.getItem('tc_token') || localStorage.getItem('loja_token') || ''; } catch (_) { return ''; } })();
+  const S = { tab: 'mes', comp: currentComp(), preview: {}, payslips: null, corrections: null, disputes: null, stores: {}, pontoFilter: 'todos', loggedOut: false };
+
+  class ApiError extends Error { constructor(msg, status) { super(msg); this.status = status; } }
+  async function api(path, opts = {}) {
+    const headers = Object.assign({ Authorization: 'Bearer ' + TOKEN }, opts.body ? { 'Content-Type': 'application/json' } : {});
+    let res;
+    try { res = await fetch('/api/payroll' + path, { method: opts.method || 'GET', headers, body: opts.body ? JSON.stringify(opts.body) : undefined, cache: 'no-store' }); }
+    catch (_) { throw new ApiError('Sem conexão. Confira a internet e tente de novo.', 0); }
+    if (res.status === 401) { showGate(); throw new ApiError('Sessão expirada', 401); }
+    if (opts.raw) {
+      if (!res.ok) { let m = 'Não foi possível baixar o arquivo.'; try { m = (await res.json()).error || m; } catch (_) {} throw new ApiError(m, res.status); }
+      return res;
+    }
+    let data = null; try { data = await res.json(); } catch (_) {}
+    if (!res.ok) throw new ApiError((data && data.error) || 'Erro ao carregar (' + res.status + ')', res.status);
+    return data;
+  }
+  async function apiBlob(path, fallbackName) {
+    const res = await api(path, { raw: true });
+    const blob = await res.blob();
+    const cd = res.headers.get('Content-Disposition') || '';
+    const m = /filename="?([^";]+)"?/i.exec(cd);
+    return { blob, name: (m && m[1]) || fallbackName };
+  }
+  // Nome das lojas (lista pública de lojas ativas). Sem ela, mostra o código abreviado.
+  fetch('/api/stores', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).then((j) => {
+    if (j && Array.isArray(j.stores)) { for (const s of j.stores) S.stores[s.id] = s.name || s.code; if (S.tab === 'ponto') renderPonto(); if (S.tab === 'mes') renderMes(); }
+  }).catch(() => {});
+  const storeName = (id) => S.stores[id] || ('Loja ' + String(id).slice(0, 6));
+
+  // ───────────── UI geral ─────────────
+  let toastTimer = null;
+  function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('on'), 3200); }
+  function loading(h = 3) { return `<div class="skel" style="height:58px;margin-top:12px"></div><div class="skel" style="height:150px;margin-top:12px"></div>` + '<div class="skel" style="height:110px;margin-top:10px"></div>'.repeat(h); }
+  function errorBox(msg, retry) { return `<div class="state"><div class="s-t">Não deu para carregar</div><div>${esc(msg)}</div><button type="button" class="btn primary" style="margin-top:14px" data-retry="${esc(retry)}">Tentar de novo</button></div>`; }
+  function empty(title, text) { return `<div class="state"><div class="s-t">${esc(title)}</div><div>${esc(text)}</div></div>`; }
+
+  function showGate() {
+    if (S.loggedOut) return; S.loggedOut = true;
+    closeSheet();
+    $('#nav').style.display = 'none'; $('#monthBar').style.display = 'none'; $('#who').textContent = '';
+    document.querySelector('main').innerHTML = `<div class="gate"><div class="logo">TC</div><h2>Entre no app</h2>
+      <p>Para ver seu pagamento, entre com seu usuário no app TenisCash. Depois volte aqui.</p>
+      <a class="btn primary block" href="/">Entrar no app</a></div>`;
+  }
+
+  // Bottom-sheet
+  let sheetOnClose = null;
+  function openSheet(title, html, onClose) {
+    $('#sheetTitle').textContent = title; $('#sheetBody').innerHTML = html; $('#sheetBody').scrollTop = 0;
+    $('#backdrop').classList.add('on'); $('#sheet').classList.add('on'); sheetOnClose = onClose || null;
+    document.body.style.overflow = 'hidden';
+  }
+  function closeSheet() {
+    $('#backdrop').classList.remove('on'); $('#sheet').classList.remove('on'); document.body.style.overflow = '';
+    const f = sheetOnClose; sheetOnClose = null; if (f) f();
+  }
+  $('#backdrop').addEventListener('click', closeSheet);
+  $('#sheetX').addEventListener('click', closeSheet);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('#sheet').classList.contains('on')) closeSheet(); });
+
+  // Navegação
+  function setTab(tab) {
+    S.tab = tab;
+    document.querySelectorAll('.nav button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+    document.querySelectorAll('.section').forEach((s) => s.classList.toggle('on', s.id === 'sec-' + tab));
+    $('#monthBar').style.display = tab === 'mes' || tab === 'ponto' ? '' : 'none';
+    const sc = window.matchMedia('(min-width:900px)').matches ? $('#scroll') : null;
+    if (sc) sc.scrollTop = 0; else window.scrollTo(0, 0);
+    if (tab === 'mes' || tab === 'ponto') loadPreview();
+    if (tab === 'hist') loadHistory();
+    if (tab === 'pedidos') loadPedidos();
+  }
+  $('#nav').addEventListener('click', (e) => { const b = e.target.closest('button[data-tab]'); if (b && !S.loggedOut) setTab(b.dataset.tab); });
+
+  // Mês
+  function renderMonthBar() {
+    const cur = currentComp();
+    const r = S.preview[S.comp] && S.preview[S.comp].data && S.preview[S.comp].data.result;
+    const sub = r && r.asOfDay ? (S.comp === cur ? 'calculado até ' + dm(r.asOfDay) : 'mês encerrado') : (S.comp === cur ? 'mês atual' : '');
+    $('#mLabel').innerHTML = esc(cap(compLabel(S.comp))) + (sub ? `<span class="m-sub">${esc(sub)}</span>` : '');
+    $('#nextM').disabled = S.comp >= cur;
+  }
+  $('#prevM').addEventListener('click', () => { S.comp = shiftComp(S.comp, -1); loadPreview(); });
+  $('#nextM').addEventListener('click', () => { if (S.comp < currentComp()) { S.comp = shiftComp(S.comp, 1); loadPreview(); } });
+
+  // ───────────── carregamento da prévia ─────────────
+  async function loadPreview(force) {
+    renderMonthBar();
+    const comp = S.comp;
+    const c = S.preview[comp];
+    if (c && c.data && !force) { renderActive(); return; }
+    S.preview[comp] = { loading: true };
+    renderActive();
+    try {
+      const data = await api('/me/preview?competence=' + encodeURIComponent(comp));
+      S.preview[comp] = { data };
+      if (data && data.stores) Object.assign(S.stores, data.stores);
+      if (data.employee && data.employee.name) $('#who').textContent = data.employee.name;
+    } catch (err) {
+      if (err.status === 401) return;
+      S.preview[comp] = { error: err.message };
+    }
+    if (comp === S.comp) { renderMonthBar(); renderActive(); }
+  }
+  function renderActive() { if (S.tab === 'mes') renderMes(); else if (S.tab === 'ponto') renderPonto(); }
+
+  // ───────────── MÊS ATUAL ─────────────
+  function renderMes() {
+    const el = $('#sec-mes'); const c = S.preview[S.comp];
+    if (!c || c.loading) { el.innerHTML = loading(); return; }
+    if (c.error) { el.innerHTML = errorBox(c.error, 'preview'); return; }
+    const { result: r, notice } = c.data;
+    const isCurrent = S.comp === currentComp();
+    const t = r.totals || {};
+    const dotCount = ((r.time && r.time.days) || []).filter((d) => d.pending).length;
+    const dot = $('#dotPonto'); if (isCurrent && dotCount) { dot.textContent = dotCount; dot.hidden = false; } else dot.hidden = true;
+
+    let h = `<div class="notice"><strong>${esc(notice || 'Prévia — ainda não é o contracheque oficial.')}</strong>
+      ${isCurrent ? '' : '<div class="small" style="margin-top:4px">Este mês já acabou. Quando o DP fechar a folha, o contracheque oficial aparece em <b>Histórico</b>.</div>'}
+      <details><summary>O que ainda pode mudar este valor</summary><ul>
+        <li>Novas batidas de ponto</li><li>Correção de marcações</li><li>Vendas canceladas ou devolvidas</li><li>Adiantamentos (vales)</li>
+        <li>Folgas e atestados</li><li>Fechamento da comissão</li><li>Alterações na legislação</li><li>Conferência do departamento pessoal</li>
+      </ul></details></div>`;
+
+    const proj = r.projection;
+    h += `<div class="hero"><div class="lbl">Líquido estimado até hoje</div><div class="big">${brl(t.netCents)}</div>
+      <div class="tiny">Proventos ${brl(t.grossCents)} · Descontos ${brl(t.deductionsCents)}</div>
+      ${proj ? `<div class="row"><div><div class="lbl">Projeção até o fim do mês</div><div class="mid">${brl(proj.netCents)}</div>
+        <div class="tiny">${proj.basis ? 'Se mantiver o ' + esc(proj.basis) : 'Estimativa'} — é só uma estimativa.</div></div></div>` : ''}
+    </div>`;
+
+    h += cardContrato(r);
+    h += cardHoras(r);
+    h += cardEspeciais(r);
+    h += cardComissao(r);
+    h += cardLancamentos(r);
+    h += cardCalculo(r, 'Como cada valor foi calculado');
+    el.innerHTML = h;
+  }
+
+  function cardContrato(r) {
+    const c = r.contract || {};
+    const daily = r.time && r.time.dailyExpectedMinutes;
+    let escala;
+    if (c.type === 'ESCALA_12X36') escala = '12x36' + (c.shiftMinutes ? ' — plantão de ' + mins(c.shiftMinutes) : '');
+    else escala = 'Semana de segunda a sábado';
+    return `<h2>Contrato</h2><div class="card">
+      <div class="kv"><span class="k">Tipo</span><span class="v">${esc(CONTRACT[c.type] || c.type || 'Não informado')}</span></div>
+      ${c.jobTitle ? `<div class="kv"><span class="k">Cargo</span><span class="v">${esc(c.jobTitle)}</span></div>` : ''}
+      <div class="kv"><span class="k">Admissão</span><span class="v">${esc(dmy(c.admissionDate))}</span></div>
+      ${c.terminationDate ? `<div class="kv"><span class="k">Desligamento</span><span class="v">${esc(dmy(c.terminationDate))}</span></div>` : ''}
+      ${c.type === 'HORISTA'
+        ? `<div class="kv"><span class="k">Valor da hora</span><span class="v">${brl(c.hourlyRateCents)}</span></div>`
+        : `<div class="kv"><span class="k">Salário base</span><span class="v">${brl(c.baseSalaryCents)}</span></div>`}
+      <div class="kv"><span class="k">Jornada</span><span class="v wrap">${mins(c.weeklyMinutes)} por semana${daily && c.type !== 'ESCALA_12X36' ? ' · ' + mins(daily) + ' por dia' : ''}</span></div>
+      <div class="kv"><span class="k">Escala</span><span class="v wrap">${esc(escala)}</span></div>
+      ${c.bondDays != null && c.bondDays !== 30 ? `<div class="kv"><span class="k">Dias de vínculo no mês</span><span class="v">${esc(c.bondDays)}</span></div>` : ''}
+      <div class="kv"><span class="k">Banco de horas</span><span class="v">${c.timeBank ? 'Sim (acordo)' : 'Não'}</span></div>
+    </div>`;
+  }
+
+  function cardHoras(r) {
+    const tt = (r.time && r.time.totals) || {};
+    const c = r.contract || {};
+    let h = `<h2>Horas <small>até ${esc(dm(r.asOfDay))}</small></h2><div class="card"><div class="grid2">
+      <div class="stat"><div class="s-l">Previstas até hoje</div><div class="s-v">${mins(tt.expectedMinutes)}</div></div>
+      <div class="stat"><div class="s-l">Registradas</div><div class="s-v">${mins(tt.registeredMinutes)}</div></div>
+      <div class="stat"><div class="s-l">Regulares</div><div class="s-v">${mins(tt.regularMinutes)}</div></div>
+      <div class="stat"><div class="s-l">Intervalos</div><div class="s-v">${mins(tt.breakMinutes)}</div></div>
+      <div class="stat"><div class="s-l">Extras (provisórias)</div><div class="s-v">${mins(tt.extraMinutes)}</div></div>
+      <div class="stat"><div class="s-l">Faltantes (provisórias)</div><div class="s-v">${mins(tt.missingMinutes)}</div></div>
+    </div>`;
+    if (tt.extraMinutes > 0 && tt.extraConfirmedMinutes !== tt.extraMinutes) h += `<div class="note">Das extras, ${mins(tt.extraConfirmedMinutes)} estão em semanas já sem pendência.</div>`;
+    if (tt.creditedMinutes) h += `<div class="kv"><span class="k">Abonadas (atestado/abono/folga)</span><span class="v">${mins(tt.creditedMinutes)}</span></div>`;
+    if (tt.specialMinutes) h += `<div class="kv"><span class="k">Domingos/feriados (contados à parte)</span><span class="v">${mins(tt.specialMinutes)}</span></div>`;
+    if (tt.nightMinutes) h += `<div class="kv"><span class="k">Horas noturnas</span><span class="v">${mins(tt.nightMinutes)}</span></div>`;
+    if (tt.lateConfirmedMinutes) h += `<div class="kv"><span class="k">Atrasos confirmados</span><span class="v neg">${mins(tt.lateConfirmedMinutes)}</span></div>`;
+    if (c.timeBank) {
+      const bal = ((r.time && r.time.weeks) || []).reduce((s, w) => s + (w.balanceMinutes || 0), 0);
+      h += `<div class="kv"><span class="k">Banco de horas — saldo das semanas</span><span class="v ${bal < 0 ? 'neg' : ''}">${signedMins(bal)}</span></div>`;
+    }
+    const s12 = r.time && r.time.shifts12x36;
+    if (s12) {
+      h += `<h3>Plantões 12x36</h3>
+        <div class="kv"><span class="k">Plantões na escala</span><span class="v">${esc(s12.scheduledShifts)}</span></div>
+        <div class="kv"><span class="k">Plantões trabalhados</span><span class="v">${esc(s12.workedShifts)}</span></div>
+        <div class="kv"><span class="k">Extra (além do plantão)</span><span class="v">${mins(s12.extraMinutes)}</span></div>
+        ${s12.missingShifts && s12.missingShifts.length ? `<div class="kv"><span class="k">Plantões com pendência</span><span class="v wrap">${esc(s12.missingShifts.map(dm).join(', '))}</span></div>` : ''}`;
+    }
+    h += `<div class="note">Extras e faltantes são provisórias: só viram pagamento ou desconto depois da conferência do ponto. Dia sem ponto não é falta.</div></div>`;
+    return h;
+  }
+
+  function cardEspeciais(r) {
+    const list = r.specialDays || [];
+    let h = `<h2>Domingos e feriados</h2>`;
+    if (!list.length) return h + `<div class="card"><div class="muted small">Nenhum domingo ou feriado trabalhado neste mês até agora.</div></div>`;
+    for (const s of list) {
+      h += `<div class="card"><div class="card-title"><span>${esc(dmy(s.date))} · ${esc(s.type === 'FERIADO' ? 'Feriado' + (s.holiday ? ' (' + s.holiday + ')' : '') : cap(s.weekdayName || 'Domingo'))}</span>${chip(SPECIAL, s.status)}</div>
+        <div class="kv"><span class="k">Entrada / saída</span><span class="v">${esc(s.entry || '—')} – ${esc(s.exit || '—')}</span></div>
+        <div class="kv"><span class="k">Horas</span><span class="v">${mins(s.workedMinutes)}</span></div>
+        <div class="kv"><span class="k">Devido</span><span class="v">${s.dueCents == null ? 'Aguardando valor do DP' : brl(s.dueCents)}</span></div>
+        <div class="kv"><span class="k">Já pago</span><span class="v">${brl(s.paidCents)}${s.paidAt ? ' <span class="muted small">em ' + esc(dm(s.paidAt)) + '</span>' : ''}</span></div>
+        ${s.balanceCents != null && s.balanceCents !== 0 ? `<div class="kv"><span class="k">${s.balanceCents > 0 ? 'Falta receber' : 'Pago a mais'}</span><span class="v ${s.balanceCents < 0 ? 'neg' : ''}">${brl(Math.abs(s.balanceCents))}</span></div>` : ''}
+        <div class="kv"><span class="k">Folga compensatória</span><span class="v wrap">${esc(COMPOFF[s.compOffStatus] || s.compOffStatus || '—')}${s.compensatoryDayOff ? ' em ' + esc(dmy(s.compensatoryDayOff)) : ''}</span></div>
+      </div>`;
+    }
+    return h;
+  }
+
+  function progress(title, cur, target, foot, done) {
+    return `<div class="prog"><div class="p-head"><span>${title}</span><span>${brl(cur)} / ${brl(target)}</span></div>
+      <div class="bar ${done ? 'done' : ''}"><i style="width:${pct(cur, target).toFixed(1)}%"></i></div><div class="p-foot">${foot}</div></div>`;
+  }
+
+  function cardComissao(r) {
+    const c = r.commission || {};
+    let h = `<h2>Vendas e comissão</h2>`;
+    if (c.missingRule) return h + `<div class="card"><div class="muted small">Nenhuma regra de comissão cadastrada para você neste mês. Se você vende, fale com o DP.</div></div>`;
+    const conf = c.confirmed || {}; const pend = c.pending || {}; const canc = c.canceled || {};
+    h += `<div class="card"><div class="grid2">
+      <div class="stat"><div class="s-l">Confirmadas (${esc(conf.count || 0)})</div><div class="s-v">${brl(conf.totalCents)}</div></div>
+      <div class="stat"><div class="s-l">Pendentes (${esc(pend.count || 0)})</div><div class="s-v">${brl(pend.salesCents)}</div></div>
+      <div class="stat"><div class="s-l">Canceladas (${esc(canc.count || 0)})</div><div class="s-v">${brl(canc.salesCents)}</div></div>
+      <div class="stat"><div class="s-l">Percentual atual</div><div class="s-v">${esc(num(conf.generalPct ?? 0))}%</div></div>
+    </div>`;
+    if (conf.nextTier) {
+      h += progress(`Rumo a ${esc(num(conf.nextTier.pct))}%`, conf.totalCents || 0, conf.nextTier.aboveCents,
+        `Faltam <b>${brl(conf.nextTier.missingCents)}</b> em vendas confirmadas para passar de ${brl(conf.nextTier.aboveCents)} e subir para ${esc(num(conf.nextTier.pct))}%.`, false);
+    } else if (conf.generalPct != null) {
+      h += `<div class="note">Você já está na faixa mais alta da regra (${esc(num(conf.generalPct))}%).</div>`;
+    }
+    for (const sp of conf.specials || []) {
+      h += progress(esc(sp.name), sp.totalCents || 0, sp.aboveCents,
+        sp.reached ? `Meta batida: ${esc(num(sp.pct))}% sobre ${brl(sp.totalCents)} = <b>${brl(sp.commissionCents)}</b>.`
+          : `Faltam <b>${brl(sp.missingCents)}</b> para passar de ${brl(sp.aboveCents)} e ganhar ${esc(num(sp.pct))}% nessas vendas.`, sp.reached);
+    }
+    h += `<div class="kv" style="margin-top:10px"><span class="k">Comissão confirmada</span><span class="v">${brl(conf.commissionCents)}</span></div>`;
+    if (pend.extraCommissionCents) h += `<div class="kv"><span class="k">A mais se as pendentes confirmarem</span><span class="v">+ ${brl(pend.extraCommissionCents)}</span></div>`;
+    if (c.projection) h += `<div class="kv"><span class="k">Projeção do mês (${esc(c.projection.basis || 'estimativa')})</span><span class="v wrap">${brl(c.projection.commissionCents)}<br><span class="muted small">vendas ${brl(c.projection.salesCents)} · ${esc(num(c.projection.pct))}%</span></span></div>`;
+    if (c.byCategory && c.byCategory.length) {
+      h += `<h3>Vendas confirmadas por categoria</h3>`;
+      for (const b of c.byCategory) h += `<div class="kv"><span class="k">${esc(b.category)}</span><span class="v">${brl(b.salesCents)}</span></div>`;
+    }
+    const tiers = (c.config && c.config.tiers) || [];
+    if (tiers.length) {
+      const sorted = [...tiers].sort((a, b) => a.aboveCents - b.aboveCents);
+      const txt = sorted.map((t, i) => (t.aboveCents ? `${num(t.pct)}% acima de ${brl(t.aboveCents)}` : `${num(t.pct)}%${sorted[i + 1] ? ' até ' + brl(sorted[i + 1].aboveCents) : ''}`)).join(' · ');
+      h += `<div class="note">Regra: ${esc(txt)}${(c.config.tierMode || 'ALL') === 'ALL' ? ' (o percentual da faixa vale sobre todas as vendas do mês)' : ' (cada faixa paga só a parte dela)'}. Venda cancelada ou devolvida não entra; venda pendente só entra quando confirmar.</div>`;
+    }
+    if (c.other && c.other.count) h += `<div class="note">${esc(c.other.count)} venda(s) com situação não classificada (${esc((c.other.statuses || []).join(', '))}) — fora da comissão.</div>`;
+    return h + `</div>`;
+  }
+
+  function cardLancamentos(r) {
+    const entries = r.entries || []; const benefits = r.benefits || [];
+    const desc = (r.items || []).filter((i) => i.type === 'DESCONTO');
+    let h = `<h2>Adiantamentos, benefícios e descontos</h2><div class="card">`;
+    h += `<h3 style="margin-top:0">Lançamentos do mês</h3>`;
+    if (!entries.length) h += `<div class="muted small">Nenhum lançamento (vale, bônus, compra na loja…) neste mês.</div>`;
+    for (const e of entries) {
+      const unauth = ['COMPRA_LOJA', 'EMPRESTIMO', 'PENSAO', 'OUTRO_DESCONTO'].includes(e.kind) && !e.authorized;
+      h += `<div class="line"><div class="l-top"><span>${esc(e.label || e.kind)}</span><span>${brl(e.cents)}</span></div>
+        <div class="memo">${esc(dmy(e.date))}${e.referenceDate ? ' · referente a ' + esc(dmy(e.referenceDate)) : ''}${e.description ? ' · ' + esc(e.description) : ''}${unauth ? ' · <b class="neg">sem autorização registrada — não descontado</b>' : ''}</div></div>`;
+    }
+    if (benefits.length) {
+      h += `<h3>Benefícios entregues</h3>`;
+      for (const b of benefits) h += `<div class="line"><div class="l-top"><span>${esc(b.label || b.kind)}</span><span>${brl(b.cents)}</span></div><div class="memo">${esc(dmy(b.date))}${b.description ? ' · ' + esc(b.description) : ''}</div></div>`;
+    }
+    h += `<h3>Descontos aplicados</h3>`;
+    if (!desc.length) h += `<div class="muted small">Nenhum desconto até agora.</div>`;
+    for (const d of desc) h += `<div class="line"><div class="l-top"><span>${esc(d.label)}</span><span class="neg">− ${brl(d.cents)}</span></div></div>`;
+    return h + `</div>`;
+  }
+
+  function cardCalculo(r, title) {
+    const items = r.items || [];
+    const prov = items.filter((i) => i.type === 'PROVENTO'); const desc = items.filter((i) => i.type === 'DESCONTO');
+    const row = (i, neg) => `<div class="line"><div class="l-top"><span>${esc(i.label)}${i.refText ? ' <span class="muted small">(' + esc(i.refText) + ')</span>' : ''}${i.provisional ? ' <span class="chip t-warn">provisório</span>' : ''}</span><span class="${neg ? 'neg' : ''}">${neg ? '− ' : ''}${brl(i.cents)}</span></div>${i.memo ? `<div class="memo">${esc(i.memo)}</div>` : ''}</div>`;
+    const t = r.totals || {};
+    let h = `<h2>${esc(title)}</h2><div class="card"><h3 style="margin-top:0">Proventos</h3>`;
+    h += prov.length ? prov.map((i) => row(i, false)).join('') : `<div class="muted small">Nenhum provento.</div>`;
+    h += `<div class="total"><span>Total de proventos</span><span>${brl(t.grossCents)}</span></div>`;
+    h += `<h3 style="margin-top:18px">Descontos</h3>`;
+    h += desc.length ? desc.map((i) => row(i, true)).join('') : `<div class="muted small">Nenhum desconto.</div>`;
+    h += `<div class="total"><span>Total de descontos</span><span class="neg">− ${brl(t.deductionsCents)}</span></div>`;
+    h += `<div class="total" style="border-top-color:var(--brand);color:var(--brand-dark);font-size:17px"><span>Líquido</span><span>${brl(t.netCents)}</span></div>`;
+    const b = r.bases || {};
+    if (b.fgts && b.fgts.valueCents != null) h += `<div class="note">FGTS do mês (depositado pela empresa, não sai do seu salário): ${brl(b.fgts.valueCents)}.</div>`;
+    return h + `</div>`;
+  }
+
+  function cardPendencias(r, compact) {
+    const list = r.pendencies || [];
+    if (compact) {
+      if (!list.length) return '';
+      const blocks = list.filter((p) => p.severity === 'BLOQUEIA').length;
+      return `<div class="card" style="border-color:${blocks ? '#f2b8b5' : '#f3c3a9'}"><div class="card-title"><span>${list.length} pendência(s) no mês</span>
+        <span class="chip ${blocks ? 't-bad' : 't-warn'}">${blocks ? blocks + ' impede(m) o fechamento' : 'só alertas'}</span></div>
+        <div class="small muted">Veja a lista no fim da página. Ponto incompleto você mesmo pode pedir correção na aba <b>Ponto</b>.</div></div>`;
+    }
+    let h = `<h2>Pendências</h2><div class="card">`;
+    for (const p of list) {
+      const bl = p.severity === 'BLOQUEIA';
+      h += `<div class="pend"><span class="chip ${bl ? 't-bad' : 't-warn'}">${bl ? 'Bloqueia' : 'Alerta'}</span><span>${esc(isoDatesToBr(p.text))}</span></div>`;
+    }
+    return h + `<div class="note">"Bloqueia" = precisa ser resolvida antes do fechamento da folha. "Alerta" = ponto de atenção que não impede o fechamento.</div></div>`;
+  }
+
+  // ───────────── PONTO ─────────────
+  function renderPonto() {
+    const el = $('#sec-ponto'); const c = S.preview[S.comp];
+    if (!c || c.loading) { el.innerHTML = loading(); return; }
+    if (c.error) { el.innerHTML = errorBox(c.error, 'preview'); return; }
+    const r = c.data.result; const time = r.time || { days: [], weeks: [] };
+    const past = time.days.filter((d) => d.status !== 'FUTURO');
+    const pendingDays = past.filter((d) => d.pending);
+    const shown = (S.pontoFilter === 'pend' ? pendingDays : past).slice().reverse();
+    let h = `<div class="seg" role="tablist"><button type="button" data-pf="todos" class="${S.pontoFilter === 'todos' ? 'on' : ''}">Todos os dias</button>
+      <button type="button" data-pf="pend" class="${S.pontoFilter === 'pend' ? 'on' : ''}">Com pendência (${pendingDays.length})</button></div>`;
+    h += `<div class="note">Horários exatamente como foram batidos. Onde não há batida aparece "—". Dia sem ponto não é falta: só desconta se o DP confirmar.</div>`;
+
+    if (time.weeks && time.weeks.length && S.pontoFilter === 'todos') {
+      h += `<h2>Resumo por semana <small>seg a sáb</small></h2>`;
+      for (const w of time.weeks.filter((w) => w.from <= (r.asOfDay || '9999'))) {
+        h += `<div class="week"><div class="week-head"><span>${esc(dm(w.from))} a ${esc(dm(w.to))}</span>
+          ${w.provisional ? '<span class="chip t-warn">provisório</span>' : '<span class="chip t-ok">fechada</span>'}</div>
+          <div class="kv"><span class="k">Previstas</span><span class="v">${mins(w.expectedMinutes)}</span></div>
+          <div class="kv"><span class="k">Registradas</span><span class="v">${mins(w.registeredMinutes)}</span></div>
+          ${w.creditedMinutes ? `<div class="kv"><span class="k">Abonadas</span><span class="v">${mins(w.creditedMinutes)}</span></div>` : ''}
+          ${w.specialRemovedMinutes ? `<div class="kv"><span class="k">Feriado trabalhado (à parte)</span><span class="v">${mins(w.specialRemovedMinutes)}</span></div>` : ''}
+          ${w.sundayWorkedMinutes ? `<div class="kv"><span class="k">Domingo trabalhado (à parte)</span><span class="v">${mins(w.sundayWorkedMinutes)}</span></div>` : ''}
+          ${w.daysOffUsed && w.daysOffUsed.length ? `<div class="kv"><span class="k">Folgas usadas</span><span class="v wrap">${esc(w.daysOffUsed.map(dm).join(', '))}</span></div>` : ''}
+          <div class="kv"><span class="k">Saldo</span><span class="v ${w.balanceMinutes < 0 ? 'neg' : ''}">${signedMins(w.balanceMinutes)}</span></div>
+          ${w.pendingDays && w.pendingDays.length ? `<div class="kv"><span class="k">Dias com pendência</span><span class="v wrap neg">${esc(w.pendingDays.map(dm).join(', '))}</span></div>` : ''}
+        </div>`;
+      }
+    }
+    h += `<h2>Dias <small>${esc(compLabel(S.comp))}</small></h2>`;
+    if (!shown.length) h += empty(S.pontoFilter === 'pend' ? 'Nenhuma pendência' : 'Sem dias para mostrar', S.pontoFilter === 'pend' ? 'Seu ponto deste mês está sem pendências.' : 'Ainda não há dias neste mês.');
+    for (const d of shown) h += dayCard(d);
+    const fut = time.days.length - past.length;
+    if (fut && S.pontoFilter === 'todos') h += `<div class="note" style="text-align:center;margin-top:12px">${fut} dia(s) ainda não chegaram.</div>`;
+    el.innerHTML = h;
+  }
+
+  function dayCard(d) {
+    const t = (v) => `<div class="t-v ${v ? '' : 'none'}">${esc(v || '—')}</div>`;
+    const quiet = ['DESCANSO', 'FERIADO', 'FORA_DO_VINCULO', 'FOLGA', 'FOLGA_COMPENSATORIA', 'FERIAS', 'AFASTAMENTO'].includes(d.status) && !d.entry;
+    const cls = d.status === 'INCOMPLETO' || d.status === 'FALTA_CONFIRMADA' ? 'bad' : d.status === 'SEM_PONTO' ? 'alert' : '';
+    let h = `<div class="day ${cls}"><div class="day-head"><div class="day-date">${esc(dm(d.date))}<span>${esc(cap(d.weekdayName || ''))}</span></div>${chip(DAY, d.status)}</div>`;
+    if (d.holiday) h += `<div class="small muted" style="margin-top:4px">Feriado: ${esc(d.holiday)}</div>`;
+    if (!quiet) {
+      h += `<div class="times"><div><div class="t-l">Entrada</div>${t(d.entry)}</div><div><div class="t-l">Intervalo</div>${t(d.breakStart)}</div>
+        <div><div class="t-l">Retorno</div>${t(d.breakEnd)}</div><div><div class="t-l">Saída</div>${t(d.exit)}</div></div>`;
+      if ((d.breaks || []).length > 1) h += `<div class="small muted" style="margin-top:6px">Outros intervalos: ${esc(d.breaks.slice(1).map((b) => (b.start || '—') + '–' + (b.end || '—')).join(', '))}</div>`;
+      h += `<div class="day-meta"><span>Bruto <b>${d.grossMinutes ? mins(d.grossMinutes) : '—'}</b></span><span>Intervalo <b>${d.breakMinutes ? mins(d.breakMinutes) : '—'}</b></span>
+        <span>Trabalhado <b>${d.workedMinutes ? mins(d.workedMinutes) : '—'}</b></span>${d.expectedMinutes ? `<span>Previsto <b>${mins(d.expectedMinutes)}</b></span>` : ''}</div>`;
+      const origins = (d.origins || []).map((o) => ORIGIN[o] || o);
+      const stores = (d.stores || []).map(storeName);
+      if (origins.length || stores.length) h += `<div class="day-meta">${origins.length ? `<span>Origem <b>${esc(origins.join(', '))}</b></span>` : ''}${stores.length ? `<span>Loja <b>${esc(stores.join(', '))}</b></span>` : ''}</div>`;
+    }
+    if (d.creditMinutes) h += `<div class="day-meta"><span>Abonado <b>${mins(d.creditMinutes)}</b></span></div>`;
+    for (const m of d.marks || []) h += `<div class="small muted" style="margin-top:4px">${esc(DAY[m.kind] ? DAY[m.kind][0] : cap(String(m.kind).toLowerCase().replace(/_/g, ' ')))}${m.refDate ? ' (referente a ' + esc(dm(m.refDate)) + ')' : ''}${m.note ? ' · ' + esc(m.note) : ''}</div>`;
+    if (d.issues && d.issues.length) h += `<div class="issues">${esc(d.issues.join(' · '))}</div>`;
+    if (d.pendingCorrections) h += `<div class="small" style="margin-top:6px;color:var(--warn);font-weight:700">${esc(d.pendingCorrections)} pedido(s) de correção aguardando análise</div>`;
+    if ((d.status === 'INCOMPLETO' || d.status === 'SEM_PONTO') && !d.future) h += `<button type="button" class="btn ghost block" data-fix="${esc(d.date)}">Pedir correção</button>`;
+    return h + `</div>`;
+  }
+
+  // Formulário de correção
+  function suggestType(d) {
+    if (!d) return 'entry';
+    if (!d.entry) return 'entry';
+    if (d.breakStart && !d.breakEnd) return 'break_end';
+    if (!d.exit) return 'exit';
+    return 'entry';
+  }
+  function openCorrection(date) {
+    const r = S.preview[S.comp] && S.preview[S.comp].data && S.preview[S.comp].data.result;
+    const d = date && r ? (r.time.days || []).find((x) => x.date === date) : null;
+    const sel = suggestType(d);
+    const ctx = d ? `<div class="quote">Registrado em ${esc(dmy(d.date))}: Entrada ${esc(d.entry || '—')} · Intervalo ${esc(d.breakStart || '—')} · Retorno ${esc(d.breakEnd || '—')} · Saída ${esc(d.exit || '—')}</div>` : '';
+    openSheet('Pedir correção de ponto', `${ctx}
+      <form id="fixForm" novalidate>
+        <label class="f" for="fxDate">Dia</label>
+        <input class="in" type="date" id="fxDate" required max="${esc(todayKey())}" value="${esc(date || '')}">
+        <label class="f" for="fxType">Qual marcação</label>
+        <select class="in" id="fxType">${Object.entries(PUNCH).map(([k, v]) => `<option value="${k}" ${k === sel ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>
+        <label class="f" for="fxTime">Horário correto</label>
+        <input class="in" type="time" id="fxTime" required>
+        <label class="f" for="fxJust">Justificativa</label>
+        <textarea class="in" id="fxJust" maxlength="1000" placeholder="Ex.: esqueci de bater a saída; fechei o caixa às 18h10." required></textarea>
+        <label class="f" for="fxFile">Anexo (opcional — foto ou PDF até 1 MB)</label>
+        <input class="in" type="file" id="fxFile" accept="image/png,image/jpeg,image/webp,application/pdf">
+        <div class="note">Faltou mais de uma marcação no mesmo dia? Envie um pedido para cada uma. O DP analisa e responde na aba Pedidos.</div>
+        <div class="err" id="fxErr" hidden></div>
+        <button type="submit" class="btn primary block" id="fxSend" style="margin-top:14px">Enviar pedido</button>
+      </form>`);
+    $('#fixForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const err = $('#fxErr'); err.hidden = true;
+      const fail = (m) => { err.textContent = m; err.hidden = false; };
+      const body = { date: $('#fxDate').value, type: $('#fxType').value, claimedTime: $('#fxTime').value, justification: $('#fxJust').value.trim() };
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date)) return fail('Escolha o dia.');
+      if (body.date > todayKey()) return fail('Não dá para pedir correção de dia que ainda não chegou.');
+      if (!/^\d{2}:\d{2}$/.test(body.claimedTime)) return fail('Informe o horário correto (HH:MM).');
+      if (body.justification.length < 5) return fail('Escreva a justificativa (pelo menos 5 letras).');
+      const f = $('#fxFile').files && $('#fxFile').files[0];
+      if (f) {
+        if (!/^(image\/(png|jpe?g|webp)|application\/pdf)$/.test(f.type)) return fail('O anexo precisa ser foto (JPG, PNG, WEBP) ou PDF.');
+        if (f.size > 1024 * 1024) return fail('O anexo passa de 1 MB. Tire uma foto menor ou recorte.');
+        try { body.attachment = await new Promise((ok, no) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = () => no(fr.error); fr.readAsDataURL(f); }); }
+        catch (_) { return fail('Não consegui ler o anexo.'); }
+      }
+      const btn = $('#fxSend'); btn.disabled = true; btn.textContent = 'Enviando…';
+      try {
+        await api('/me/clock-corrections', { method: 'POST', body });
+        closeSheet(); toast('Pedido enviado. O DP vai analisar.');
+        S.corrections = null; delete S.preview[body.date.slice(0, 7)];
+        if (S.tab === 'pedidos') loadPedidos(); else loadPreview(true);
+      } catch (ex) { if (ex.status !== 401) fail(ex.message); btn.disabled = false; btn.textContent = 'Enviar pedido'; }
+    });
+  }
+
+  // ───────────── HISTÓRICO ─────────────
+  async function loadHistory(force) {
+    const el = $('#sec-hist');
+    if (S.payslips && !force) return renderHistory();
+    el.innerHTML = loading(1);
+    try { S.payslips = (await api('/me/payslips')).payslips || []; renderHistory(); }
+    catch (err) { if (err.status !== 401) el.innerHTML = errorBox(err.message, 'hist'); }
+  }
+  function renderHistory() {
+    const el = $('#sec-hist'); const list = S.payslips || [];
+    let h = `<h2 style="margin-top:8px">Contracheques oficiais</h2>`;
+    if (!list.length) { el.innerHTML = h + empty('Nenhum contracheque fechado ainda', 'Quando o DP fechar a folha do mês, o contracheque oficial aparece aqui.'); return; }
+    for (const p of list) {
+      const st = SLIP[p.status] || [p.status, 't-muted'];
+      h += `<button type="button" class="item" data-slip="${esc(p.id)}" ${p.status === 'CORRIGIDO' ? 'style="opacity:.75"' : ''}>
+        <div class="item-row"><span class="item-title">${esc(cap(compLabel(p.competence)))}</span><span class="val">${brl(p.netCents)}</span></div>
+        <div class="item-row" style="margin-top:6px"><span class="item-sub" style="margin:0">${esc(KIND[p.kind] || p.kind || '')} · versão ${esc(p.version)}</span><span class="chip ${st[1]}">${esc(st[0])}</span></div>
+        <div class="item-sub">${p.acknowledgedAt ? 'Ciência registrada em ' + esc(dateOnly(p.acknowledgedAt)) : (p.status === 'CORRIGIDO' ? 'Substituído por versão mais nova' : 'Ciência ainda não registrada')}${p.paidAt ? ' · pago em ' + esc(dateOnly(p.paidAt)) : ''}</div>
+      </button>`;
+    }
+    h += `<div class="card" style="background:var(--fill);border:0"><div class="small"><b>Situações:</b> <b>Fechado</b> = contracheque oficial pronto. <b>Pago</b> = pagamento registrado.
+      <b>Reaberto</b> = em correção, vai sair uma versão nova. <b>Corrigido</b> = substituído por uma versão mais nova; vale sempre a versão mais recente.</div></div>`;
+    el.innerHTML = h;
+  }
+
+  async function openSlip(id) {
+    openSheet('Contracheque', `<div class="state"><div class="spin"></div>Carregando…</div>`);
+    let p;
+    try { p = (await api('/me/payslips/' + encodeURIComponent(id))).payslip; }
+    catch (err) { if (err.status !== 401) $('#sheetBody').innerHTML = errorBox(err.message, 'slip:' + id); return; }
+    const r = p.result || {};
+    const st = SLIP[p.status] || [p.status, 't-muted', ''];
+    const meta = (S.payslips || []).find((x) => x.id === p.id) || {};
+    const newer = p.supersededById ? (S.payslips || []).find((x) => x.id === p.supersededById) : null;
+    $('#sheetTitle').textContent = cap(compLabel(p.competence));
+    const co = r.company || {}; const em = r.employee || {};
+    let h = `<div class="item-row"><span class="muted small">${esc(KIND[p.kind] || p.kind || '')} · versão ${esc(p.version)}</span><span class="chip ${st[1]}">${esc(st[0])}</span></div>
+      <div class="note" style="margin-top:4px">${esc(st[2])}${newer ? ' Versão nova: v' + esc(newer.version) + '.' : ''}</div>`;
+    if (newer) h += `<button type="button" class="btn sm block" data-slip="${esc(newer.id)}" style="margin-top:8px">Abrir a versão mais nova (v${esc(newer.version)})</button>`;
+    h += `<div class="hero" style="margin-top:12px"><div class="lbl">Líquido</div><div class="big">${brl(p.netCents)}</div>
+      <div class="tiny">Proventos ${brl(p.grossCents)} · Descontos ${brl(p.deductionsCents)}</div></div>`;
+    h += `<div class="card"><div class="kv"><span class="k">Empresa</span><span class="v wrap">${esc(co.companyName || co.fantasyName || '—')}</span></div>
+      ${co.cnpj ? `<div class="kv"><span class="k">CNPJ</span><span class="v">${esc(co.cnpj)}</span></div>` : ''}
+      ${co.establishment ? `<div class="kv"><span class="k">Estabelecimento</span><span class="v wrap">${esc(co.establishment)}</span></div>` : ''}
+      <div class="kv"><span class="k">Funcionário</span><span class="v wrap">${esc(em.name || '—')}</span></div>
+      ${em.jobTitle ? `<div class="kv"><span class="k">Cargo</span><span class="v">${esc(em.jobTitle)}</span></div>` : ''}
+      ${em.registration ? `<div class="kv"><span class="k">Matrícula</span><span class="v">${esc(em.registration)}</span></div>` : ''}
+      ${em.cpfMasked ? `<div class="kv"><span class="k">CPF</span><span class="v">${esc(em.cpfMasked)}</span></div>` : ''}
+      ${em.storeName ? `<div class="kv"><span class="k">Loja</span><span class="v">${esc(em.storeName)}</span></div>` : ''}
+      ${p.closedAt ? `<div class="kv"><span class="k">Fechado em</span><span class="v">${esc(dt(p.closedAt))}</span></div>` : ''}
+      ${p.paymentDate ? `<div class="kv"><span class="k">Data prevista de pagamento</span><span class="v">${esc(dmy(p.paymentDate))}</span></div>` : ''}
+      ${p.paidAt ? `<div class="kv"><span class="k">Pago em</span><span class="v">${esc(dt(p.paidAt))}</span></div>` : ''}
+      ${p.paymentRef ? `<div class="kv"><span class="k">Referência do pagamento</span><span class="v wrap">${esc(p.paymentRef)}</span></div>` : ''}
+      ${p.reason ? `<div class="kv"><span class="k">Motivo da correção</span><span class="v wrap">${esc(p.reason)}</span></div>` : ''}
+      ${p.verifyCode ? `<div class="kv"><span class="k">Código de verificação</span><span class="v">${esc(p.verifyCode)}</span></div>` : ''}
+    </div>`;
+    h += `<div class="actions">
+      <button type="button" class="btn sm" data-act="view">Ver PDF</button>
+      <button type="button" class="btn sm" data-act="download">Baixar PDF</button>
+      <button type="button" class="btn sm" data-act="print">Imprimir</button>
+      <button type="button" class="btn sm" data-act="share">Compartilhar</button>
+      <button type="button" class="btn sm" data-act="csv">Exportar CSV</button>
+      <button type="button" class="btn sm" data-act="json">Exportar JSON</button>
+    </div>`;
+    const ack = meta.acknowledgedAt;
+    h += `<div id="ackBox">${ack ? `<div class="ok-box">Ciência registrada em ${esc(dt(ack))}. Ciência <b>não é</b> comprovante de pagamento.</div>`
+      : (p.status === 'CORRIGIDO' ? '' : `<button type="button" class="btn primary block" data-act="ack" style="margin-top:12px">Confirmar ciência</button>
+        <div class="note">Confirmar ciência só registra que você viu este contracheque. Não é comprovante de pagamento e não impede você de pedir revisão.</div>`)}</div>`;
+    h += `<button type="button" class="btn ghost block" data-act="dispute" style="margin-top:10px">Pedir revisão</button><div id="dispBox"></div>`;
+    if (r.items) h += cardCalculo(r, 'Como cada valor foi calculado');
+    $('#sheetBody').innerHTML = h;
+    $('#sheetBody').dataset.slipId = p.id;
+    $('#sheetBody').dataset.comp = p.competence;
+    $('#sheetBody').dataset.version = p.version;
+  }
+
+  function saveBlob(blob, name) {
+    const url = URL.createObjectURL(blob); const a = document.createElement('a');
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+  async function slipAction(act, btn) {
+    const body = $('#sheetBody'); const id = body.dataset.slipId; const comp = body.dataset.comp; const ver = body.dataset.version;
+    const base = '/me/payslips/' + encodeURIComponent(id);
+    const pdfName = `contracheque-${comp}-v${ver}.pdf`;
+    const old = btn.textContent;
+    const busy = (on) => { btn.disabled = on; btn.textContent = on ? 'Aguarde…' : old; };
+    try {
+      if (act === 'view') {
+        const w = window.open('', '_blank'); // abre já no clique (senão o navegador bloqueia)
+        busy(true);
+        let got;
+        try { got = await apiBlob(base + '/pdf', pdfName); } catch (ex) { if (w) w.close(); throw ex; }
+        const url = URL.createObjectURL(new Blob([got.blob], { type: 'application/pdf' }));
+        if (w) w.location.href = url;
+        else { const a = document.createElement('a'); a.href = url; a.target = '_blank'; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove(); }
+        setTimeout(() => URL.revokeObjectURL(url), 120000);
+      } else if (act === 'download') {
+        busy(true); const { blob, name } = await apiBlob(base + '/pdf', pdfName); saveBlob(blob, name); toast('PDF baixado.');
+      } else if (act === 'print') {
+        busy(true);
+        const { blob } = await apiBlob(base + '/pdf', pdfName);
+        const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+        const fr = document.createElement('iframe');
+        fr.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0';
+        fr.src = url; document.body.appendChild(fr);
+        fr.onload = () => {
+          try { fr.contentWindow.focus(); fr.contentWindow.print(); }
+          catch (_) { window.open(url, '_blank'); toast('Use o botão de imprimir do visualizador de PDF.'); }
+          setTimeout(() => { fr.remove(); URL.revokeObjectURL(url); }, 60000);
+        };
+      } else if (act === 'share') {
+        busy(true);
+        const { blob, name } = await apiBlob(base + '/pdf', pdfName);
+        const file = new File([blob], name, { type: 'application/pdf' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          try { await navigator.share({ files: [file], title: 'Contracheque ' + compLabel(comp) }); }
+          catch (e) { if (e && e.name !== 'AbortError') { saveBlob(blob, name); toast('Não deu para compartilhar; o PDF foi baixado.'); } }
+        } else { saveBlob(blob, name); toast('Seu aparelho não compartilha arquivos daqui; o PDF foi baixado.'); }
+      } else if (act === 'csv' || act === 'json') {
+        busy(true); const { blob, name } = await apiBlob(base + '/export?format=' + act, `contracheque-${comp}-v${ver}.${act}`); saveBlob(blob, name); toast(act.toUpperCase() + ' baixado.');
+      } else if (act === 'ack') {
+        busy(true);
+        const res = await api(base + '/ack', { method: 'POST' });
+        const m = (S.payslips || []).find((x) => x.id === id); if (m) m.acknowledgedAt = res.acknowledgedAt;
+        $('#ackBox').innerHTML = `<div class="ok-box">${esc(res.note || 'Ciência registrada. Isto não substitui o comprovante de pagamento.')} <span class="small">(${esc(dt(res.acknowledgedAt))})</span></div>`;
+        if (S.tab === 'hist') renderHistory();
+        return;
+      } else if (act === 'dispute') {
+        $('#dispBox').innerHTML = `<form id="dispForm"><label class="f" for="dsMsg">O que está errado?</label>
+          <textarea class="in" id="dsMsg" maxlength="2000" placeholder="Ex.: a comissão de outubro não incluiu a venda do dia 20; o domingo 12/10 não apareceu."></textarea>
+          <div class="err" id="dsErr" hidden></div><button type="submit" class="btn primary block" id="dsSend" style="margin-top:10px">Enviar pedido de revisão</button></form>`;
+        $('#dsMsg').focus();
+        $('#dispForm').addEventListener('submit', async (e) => {
+          e.preventDefault(); const msg = $('#dsMsg').value.trim(); const er = $('#dsErr'); er.hidden = true;
+          if (msg.length < 5) { er.textContent = 'Descreva o que está errado (pelo menos 5 letras).'; er.hidden = false; return; }
+          const b = $('#dsSend'); b.disabled = true; b.textContent = 'Enviando…';
+          try {
+            await api('/me/disputes', { method: 'POST', body: { competence: comp, payslipId: id, message: msg } });
+            $('#dispBox').innerHTML = `<div class="ok-box">Pedido de revisão enviado. Acompanhe a resposta na aba Pedidos.</div>`; S.disputes = null;
+          } catch (ex) { if (ex.status !== 401) { er.textContent = ex.message; er.hidden = false; } b.disabled = false; b.textContent = 'Enviar pedido de revisão'; }
+        });
+        btn.hidden = true;
+        return;
+      }
+    } catch (err) { if (err.status !== 401) toast(err.message); }
+    busy(false);
+  }
+
+  // ───────────── PEDIDOS ─────────────
+  async function loadPedidos(force) {
+    const el = $('#sec-pedidos');
+    if (S.corrections && S.disputes && !force) return renderPedidos();
+    el.innerHTML = loading(1);
+    try {
+      const [c, d] = await Promise.all([api('/me/clock-corrections'), api('/me/disputes')]);
+      S.corrections = c.corrections || []; S.disputes = d.disputes || []; renderPedidos();
+    } catch (err) { if (err.status !== 401) el.innerHTML = errorBox(err.message, 'pedidos'); }
+  }
+  function renderPedidos() {
+    const el = $('#sec-pedidos');
+    let h = `<div class="actions" style="margin-top:4px"><button type="button" class="btn ghost" data-newfix="1">Corrigir ponto</button>
+      <button type="button" class="btn ghost" data-newdisp="1">Revisar pagamento</button></div>`;
+    h += `<h2>Correções de ponto <small>${S.corrections.length}</small></h2>`;
+    if (!S.corrections.length) h += `<div class="card"><div class="muted small">Você ainda não pediu correção de ponto.</div></div>`;
+    for (const c of S.corrections) {
+      h += `<div class="card"><div class="card-title"><span>${esc(dmy(c.date))} · ${esc(PUNCH[c.type] || c.type)}</span>${chip(CORR, c.status)}</div>
+        <div class="kv"><span class="k">Horário pedido</span><span class="v">${esc(c.claimedTime || '—')}</span></div>
+        <div class="kv"><span class="k">Enviado em</span><span class="v">${esc(dt(c.createdAt))}</span></div>
+        ${c.attachmentMime ? `<div class="kv"><span class="k">Anexo</span><span class="v">${c.attachmentMime === 'application/pdf' ? 'PDF enviado' : 'Foto enviada'}</span></div>` : ''}
+        <div class="quote">${esc(c.justification)}</div>
+        ${c.reviewNote || c.reviewedAt ? `<div class="quote resp"><b>Resposta${c.reviewedAt ? ' em ' + esc(dt(c.reviewedAt)) : ''}:</b> ${esc(c.reviewNote || (c.status === 'APROVADA' ? 'Aprovada.' : 'Sem observação.'))}</div>` : ''}
+      </div>`;
+    }
+    h += `<h2>Pedidos de revisão <small>${S.disputes.length}</small></h2>`;
+    if (!S.disputes.length) h += `<div class="card"><div class="muted small">Nenhum pedido de revisão de pagamento.</div></div>`;
+    for (const d of S.disputes) {
+      h += `<div class="card"><div class="card-title"><span>${esc(cap(compLabel(d.competence)))}</span>${chip(DISP, d.status)}</div>
+        <div class="kv"><span class="k">Enviado em</span><span class="v">${esc(dt(d.createdAt))}</span></div>
+        <div class="quote">${esc(d.message)}</div>
+        ${d.response ? `<div class="quote resp"><b>Resposta${d.respondedAt ? ' em ' + esc(dt(d.respondedAt)) : ''}:</b> ${esc(d.response)}</div>` : '<div class="note">Aguardando resposta do DP.</div>'}
+      </div>`;
+    }
+    el.innerHTML = h;
+  }
+  function openNewDispute() {
+    const def = S.comp;
+    openSheet('Pedir revisão de pagamento', `<form id="ndForm" novalidate>
+      <label class="f" for="ndComp">Mês (competência)</label>
+      <input class="in" type="month" id="ndComp" value="${esc(def)}" max="${esc(currentComp())}" required>
+      <label class="f" for="ndMsg">O que está errado?</label>
+      <textarea class="in" id="ndMsg" maxlength="2000" placeholder="Explique com detalhes: dia, venda, valor…"></textarea>
+      <div class="note">Para revisar um contracheque já fechado, você também pode abrir ele em Histórico e tocar em "Pedir revisão".</div>
+      <div class="err" id="ndErr" hidden></div>
+      <button type="submit" class="btn primary block" id="ndSend" style="margin-top:14px">Enviar</button></form>`);
+    $('#ndForm').addEventListener('submit', async (e) => {
+      e.preventDefault(); const er = $('#ndErr'); er.hidden = true;
+      const comp = $('#ndComp').value; const msg = $('#ndMsg').value.trim();
+      if (!/^\d{4}-\d{2}$/.test(comp)) { er.textContent = 'Escolha o mês (AAAA-MM).'; er.hidden = false; return; }
+      if (msg.length < 5) { er.textContent = 'Descreva o que está errado (pelo menos 5 letras).'; er.hidden = false; return; }
+      const b = $('#ndSend'); b.disabled = true; b.textContent = 'Enviando…';
+      try { await api('/me/disputes', { method: 'POST', body: { competence: comp, message: msg } }); closeSheet(); toast('Pedido de revisão enviado.'); S.disputes = null; loadPedidos(true); }
+      catch (ex) { if (ex.status !== 401) { er.textContent = ex.message; er.hidden = false; } b.disabled = false; b.textContent = 'Enviar'; }
+    });
+  }
+
+  // ───────────── eventos delegados ─────────────
+  document.addEventListener('click', (e) => {
+    const el = e.target.closest('[data-retry],[data-fix],[data-pf],[data-slip],[data-act],[data-newfix],[data-newdisp]');
+    if (!el || S.loggedOut) return;
+    if (el.dataset.retry) {
+      const k = el.dataset.retry;
+      if (k === 'preview') loadPreview(true); else if (k === 'hist') loadHistory(true); else if (k === 'pedidos') loadPedidos(true);
+      else if (k.startsWith('slip:')) openSlip(k.slice(5));
+    } else if (el.dataset.fix) openCorrection(el.dataset.fix);
+    else if (el.dataset.pf) { S.pontoFilter = el.dataset.pf; renderPonto(); }
+    else if (el.dataset.slip) openSlip(el.dataset.slip);
+    else if (el.dataset.act) slipAction(el.dataset.act, el);
+    else if (el.dataset.newfix) openCorrection('');
+    else if (el.dataset.newdisp) openNewDispute();
+  });
+
+  // ───────────── início ─────────────
+  if (!TOKEN) { showGate(); return; }
+  const initial = (location.hash || '').replace('#', '');
+  setTab(['mes', 'ponto', 'hist', 'pedidos'].includes(initial) ? initial : 'mes');
+})();
+</script>
+</body>
+</html>

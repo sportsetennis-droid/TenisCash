@@ -587,6 +587,7 @@ router.post('/bipe', async (req, res) => {
       } catch (_) {}
     }
 
+    require('../ai/rede/ganchos').bipeRegistrado(bipe.id);
     res.json({
       success: true,
       bipeId: bipe.id,

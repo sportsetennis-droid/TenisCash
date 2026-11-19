@@ -262,13 +262,17 @@ async function applyVerified(db,c,read,reference,options={}){
   const snapshot={captureId:now.capture.id,photoSha256:photoDigest(now.capture.photo),barcode:now.bipe.barcode,reference,size:now.size.size,
    productId:now.size.productId,productSizeId:now.size.id,name:now.size.product.name,brand:now.size.product.brand,
    source:read.source,...(read.reader?{reader:read.reader}:{}),...(confirmation?{confirmedBy:{bipeIds:confirmation.bipeIds,sources:confirmation.sources},photoRead:read.photoRead}:{}),...(fiscal?{fiscalSize:{itemIds:fiscal.fiscalItemIds,literalSize:fiscal.literalSize,description:fiscal.description},photoRead:read.photoRead}:{}),verifiedAt:new Date().toISOString()};
+  // mesma ordem de travas do recebimento automático (trava do tamanho ANTES do StoreStock)
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${'receipt-stock:'+now.round.storeId+':'+now.size.id}))::text`;
   const movement=await applyStoreStockDelta(tx,{storeId:now.round.storeId,productSizeId:now.size.id,quantity:1,type:'inventory_adjustment',source:'stock-replacement-scan',reason:'Bipe validado da substituição #'+now.round.number,metadata:{roundId:now.round.id,bipeId:now.bipe.id,captureId:now.capture.id}});
   const imageReview={status:'pending',reason:now.size.product.imageUrl?'Conferir correspondência visual da imagem de catálogo com este modelo e cor.':'Produto sem imagem de catálogo.',imageUrl:now.size.product.imageUrl||null};
   await tx.stockReplacementCheck.upsert({where:{bipeId:now.bipe.id},create:{bipeId:now.bipe.id,roundId:now.round.id,status:'applied',evidence:snapshot,imageReview,appliedProductSizeId:now.size.id,appliedAt:new Date()},update:{status:'applied',reason:null,evidence:snapshot,imageReview,appliedProductSizeId:now.size.id,appliedAt:new Date(),checkedAt:new Date()}});
   await tx.stocktakeBipe.update({where:{id:now.bipe.id},data:{applied:true,productName:now.size.product.name,productBrand:now.size.product.brand,productSize:now.size.size}});
   await tx.productCapture.update({where:{id:now.capture.id},data:{status:'vinculado',resolvedAt:new Date(),note:require('./scannerCapturePhoto').photoNote(now.capture.note,'etiqueta Uma peça incluída no novo estoque oficial.')},select:{id:true}});
+  // Peça que já entrou pelo Recebimento: o bipe da contagem confirma a mesma peça (não soma duas vezes).
+  const pareio=await require('./receiptAutoApply').parear(tx,now.round.storeId,now.size.id);
   if(options.beforeCommit)await options.beforeCommit(tx);
-  return {applied:true,stock:movement.stockAfter};
+  return {applied:true,stock:movement.stockAfter,pareadoComRecebimento:pareio.pareados>0||undefined};
  },{timeout:20000});
 }
 async function check(db,bipeId,options={}){
@@ -325,8 +329,13 @@ async function report(db,id){
 async function exclude(tx,bipe,reason){
  const check=await tx.stockReplacementCheck.findUnique({where:{bipeId:bipe.id}});
  if(!check?.appliedAt||check.reversedAt)return;
+ // mesma ordem de travas do recebimento automático (trava do tamanho ANTES do StoreStock)
+ await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${'receipt-stock:'+bipe.storeId+':'+check.appliedProductSizeId}))::text`;
+ // estava pareado com um recebimento: devolve o -1 do pareamento antes do -1 da exclusão
+ await require('./receiptAutoApply').antesDeExcluirBipe(tx,check,bipe.storeId);
  await applyStoreStockDelta(tx,{storeId:bipe.storeId,productSizeId:check.appliedProductSizeId,quantity:-1,type:'inventory_adjustment',source:'stock-replacement-correction',reason,metadata:{roundId:bipe.roundId,bipeId:bipe.id}});
  await tx.stockReplacementCheck.update({where:{bipeId:bipe.id},data:{status:'excluded',reversedAt:new Date(),reason}});
+ await require('./receiptAutoApply').parear(tx,bipe.storeId,check.appliedProductSizeId);
 }
 async function finish(db,id){
  return db.$transaction(async tx=>{

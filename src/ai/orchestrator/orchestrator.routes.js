@@ -161,6 +161,10 @@ router.post('/approvals/:id/decision', async (req, res) => {
       note: note || null,
       approvedById: req.userId,
     });
+    // Proposta da Rede Neural de Agentes: a decisão ajusta pesos/limiares (auditado).
+    if (updated && updated.payload && updated.payload.rna) {
+      require('../rede/aprendizado').aoDecidir(updated).catch((err) => console.error('[RNA] aprendizado:', err.message));
+    }
     let promotedMemory = null;
     if (updated.type === 'memory_promotion' && updated.status === 'approved') {
       promotedMemory = await learning.promoteLearningFromApproval(updated, req.userId || null).catch((err) => {

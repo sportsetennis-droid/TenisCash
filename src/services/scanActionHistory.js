@@ -118,7 +118,11 @@ async function publicLots(db, lots) {
 async function transaction(db, work) {
   for (let attempt = 0; ; attempt++) {
     try { return await db.$transaction(work, { isolationLevel: 'Serializable', timeout: 30000 }); }
-    catch (error) { if (!['P2034', 'P2002'].includes(error.code) || attempt >= 5) throw error; }
+    catch (error) {
+      // conflito de serialização ou impasse (40001/40P01) entre o sync e a confirmação/contagem: repete
+      const impasse = (error.code === 'P2010' && ['40001', '40P01'].includes(error.meta?.code)) || /\b40P01\b|\b40001\b/.test(String(error.message || ''));
+      if ((!['P2034', 'P2002'].includes(error.code) && !impasse) || attempt >= 5) throw error;
+    }
   }
 }
 async function sync(db, actor, input) {
@@ -174,6 +178,8 @@ async function syncWithin(tx, actual, value, payloadHash, options = {}) {
         barcodeHistory: previous && previous.barcode !== scan.barcode ? [...history, { from: previous.barcode, to: scan.barcode, at: new Date().toISOString(), actorId: actual.id }] : history };
       await tx.scanActionRead.upsert({ where: { clientScanId: scan.clientScanId }, create: scanData, update: scanData });
     }
+    // Recebimento ativo automático (dono 18/11): cada peça reconhecida entra no estoque da loja na hora.
+    if (value.mode === 'receipt') await require('./receiptAutoApply').aplicarLote(tx, value.sessionId);
     lot = await tx.scanActionLot.findUnique({ where: { sessionId: value.sessionId }, include: { scans: true } });
     return { lot: (await publicLots(tx, [lot]))[0], synced: true };
 }

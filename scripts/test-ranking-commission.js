@@ -57,3 +57,17 @@ const window = commissionWindow(new Date('2026-09-01T02:59:59Z'), new Date('2026
 assert.equal(window.start.toISOString(), '2026-08-01T03:00:00.000Z');
 assert.equal(window.end.toISOString(), '2026-10-01T03:00:00.000Z');
 console.log('PASS: 1%, 2%, 4%, exact thresholds, no double counting, monthly goals, stores, discounts and clothing classification');
+
+// Campanha de meias: meia e meião de qualquer marca, valor com o desconto da venda rateado.
+{ const sockSale = { sellerId: 'seller', storeId: 'a', createdAt: '2026-09-11T15:00:00Z', totalAmount: 90, items: [
+  { productName: 'Meia Lupo AM Sport', quantity: 2, totalPrice: 40, brand: 'LUPO', category: 'Acessórios' },
+  { productName: 'MEIÃO UMBRO CLASSIC', quantity: 1, totalPrice: 20, brand: 'UMBRO' },
+  { productName: 'CAMISETA MEIA MANGA', quantity: 1, totalPrice: 40, brand: 'X' }] };
+  const r = calc([sockSale]);
+  assert.equal(r.socksQuantity, 3);
+  assert.equal(r.socksAmount, 54);
+  assert.equal(r.socksItems.length, 2);
+  assert.equal(r.socksItems.reduce((s, i) => s + i.amount, 0), 54);
+  assert.equal(calc([{ ...sockSale, status: 'canceled' }, sale(100, 0)]).socksQuantity, 0);
+  assert.equal(calc([sockSale], { start: new Date('2026-09-12T03:00:00Z') }).socksQuantity, 0); }
+console.log('PASS campanha de meias');

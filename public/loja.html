@@ -4297,12 +4297,13 @@ async function loadRanking({ silent = false } = {}) {
       <h3 class="section-title"><span class="section-title-icon">📊</span>Classificação completa · ${rest.length} vendedores</h3>
       <div class="ranking-scroll">
       <table class="modern">
-        <colgroup><col style="width:4%"><col style="width:20%"><col style="width:5%"><col style="width:11%"><col style="width:9%"><col style="width:10%"><col style="width:10%"><col style="width:11%"><col style="width:9%"><col style="width:11%"></colgroup>
+        <colgroup><col style="width:4%"><col style="width:17%"><col style="width:5%"><col style="width:10%"><col style="width:9%"><col style="width:8%"><col style="width:9%"><col style="width:9%"><col style="width:10%"><col style="width:9%"><col style="width:10%"></colgroup>
         <thead><tr>
           <th style="text-align:center;">Pos.</th>
           <th>Vendedor</th>
           <th style="text-align:center;">Vendas</th>
           <th style="text-align:right;">Valor total</th>
+          <th style="text-align:right;">🧦 Meias<br>qtd · valor</th>
           <th style="text-align:right;">Comissão geral<br>1%</th>
           <th style="text-align:right;">Batendo 50k<br>Geral 2%</th>
           <th style="text-align:right;">Vestuário Sports &amp; Tennis<br>1%</th>
@@ -4326,6 +4327,7 @@ async function loadRanking({ silent = false } = {}) {
               </td>
               <td style="text-align:center;">${r.salesCount}</td>
               <td style="text-align:right;font-weight:700;">${fmt(r.salesAmount)}</td>
+              <td style="text-align:right;font-weight:700;">${r.commission.socksQuantity || 0} un<br><span style="font-size:11px;font-weight:400;color:var(--text-muted);">${fmt(r.commission.socksAmount || 0)}</span></td>
               <td style="text-align:right;font-weight:700;">${fmt(r.commission.baseAmount)}</td>
               <td style="text-align:right;color:var(--primary);font-weight:700;">${fmt(r.commission.at50kAmount)}</td>
               <td style="text-align:right;font-weight:700;">${fmt(r.commission.clothingBaseAmount)}${clothingDetails(r.commission)}</td>

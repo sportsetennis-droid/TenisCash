@@ -72,6 +72,10 @@ async function persistPending(db,data,reason,{complete,autoReprocess=false,nextA
 function createQueue(db,options={}){
  let boss,starting,ready=false,ownerReady=false,workerId,lastErrorCode=null,identify=options.identify,stopping=false,lastId=null;
  const pendingAgeMs=options.pendingAgeMs??300000;
+ // Periodic sweep re-reads a still-pending capture at most once per hour (OCR is
+ // CPU-heavy; every 5 min for ~500 pendings slowed the site, 15/11/2026).
+ // Transient OCR failures keep their own short retry via processJob.
+ const sweepRecheckMs=options.sweepRecheckMs??3600000;
  const firstPriority=Number.isInteger(options.jobPriority)?options.jobPriority:10,recheckPriority=firstPriority-10,agedPriority=firstPriority+10;
  const recheckIntervalMs=options.recheckIntervalMs??120000;
  const readImage=options.readImage||((bytes,barcode,read)=>require('./scannerArchivedLabel').readImage(bytes,barcode,read));
@@ -218,16 +222,18 @@ function createQueue(db,options={}){
   const priorities=await prioritize();
   // Recovery only schedules stored events. It does not decode, create bipes,
   // or alter balances. A pending piece is retried on its own schedule.
-  // Applied pieces still need catalog-image review refresh; processJob skips
-  // OCR for those and never applies their unit again.
+  // Applied pieces are NOT polled here: re-enqueuing every applied capture each
+  // pendingAgeMs created ~10k jobs/hour (907k rows in a week), blocked the event
+  // loop and slowed the whole site (15/11/2026). Their image review is refreshed
+  // when the operator confirms (POST /replacements/:id/images/:bipeId enqueues).
   const select=()=>db.$queryRawUnsafe(`SELECT c.id FROM "ProductCapture" c JOIN "StocktakeRound" r ON r.id=c."roundId"
    LEFT JOIN "StocktakeBipe" b ON b.id=c."bipeId" LEFT JOIN "StockReplacementCheck" v ON v."bipeId"=b.id
    WHERE c."excludedAt" IS NULL AND c.status<>'descartado' AND c.photo IS NOT NULL AND c.barcode IS NOT NULL
     AND r."operationType"='replacement' AND r.status IN ('counting','review')
-    AND (c."bipeId" IS NULL OR (b."excludedAt" IS NULL AND (v."bipeId" IS NULL OR v."checkedAt"<$1)))
-    AND NOT EXISTS (SELECT 1 FROM ${SCHEMA}.job j WHERE j.name=$3 AND j.data->>'captureId'=c.id AND ${currentSnapshotSql()} AND j.created_on>$1)
+    AND (c."bipeId" IS NULL OR (b."excludedAt" IS NULL AND b.applied IS NOT TRUE AND (v."bipeId" IS NULL OR v."checkedAt"<$1)))
+    AND NOT EXISTS (SELECT 1 FROM ${SCHEMA}.job j WHERE j.name=$3 AND j.data->>'captureId'=c.id AND ${currentSnapshotSql()} AND j.created_on>$4)
     AND NOT EXISTS (SELECT 1 FROM ${SCHEMA}.job j WHERE j.name=$3 AND j.data->>'captureId'=c.id AND ${currentSnapshotSql()} AND j.state IN ('created','retry','active'))
-    AND ($2::text IS NULL OR c.id>$2) ORDER BY c.id LIMIT 100`,new Date(Date.now()-pendingAgeMs),lastId,QUEUE);
+    AND ($2::text IS NULL OR c.id>$2) ORDER BY c.id LIMIT 100`,new Date(Date.now()-pendingAgeMs),lastId,QUEUE,new Date(Date.now()-sweepRecheckMs));
   let captures=await select();
   if(!captures.length&&lastId){lastId=null;captures=await select();}
   let queued=0;

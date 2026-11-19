@@ -69,4 +69,41 @@ router.post('/months/:month/acknowledge', requireSeller, async (req, res) => {
   } catch (err) { console.error('[seller/schedule:ack]', err); res.status(500).json({ error: err.message }); }
 });
 
+// =====================================================================
+// AGENDA DO VENDEDOR — pede folga/compromisso; só vale depois que o dono aprova.
+// =====================================================================
+const agenda = require('../services/agendaDaily');
+
+router.get('/agenda', requireSeller, async (req, res) => {
+  try {
+    const from = agenda.todayYmd();
+    const [requests, activities] = await Promise.all([
+      agenda.listRequests(prisma, { sellerId: req.userId, fromYmd: from }),
+      prisma.agendaActivity.findMany({
+        where: { sellerId: req.userId, OR: [{ endDate: { gte: new Date(from + 'T00:00:00Z') } }, { endDate: null, date: { gte: new Date(from + 'T00:00:00Z') } }] },
+        orderBy: { date: 'asc' }, take: 100,
+        select: { id: true, title: true, type: true, date: true, endDate: true, startTime: true, endTime: true, note: true },
+      }),
+    ]);
+    const types = Object.entries(agenda.REQUEST_TYPES).map(([value, t]) => ({ value, label: t.label, emoji: t.emoji }));
+    res.json({ today: from, types, requests: requests.filter((r) => r.status !== 'APROVADO'), activities });
+  } catch (err) { console.error('[seller/agenda:get]', err); res.status(500).json({ error: err.message }); }
+});
+
+router.post('/agenda', requireSeller, async (req, res) => {
+  try {
+    const r = await agenda.createRequest(prisma, req.userId, req.body);
+    if (r.error) return res.status(400).json({ error: r.error });
+    res.json(r);
+  } catch (err) { console.error('[seller/agenda:create]', err); res.status(500).json({ error: err.message }); }
+});
+
+router.delete('/agenda/:id', requireSeller, async (req, res) => {
+  try {
+    const ok = await agenda.cancelRequest(prisma, req.userId, String(req.params.id));
+    if (!ok) return res.status(404).json({ error: 'Só dá pra cancelar pedido seu que ainda está pendente.' });
+    res.json({ ok: true });
+  } catch (err) { console.error('[seller/agenda:cancel]', err); res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;

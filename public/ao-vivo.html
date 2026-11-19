@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#E5571E">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Posição ao vivo · Club Sports &amp; Tennis</title>
+<link rel="icon" href="/brand/sports-tennis-icon.svg" type="image/svg+xml">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<style>
+:root{--o:#E5571E;--ink:#2a1206;--mut:#7a4c39;--sat:env(safe-area-inset-top,0px);--sab:env(safe-area-inset-bottom,0px);--ff:'Archivo',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:var(--ff);color:var(--ink);background:#B84115}
+.app{position:relative;max-width:480px;margin:0 auto;height:100%;display:flex;flex-direction:column;background:#FFF6F1;padding-top:var(--sat)}
+header{background:linear-gradient(160deg,#EA5B22,#D6491A);color:#fff;padding:14px 16px}
+header h1{font-size:20px;font-weight:900;font-stretch:88%}
+header p{font-size:13px;opacity:.92}
+#map{flex:1;min-height:240px}
+.info{background:#fff;padding:14px 16px calc(14px + var(--sab));border-top:1px solid rgba(70,22,0,.1)}
+.live{display:inline-flex;align-items:center;gap:6px;font-weight:800;color:var(--o);font-size:14px}
+.live i{width:10px;height:10px;border-radius:50%;background:var(--o);animation:p 1.4s infinite}
+@keyframes p{50%{opacity:.25}}
+.mut{color:var(--mut);font-size:14px;margin-top:4px}
+.msg{flex:1;display:grid;place-items:center;text-align:center;padding:30px;color:var(--mut)}
+.msg b{display:block;font-size:20px;color:var(--ink);margin-bottom:6px}
+a.btn{display:inline-flex;margin-top:12px;min-height:44px;align-items:center;padding:0 18px;border-radius:999px;background:var(--o);color:#fff;font-weight:800;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="app">
+  <header><h1 id="h">Posição ao vivo</h1><p>Beacon de segurança · Club Sports &amp; Tennis</p></header>
+  <div id="map"></div>
+  <div class="info" id="info"><span class="mut">Carregando…</span></div>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>
+'use strict';
+// Página pública (sem conta) do Beacon: lê /api/beacon/<token> a cada 10 s.
+// O token vem só da URL /ao-vivo/<token>; quando a atividade termina a API devolve 410.
+var TOKEN=decodeURIComponent((location.pathname.split('/ao-vivo/')[1]||'').split('/')[0]);
+var SPORT={RUN:'correndo',WALK:'caminhando',RIDE:'pedalando',HIKE:'na trilha',TRAIL_RUN:'correndo na trilha'};
+var map=null,line=null,dot=null,first=true,timer=null,tiles={tileUrl:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',attribution:'&copy; OpenStreetMap',maxZoom:19};
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function ago(d){var s=Math.round((Date.now()-new Date(d))/1000);if(s<60)return 'há '+s+' s';if(s<3600)return 'há '+Math.round(s/60)+' min';return 'há '+Math.round(s/3600)+' h';}
+function ended(text){
+  clearInterval(timer);
+  document.getElementById('map').outerHTML='<div class="msg"><div><b>'+esc(text)+'</b>O compartilhamento ao vivo terminou. Este link não mostra mais a posição.<br><a class="btn" href="/">Conhecer o Club</a></div></div>';
+  document.getElementById('info').style.display='none';
+}
+function initMap(){
+  if(map||!window.L)return;
+  map=L.map('map',{zoomControl:true}).setView([-7.115,-34.86],13);
+  L.tileLayer(tiles.tileUrl,{maxZoom:tiles.maxZoom,attribution:tiles.attribution}).addTo(map);
+  line=L.polyline([],{color:'#E5571E',weight:5}).addTo(map);
+}
+function load(){
+  fetch('/api/beacon/'+encodeURIComponent(TOKEN),{cache:'no-store'}).then(function(r){
+    if(r.status===404)return ended('Link inválido');
+    if(r.status===410)return ended('Atividade encerrada');
+    if(!r.ok)throw new Error('falha');
+    return r.json().then(function(d){
+      document.getElementById('h').textContent=d.athlete+' está '+(SPORT[d.sportType]||'em atividade');
+      initMap();
+      if(map&&d.trail&&d.trail.length){
+        line.setLatLngs(d.trail);
+        var last=d.last?[d.last.lat,d.last.lng]:d.trail[d.trail.length-1];
+        if(!dot)dot=L.circleMarker(last,{radius:9,color:'#fff',weight:3,fillColor:'#E5571E',fillOpacity:1}).addTo(map);else dot.setLatLng(last);
+        if(first){map.fitBounds(line.getBounds(),{padding:[30,30],maxZoom:16});first=false;}else map.panTo(last);
+      }
+      document.getElementById('info').innerHTML='<span class="live"><i></i>AO VIVO</span><div class="mut">'+(d.last?'Última posição '+ago(d.last.at):'Aguardando a primeira posição do GPS…')+' · começou '+ago(d.startedAt)+'</div>';
+    });
+  }).catch(function(){document.getElementById('info').innerHTML='<span class="mut">Sem conexão — tentando de novo…</span>';});
+}
+fetch('/api/beacon/_config').then(function(r){return r.json();}).then(function(c){if(c&&c.tileUrl)tiles=c;}).catch(function(){}).then(function(){load();timer=setInterval(load,10000);});
+</script>
+</body>
+</html>

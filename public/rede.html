@@ -1,0 +1,1416 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Rede de Agentes · TenisCash</title>
+<meta name="description" content="Painel da Rede Neural de Agentes do TenisCash: rede ao vivo, propostas, objetivos, mini agentes e rastros.">
+<meta name="theme-color" content="#EA5128">
+<meta name="color-scheme" content="dark">
+<meta name="robots" content="noindex,nofollow">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Rede S&amp;T">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/brand/sports-tennis-icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/brand/sports-tennis-icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --o1:#EA5128; --o2:#E5571E; --o3:#C93E19; --ink:#2a1206; --ink2:#1c0b04;
+  --tx:#fff; --mut:rgba(255,255,255,.88); --dim:rgba(255,255,255,.72);
+  --line:rgba(255,255,255,.16); --card:rgba(255,255,255,.13); --card2:rgba(255,255,255,.2);
+  --wtx:#2a1206; --wmut:#74412c; --wdim:#8f6552; --wline:rgba(70,22,0,.12); --wline2:rgba(70,22,0,.22);
+  --ok:#0B7A4B; --okbg:rgba(11,122,75,.12); --warn:#8a5a00; --warnbg:#FFF1CC; --bad:#B3261E; --badbg:rgba(179,38,30,.1);
+  --hot:#FFD84D;
+  --sat:env(safe-area-inset-top,0px); --sab:env(safe-area-inset-bottom,0px);
+  --ease:cubic-bezier(.22,.8,.24,1); --nav:66px;
+  --ff:'Archivo',system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{background:#B84115;color:var(--tx);font-family:var(--ff);font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased;overflow:hidden;padding-top:0}
+body::before{content:"";position:fixed;inset:0;z-index:-1;background:radial-gradient(70% 55% at 100% 0%,rgba(255,132,72,.45),rgba(255,132,72,0) 70%),linear-gradient(205deg,#EF5A31 0%,#EA5128 45%,#E44C24 100%)}
+button,input,textarea,select{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer}
+a{color:inherit}
+:focus-visible{outline:2px solid #fff;outline-offset:2px;border-radius:8px}
+.wcard :focus-visible,.sheet :focus-visible{outline-color:var(--o3)}
+.sr{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ---------- shell ---------- */
+#stage{height:100%;display:flex;justify-content:center}
+#app{position:relative;width:100%;max-width:480px;height:100%;overflow:hidden;isolation:isolate;display:flex;flex-direction:column}
+#view{position:relative;flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.page{padding:calc(var(--sat) + 10px) 16px calc(var(--sab) + var(--nav) + 30px)}
+.tab[hidden]{display:none}
+.demo{margin:0 0 12px;padding:9px 12px;border-radius:12px;background:var(--ink);color:#FFE3C2;font-size:12.5px;font-weight:700}
+
+/* ---------- header ---------- */
+.top{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:48px;margin-bottom:14px}
+.top h1{font-size:25px;font-weight:800;font-stretch:118%;letter-spacing:-.02em;text-transform:uppercase;line-height:1}
+.top .eyebrow{display:block;font-size:10.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--mut);margin-bottom:4px}
+.pill{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 12px;border-radius:15px;background:var(--card);box-shadow:inset 0 0 0 1px var(--line);font-size:12px;font-weight:700;white-space:nowrap}
+.pill i{width:8px;height:8px;border-radius:50%;background:#fff;flex:none}
+.pill.on i{background:#9EF5C6;box-shadow:0 0 0 0 rgba(158,245,198,.7);animation:beat 1.8s infinite}
+.pill.retry i{background:var(--hot)}
+.pill.off i{background:rgba(255,255,255,.4)}
+@keyframes beat{0%{box-shadow:0 0 0 0 rgba(158,245,198,.7)}70%{box-shadow:0 0 0 7px rgba(158,245,198,0)}100%{box-shadow:0 0 0 0 rgba(158,245,198,0)}}
+
+/* ---------- generic cards ---------- */
+.wcard{background:#fff;color:var(--wtx);border-radius:20px;padding:16px;box-shadow:0 22px 44px -26px rgba(60,16,0,.85)}
+.wcard+.wcard{margin-top:12px}
+.glass{background:var(--card);border-radius:20px;box-shadow:inset 0 0 0 1px var(--line);padding:14px}
+.sec{margin-top:22px}
+.sec-h{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+.sec-h h2{font-size:17px;font-weight:800;font-stretch:112%}
+.muted{color:var(--wmut)} .dimt{color:var(--wdim)} .mut{color:var(--mut)}
+.small{font-size:12.5px}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;word-break:break-all}
+.row{display:flex;align-items:center;gap:8px}
+.wrap{flex-wrap:wrap}
+.grow{flex:1;min-width:0}
+.right{margin-left:auto}
+
+.btn{text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 18px;border-radius:14px;font-weight:800;font-size:14.5px;white-space:nowrap;transition:transform .2s var(--ease),filter .2s,background .2s}
+.btn:active{transform:scale(.97)}
+.btn[disabled]{opacity:.55;pointer-events:none}
+.btn svg{width:18px;height:18px}
+.btn.pri{background:#fff;color:var(--o3);box-shadow:0 12px 24px -14px rgba(60,16,0,.8)}
+.btn.ghost{background:var(--card2);color:#fff;box-shadow:inset 0 0 0 1px var(--line)}
+.wcard .btn.pri,.sheet .btn.pri{background:var(--o1);color:#fff}
+.wcard .btn.ghost,.sheet .btn.ghost{background:rgba(234,81,40,.1);color:var(--o3);box-shadow:none}
+.btn.ok{background:var(--ok);color:#fff}
+.btn.bad{background:rgba(179,38,30,.1);color:var(--bad)}
+.btn.full{width:100%}
+.btn.sm{min-height:44px;padding:0 14px;font-size:13.5px}
+.actions{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+.actions.two{grid-template-columns:1fr 1fr}
+.actions .btn{padding:0 8px}
+
+.badge{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:11px;font-size:11px;font-weight:800;letter-spacing:.02em;white-space:nowrap;background:rgba(234,81,40,.12);color:var(--o3)}
+.badge.ok{background:var(--okbg);color:var(--ok)}
+.badge.warn{background:var(--warnbg);color:var(--warn)}
+.badge.bad{background:var(--badbg);color:var(--bad)}
+.badge.gray{background:rgba(70,22,0,.07);color:var(--wmut)}
+.badge.ink{background:var(--ink);color:#fff}
+
+.chips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:2px 0 4px;margin:0 -16px;padding-left:16px;padding-right:16px}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;min-height:40px;padding:0 15px;border-radius:20px;background:var(--card);box-shadow:inset 0 0 0 1px var(--line);font-size:13.5px;font-weight:700;color:#fff;position:relative}
+.chip::after{content:"";position:absolute;inset:-3px 0}
+.chip[aria-pressed=true]{background:#fff;color:var(--o3);box-shadow:none}
+.wcard .chip,.sheet .chip{background:rgba(234,81,40,.08);color:var(--wmut);box-shadow:none}
+.wcard .chip[aria-pressed=true],.sheet .chip[aria-pressed=true]{background:var(--o1);color:#fff}
+
+.state{padding:26px 18px;text-align:center}
+.state b{display:block;font-size:16px;margin-bottom:4px}
+.state p{font-size:13.5px;color:var(--wmut)}
+.glass.state p{color:var(--mut)}
+.state .btn{margin-top:14px}
+.err{background:var(--badbg);color:var(--bad);border-radius:12px;padding:10px 12px;font-size:13.5px;font-weight:600;margin-top:10px}
+.warnbox{background:var(--warnbg);color:var(--warn);border-radius:12px;padding:10px 12px;font-size:13px;font-weight:600}
+.skel{height:86px;border-radius:20px;background:linear-gradient(90deg,rgba(255,255,255,.1),rgba(255,255,255,.22),rgba(255,255,255,.1));background-size:200% 100%;animation:sk 1.2s infinite linear}
+.skel+.skel{margin-top:12px}
+@keyframes sk{from{background-position:200% 0}to{background-position:-200% 0}}
+
+/* ---------- KPIs ---------- */
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.kpi{background:#fff;color:var(--wtx);border-radius:18px;padding:13px 14px;box-shadow:0 18px 36px -24px rgba(60,16,0,.85);text-align:left;min-height:44px;display:block;width:100%}
+.kpi .l{display:block;font-size:10.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--wdim)}
+.kpi .v{display:block;font-size:26px;font-weight:800;font-stretch:72%;line-height:1.05;margin-top:4px;font-variant-numeric:tabular-nums}
+.kpi .s{display:block;font-size:12px;color:var(--wmut);margin-top:2px}
+.kpi.wide{grid-column:1/-1}
+.bar{height:8px;border-radius:4px;background:rgba(70,22,0,.08);overflow:hidden;margin-top:8px}
+.bar u{display:block;height:100%;border-radius:4px;background:var(--o1);transition:width .5s var(--ease)}
+.bar.hot u{background:var(--bad)}
+.ask{margin-top:12px}
+
+/* ---------- network ---------- */
+.netcard{margin-top:14px;border-radius:22px;overflow:hidden;background:radial-gradient(120% 70% at 50% 0%,#3b1a0b,#1c0b04 70%);box-shadow:0 26px 50px -26px rgba(30,8,0,.95),inset 0 0 0 1px rgba(255,255,255,.08)}
+.nethead{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 14px 4px}
+.nethead b{font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+#netWrap{position:relative;width:100%}
+#net{display:block;width:100%;height:320px;touch-action:manipulation;cursor:pointer}
+.netempty{padding:30px 18px;text-align:center;color:var(--dim);font-size:13.5px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;padding:8px 14px 14px;font-size:11.5px;color:var(--dim)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:9px;height:9px;border-radius:50%;display:inline-block}
+.ticker{margin-top:12px}
+.tk{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:8px 2px;border-bottom:1px solid var(--wline);text-align:left;color:var(--wtx)}
+.tk:last-child{border-bottom:0}
+.tk time{flex:none;font-size:11.5px;font-weight:700;color:var(--wdim);font-variant-numeric:tabular-nums;width:56px}
+.tk .d{width:8px;height:8px;border-radius:50%;flex:none;background:var(--o1)}
+.tk .d.r{background:var(--bad)} .tk .d.g{background:#bbb} .tk .d.p{background:var(--hot);box-shadow:0 0 0 2px #e6b800}
+.tk .t{flex:1;min-width:0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ---------- propostas ---------- */
+.prop h3{font-size:16px;font-weight:800;line-height:1.25;margin:8px 0 4px}
+.prop .desc{font-size:13.5px;color:var(--wmut)}
+.meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.imp{font-size:22px;font-weight:800;font-stretch:72%;font-variant-numeric:tabular-nums}
+details.box{margin-top:10px;border-radius:14px;background:rgba(234,81,40,.05);box-shadow:inset 0 0 0 1px var(--wline)}
+details.box>summary{list-style:none;min-height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;font-size:13px;font-weight:800;color:var(--o3);cursor:pointer}
+details.box>summary::-webkit-details-marker{display:none}
+details.box>summary::after{content:"+";font-size:18px;font-weight:600}
+details.box[open]>summary::after{content:"−"}
+details.box>div{padding:0 12px 12px;font-size:13px}
+.kv{display:grid;grid-template-columns:minmax(80px,38%) 1fr;gap:4px 10px}
+.kv dt{color:var(--wdim);font-weight:700;word-break:break-word}
+.kv dd{word-break:break-word}
+ul.lst{padding-left:18px}
+ul.lst li+li{margin-top:3px}
+.flash{animation:flash 1.6s var(--ease)}
+@keyframes flash{0%,40%{box-shadow:0 0 0 4px #FFD84D,0 22px 44px -26px rgba(60,16,0,.85)}100%{box-shadow:0 22px 44px -26px rgba(60,16,0,.85)}}
+.learn{margin-top:10px;display:grid;gap:6px}
+.learn div{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-radius:10px;background:rgba(234,81,40,.06);font-size:12.5px}
+.up{color:var(--ok);font-weight:800}.down{color:var(--bad);font-weight:800}
+
+/* ---------- forms ---------- */
+.field{display:block;margin-top:12px}
+.field>span{display:block;font-size:12px;font-weight:800;letter-spacing:.04em;color:var(--wmut);margin-bottom:5px}
+.inp{width:100%;min-height:44px;padding:10px 12px;border-radius:12px;border:1.5px solid var(--wline2);background:#fff;color:var(--wtx);font-size:15px}
+textarea.inp{min-height:96px;resize:vertical;line-height:1.4}
+.inp:focus{outline:none;border-color:var(--o1);box-shadow:0 0 0 3px rgba(234,81,40,.18)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.kpirow{display:grid;grid-template-columns:1fr 1fr 44px;gap:6px;margin-top:6px;align-items:center}
+.kpirow .inp{min-height:44px;font-size:14px;padding:8px 10px}
+.iconbtn{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;color:var(--bad);background:var(--badbg)}
+.iconbtn svg{width:18px;height:18px}
+.hint{font-size:12px;color:var(--wdim);margin-top:4px}
+
+/* ---------- objetivos ---------- */
+.obj h3{font-size:15px;font-weight:800;line-height:1.3;margin-top:8px}
+.obj .nums{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.obj .nums div{background:rgba(234,81,40,.06);border-radius:12px;padding:8px 10px}
+.obj .nums b{display:block;font-size:17px;font-stretch:80%;font-variant-numeric:tabular-nums}
+.obj .nums span{font-size:11.5px;color:var(--wdim);font-weight:700}
+
+/* ---------- agentes ---------- */
+.search{position:relative;margin-bottom:10px}
+.search input{width:100%;min-height:46px;border-radius:14px;border:0;padding:0 14px 0 40px;background:#fff;color:var(--wtx);font-size:15px}
+.search svg{position:absolute;left:12px;top:13px;width:20px;height:20px;color:var(--wdim)}
+.dom-h{display:flex;align-items:center;justify-content:space-between;margin:20px 2px 8px;font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--mut)}
+.ag{padding:14px}
+.ag.off{background:#F4E9E3}
+.ag.off .id,.ag.off .mis,.ag.off .stats,.ag.off .lim{opacity:.6}
+.ag.poda{box-shadow:inset 0 0 0 2px var(--hot),0 22px 44px -26px rgba(60,16,0,.85)}
+.ag .id{font-size:14.5px;font-weight:800;word-break:break-all}
+.ag .mis{font-size:13px;color:var(--wmut);margin-top:6px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px}
+.stats div{background:rgba(234,81,40,.06);border-radius:10px;padding:6px 4px;text-align:center}
+.stats b{display:block;font-size:15px;font-stretch:80%;font-variant-numeric:tabular-nums}
+.stats span{font-size:10.5px;color:var(--wdim);font-weight:700}
+.podabox{margin-top:10px;background:#FFF4C2;color:#6b4a00;border-radius:10px;padding:8px 10px;font-size:12.5px;font-weight:700}
+.sw{position:relative;flex:none;width:52px;height:44px;display:grid;place-items:center}
+.sw i{width:48px;height:28px;border-radius:14px;background:rgba(70,22,0,.2);position:relative;transition:background .2s}
+.sw i::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 2px 5px rgba(0,0,0,.25);transition:transform .2s var(--ease)}
+.sw[aria-checked=true] i{background:var(--o1)}
+.sw[aria-checked=true] i::after{transform:translateX(20px)}
+.lim{margin-top:10px}
+.lim label{display:flex;justify-content:space-between;font-size:12px;font-weight:800;color:var(--wmut)}
+.lim input[type=range]{width:100%;height:44px;accent-color:var(--o1)}
+
+/* ---------- rastros ---------- */
+.tr{display:block;width:100%;text-align:left}
+.tr .tp{font-size:14.5px;font-weight:800;word-break:break-all}
+.back{display:inline-flex;align-items:center;gap:4px;min-height:44px;padding:0 14px 0 8px;margin:0 0 8px -6px;border-radius:22px;font-weight:700;color:var(--mut)}
+.back svg{width:22px;height:22px}
+.tree,.tree ul{list-style:none}
+.tree ul{margin-left:5px;padding-left:8px;border-left:2px solid var(--wline2)}
+.tree li{position:relative;margin-top:8px}
+.node{border-radius:12px;padding:9px 11px;font-size:13px;background:rgba(234,81,40,.05);box-shadow:inset 0 0 0 1px var(--wline)}
+.node.s{background:#fff7f2}
+.node.a{background:#fff}
+.node.p{background:#FFF8DC;box-shadow:inset 0 0 0 1.5px #E8C547}
+.node .h{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-weight:800}
+.node .k{font-size:10.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--wdim)}
+.node .x{font-size:12px;color:var(--wmut);margin-top:3px}
+
+/* ---------- bottom nav ---------- */
+#tabs{position:absolute;left:0;right:0;bottom:0;z-index:20;padding:8px 10px calc(var(--sab) + 8px);background:linear-gradient(180deg,rgba(234,81,40,0),rgba(214,72,32,.9) 40%);pointer-events:none}
+#tabs nav{pointer-events:auto;display:grid;grid-template-columns:repeat(5,1fr);height:var(--nav);border-radius:24px;background:#fff;box-shadow:0 20px 40px -12px rgba(60,16,0,.75)}
+#tabs button{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:#8a5b48;font-size:10.5px;font-weight:800;letter-spacing:.02em;min-height:44px}
+#tabs button svg{width:23px;height:23px}
+#tabs button[aria-current=page]{color:var(--o3)}
+#tabs button[aria-current=page] svg{color:var(--o1)}
+#tabs button[aria-current=page]::before{content:"";position:absolute;top:0;width:22px;height:3px;border-radius:0 0 3px 3px;background:var(--o1)}
+#tabs .nb{position:absolute;top:6px;left:calc(50% + 5px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--o1);color:#fff;font-size:10.5px;font-weight:800;display:grid;place-items:center}
+#tabs .nb[hidden]{display:none}
+
+/* ---------- sheet ---------- */
+#sheetWrap{position:absolute;inset:0;z-index:40}
+#sheetWrap[hidden]{display:none}
+.scrim{position:absolute;inset:0;background:rgba(30,8,0,.55);animation:fade .2s}
+.sheet{position:absolute;left:0;right:0;bottom:0;max-height:90%;overflow-y:auto;overscroll-behavior:contain;background:#fff;color:var(--wtx);border-radius:26px 26px 0 0;padding:6px 18px calc(var(--sab) + 18px);box-shadow:0 -24px 50px rgba(30,8,0,.45);animation:up .32s var(--ease)}
+.sheet:focus{outline:none}
+.grab{width:42px;height:5px;border-radius:3px;background:rgba(70,22,0,.18);margin:6px auto 12px}
+.sheet h2{font-size:19px;font-weight:800;font-stretch:110%;line-height:1.2;margin-bottom:6px}
+@keyframes up{from{transform:translateY(100%)}to{transform:none}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+
+/* ---------- gate / toast ---------- */
+#gate{position:absolute;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(184,65,21,.6);backdrop-filter:blur(6px)}
+#gate[hidden]{display:none}
+#gate .wcard{max-width:360px;text-align:center;padding:24px}
+#gate h2{font-size:20px;font-weight:800;margin-bottom:6px}
+#gate p{color:var(--wmut);font-size:14px;margin-bottom:16px}
+#toast{position:absolute;left:16px;right:16px;bottom:calc(var(--sab) + var(--nav) + 26px);z-index:60;display:flex;justify-content:center;pointer-events:none}
+#toast div{max-width:420px;padding:12px 16px;border-radius:14px;background:var(--ink);color:#fff;font-size:14px;font-weight:700;box-shadow:0 18px 30px -12px rgba(0,0,0,.6);animation:up .25s var(--ease)}
+#toast div.bad{background:var(--bad)}
+
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ---------- desktop: frame de celular ---------- */
+@media (min-width:900px){
+  #stage{align-items:center;padding:24px}
+  #app{height:min(920px,calc(100vh - 48px));border-radius:40px;background:linear-gradient(205deg,#EF5A31 0%,#EA5128 45%,#E44C24 100%);box-shadow:0 0 0 10px #1c0b04,0 50px 90px -30px rgba(0,0,0,.65)}
+  body::before{background:linear-gradient(160deg,#5a1c03,#2a1206)}
+}
+</style>
+</head>
+<body>
+<div id="stage">
+<div id="app">
+  <main id="view" tabindex="-1">
+    <!-- ================= REDE ================= -->
+    <section id="tab-rede" class="tab page" aria-labelledby="h-rede">
+      <div id="demoBar"></div>
+      <header class="top">
+        <div><span class="eyebrow">TenisCash · IA</span><h1 id="h-rede">Rede de agentes</h1></div>
+        <span id="livePill" class="pill off" role="status"><i></i><span>Desligado</span></span>
+      </header>
+      <div id="redeTop"><div class="skel"></div></div>
+      <div class="netcard">
+        <div class="nethead"><b>Mapa ao vivo</b><span class="small mut" id="netCount"></span></div>
+        <div id="netWrap"><canvas id="net" role="img" aria-label="Mapa da rede de agentes"></canvas></div>
+        <div class="legend" aria-hidden="true">
+          <span><i style="background:#FF7A45;box-shadow:0 0 8px #FF7A45"></i>acendeu</span>
+          <span><i style="background:#FF4D4D"></i>erro / bloqueio</span>
+          <span><i style="background:#9a8a82"></i>sem saída / sem orçamento</span>
+          <span><i style="background:#FFD84D"></i>candidato à poda</span>
+        </div>
+      </div>
+      <p class="small mut" style="margin-top:8px">Toque num ponto para ver o agente. A lista completa fica em <button class="small" style="text-decoration:underline;font-weight:700;min-height:32px" data-act="go" data-tab="agentes">Mini agentes</button>.</p>
+      <div class="sec">
+        <div class="sec-h"><h2>Acontecendo agora</h2></div>
+        <div class="wcard" id="ticker"></div>
+      </div>
+    </section>
+
+    <!-- ================= PROPOSTAS ================= -->
+    <section id="tab-propostas" class="tab page" hidden aria-labelledby="h-prop">
+      <header class="top"><div><span class="eyebrow">Você decide</span><h1 id="h-prop">Propostas</h1></div></header>
+      <div class="chips" id="propFilters" role="group" aria-label="Filtrar propostas por status"></div>
+      <div id="propList" style="margin-top:12px"></div>
+    </section>
+
+    <!-- ================= OBJETIVOS ================= -->
+    <section id="tab-objetivos" class="tab page" hidden aria-labelledby="h-obj">
+      <header class="top"><div><span class="eyebrow">Função objetivo</span><h1 id="h-obj">Objetivos</h1></div></header>
+      <div id="objNew"></div>
+      <div class="sec"><div class="sec-h"><h2>Seus objetivos</h2></div><div id="objList"></div></div>
+    </section>
+
+    <!-- ================= AGENTES ================= -->
+    <section id="tab-agentes" class="tab page" hidden aria-labelledby="h-ag">
+      <header class="top"><div><span class="eyebrow">Neurônios</span><h1 id="h-ag">Mini agentes</h1></div></header>
+      <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <label class="sr" for="agQ">Buscar mini agente</label><input id="agQ" type="search" placeholder="Buscar por nome ou missão" autocomplete="off"></div>
+      <div class="chips" id="agFilters" role="group" aria-label="Filtrar por camada"></div>
+      <div id="agList"></div>
+    </section>
+
+    <!-- ================= RASTROS ================= -->
+    <section id="tab-rastros" class="tab page" hidden aria-labelledby="h-tr">
+      <header class="top"><div><span class="eyebrow">Auditoria</span><h1 id="h-tr">Rastros</h1></div>
+        <button class="btn ghost sm" data-act="reloadTraces" aria-label="Atualizar rastros">Atualizar</button></header>
+      <div id="trBody"></div>
+    </section>
+  </main>
+
+  <div id="tabs">
+    <nav aria-label="Seções do painel">
+      <button data-act="go" data-tab="rede"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="6" r="2.3"/><circle cx="5" cy="18" r="2.3"/><circle cx="19" cy="12" r="2.6"/><circle cx="12" cy="12" r="1.8"/><path d="M7.1 7.2 10.4 11M7.1 16.8l3.3-3.8M13.8 12h2.6"/></svg>Rede</button>
+      <button data-act="go" data-tab="propostas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 13.5V18a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4.5"/><path d="M4 13.5 6.5 5h11l2.5 8.5h-5a3 3 0 0 1-6 0Z"/></svg>Propostas<span class="nb" id="nbProp" hidden></span></button>
+      <button data-act="go" data-tab="objetivos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>Objetivos</button>
+      <button data-act="go" data-tab="agentes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2.5"/><path d="M9.5 2.5v3M14.5 2.5v3M9.5 18.5v3M14.5 18.5v3M2.5 9.5h3M2.5 14.5h3M18.5 9.5h3M18.5 14.5h3"/></svg>Agentes</button>
+      <button data-act="go" data-tab="rastros"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="5" r="2"/><circle cx="18" cy="12" r="2"/><circle cx="6" cy="19" r="2"/><path d="M6 7v10M8 5h4a4 4 0 0 1 4 4v1M8 19h4a4 4 0 0 0 4-4v-1"/></svg>Rastros</button>
+    </nav>
+  </div>
+
+  <div id="gate" hidden><div class="wcard" role="alertdialog" aria-labelledby="gateT" aria-describedby="gateMsg">
+    <h2 id="gateT">Entre para ver a rede</h2>
+    <p id="gateMsg">O painel da rede é só para administradores.</p>
+    <a class="btn pri full" href="/">Ir para o login</a>
+    <button class="btn ghost full" style="margin-top:8px" data-act="retryAuth">Já entrei, tentar de novo</button>
+  </div></div>
+
+  <div id="sheetWrap" hidden>
+    <div class="scrim" data-act="closeSheet"></div>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" tabindex="-1"><div class="grab" aria-hidden="true"></div><div id="sheetBody"></div></div>
+  </div>
+  <div id="toast" aria-live="polite"></div>
+</div>
+</div>
+
+<script>
+'use strict';
+/* =====================================================================
+   Painel MOBILE da Rede Neural de Agentes (docs/REDE-NEURAL-DE-AGENTES.md)
+   API: /api/admin/rede (src/routes/rede.js). Token: localStorage 'tc_token'.
+   ?demo=1 → dados fictícios locais (só para conferir a tela; nada é gravado).
+   ===================================================================== */
+var QS = new URLSearchParams(location.search);
+var DEMO = QS.get('demo') === '1';
+var BASE = '/api/admin/rede';
+var TZ = 'America/Fortaleza';
+
+var CAMADAS = ['detector', 'analista', 'especialista', 'atuador'];
+var CAMADA_NOME = { sensor: 'Sensor', detector: 'Detector', analista: 'Analista', especialista: 'Especialista', atuador: 'Atuador' };
+var CUSTO_NOME = { regra: 'regra · grátis', 'ia-barata': 'IA barata', 'ia-forte': 'IA forte' };
+var RISCO = { low: ['Risco baixo', 'ok'], medium: ['Risco médio', 'warn'], high: ['Risco alto', 'bad'] };
+var STATUS_PROP = { pending: ['Pendente', ''], approved: ['Aprovada', 'ok'], executed: ['Executada', 'ink'], rejected: ['Rejeitada', 'bad'], correction_requested: ['Ajuste pedido', 'warn'], cancelled: ['Cancelada', 'gray'] };
+var STATUS_ATIV = { ok: ['ok', 'ok'], 'sem-saida': ['sem saída', 'gray'], erro: ['erro', 'bad'], bloqueado: ['bloqueado', 'bad'], 'sem-orcamento': ['sem orçamento', 'warn'], 'abaixo-limiar': ['abaixo do limiar', 'gray'] };
+var STATUS_OBJ = { ativo: ['Ativo', 'ok'], pausado: ['Pausado', 'warn'], concluido: ['Concluído', 'ink'], cancelado: ['Cancelado', 'gray'] };
+var REGIOES = ['nfe.*', 'estoque.*', 'bipe.*', 'nuvem.*', 'conteudo.*', 'preco.*', 'venda.*', 'crm.*', 'mkt.*', 'fin.*', 'compra.*', 'club.*'];
+// Nomes só das lojas confirmadas no código (src/ai/rede/objetivos.js). LOJA07 aparece pelo código.
+var LOJAS = { LOJA01: 'LOJA01 · Baratão', LOJA02: 'LOJA02 · Bessa', LOJA03: 'LOJA03 · Rainha da Borborema', LOJA04: 'LOJA04 · E-commerce', LOJA05: 'LOJA05 · Tambaú', LOJA06: 'LOJA06 · Tambiá', LOJA07: 'LOJA07' };
+// Sensores (borda da rede) — espelho de src/ai/rede/sensores.js
+var SENSORES = { 'nfe.importada': 's.nfe', 'venda.registrada': 's.venda', 'bipe.registrado': 's.bipe', 'nuvem.webhook': 's.nuvem', 'whatsapp.mensagem': 's.whatsapp', 'torneio.finalizado': 's.club', 'dono.pergunta': 's.dono', 'relogio.hora': 's.relogio', 'relogio.diario': 's.relogio', 'relogio.semanal': 's.relogio', 'relogio.mensal': 's.relogio', 'relogio.objetivo': 's.relogio', 'objetivo.prazo-final': 's.relogio' };
+var SENSOR_NOME = { 's.nfe': 'NF-e', 's.venda': 'Venda', 's.bipe': 'Bipe', 's.nuvem': 'Nuvemshop', 's.whatsapp': 'WhatsApp', 's.club': 'Torneio', 's.dono': 'Pergunta', 's.relogio': 'Relógio' };
+
+var S = {
+  tab: 'rede', auth: 'ok',
+  painel: null, painelErr: null, painelLoading: false,
+  props: { status: 'pending', list: null, err: null, loading: false, stale: true, focus: null },
+  objs: { list: null, err: null, loading: false, stale: true, texto: '', draft: null, compiling: false, draftErr: null },
+  ag: { q: '', camada: '', poda: false },
+  tr: { list: null, err: null, loading: false, stale: true, cur: null, detail: null, detailErr: null },
+  ticker: [], live: 'off'
+};
+
+/* ===================== utilidades ===================== */
+function $(s, r) { return (r || document).querySelector(s); }
+function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function num(v, d) { return (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: d || 0, maximumFractionDigits: d || 0 }); }
+function rs(v) { v = Number(v) || 0; var small = v !== 0 && Math.abs(v) < 1; return 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: small ? 4 : 2 }); }
+function dec(v) { return num(v, 2); }
+function secs(ms) { return ms < 1000 ? num(ms) + ' ms' : num(ms / 1000, 1) + ' s'; }
+function pct(v) { return Math.round((Number(v) || 0) * 100) + '%'; }
+function dt(d) { if (!d) return '—'; var x = new Date(d); if (isNaN(x)) return '—'; return x.toLocaleString('pt-BR', { timeZone: TZ, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); }
+function hora(d) { var x = new Date(d); if (isNaN(x)) return '—'; return x.toLocaleTimeString('pt-BR', { timeZone: TZ, hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
+function dia(d) { var x = new Date(d); if (isNaN(x)) return '—'; return x.toLocaleDateString('pt-BR', { timeZone: TZ, day: '2-digit', month: '2-digit', year: 'numeric' }); }
+function rel(d) {
+  var x = new Date(d); if (isNaN(x)) return '—';
+  var s = Math.round((Date.now() - x.getTime()) / 1000);
+  if (s < 45) return 'agora';
+  if (s < 3600) return 'há ' + Math.round(s / 60) + ' min';
+  if (s < 86400) return 'há ' + Math.round(s / 3600) + ' h';
+  if (s < 7 * 86400) return 'há ' + Math.round(s / 86400) + ' d';
+  return dt(d);
+}
+function badge(map, key) { var m = map[key] || [key || '—', 'gray']; return '<span class="badge ' + m[1] + '">' + esc(m[0]) + '</span>'; }
+function token() { try { return localStorage.getItem('tc_admin_token') || localStorage.getItem('tc_token') || ''; } catch (e) { return ''; } }
+function toast(msg, bad) {
+  var t = $('#toast'); t.innerHTML = '<div class="' + (bad ? 'bad' : '') + '">' + esc(msg) + '</div>';
+  clearTimeout(toast.t); toast.t = setTimeout(function () { t.innerHTML = ''; }, 3600);
+}
+function errBox(e) { return '<div class="err" role="alert">' + esc(e && e.message ? e.message : e) + '</div>'; }
+// Prévia/evidência vêm do neurônio em formato livre: mostra string, lista ou chave→valor (sempre escapado).
+function kv(v, depth) {
+  depth = depth || 0;
+  if (v == null || v === '') return '<span class="dimt">—</span>';
+  if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return esc(typeof v === 'boolean' ? (v ? 'sim' : 'não') : v);
+  if (depth > 3) return '<span class="mono">' + esc(JSON.stringify(v).slice(0, 300)) + '</span>';
+  if (Array.isArray(v)) {
+    if (!v.length) return '<span class="dimt">(vazio)</span>';
+    return '<ul class="lst">' + v.slice(0, 50).map(function (x) { return '<li>' + kv(x, depth + 1) + '</li>'; }).join('') + (v.length > 50 ? '<li class="dimt">+' + (v.length - 50) + ' itens</li>' : '') + '</ul>';
+  }
+  var ks = Object.keys(v);
+  if (!ks.length) return '<span class="dimt">(vazio)</span>';
+  return '<dl class="kv">' + ks.slice(0, 40).map(function (k) { return '<dt>' + esc(k) + '</dt><dd>' + kv(v[k], depth + 1) + '</dd>'; }).join('') + '</dl>';
+}
+function escutaCasa(esc_, tipo) { return esc_ === tipo || (esc_.slice(-2) === '.*' && tipo.indexOf(esc_.slice(0, -1)) === 0); }
+
+/* ===================== API ===================== */
+function authErr(kind) { var e = new Error(kind === 'admin' ? 'Acesso restrito a administradores.' : 'Sessão expirada. Entre novamente.'); e.status = kind === 'admin' ? 403 : 401; return e; }
+function api(path, o) {
+  o = o || {};
+  if (DEMO) return Mock.api(o.method || 'GET', path, o.body);
+  var tk = token();
+  if (!tk) { needLogin('sem'); return Promise.reject(authErr('sem')); }
+  var h = { Accept: 'application/json', Authorization: 'Bearer ' + tk };
+  if (o.body !== undefined) h['Content-Type'] = 'application/json';
+  return fetch(BASE + path, { method: o.method || 'GET', headers: h, body: o.body !== undefined ? JSON.stringify(o.body) : undefined, cache: 'no-store' })
+    .catch(function () { throw new Error('Sem conexão. Verifique a internet e tente de novo.'); })
+    .then(function (r) {
+      if (r.status === 401) { needLogin('expirada'); throw authErr('expirada'); }
+      if (r.status === 403) { needLogin('admin'); throw authErr('admin'); }
+      var ct = r.headers.get('content-type') || '';
+      return (ct.indexOf('json') >= 0 ? r.json().catch(function () { return null; }) : Promise.resolve(null)).then(function (j) {
+        if (!r.ok || j === null) {
+          var msg = (j && j.error) || (r.ok ? 'Resposta inesperada do servidor (a API da rede pode não estar no ar).' : 'Erro ' + r.status + (j ? '. Tente de novo.' : ': a API da rede não respondeu (pode não estar no ar).'));
+          var e = new Error(msg); e.status = r.status; e.data = j; throw e;
+        }
+        return j;
+      });
+    });
+}
+function needLogin(kind) {
+  S.auth = kind; Live.stop();
+  var m = { sem: 'Você não está logado. Entre com sua conta de administrador e depois volte para esta página (/rede.html).', expirada: 'Sua sessão expirou. Entre de novo e depois volte para esta página (/rede.html).', admin: 'Sua conta não tem acesso de administrador. O painel da rede é só para o dono e admins.' };
+  $('#gateT').textContent = kind === 'admin' ? 'Acesso restrito' : 'Entre para ver a rede';
+  $('#gateMsg').textContent = m[kind] || m.sem;
+  $('#gate').hidden = false;
+  var a = $('#gate a'); if (a) a.focus();
+}
+
+/* ===================== navegação ===================== */
+var TABS = ['rede', 'propostas', 'objetivos', 'agentes', 'rastros'];
+function route() {
+  var h = (location.hash || '').replace(/^#/, '');
+  var parts = h.split('/');
+  var tab = TABS.indexOf(parts[0]) >= 0 ? parts[0] : 'rede';
+  var arg = parts.slice(1).join('/') ? decodeURIComponent(parts.slice(1).join('/')) : null;
+  var changed = tab !== S.tab;
+  S.tab = tab;
+  TABS.forEach(function (t) { $('#tab-' + t).hidden = t !== tab; });
+  Array.prototype.forEach.call(document.querySelectorAll('#tabs button'), function (b) {
+    if (b.dataset.tab === tab) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+  });
+  if (changed) $('#view').scrollTop = 0;
+  if (tab === 'rede') { renderRede(); Net.resize(); }
+  if (tab === 'propostas') { if (S.props.stale || !S.props.list) loadProps(); else renderProps(); }
+  if (tab === 'objetivos') { if (S.objs.stale || !S.objs.list) loadObjs(); renderObjs(); }
+  if (tab === 'agentes') renderAg();
+  if (tab === 'rastros') {
+    if (arg) { if (S.tr.cur !== arg || !S.tr.detail) loadTrace(arg); else renderTr(); }
+    else { S.tr.cur = null; if (S.tr.stale || !S.tr.list) loadTraces(); else renderTr(); }
+  }
+}
+function go(tab, arg) { var h = '#' + tab + (arg ? '/' + encodeURIComponent(arg) : ''); if (location.hash === h) route(); else location.hash = h; }
+
+/* ===================== PAINEL (Rede) ===================== */
+function loadPainel() {
+  if (S.painelLoading) return S.painelLoading;
+  S.painelLoading = api('/painel').then(function (p) {
+    S.painel = p; S.painelErr = null;
+    if (!S.ticker.length && Array.isArray(p.ultimas)) {
+      S.ticker = p.ultimas.slice(0, 25).map(function (a) { return { em: a.criadoEm, cls: tkCls(a.status), txt: a.neuronio + ' acendeu · ' + ((STATUS_ATIV[a.status] || [a.status])[0]) + (a.custoRS ? ' · ' + rs(a.custoRS) : ''), traceId: a.traceId }; });
+    }
+    Net.build(p.neuronios || [], p.poda || []);
+    setBadge();
+  }).catch(function (e) { if (e.status !== 401 && e.status !== 403) S.painelErr = e; })
+    .then(function () { S.painelLoading = false; if (S.tab === 'rede') renderRede(); if (S.tab === 'agentes') renderAg(); });
+  return S.painelLoading;
+}
+var painelSoft = 0;
+function refreshPainelSoon() { clearTimeout(painelSoft); painelSoft = setTimeout(loadPainel, 5000); }
+function setBadge() {
+  var n = S.painel ? Number(S.painel.pendentes) || 0 : 0, b = $('#nbProp');
+  b.hidden = !n; b.textContent = n > 99 ? '99+' : String(n);
+  b.setAttribute('aria-label', n + ' propostas pendentes');
+}
+function tkCls(st) { return st === 'erro' || st === 'bloqueado' ? 'r' : st === 'sem-saida' || st === 'sem-orcamento' ? 'g' : ''; }
+
+function renderRede() {
+  $('#demoBar').innerHTML = DEMO ? '<div class="demo" role="note">Modo demonstração: dados fictícios gerados no navegador. Nada é lido nem gravado no sistema.</div>' : '';
+  var p = S.painel, el = $('#redeTop');
+  if (!p) {
+    el.innerHTML = S.painelErr ? '<div class="wcard state"><b>Não consegui carregar a rede</b><p>' + esc(S.painelErr.message) + '</p><button class="btn pri" data-act="reloadPainel">Tentar de novo</button></div>' : '<div class="skel"></div>';
+    renderTicker(); return;
+  }
+  var teto = Number(p.tetoDiaRS) || 0, gasto = Number(p.gastoHojeRS) || 0, frac = teto ? Math.min(1, gasto / teto) : 0;
+  var ns = p.neuronios || [], ativos = ns.filter(function (n) { return n.ativo !== false; }).length;
+  var html = '';
+  if (p.ativa === false) html += '<div class="warnbox" style="margin-bottom:10px">A rede está DESLIGADA no servidor (RNA_ATIVA=0). Nenhum agente acende até ser religada.</div>';
+  if (p.errosRegistro && p.errosRegistro.length) html += '<details class="box" style="background:#FFF1CC;margin:0 0 10px"><summary style="color:#8a5a00">' + p.errosRegistro.length + ' agente(s) com erro de contrato</summary><div>' + kv(p.errosRegistro) + '</div></details>';
+  html += '<div class="kpis">' +
+    '<div class="kpi wide"><span class="l">Gasto de IA hoje</span><span class="v">' + rs(gasto) + ' <span style="font-size:15px;color:var(--wdim)">de ' + rs(teto) + '</span></span>' +
+      '<div class="bar' + (frac >= 0.8 ? ' hot' : '') + '" role="progressbar" aria-label="Gasto de IA em relação ao teto do dia" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + Math.round(frac * 100) + '"><u style="width:' + (frac * 100).toFixed(1) + '%"></u></div>' +
+      '<span class="s">' + (frac >= 1 ? 'Teto do dia atingido: IA pausada até amanhã (regras seguem grátis).' : pct(frac) + ' do teto diário · regras não gastam') + '</span></div>' +
+    '<button class="kpi" data-act="go" data-tab="propostas"><span class="l">Propostas</span><span class="v">' + num(p.pendentes) + '</span><span class="s">esperando você</span></button>' +
+    '<button class="kpi" data-act="go" data-tab="agentes"><span class="l">Mini agentes</span><span class="v">' + ativos + '<span style="font-size:15px;color:var(--wdim)">/' + ns.length + '</span></span><span class="s">' + ((p.poda || []).length ? (p.poda.length + ' candidato(s) à poda') : 'ligados') + '</span></button>' +
+    '</div>' +
+    '<div class="ask"><button class="btn pri full" data-act="ask"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8.5 8.5 0 0 1-12.4 7.5L3 21l1.5-5.6A8.5 8.5 0 1 1 21 12Z"/></svg>Perguntar à rede</button></div>';
+  el.innerHTML = html;
+  $('#netCount').textContent = ns.length ? ns.length + ' agentes · ' + Net.edgeCount + ' ligações' : '';
+  renderTicker();
+}
+function renderTicker() {
+  var el = $('#ticker');
+  if (!S.ticker.length) { el.innerHTML = '<div class="state"><b>Tudo quieto por enquanto</b><p>Quando um sinal entrar (NF-e, venda, bipe, pergunta) ele aparece aqui e acende no mapa.</p></div>'; return; }
+  el.innerHTML = S.ticker.map(function (t) {
+    var inner = '<time>' + esc(hora(t.em)) + '</time><i class="d ' + (t.cls || '') + '" aria-hidden="true"></i><span class="t">' + esc(t.txt) + '</span>';
+    return t.traceId ? '<button class="tk" data-act="trace" data-id="' + esc(t.traceId) + '" aria-label="' + esc(t.txt + ', abrir rastro') + '">' + inner + '</button>' : '<div class="tk">' + inner + '</div>';
+  }).join('');
+}
+
+/* ===================== mapa da rede (canvas) ===================== */
+var ROWS = [['sensor', 'Sensores', 'eventos · custo zero'], ['detector', 'Detectores', 'regra · grátis'], ['analista', 'Analistas', 'IA barata'], ['especialista', 'Especialistas', 'IA forte'], ['atuador', 'Atuadores', 'ferramentas'], ['dono', 'Você', 'aprova ou rejeita']];
+var RAIO = { sensor: 7, detector: 8.5, analista: 10, especialista: 12, atuador: 10, dono: 15 };
+var PAL = ['#FF9B6A', '#FFC15E', '#7FD1AE', '#7DB7FF', '#C79BFF', '#FF7FA8', '#A8E06B', '#5ED6E0', '#F2D492', '#FFB4A0', '#B0A6FF', '#E8D5C8'];
+var TINT = { o: [255, 122, 69], r: [255, 77, 77], g: [170, 150, 140] };
+var Net = {
+  nodes: [], map: new Map(), edges: [], out: new Map(), pulses: [], dom: {}, edgeCount: 0, W: 0, H: 0, sig: '', running: false, last: 0,
+  reduce: window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches,
+  init: function () {
+    this.cv = $('#net'); this.ctx = this.cv.getContext('2d'); this.wrap = $('#netWrap');
+    var self = this;
+    if (window.ResizeObserver) new ResizeObserver(function () { self.resize(); }).observe(this.wrap);
+    else window.addEventListener('resize', function () { self.resize(); });
+    this.cv.addEventListener('click', function (e) { self.tap(e); });
+  },
+  build: function (neus, poda) {
+    var podaSet = {}; (poda || []).forEach(function (p) { podaSet[p.id] = p.motivo || true; });
+    var sig = neus.map(function (n) { return n.id + (n.ativo === false ? 0 : 1) + n.camada + (n.escuta || []).join(',') + '>' + (n.emite || []).join(','); }).join('|') + '#' + Object.keys(podaSet).join(',');
+    if (sig === this.sig) return;
+    this.sig = sig;
+    var old = this.map, self = this;
+    this.nodes = []; this.map = new Map();
+    var doms = [];
+    neus.forEach(function (n) { var d = n.dominio || n.id.split('.')[0]; if (doms.indexOf(d) < 0) doms.push(d); });
+    doms.sort(); this.dom = {}; doms.forEach(function (d, i) { self.dom[d] = PAL[i % PAL.length]; });
+    function add(n) { var p = old.get(n.id); n.glow = p ? p.glow : 0; n.tint = p ? p.tint : 'o'; self.nodes.push(n); self.map.set(n.id, n); }
+    var origens = []; Object.keys(SENSORES).forEach(function (t) { if (origens.indexOf(SENSORES[t]) < 0) origens.push(SENSORES[t]); });
+    origens.forEach(function (o) { add({ id: o, row: 'sensor', label: SENSOR_NOME[o] || o, dom: 'sensor', ativo: true, r: RAIO.sensor }); });
+    neus.forEach(function (n) {
+      var row = CAMADAS.indexOf(n.camada) >= 0 ? n.camada : 'detector';
+      add({ id: n.id, row: row, label: n.id.slice(n.id.indexOf('.') + 1), dom: n.dominio || n.id.split('.')[0], ativo: n.ativo !== false, poda: !!podaSet[n.id], escuta: n.escuta || [], emite: n.emite || [], r: RAIO[row] });
+    });
+    add({ id: '@dono', row: 'dono', label: 'Você', dom: 'dono', ativo: true, r: RAIO.dono });
+    // ligações: sensor → quem escuta o tipo; neurônio → quem escuta o que ele emite; proposta.* → você
+    var seen = {}; this.edges = []; this.out = new Map();
+    function link(a, b) {
+      if (!a || !b || a === b) return; var k = a.id + '>' + b.id; if (seen[k]) return; seen[k] = 1;
+      var e = { a: a, b: b, heat: 0 }; self.edges.push(e);
+      if (!self.out.has(a.id)) self.out.set(a.id, []); self.out.get(a.id).push(e);
+    }
+    Object.keys(SENSORES).forEach(function (t) { self.listeners(t).forEach(function (n) { link(self.map.get(SENSORES[t]), n); }); });
+    this.nodes.forEach(function (n) {
+      (n.emite || []).forEach(function (t) {
+        if (t.indexOf('proposta.') === 0) link(n, self.map.get('@dono'));
+        else self.listeners(t).forEach(function (m) { link(n, m); });
+      });
+    });
+    this.edgeCount = this.edges.length;
+    this.dirty = true;
+    this.cv.setAttribute('aria-label', 'Mapa da rede: ' + neus.length + ' mini agentes em camadas (detector, analista, especialista, atuador), ' + this.edges.length + ' ligações. A lista acessível fica na aba Mini agentes.');
+    this.layout();
+  },
+  listeners: function (tipo) {
+    if (!tipo) return [];
+    return this.nodes.filter(function (n) { return n.escuta && n.escuta.some(function (e) { return escutaCasa(e, tipo); }); });
+  },
+  resize: function () { if (!this.wrap || !this.wrap.clientWidth) return; if (this.dirty || this.wrap.clientWidth !== this.W) this.layout(); else this.draw(); },
+  layout: function () {
+    var W = this.wrap.clientWidth; if (!W) return;
+    this.W = W;
+    var pad = 10, cell = W < 360 ? 62 : 70, per = Math.max(3, Math.floor((W - pad * 2) / cell)), y = 8, self = this;
+    this.rows = [];
+    ROWS.forEach(function (r) {
+      var items = self.nodes.filter(function (n) { return n.row === r[0]; }).sort(function (a, b) { return a.dom === b.dom ? (a.id < b.id ? -1 : 1) : (a.dom < b.dom ? -1 : 1); });
+      if (!items.length) return;
+      self.rows.push({ t: r[1], s: r[2], y: y }); y += 24;
+      var step = (W - pad * 2) / per;
+      for (var l = 0; l * per < items.length; l++) {
+        var sl = items.slice(l * per, (l + 1) * per), off = (W - step * sl.length) / 2;
+        sl.forEach(function (n, j) { n.x = off + step * (j + 0.5); n.y = y + 16; n.cw = step - 4; });
+        y += 52;
+      }
+      y += 6;
+    });
+    this.H = Math.max(160, y);
+    var dpr = Math.min(2.5, window.devicePixelRatio || 1);
+    this.dpr = dpr;
+    this.cv.style.height = this.H + 'px';
+    this.cv.width = Math.round(W * dpr); this.cv.height = Math.round(this.H * dpr);
+    this.edges.forEach(function (e) { self.geo(e); });
+    this.dirty = false;
+    this.draw();
+  },
+  geo: function (e) {
+    var a = e.a, b = e.b, dy = b.y - a.y;
+    if (dy > 8) { e.c1 = [a.x, a.y + dy * 0.45]; e.c2 = [b.x, b.y - dy * 0.45]; }
+    else { var lift = 26 + Math.abs(b.x - a.x) * 0.15; e.c1 = [a.x + (b.x - a.x) * 0.2, Math.min(a.y, b.y) - lift]; e.c2 = [b.x - (b.x - a.x) * 0.2, Math.min(a.y, b.y) - lift]; }
+  },
+  pt: function (e, t) {
+    var u = 1 - t, a = e.a, b = e.b;
+    return [u * u * u * a.x + 3 * u * u * t * e.c1[0] + 3 * u * t * t * e.c2[0] + t * t * t * b.x, u * u * u * a.y + 3 * u * u * t * e.c1[1] + 3 * u * t * t * e.c2[1] + t * t * t * b.y];
+  },
+  pulse: function (a, b) {
+    if (!a || !b || a === b) return;
+    var e = (this.out.get(a.id) || []).filter(function (x) { return x.b === b; })[0];
+    if (!e) { if (a.x == null || b.x == null) return; e = { a: a, b: b, heat: 0, temp: true }; this.geo(e); }
+    e.heat = 1;
+    if (this.reduce) { b.glow = Math.max(b.glow, 0.45); b.tint = 'o'; return; }
+    if (this.pulses.length > 160) this.pulses.shift();
+    this.pulses.push({ e: e, t0: performance.now(), dur: 520 + Math.min(500, Math.abs(b.y - a.y) * 1.4) });
+  },
+  fire: function (ev) {
+    var self = this, n;
+    if (ev.evento === 'sinal') {
+      var from = this.map.get(ev.origem);
+      if (from) { from.glow = Math.max(from.glow, 0.75); from.tint = 'o'; }
+      var tos = ev.tipo && ev.tipo.indexOf('proposta.') === 0 ? [this.map.get('@dono')] : this.listeners(ev.tipo);
+      if (from) tos.forEach(function (to) { self.pulse(from, to); });
+    } else if (ev.evento === 'ativacao') {
+      n = this.map.get(ev.neuronio);
+      if (n) { var st = ev.status; n.tint = st === 'erro' || st === 'bloqueado' ? 'r' : st === 'sem-orcamento' || st === 'sem-saida' ? 'g' : 'o'; n.glow = st === 'ok' ? 1 : 0.7; }
+    } else if (ev.evento === 'proposta') {
+      n = this.map.get(ev.neuronio); var d = this.map.get('@dono');
+      if (n) this.pulse(n, d);
+      if (d) { d.glow = 1; d.tint = 'o'; }
+    }
+    this.kick();
+  },
+  kick: function () {
+    if (this.running) return; this.running = true; this.last = performance.now();
+    var self = this; requestAnimationFrame(function (t) { self.frame(t); });
+  },
+  frame: function (t) {
+    var dt = Math.min(64, t - this.last); this.last = t;
+    var k = Math.exp(-dt / 900), busy = false, self = this;
+    this.nodes.forEach(function (n) { if (n.glow > 0.004) { n.glow *= k; busy = true; } else n.glow = 0; });
+    this.edges.forEach(function (e) { if (e.heat > 0.004) { e.heat *= Math.exp(-dt / 1100); busy = true; } else e.heat = 0; });
+    this.pulses = this.pulses.filter(function (p) {
+      var f = (t - p.t0) / p.dur;
+      if (f >= 1) { p.e.b.glow = Math.max(p.e.b.glow, 0.4); return false; }
+      return true;
+    });
+    if (this.pulses.length) busy = true;
+    this.draw(t);
+    if (busy && !document.hidden) requestAnimationFrame(function (tt) { self.frame(tt); });
+    else { this.running = false; if (document.hidden) { this.pulses = []; } }
+  },
+  draw: function (t) {
+    var c = this.ctx; if (!c || !this.W || this.dirty) return;
+    t = t || performance.now();
+    var dpr = this.dpr, self = this;
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.clearRect(0, 0, this.W, this.H);
+    // títulos das camadas
+    c.textAlign = 'left'; c.textBaseline = 'alphabetic';
+    this.rows.forEach(function (r, i) {
+      if (i) { c.fillStyle = 'rgba(255,255,255,.06)'; c.fillRect(10, r.y - 4, self.W - 20, 1); }
+      c.font = '800 10px Archivo, system-ui, sans-serif'; c.fillStyle = 'rgba(255,255,255,.7)';
+      var tt = r.t.toUpperCase(); c.fillText(tt, 12, r.y + 12);
+      var w = c.measureText(tt).width;
+      c.font = '500 10px Archivo, system-ui, sans-serif'; c.fillStyle = 'rgba(255,255,255,.42)'; c.fillText('· ' + r.s, 18 + w, r.y + 12);
+    });
+    // ligações
+    this.edges.forEach(function (e) {
+      var h = e.heat, dim = !e.a.ativo || !e.b.ativo;
+      c.beginPath(); c.moveTo(e.a.x, e.a.y); c.bezierCurveTo(e.c1[0], e.c1[1], e.c2[0], e.c2[1], e.b.x, e.b.y);
+      c.lineWidth = 1 + h * 1.6;
+      c.strokeStyle = h > 0.02 ? 'rgba(255,138,91,' + (0.16 + 0.6 * h).toFixed(3) + ')' : 'rgba(255,255,255,' + (dim ? 0.04 : 0.09) + ')';
+      c.stroke();
+    });
+    // sinais viajando
+    this.pulses.forEach(function (p) {
+      var f = Math.min(1, (t - p.t0) / p.dur), ease = f < 0.5 ? 2 * f * f : 1 - Math.pow(-2 * f + 2, 2) / 2;
+      for (var i = 3; i >= 0; i--) {
+        var q = self.pt(p.e, Math.max(0, ease - i * 0.035));
+        c.beginPath(); c.arc(q[0], q[1], i ? 2.4 - i * 0.4 : 3.4, 0, Math.PI * 2);
+        c.fillStyle = i ? 'rgba(255,138,91,' + (0.5 - i * 0.12) + ')' : '#fff'; c.fill();
+      }
+    });
+    // neurônios
+    this.nodes.forEach(function (n) {
+      var g = n.glow, r = n.r, tc = TINT[n.tint] || TINT.o, col = n.dom === 'sensor' ? '#E8D5C8' : n.dom === 'dono' ? '#EA5128' : (self.dom[n.dom] || '#FF9B6A');
+      if (g > 0.02) {
+        var R = r * (2.2 + 2.4 * g), grd = c.createRadialGradient(n.x, n.y, r * 0.5, n.x, n.y, R);
+        grd.addColorStop(0, 'rgba(' + tc.join(',') + ',' + (0.65 * g).toFixed(3) + ')'); grd.addColorStop(1, 'rgba(' + tc.join(',') + ',0)');
+        c.fillStyle = grd; c.beginPath(); c.arc(n.x, n.y, R, 0, Math.PI * 2); c.fill();
+      }
+      c.globalAlpha = n.ativo ? 1 : 0.38;
+      c.beginPath(); c.arc(n.x, n.y, r, 0, Math.PI * 2); c.fillStyle = col; c.fill();
+      if (g > 0.02) { c.fillStyle = 'rgba(255,255,255,' + (0.85 * g).toFixed(3) + ')'; c.fill(); }
+      c.lineWidth = n.dom === 'dono' ? 2.2 : 1.2;
+      if (!n.ativo) c.setLineDash([3, 3]);
+      c.strokeStyle = 'rgba(255,255,255,' + (n.dom === 'dono' ? 0.95 : 0.5) + ')'; c.stroke(); c.setLineDash([]);
+      if (n.poda) { c.beginPath(); c.arc(n.x + r * 0.78, n.y - r * 0.78, 3.4, 0, Math.PI * 2); c.fillStyle = '#FFD84D'; c.fill(); }
+      c.globalAlpha = 1;
+      // rótulo
+      c.font = '600 9.5px Archivo, system-ui, sans-serif'; c.textAlign = 'center';
+      c.fillStyle = 'rgba(255,255,255,' + (n.ativo ? 0.66 + 0.34 * g : 0.38).toFixed(3) + ')';
+      var lab = n.label, max = (n.cw || 60);
+      if (c.measureText(lab).width > max) { while (lab.length > 3 && c.measureText(lab + '…').width > max) lab = lab.slice(0, -1); lab += '…'; }
+      c.fillText(lab, n.x, n.y + r + 12);
+    });
+  },
+  tap: function (e) {
+    var b = this.cv.getBoundingClientRect(), x = e.clientX - b.left, y = e.clientY - b.top, best = null, bd = 1e9;
+    this.nodes.forEach(function (n) { var d = Math.hypot(n.x - x, n.y - y); if (d < Math.max(20, n.r + 12) && d < bd) { bd = d; best = n; } });
+    if (!best) return;
+    if (best.id === '@dono') return go('propostas');
+    if (best.row === 'sensor') return openSensor(best.id);
+    openNeuron(best.id);
+  }
+};
+
+/* ===================== ao vivo (SSE via fetch, com header Authorization) ===================== */
+var Live = {
+  ctrl: null, tries: 0, timer: 0,
+  start: function () {
+    if (S.auth !== 'ok' || this.ctrl) return;
+    if (DEMO) { Mock.liveStart(); setLive('on'); return; }
+    var tk = token(); if (!tk) return;
+    clearTimeout(this.timer);
+    var c = this.ctrl = new AbortController(), self = this;
+    setLive('connecting');
+    fetch(BASE + '/ao-vivo', { headers: { Authorization: 'Bearer ' + tk, Accept: 'text/event-stream' }, cache: 'no-store', signal: c.signal })
+      .then(function (r) {
+        if (r.status === 401) { self.ctrl = null; needLogin('expirada'); return 'auth'; }
+        if (r.status === 403) { self.ctrl = null; needLogin('admin'); return 'auth'; }
+        if (!r.ok || !r.body || (r.headers.get('content-type') || '').indexOf('event-stream') < 0) throw new Error('stream indisponível');
+        setLive('on'); self.tries = 0;
+        var rd = r.body.getReader(), dec = new TextDecoder(), buf = '';
+        function pump() {
+          return rd.read().then(function (x) {
+            if (x.done) throw new Error('fim');
+            buf += dec.decode(x.value, { stream: true }).replace(/\r/g, '');
+            var i;
+            while ((i = buf.indexOf('\n\n')) >= 0) {
+              var chunk = buf.slice(0, i); buf = buf.slice(i + 2);
+              var data = chunk.split('\n').filter(function (l) { return l.indexOf('data:') === 0; }).map(function (l) { return l.slice(5).trim(); }).join('\n');
+              if (data) { try { onLive(JSON.parse(data)); } catch (_) { /* evento malformado: ignora */ } }
+            }
+            return pump();
+          });
+        }
+        return pump();
+      })
+      .catch(function () { if (c.signal.aborted) return; self.ctrl = null; self.retry(); });
+  },
+  retry: function () {
+    if (S.auth !== 'ok') return;
+    setLive('retry');
+    var self = this, d = Math.min(30000, 1500 * Math.pow(2, this.tries++));
+    this.timer = setTimeout(function () { self.start(); }, d);
+  },
+  stop: function () { clearTimeout(this.timer); if (this.ctrl) { this.ctrl.abort(); this.ctrl = null; } if (DEMO) Mock.liveStop(); setLive('off'); }
+};
+function setLive(st) {
+  S.live = st;
+  var p = $('#livePill'), m = { on: 'Ao vivo', connecting: 'Conectando…', retry: 'Reconectando…', off: 'Pausado' };
+  p.className = 'pill ' + (st === 'on' ? 'on' : st === 'off' ? 'off' : 'retry');
+  p.lastChild.textContent = m[st] || st;
+}
+var tickRaf = 0;
+function onLive(ev) {
+  if (!ev || !ev.evento) return;
+  Net.fire(ev);
+  var txt, cls = '';
+  if (ev.evento === 'sinal') txt = 'Sinal ' + (ev.tipo || '?') + ' de ' + (SENSOR_NOME[ev.origem] ? 'sensor ' + SENSOR_NOME[ev.origem] : ev.origem || '?');
+  else if (ev.evento === 'ativacao') { txt = (ev.neuronio || '?') + ' acendeu · ' + ((STATUS_ATIV[ev.status] || [ev.status || '?'])[0]); cls = tkCls(ev.status); refreshPainelSoon(); }
+  else if (ev.evento === 'proposta') {
+    txt = 'Nova proposta de ' + (ev.neuronio || '?'); cls = 'p';
+    S.props.stale = true; refreshPainelSoon();
+    if (S.painel) { S.painel.pendentes = (Number(S.painel.pendentes) || 0) + 1; setBadge(); }
+  } else return;
+  S.ticker.unshift({ em: ev.em || Date.now(), txt: txt, cls: cls, traceId: ev.traceId });
+  if (S.ticker.length > 25) S.ticker.length = 25;
+  S.tr.stale = true;
+  if (S.tab === 'rede' && !tickRaf) tickRaf = requestAnimationFrame(function () { tickRaf = 0; renderTicker(); });
+}
+
+/* ===================== sheets ===================== */
+var lastFocus = null;
+function openSheet(html) {
+  lastFocus = document.activeElement;
+  $('#sheetBody').innerHTML = html;
+  $('#sheetWrap').hidden = false;
+  var sh = $('.sheet'); sh.scrollTop = 0;
+  var f = sh.querySelector('[autofocus]') || sh.querySelector('textarea,input,select,button.btn') || sh;
+  setTimeout(function () { f.focus(); }, 30);
+}
+function closeSheet() {
+  $('#sheetWrap').hidden = true; $('#sheetBody').innerHTML = '';
+  if (lastFocus && document.contains(lastFocus)) try { lastFocus.focus(); } catch (_) { /* */ }
+}
+document.addEventListener('keydown', function (e) {
+  if ($('#sheetWrap').hidden) return;
+  if (e.key === 'Escape') { e.preventDefault(); closeSheet(); }
+  if (e.key === 'Tab') { // foco preso dentro do sheet
+    var f = Array.prototype.filter.call($('.sheet').querySelectorAll('button,a[href],input,textarea,select,summary,[tabindex]:not([tabindex="-1"])'), function (x) { return !x.disabled && x.offsetParent !== null; });
+    if (!f.length) return;
+    if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+    else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+  }
+});
+
+function neuronById(id) { return S.painel && (S.painel.neuronios || []).filter(function (n) { return n.id === id; })[0]; }
+function podaDe(id) { return S.painel && (S.painel.poda || []).filter(function (p) { return p.id === id; })[0]; }
+function openNeuron(id) {
+  var n = neuronById(id); if (!n) return;
+  var p = podaDe(id);
+  openSheet('<h2 id="sheetTitle" class="mono" style="font-size:17px">' + esc(n.id) + '</h2>' +
+    '<div class="meta">' + '<span class="badge">' + esc(CAMADA_NOME[n.camada] || n.camada) + '</span><span class="badge gray">' + esc(CUSTO_NOME[n.custo] || n.custo || '—') + '</span>' + (n.ativo === false ? '<span class="badge bad">Desligado</span>' : '<span class="badge ok">Ligado</span>') + '</div>' +
+    '<p style="margin-top:10px;font-size:14px">' + esc(n.missao) + '</p>' +
+    (p ? '<div class="podabox">Candidato à poda: ' + esc(p.motivo) + '</div>' : '') +
+    '<div class="stats"><div><b>' + num(n.disparos) + '</b><span>disparos</span></div><div><b>' + num(n.acertos) + '</b><span>acertos</span></div><div><b>' + num(n.erros) + '</b><span>erros</span></div><div><b>' + dec(n.limiar) + '</b><span>limiar</span></div></div>' +
+    '<details class="box"><summary>Escuta e emite</summary><div><p class="small dimt">Escuta</p>' + kv(n.escuta || []) + '<p class="small dimt" style="margin-top:6px">Emite</p>' + kv(n.emite || []) + '</div></details>' +
+    '<div class="actions two"><button class="btn ghost" data-act="closeSheet">Fechar</button><button class="btn pri" data-act="manage" data-id="' + esc(n.id) + '">Gerenciar</button></div>');
+}
+function openSensor(origem) {
+  var tipos = Object.keys(SENSORES).filter(function (t) { return SENSORES[t] === origem; });
+  var alvo = []; tipos.forEach(function (t) { Net.listeners(t).forEach(function (n) { if (alvo.indexOf(n.id) < 0) alvo.push(n.id); }); });
+  openSheet('<h2 id="sheetTitle">Sensor: ' + esc(SENSOR_NOME[origem] || origem) + '</h2><p class="small muted">Borda da rede, custo zero. Dispara quando o evento acontece no sistema.</p>' +
+    '<details class="box" open><summary>Tipos de sinal</summary><div>' + kv(tipos) + '</div></details>' +
+    '<details class="box"><summary>Acorda ' + alvo.length + ' agente(s)</summary><div>' + kv(alvo.length ? alvo : ['nenhum agente escuta este sensor ainda']) + '</div></details>' +
+    '<div class="actions two" style="grid-template-columns:1fr"><button class="btn ghost" data-act="closeSheet">Fechar</button></div>');
+}
+
+/* ----- Perguntar à rede ----- */
+function openAsk() {
+  openSheet('<h2 id="sheetTitle">Perguntar à rede</h2><p class="small muted">A pergunta entra como sinal "dono.pergunta". Os agentes que escutam acendem no mapa e, se precisar mudar algo, viram proposta para você aprovar.</p>' +
+    '<form id="askF"><label class="field"><span>Sua pergunta</span><textarea class="inp" name="texto" required minlength="3" maxlength="1000" placeholder="Ex.: quais produtos da Tambaú estão parados há mais de 60 dias?" autofocus></textarea></label>' +
+    '<div id="askErr"></div><div class="actions two"><button type="button" class="btn ghost" data-act="closeSheet">Cancelar</button><button class="btn pri" type="submit">Enviar</button></div></form>');
+}
+function submitAsk(f) {
+  var texto = f.texto.value.trim(), b = f.querySelector('[type=submit]');
+  if (texto.length < 3) { $('#askErr').innerHTML = errBox('Escreva a pergunta (mínimo 3 letras).'); return; }
+  b.disabled = true; b.textContent = 'Enviando…';
+  api('/sinais', { method: 'POST', body: { tipo: 'dono.pergunta', dados: { texto: texto } } }).then(function (r) {
+    S.tr.stale = true;
+    openSheet('<h2 id="sheetTitle">Pergunta enviada</h2><p style="font-size:14px">A rede recebeu. Acompanhe os agentes acendendo no mapa; o caminho completo fica no rastro.</p>' +
+      (r && r.traceId ? '<p class="small dimt" style="margin-top:8px">Rastro <span class="mono">' + esc(r.traceId) + '</span></p>' : '<div class="warnbox" style="margin-top:10px">A rede não abriu um rastro (pode estar desligada no servidor).</div>') +
+      '<div class="actions two"><button class="btn ghost" data-act="closeSheet">Fechar</button>' + (r && r.traceId ? '<button class="btn pri" data-act="trace" data-id="' + esc(r.traceId) + '">Ver rastro</button>' : '') + '</div>');
+  }).catch(function (e) { b.disabled = false; b.textContent = 'Enviar'; if (e.status !== 401 && e.status !== 403) $('#askErr').innerHTML = errBox(e); });
+}
+
+/* ===================== PROPOSTAS ===================== */
+var PROP_FILTROS = [['pending', 'Pendentes'], ['approved', 'Aprovadas'], ['executed', 'Executadas'], ['correction_requested', 'Ajuste pedido'], ['rejected', 'Rejeitadas'], ['todas', 'Todas']];
+function loadProps() {
+  S.props.loading = true; S.props.err = null; renderProps();
+  var st = S.props.status;
+  return api('/propostas?status=' + encodeURIComponent(st)).then(function (r) {
+    if (st !== S.props.status) return;
+    S.props.list = r.propostas || []; S.props.stale = false; S.props.list.forEach(function (x) { PROP_CACHE[x.id] = x; });
+    if (st === 'pending' && S.painel) { S.painel.pendentes = S.props.list.length; setBadge(); }
+  }).catch(function (e) { if (e.status !== 401 && e.status !== 403) S.props.err = e; })
+    .then(function () { S.props.loading = false; if (S.tab === 'propostas') renderProps(); });
+}
+function acaoDesc(nome) { var a = S.painel && (S.painel.acoes || []).filter(function (x) { return x.nome === nome; })[0]; return a ? a.descricao : ''; }
+var PROP_CACHE = {};
+function propById(id) { return (S.props.list || []).filter(function (p) { return p.id === id; })[0] || PROP_CACHE[id]; }
+function renderProps() {
+  $('#propFilters').innerHTML = PROP_FILTROS.map(function (f) { return '<button class="chip" data-act="propF" data-st="' + f[0] + '" aria-pressed="' + (S.props.status === f[0]) + '">' + f[1] + '</button>'; }).join('');
+  var el = $('#propList'), L = S.props.list;
+  if (S.props.loading && !L) { el.innerHTML = '<div class="skel"></div><div class="skel"></div>'; return; }
+  if (S.props.err) { el.innerHTML = '<div class="wcard state"><b>Não consegui carregar as propostas</b><p>' + esc(S.props.err.message) + '</p><button class="btn pri" data-act="reloadProps">Tentar de novo</button></div>'; return; }
+  if (!L || !L.length) {
+    el.innerHTML = '<div class="glass state"><b>' + (S.props.status === 'pending' ? 'Nada esperando você' : 'Nenhuma proposta aqui') + '</b><p>' + (S.props.status === 'pending' ? 'Quando um agente quiser mexer em preço, cliente, estoque ou publicação, a proposta chega aqui para você decidir.' : 'Troque o filtro acima para ver outros status.') + '</p></div>';
+    return;
+  }
+  el.innerHTML = L.map(propCard).join('');
+  if (S.props.focus) { var c = document.getElementById('p-' + S.props.focus); S.props.focus = null; if (c) { c.scrollIntoView({ block: 'center' }); c.classList.add('flash'); } }
+}
+function propCard(p) {
+  var pl = p.payload || {}, r = pl.rna || {}, ac = pl.acao || {}, ex = pl.execucao;
+  var h = '<article class="wcard prop" id="p-' + esc(p.id) + '">' +
+    '<div class="row wrap">' + badge(STATUS_PROP, p.status) + (RISCO[p.riskLevel] ? '<span class="badge ' + RISCO[p.riskLevel][1] + '">' + RISCO[p.riskLevel][0] + '</span>' : '') + '<span class="small dimt right">' + esc(rel(p.createdAt)) + '</span></div>' +
+    '<h3>' + esc(p.title) + '</h3>' +
+    (r.impactoRS != null ? '<div class="row"><span class="imp">' + rs(r.impactoRS) + '</span><span class="small dimt">em jogo</span></div>' : '') +
+    (p.description ? '<p class="desc">' + esc(p.description) + '</p>' : '') +
+    '<div class="meta">' + (r.neuronio ? '<span class="badge gray mono" style="font-size:11px">' + esc(r.neuronio) + '</span>' : '') + (ac.nome ? '<span class="badge gray">ação: ' + esc(ac.nome) + '</span>' : '') + '</div>' +
+    '<details class="box" ' + (p.status === 'pending' ? 'open' : '') + '><summary>Prévia do que muda</summary><div>' + kv(pl.previa) + (ac.nome ? '<p class="small dimt" style="margin-top:8px">Se executar: ' + esc(acaoDesc(ac.nome) || ac.nome) + '</p>' : '') + '</div></details>' +
+    '<details class="box"><summary>Evidência (de onde veio)</summary><div>' + kv(pl.evidencia) + '</div></details>' +
+    (p.decisionNote ? '<p class="small" style="margin-top:8px"><b>Nota:</b> ' + esc(p.decisionNote) + '</p>' : '') +
+    (ex ? '<details class="box"><summary>Resultado da execução</summary><div><p class="small dimt">' + esc(dt(ex.em)) + '</p>' + kv(ex.resultado) + '</div></details>' : '');
+  if (p.status === 'pending') {
+    h += '<div class="actions"><button class="btn ok" data-act="decide" data-d="approved" data-id="' + esc(p.id) + '">Aprovar</button><button class="btn ghost" data-act="decide" data-d="correction_requested" data-id="' + esc(p.id) + '">Ajustar</button><button class="btn bad" data-act="decide" data-d="rejected" data-id="' + esc(p.id) + '">Rejeitar</button></div>';
+  } else if (p.status === 'approved') {
+    h += '<div class="actions two" style="grid-template-columns:1fr"><button class="btn pri" data-act="exec" data-id="' + esc(p.id) + '">Executar</button></div>';
+  }
+  if (r.traceId) h += '<button class="btn ghost full" style="margin-top:8px" data-act="trace" data-id="' + esc(r.traceId) + '">Ver rastro</button>';
+  return h + '</article>';
+}
+var DEC = { approved: ['Aprovar proposta', 'Aprovar', 'Nota (opcional)', 'ok'], correction_requested: ['Pedir ajuste', 'Pedir ajuste', 'O que precisa mudar?', 'pri'], rejected: ['Rejeitar proposta', 'Rejeitar', 'Por que rejeitar? (ajuda a rede a aprender)', 'bad'] };
+function openDecide(id, d) {
+  var p = propById(id); if (!p) return; var m = DEC[d];
+  openSheet('<h2 id="sheetTitle">' + m[0] + '</h2><p style="font-size:14px;font-weight:700">' + esc(p.title) + '</p>' +
+    '<p class="small muted" style="margin-top:4px">' + (d === 'approved' ? 'Aprovar reforça as ligações que geraram esta proposta. Nada é executado ainda: você executa depois.' : d === 'rejected' ? 'Rejeitar enfraquece as ligações que geraram esta proposta e sobe o limiar do agente.' : 'Pedir ajuste conta como acerto parcial e devolve a proposta com a sua nota.') + '</p>' +
+    '<form id="decF" data-id="' + esc(id) + '" data-d="' + d + '"><label class="field"><span>' + m[2] + '</span><textarea class="inp" name="nota" maxlength="1000" ' + (d === 'correction_requested' ? 'required minlength="3"' : '') + ' autofocus></textarea></label>' +
+    '<div id="decErr"></div><div class="actions two"><button type="button" class="btn ghost" data-act="closeSheet">Cancelar</button><button type="submit" class="btn ' + m[3] + '">' + m[1] + '</button></div></form>');
+}
+function submitDecide(f) {
+  var id = f.dataset.id, d = f.dataset.d, nota = f.nota.value.trim(), b = f.querySelector('[type=submit]');
+  if (d === 'correction_requested' && nota.length < 3) { $('#decErr').innerHTML = errBox('Diga o que precisa mudar.'); return; }
+  b.disabled = true; b.textContent = 'Enviando…';
+  api('/propostas/' + encodeURIComponent(id) + '/decisao', { method: 'POST', body: { decisao: d, nota: nota || undefined } }).then(function (r) {
+    var aj = (r.aprendizagem && r.aprendizagem.ajustes) || [], erro = r.aprendizagem && r.aprendizagem.erro;
+    var lst = aj.map(function (a) {
+      var delta = a.para - a.de, bom = a.origem ? delta >= 0 : delta <= 0, cls = bom ? 'up' : 'down', sgn = delta >= 0 ? '+' : '';
+      var alvo = a.origem ? 'ligação ' + a.origem + ' → ' + a.destino : 'limiar de ' + a.id;
+      return '<div><span class="mono" style="flex:1">' + esc(alvo) + '</span><span class="' + cls + '">' + dec(a.de) + ' → ' + dec(a.para) + ' (' + sgn + dec(delta) + ')</span></div>';
+    }).join('');
+    if (r.proposta) PROP_CACHE[id] = r.proposta;
+    S.props.stale = true; S.tr.stale = true;
+    if (S.painel && d) { S.painel.pendentes = Math.max(0, (Number(S.painel.pendentes) || 0) - 1); setBadge(); }
+    openSheet('<h2 id="sheetTitle">Decisão registrada</h2>' + badge(STATUS_PROP, r.proposta && r.proposta.status || d) +
+      '<p class="small" style="margin-top:12px;font-weight:800">O que a rede aprendeu</p>' +
+      (erro ? '<div class="warnbox" style="margin-top:6px">Decisão salva, mas o ajuste de pesos falhou: ' + esc(erro) + '</div>' : aj.length ? '<div class="learn">' + lst + '</div>' : '<p class="small muted">Nenhum peso mudou (proposta sem caminho de agentes ou pesos já no limite).</p>') +
+      '<div class="actions two">' + (d === 'approved' ? '<button class="btn ghost" data-act="closeSheet">Depois</button><button class="btn pri" data-act="exec" data-id="' + esc(id) + '">Executar agora</button>' : '<button class="btn pri" data-act="closeSheet" style="grid-column:1/-1">Fechar</button>') + '</div>');
+    loadProps(); loadPainel();
+  }).catch(function (e) {
+    b.disabled = false; b.textContent = DEC[d][1];
+    if (e.status === 409) { S.props.stale = true; loadProps(); }
+    if (e.status !== 401 && e.status !== 403) $('#decErr').innerHTML = errBox(e);
+  });
+}
+function openExec(id) {
+  var p = propById(id), ac = p && p.payload && p.payload.acao || {}, nome = ac.nome || 'rna.registrar';
+  openSheet('<h2 id="sheetTitle">Executar ação aprovada</h2>' + (p ? '<p style="font-size:14px;font-weight:700">' + esc(p.title) + '</p>' : '') +
+    '<dl class="kv" style="margin-top:10px;font-size:13px"><dt>Ação</dt><dd class="mono">' + esc(nome) + '</dd><dt>O que faz</dt><dd>' + esc(acaoDesc(nome) || '—') + '</dd></dl>' +
+    (ac.args ? '<details class="box"><summary>Parâmetros</summary><div>' + kv(ac.args) + '</div></details>' : '') +
+    '<div class="warnbox" style="margin-top:12px">Isto aplica a mudança no sistema agora. A ação confere as regras da casa de novo antes de mexer.</div>' +
+    '<div id="exErr"></div><div class="actions two"><button class="btn ghost" data-act="closeSheet">Cancelar</button><button class="btn pri" data-act="execGo" data-id="' + esc(id) + '">Executar</button></div>');
+}
+function execGo(id, b) {
+  b.disabled = true; b.textContent = 'Executando…';
+  api('/propostas/' + encodeURIComponent(id) + '/executar', { method: 'POST', body: {} }).then(function (r) {
+    S.props.stale = true;
+    openSheet('<h2 id="sheetTitle">Executado</h2><p class="small muted">Ação <span class="mono">' + esc(r.acao) + '</span></p><details class="box" open><summary>Resultado</summary><div>' + kv(r.resultado) + '</div></details><div class="actions two" style="grid-template-columns:1fr"><button class="btn pri" data-act="closeSheet">Fechar</button></div>');
+    loadProps();
+  }).catch(function (e) { b.disabled = false; b.textContent = 'Executar'; if (e.status !== 401 && e.status !== 403) $('#exErr').innerHTML = errBox(e); });
+}
+
+/* ===================== OBJETIVOS ===================== */
+function loadObjs() {
+  S.objs.loading = true; S.objs.err = null;
+  return api('/objetivos').then(function (r) { S.objs.list = r.objetivos || []; S.objs.stale = false; })
+    .catch(function (e) { if (e.status !== 401 && e.status !== 403) S.objs.err = e; })
+    .then(function () { S.objs.loading = false; if (S.tab === 'objetivos') renderObjList(); });
+}
+function renderObjs() { renderObjNew(); renderObjList(); }
+function renderObjNew() {
+  var o = S.objs, el = $('#objNew');
+  if (!o.draft) {
+    el.innerHTML = '<form class="wcard" id="compF"><h2 style="font-size:17px;font-weight:800">Novo objetivo</h2><p class="small muted">Escreva como você falaria. A IA monta metas, região da rede, loja, prazo e orçamento; você revisa antes de ativar.</p>' +
+      '<label class="field"><span>Objetivo</span><textarea class="inp" name="texto" id="objTexto" required minlength="8" maxlength="500" placeholder="Ex.: girar o Nike parado da Tambaú em 30 dias sem baixar a margem de 35%">' + esc(o.texto) + '</textarea></label>' +
+      (o.draftErr ? errBox(o.draftErr) : '') +
+      '<button class="btn pri full" type="submit" style="margin-top:12px"' + (o.compiling ? ' disabled' : '') + '>' + (o.compiling ? 'Compilando… (pode levar alguns segundos)' : 'Compilar objetivo') + '</button></form>';
+    return;
+  }
+  var d = o.draft;
+  el.innerHTML = '<form class="wcard" id="draftF"><div class="row"><h2 style="font-size:17px;font-weight:800" class="grow">Revise o rascunho</h2><span class="badge warn">Rascunho</span></div>' +
+    (d.duvidas && d.duvidas.length ? '<div class="warnbox" style="margin-top:10px"><b>A IA ficou em dúvida:</b>' + kv(d.duvidas) + '</div>' : '') +
+    (d.custoRS ? '<p class="small dimt" style="margin-top:6px">Custo da compilação: ' + rs(d.custoRS) + '</p>' : '') +
+    '<label class="field"><span>Objetivo</span><textarea class="inp" name="texto" required minlength="8" maxlength="500">' + esc(d.texto) + '</textarea></label>' +
+    '<div class="field"><span>Metas (KPIs)</span>' + (d.kpis || []).map(function (k, i) {
+      return '<div class="kpirow" data-i="' + i + '"><label class="sr" for="kn' + i + '">Nome do KPI ' + (i + 1) + '</label><input class="inp" id="kn' + i + '" data-k="nome" value="' + esc(k.nome) + '" placeholder="giro, margem…"><label class="sr" for="km' + i + '">Meta do KPI ' + (i + 1) + '</label><input class="inp" id="km' + i + '" data-k="meta" value="' + esc(k.meta) + '" placeholder="+20%"><button type="button" class="iconbtn" data-act="kpiDel" data-i="' + i + '" aria-label="Remover KPI ' + (i + 1) + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>' +
+        '<label class="sr" for="kf' + i + '">Filtro do KPI ' + (i + 1) + '</label><input class="inp" id="kf' + i + '" data-k="filtro" value="' + esc(k.filtro || '') + '" placeholder="filtro (ex.: marca Nike, LOJA05)" style="grid-column:1/3"></div>';
+    }).join('') + '<button type="button" class="btn ghost sm" style="margin-top:8px" data-act="kpiAdd">+ Adicionar meta</button></div>' +
+    '<div class="field"><span id="regL">Região da rede (quem ganha atenção)</span><div class="chips" role="group" aria-labelledby="regL" style="flex-wrap:wrap;overflow:visible;margin:0;padding:0">' + REGIOES.map(function (r) { return '<button type="button" class="chip" data-act="reg" data-r="' + r + '" aria-pressed="' + ((d.regiao || []).indexOf(r) >= 0) + '">' + r + '</button>'; }).join('') + '</div></div>' +
+    '<label class="field"><span>Loja</span><select class="inp" name="loja"><option value="">Todas as lojas</option>' + Object.keys(LOJAS).map(function (k) { return '<option value="' + k + '"' + (d.loja === k ? ' selected' : '') + '>' + esc(LOJAS[k]) + '</option>'; }).join('') + '</select></label>' +
+    '<div class="grid2"><label class="field"><span>Prazo (dias)</span><input class="inp" type="number" name="prazoDias" min="1" max="365" inputmode="numeric" value="' + esc(d.prazoDias) + '"></label>' +
+    '<label class="field"><span>Orçamento de IA (R$)</span><input class="inp" type="number" name="orcamentoRS" min="0" step="1" inputmode="decimal" value="' + esc(d.orcamentoRS) + '"></label></div>' +
+    '<label class="field"><span>Restrições (uma por linha)</span><textarea class="inp" name="restricoes">' + esc((d.restricoes || []).join('\n')) + '</textarea></label>' +
+    '<p class="hint">O servidor limita o orçamento por objetivo ao teto configurado.</p>' +
+    '<div id="draftErr"></div><div class="actions two"><button type="button" class="btn ghost" data-act="draftDrop">Descartar</button><button type="submit" class="btn pri">Ativar objetivo</button></div></form>';
+}
+function readDraft() {
+  var f = $('#draftF'), d = S.objs.draft; if (!f || !d) return d;
+  d.texto = f.texto.value; d.loja = f.loja.value || null; d.prazoDias = f.prazoDias.value; d.orcamentoRS = f.orcamentoRS.value;
+  d.restricoes = f.restricoes.value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+  Array.prototype.forEach.call(f.querySelectorAll('.kpirow'), function (row) {
+    var k = d.kpis[Number(row.dataset.i)]; if (!k) return;
+    Array.prototype.forEach.call(row.querySelectorAll('[data-k]'), function (i) { k[i.dataset.k] = i.value; });
+  });
+  return d;
+}
+function submitCompile(f) {
+  var texto = f.texto.value.trim(); S.objs.texto = texto;
+  if (texto.length < 8) { S.objs.draftErr = 'Descreva o objetivo (mínimo 8 letras).'; renderObjNew(); return; }
+  S.objs.compiling = true; S.objs.draftErr = null; renderObjNew();
+  api('/objetivos/compilar', { method: 'POST', body: { texto: texto } }).then(function (r) {
+    var d = r.rascunho || {};
+    S.objs.draft = { texto: texto, kpis: (d.kpis || []).map(function (k) { return { nome: k.nome || '', meta: k.meta || '', filtro: k.filtro || '' }; }), regiao: d.regiao || [], restricoes: d.restricoes || [], loja: d.loja || null, prazoDias: d.prazoDias || 30, orcamentoRS: d.orcamentoRS != null ? d.orcamentoRS : 30, duvidas: d.duvidas || [], custoRS: d.custoRS || 0 };
+  }).catch(function (e) { if (e.status !== 401 && e.status !== 403) S.objs.draftErr = e.message; })
+    .then(function () { S.objs.compiling = false; renderObjNew(); var x = $('#draftF'); if (x) x.scrollIntoView({ block: 'start' }); });
+}
+function submitDraft(f) {
+  var d = readDraft(), b = f.querySelector('[type=submit]');
+  var kpis = d.kpis.filter(function (k) { return String(k.nome).trim() && String(k.meta).trim(); }).map(function (k) { var o = { nome: k.nome.trim(), meta: k.meta.trim() }; if (String(k.filtro || '').trim()) o.filtro = k.filtro.trim(); return o; });
+  if (String(d.texto).trim().length < 8) { $('#draftErr').innerHTML = errBox('Descreva o objetivo (mínimo 8 letras).'); return; }
+  if (!kpis.length) { $('#draftErr').innerHTML = errBox('Inclua pelo menos uma meta com nome e valor.'); return; }
+  b.disabled = true; b.textContent = 'Ativando…';
+  api('/objetivos', { method: 'POST', body: { texto: d.texto.trim(), kpis: kpis, regiao: d.regiao, restricoes: d.restricoes, loja: d.loja || null, prazoDias: Number(d.prazoDias) || 30, orcamentoRS: Number(d.orcamentoRS) || 0 } }).then(function () {
+    S.objs.draft = null; S.objs.texto = ''; toast('Objetivo ativado. A região da rede foi acordada.');
+    renderObjNew(); loadObjs(); loadPainel();
+  }).catch(function (e) { b.disabled = false; b.textContent = 'Ativar objetivo'; if (e.status !== 401 && e.status !== 403) $('#draftErr').innerHTML = errBox(e); });
+}
+function renderObjList() {
+  var el = $('#objList'), o = S.objs;
+  if (o.loading && !o.list) { el.innerHTML = '<div class="skel"></div>'; return; }
+  if (o.err) { el.innerHTML = '<div class="wcard state"><b>Não consegui carregar os objetivos</b><p>' + esc(o.err.message) + '</p><button class="btn pri" data-act="reloadObjs">Tentar de novo</button></div>'; return; }
+  if (!o.list || !o.list.length) { el.innerHTML = '<div class="glass state"><b>Nenhum objetivo ainda</b><p>Sem objetivo, a rede só reage aos eventos. Com objetivo, ela foca a região certa com orçamento definido.</p></div>'; return; }
+  el.innerHTML = o.list.map(function (x) {
+    var orc = x.orcamento || {}, lim = Number(orc.rs) || 0, g = Number(x.gastoRS) || 0, f = lim ? Math.min(1, g / lim) : 0;
+    var prazo = x.prazo ? new Date(x.prazo) : null, dias = prazo ? Math.ceil((prazo - Date.now()) / 86400000) : null;
+    var acts = '';
+    if (x.status === 'ativo') acts = '<button class="btn ghost" data-act="objSt" data-id="' + esc(x.id) + '" data-st="pausado">Pausar</button><button class="btn pri" data-act="objSt" data-id="' + esc(x.id) + '" data-st="concluido">Concluir</button>';
+    else if (x.status === 'pausado') acts = '<button class="btn pri" data-act="objSt" data-id="' + esc(x.id) + '" data-st="ativo">Retomar</button><button class="btn ghost" data-act="objSt" data-id="' + esc(x.id) + '" data-st="concluido">Concluir</button>';
+    return '<article class="wcard obj"><div class="row wrap">' + badge(STATUS_OBJ, x.status) + (x.loja ? '<span class="badge gray">' + esc(LOJAS[x.loja] || x.loja) + '</span>' : '<span class="badge gray">Todas as lojas</span>') + '<span class="small dimt right">' + esc(dia(x.criadoEm)) + '</span></div>' +
+      '<h3>' + esc(x.texto) + '</h3>' +
+      '<div class="nums"><div><span>Gasto de IA</span><b>' + rs(g) + '</b><span>de ' + rs(lim) + '</span></div><div><span>Prazo</span><b>' + (prazo ? esc(dia(prazo)) : '—') + '</b><span>' + (dias == null ? '' : dias < 0 ? 'vencido' : dias === 0 ? 'vence hoje' : 'faltam ' + dias + ' dia(s)') + '</span></div></div>' +
+      '<div class="bar' + (f >= 0.8 ? ' hot' : '') + '" role="progressbar" aria-label="Gasto do objetivo em relação ao orçamento" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + Math.round(f * 100) + '"><u style="width:' + (f * 100).toFixed(1) + '%"></u></div>' +
+      '<p class="small dimt" style="margin-top:4px">' + num(x.ativacoes) + ' ativações de IA' + (orc.ativacoesIA ? ' de ' + num(orc.ativacoesIA) : '') + '</p>' +
+      '<details class="box"><summary>Metas, região e restrições</summary><div><p class="small dimt">Metas</p>' + kv(x.kpis) + '<p class="small dimt" style="margin-top:6px">Região</p>' + kv(x.regiao) + '<p class="small dimt" style="margin-top:6px">Restrições</p>' + kv(x.restricoes) + (x.resultado ? '<p class="small dimt" style="margin-top:6px">Resultado</p>' + kv(x.resultado) : '') + '</div></details>' +
+      (acts ? '<div class="actions two">' + acts + '</div>' : '') +
+      (x.status === 'ativo' || x.status === 'pausado' ? '<button class="btn bad full" style="margin-top:8px" data-act="objSt" data-id="' + esc(x.id) + '" data-st="cancelado">Cancelar objetivo</button>' : '') +
+      '</article>';
+  }).join('');
+}
+function objStatus(id, st, b) {
+  var x = (S.objs.list || []).filter(function (o) { return o.id === id; })[0];
+  if ((st === 'concluido' || st === 'cancelado') && !b.dataset.ok) {
+    openSheet('<h2 id="sheetTitle">' + (st === 'concluido' ? 'Concluir objetivo?' : 'Cancelar objetivo?') + '</h2><p style="font-size:14px">' + esc(x ? x.texto : '') + '</p><p class="small muted" style="margin-top:8px">A rede para de dar atenção à região deste objetivo e ele sai da lista de ativos.</p>' +
+      '<div class="actions two"><button class="btn ghost" data-act="closeSheet">Voltar</button><button class="btn ' + (st === 'cancelado' ? 'bad' : 'pri') + '" data-act="objSt" data-id="' + esc(id) + '" data-st="' + st + '" data-ok="1">' + (st === 'concluido' ? 'Concluir' : 'Cancelar objetivo') + '</button></div>');
+    return;
+  }
+  b.disabled = true;
+  api('/objetivos/' + encodeURIComponent(id), { method: 'PATCH', body: { status: st } }).then(function (r) {
+    closeSheet();
+    S.objs.list = (S.objs.list || []).map(function (o) { return o.id === id ? Object.assign({}, o, r.objetivo || { status: st }) : o; });
+    renderObjList(); toast('Objetivo ' + ((STATUS_OBJ[st] || [st])[0]).toLowerCase() + '.'); loadPainel();
+  }).catch(function (e) { b.disabled = false; if (e.status !== 401 && e.status !== 403) toast(e.message, true); });
+}
+
+/* ===================== MINI AGENTES ===================== */
+var AG_F = [['', 'Todas'], ['detector', 'Detectores'], ['analista', 'Analistas'], ['especialista', 'Especialistas'], ['atuador', 'Atuadores']];
+function renderAg() {
+  var p = S.painel, f = S.ag;
+  $('#agFilters').innerHTML = AG_F.map(function (x) { return '<button class="chip" data-act="agF" data-c="' + x[0] + '" aria-pressed="' + (f.camada === x[0] && !f.poda) + '">' + x[1] + '</button>'; }).join('') +
+    '<button class="chip" data-act="agPoda" aria-pressed="' + f.poda + '">Poda' + (p && p.poda && p.poda.length ? ' (' + p.poda.length + ')' : '') + '</button>';
+  var el = $('#agList');
+  if (!p) { el.innerHTML = S.painelErr ? '<div class="wcard state"><b>Não consegui carregar os agentes</b><p>' + esc(S.painelErr.message) + '</p><button class="btn pri" data-act="reloadPainel">Tentar de novo</button></div>' : '<div class="skel"></div><div class="skel"></div>'; return; }
+  var podaMap = {}; (p.poda || []).forEach(function (x) { podaMap[x.id] = x.motivo; });
+  var q = f.q.trim().toLowerCase();
+  var L = (p.neuronios || []).filter(function (n) {
+    if (f.poda && !podaMap[n.id]) return false;
+    if (!f.poda && f.camada && n.camada !== f.camada) return false;
+    return !q || (n.id + ' ' + (n.missao || '')).toLowerCase().indexOf(q) >= 0;
+  });
+  var top = (p.errosRegistro && p.errosRegistro.length) ? '<div class="warnbox" style="margin-top:10px">' + p.errosRegistro.length + ' arquivo(s) de agente com erro de contrato (não carregados). Veja na aba Rede.</div>' : '';
+  if (!(p.neuronios || []).length) { el.innerHTML = top + '<div class="glass state" style="margin-top:12px"><b>Nenhum mini agente registrado</b><p>Os agentes aparecem aqui assim que o servidor carregar os arquivos em src/ai/rede/neuronios.</p></div>'; return; }
+  if (!L.length) { el.innerHTML = top + '<div class="glass state" style="margin-top:12px"><b>Nada com esse filtro</b><p>' + (f.poda ? 'Nenhum agente é candidato à poda agora.' : 'Tente outra busca ou camada.') + '</p></div>'; return; }
+  var by = {}; L.forEach(function (n) { var d = n.dominio || n.id.split('.')[0]; (by[d] = by[d] || []).push(n); });
+  el.innerHTML = top + Object.keys(by).sort().map(function (d) {
+    return '<div class="dom-h"><span>' + esc(d) + '</span><span>' + by[d].length + '</span></div>' + by[d].map(function (n) {
+      var on = n.ativo !== false, pm = podaMap[n.id], tot = (n.acertos || 0) + (n.erros || 0);
+      var lim = Number(n.limiar) || 0;
+      return '<article class="wcard ag' + (on ? '' : ' off') + (pm ? ' poda' : '') + '" id="ag-' + esc(n.id) + '">' +
+        '<div class="row"><div class="grow"><div class="id mono" style="font-size:14px;font-family:var(--ff);font-weight:800">' + esc(n.id) + '</div>' +
+        '<div class="meta"><span class="badge">' + esc(CAMADA_NOME[n.camada] || n.camada) + '</span><span class="badge gray">' + esc(CUSTO_NOME[n.custo] || n.custo || '—') + '</span>' + (n.permissao ? '<span class="badge gray">' + esc(n.permissao) + '</span>' : '') + '</div></div>' +
+        '<button class="sw" role="switch" aria-checked="' + on + '" aria-label="' + esc((on ? 'Desligar ' : 'Ligar ') + n.id) + '" data-act="agOn" data-id="' + esc(n.id) + '"><i></i></button></div>' +
+        '<p class="mis">' + esc(n.missao) + (n.missao === '(neurônio não carregado)' ? ' — o banco tem o registro mas o código do agente não subiu.' : '') + '</p>' +
+        (pm ? '<div class="podabox">Candidato à poda: ' + esc(pm) + '</div>' : '') +
+        '<div class="stats"><div><b>' + num(n.disparos) + '</b><span>disparos</span></div><div><b>' + num(n.acertos) + '</b><span>acertos</span></div><div><b>' + num(n.erros) + '</b><span>erros</span></div><div><b>' + (tot ? Math.round(100 * n.acertos / tot) + '%' : '—') + '</b><span>taxa</span></div></div>' +
+        '<p class="small dimt" style="margin-top:8px">Custo acumulado ' + rs(n.custoRS) + ' · último uso ' + (n.ultimoUso ? esc(rel(n.ultimoUso)) : 'nunca') + '</p>' +
+        '<div class="lim"><label for="lim-' + esc(n.id) + '"><span>Limiar para acordar</span><span class="limv">' + dec(lim) + '</span></label>' +
+        '<input type="range" id="lim-' + esc(n.id) + '" min="0" max="0.95" step="0.05" value="' + lim + '" data-id="' + esc(n.id) + '" data-old="' + lim + '" aria-valuetext="' + dec(lim) + '"></div>' +
+        '<p class="hint">Mais alto = acorda menos (só sinal forte). Mais baixo = acorda mais.</p></article>';
+    }).join('');
+  }).join('');
+}
+function patchNeuron(id, body) { return api('/neuronios/' + encodeURIComponent(id), { method: 'PATCH', body: body }); }
+function setNeuronLocal(id, data) { (S.painel && S.painel.neuronios || []).forEach(function (n) { if (n.id === id) Object.assign(n, data); }); Net.build(S.painel.neuronios, S.painel.poda); }
+function agToggle(b) {
+  var id = b.dataset.id, on = b.getAttribute('aria-checked') !== 'true', card = document.getElementById('ag-' + id);
+  b.setAttribute('aria-checked', String(on)); b.disabled = true; if (card) card.classList.toggle('off', !on);
+  patchNeuron(id, { ativo: on }).then(function () { setNeuronLocal(id, { ativo: on }); b.setAttribute('aria-label', (on ? 'Desligar ' : 'Ligar ') + id); toast(id + (on ? ' ligado.' : ' desligado.')); })
+    .catch(function (e) { b.setAttribute('aria-checked', String(!on)); if (card) card.classList.toggle('off', on); if (e.status !== 401 && e.status !== 403) toast(e.message, true); })
+    .then(function () { b.disabled = false; });
+}
+function agLimiar(inp) {
+  var id = inp.dataset.id, v = Number(inp.value), old = Number(inp.dataset.old);
+  if (v === old) return;
+  inp.disabled = true;
+  patchNeuron(id, { limiar: v }).then(function () { inp.dataset.old = String(v); setNeuronLocal(id, { limiar: v }); toast('Limiar de ' + id + ' agora ' + dec(v) + '.'); })
+    .catch(function (e) { inp.value = old; showLim(inp); if (e.status !== 401 && e.status !== 403) toast(e.message, true); })
+    .then(function () { inp.disabled = false; });
+}
+function showLim(inp) { var v = dec(inp.value), l = inp.parentNode.querySelector('.limv'); if (l) l.textContent = v; inp.setAttribute('aria-valuetext', v); }
+
+/* ===================== RASTROS ===================== */
+function loadTraces() {
+  S.tr.loading = true; S.tr.err = null; renderTr();
+  return api('/traces?limit=60').then(function (r) { S.tr.list = r.traces || []; S.tr.stale = false; })
+    .catch(function (e) { if (e.status !== 401 && e.status !== 403) S.tr.err = e; })
+    .then(function () { S.tr.loading = false; if (S.tab === 'rastros') renderTr(); });
+}
+function loadTrace(id) {
+  S.tr.cur = id; S.tr.detail = null; S.tr.detailErr = null; renderTr();
+  return api('/traces/' + encodeURIComponent(id)).then(function (r) { if (S.tr.cur === id) S.tr.detail = r; })
+    .catch(function (e) { if (e.status !== 401 && e.status !== 403 && S.tr.cur === id) S.tr.detailErr = e; })
+    .then(function () { if (S.tab === 'rastros' && S.tr.cur === id) renderTr(); });
+}
+function renderTr() {
+  var el = $('#trBody'), t = S.tr;
+  if (t.cur) {
+    var back = '<button class="back" data-act="go" data-tab="rastros"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>Todos os rastros</button>';
+    if (t.detailErr) { el.innerHTML = back + '<div class="wcard state"><b>' + (t.detailErr.status === 404 ? 'Rastro não encontrado' : 'Não consegui abrir o rastro') + '</b><p>' + esc(t.detailErr.message) + '</p></div>'; return; }
+    if (!t.detail) { el.innerHTML = back + '<div class="skel"></div><div class="skel"></div>'; return; }
+    el.innerHTML = back + traceTree(t.detail); return;
+  }
+  if (t.loading && !t.list) { el.innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>'; return; }
+  if (t.err) { el.innerHTML = '<div class="wcard state"><b>Não consegui carregar os rastros</b><p>' + esc(t.err.message) + '</p><button class="btn pri" data-act="reloadTraces">Tentar de novo</button></div>'; return; }
+  if (!t.list || !t.list.length) { el.innerHTML = '<div class="glass state"><b>Nenhum rastro ainda</b><p>Cada evento que entra na rede (NF-e, venda, bipe, pergunta) gera um rastro com o caminho completo, custo e tempo.</p></div>'; return; }
+  el.innerHTML = t.list.map(function (r) {
+    return '<button class="wcard tr" data-act="trace" data-id="' + esc(r.traceId) + '"><div class="row"><span class="tp mono grow" style="font-family:var(--ff)">' + esc(r.tipo) + '</span><span class="small dimt">' + esc(rel(r.em)) + '</span></div>' +
+      '<div class="meta"><span class="badge gray">' + esc(SENSOR_NOME[r.origem] ? 'sensor ' + SENSOR_NOME[r.origem] : r.origem) + '</span>' + (r.loja ? '<span class="badge gray">' + esc(LOJAS[r.loja] || r.loja) + '</span>' : '') + '</div>' +
+      '<p class="small muted" style="margin-top:6px">' + num(r.sinais) + ' sinal(is) · ' + num(r.ativacoes) + ' ativação(ões) · ' + rs(r.custoRS) + '</p></button>';
+  }).join('');
+}
+// Árvore: sinal → ativações (neurônios) → sinais filhos → … → propostas.
+function traceTree(d) {
+  var sinais = (d.sinais || []).map(function (s) { var cam = (s.dados && s.dados._caminho) || [s.origem]; return Object.assign({}, s, { cam: cam, kids: [] }); });
+  var ativ = (d.ativacoes || []).map(function (a) { return Object.assign({}, a, { kids: [], props: [] }); });
+  var byS = {}; sinais.forEach(function (s) { byS[s.id] = s; });
+  var roots = [], soltas = [];
+  ativ.forEach(function (a) { if (byS[a.sinalId]) byS[a.sinalId].kids.push(a); else soltas.push(a); });
+  sinais.forEach(function (s) {
+    if (!s.profundidade) { roots.push(s); return; }
+    var neu = s.cam[s.cam.length - 1], pai = s.cam.slice(0, -1).join('>'), ts = new Date(s.criadoEm).getTime();
+    var c = ativ.filter(function (a) { var ps = byS[a.sinalId]; return a.neuronio === neu && ps && ps.cam.join('>') === pai; });
+    var pick = c.filter(function (a) { return new Date(a.criadoEm).getTime() <= ts + 1000; }).pop() || c[0];
+    if (pick) pick.kids.push(s); else roots.push(s);
+  });
+  var propsSoltas = [];
+  (d.propostas || []).forEach(function (p) { var r = (p.payload && p.payload.rna) || {}; var a = ativ.filter(function (x) { return x.sinalId === r.sinalId && x.neuronio === r.neuronio; })[0]; if (a) a.props.push(p); else propsSoltas.push(p); });
+  var t0 = Math.min.apply(null, sinais.map(function (s) { return new Date(s.criadoEm).getTime(); }).concat(ativ.map(function (a) { return new Date(a.criadoEm).getTime(); })));
+  var t1 = Math.max.apply(null, sinais.map(function (s) { return new Date(s.criadoEm).getTime(); }).concat(ativ.map(function (a) { return new Date(a.criadoEm).getTime() + (a.ms || 0); })));
+  var custo = ativ.reduce(function (s, a) { return s + (Number(a.custoRS) || 0); }, 0);
+  var ia = ativ.filter(function (a) { return a.custoRS > 0; }).length;
+  function off(d_) { var ms = new Date(d_).getTime() - t0; return isFinite(ms) ? '+' + secs(ms) : ''; }
+  function sNode(s) {
+    return '<li><div class="node s"><div class="h"><span class="k">Sinal</span><span class="mono" style="font-weight:800">' + esc(s.tipo) + '</span></div>' +
+      '<div class="x">de ' + esc(SENSOR_NOME[s.origem] ? 'sensor ' + SENSOR_NOME[s.origem] : s.origem) + ' · força ' + dec(s.forca) + (s.impactoRS != null ? ' · ' + rs(s.impactoRS) + ' em jogo' : '') + (s.loja ? ' · ' + esc(s.loja) : '') + (s.externo ? ' · externo' : '') + ' · ' + off(s.criadoEm) + '</div>' +
+      (s.dados && s.dados._alertaInjecao ? '<div class="err" style="margin-top:6px">Alerta de injeção no conteúdo externo</div>' : '') +
+      '</div>' + (s.kids.length ? '<ul>' + s.kids.map(aNode).join('') + '</ul>' : '') + '</li>';
+  }
+  function aNode(a) {
+    var bl = a.saida && a.saida.bloqueios && a.saida.bloqueios.length ? a.saida.bloqueios : null;
+    return '<li><div class="node a"><div class="h"><span class="k">Agente</span><span class="mono" style="font-weight:800">' + esc(a.neuronio) + '</span>' + badge(STATUS_ATIV, a.status) + '</div>' +
+      '<div class="x">' + rs(a.custoRS) + ' · ' + num(a.ms) + ' ms' + (a.ativacao != null ? ' · ativação ' + dec(a.ativacao) : '') + ' · ' + off(a.criadoEm) + '</div>' +
+      (a.erro ? '<div class="' + (a.status === 'erro' ? 'err' : 'warnbox') + '" style="margin-top:6px">' + esc(a.erro) + '</div>' : '') +
+      (bl ? '<div class="warnbox" style="margin-top:6px">Bloqueado pela política: ' + kv(bl) + '</div>' : '') +
+      '</div>' + (a.kids.length || a.props.length ? '<ul>' + a.kids.map(sNode).join('') + a.props.map(pNode).join('') + '</ul>' : '') + '</li>';
+  }
+  function pNode(p) {
+    return '<li><div class="node p"><div class="h"><span class="k">Proposta</span>' + badge(STATUS_PROP, p.status) + '</div><div style="font-weight:800;margin-top:3px">' + esc(p.title) + '</div>' +
+      '<button class="btn ghost sm" style="margin-top:8px" data-act="openProp" data-id="' + esc(p.id) + '" data-st="' + esc(p.status) + '">Abrir proposta</button></div></li>';
+  }
+  return '<div class="wcard"><div class="small dimt mono">' + esc(d.traceId) + '</div>' +
+    '<div class="stats" style="grid-template-columns:repeat(3,1fr)"><div><b>' + rs(custo) + '</b><span>custo · ' + ia + ' com IA</span></div><div><b>' + (isFinite(t1 - t0) ? secs(t1 - t0) : '—') + '</b><span>tempo total</span></div><div><b>' + ativ.length + '</b><span>agentes acesos</span></div></div>' +
+    '<p class="small muted" style="margin-top:8px">' + sinais.length + ' sinal(is) · ' + (d.propostas || []).length + ' proposta(s) · início ' + esc(dt(t0)) + '</p></div>' +
+    '<div class="wcard"><ul class="tree">' + roots.map(sNode).join('') + soltas.map(aNode).join('') + propsSoltas.map(pNode).join('') + '</ul></div>';
+}
+
+/* ===================== eventos (delegação) ===================== */
+document.addEventListener('click', function (e) {
+  var b = e.target.closest('[data-act]'); if (!b) return;
+  var a = b.dataset.act, id = b.dataset.id;
+  switch (a) {
+    case 'go': if (!$('#sheetWrap').hidden) closeSheet(); go(b.dataset.tab); break;
+    case 'closeSheet': closeSheet(); break;
+    case 'ask': openAsk(); break;
+    case 'trace': closeSheet(); go('rastros', id); break;
+    case 'manage': closeSheet(); S.ag = { q: '', camada: '', poda: false }; $('#agQ').value = ''; go('agentes'); setTimeout(function () { var c = document.getElementById('ag-' + id); if (c) { c.scrollIntoView({ block: 'center' }); c.classList.add('flash'); var s = c.querySelector('.sw'); if (s) s.focus({ preventScroll: true }); } }, 60); break;
+    case 'reloadPainel': S.painelErr = null; renderRede(); renderAg(); loadPainel(); break;
+    case 'reloadProps': loadProps(); break;
+    case 'reloadObjs': loadObjs(); break;
+    case 'reloadTraces': S.tr.list = null; loadTraces(); break;
+    case 'propF': S.props.status = b.dataset.st; S.props.list = null; loadProps(); break;
+    case 'decide': openDecide(id, b.dataset.d); break;
+    case 'exec': openExec(id); break;
+    case 'execGo': execGo(id, b); break;
+    case 'openProp': closeSheet(); S.props.status = b.dataset.st === 'pending' ? 'pending' : 'todas'; S.props.list = null; S.props.focus = id; go('propostas'); break;
+    case 'objSt': objStatus(id, b.dataset.st, b); break;
+    case 'kpiAdd': readDraft(); S.objs.draft.kpis.push({ nome: '', meta: '', filtro: '' }); renderObjNew(); var r = $('#draftF .kpirow:last-of-type input'); if (r) r.focus(); break;
+    case 'kpiDel': readDraft(); S.objs.draft.kpis.splice(Number(b.dataset.i), 1); renderObjNew(); break;
+    case 'reg': readDraft(); var rg = S.objs.draft.regiao, i = rg.indexOf(b.dataset.r); if (i >= 0) rg.splice(i, 1); else rg.push(b.dataset.r); b.setAttribute('aria-pressed', String(i < 0)); break;
+    case 'draftDrop': S.objs.texto = S.objs.draft ? S.objs.draft.texto : ''; S.objs.draft = null; renderObjNew(); break;
+    case 'agF': S.ag.camada = b.dataset.c; S.ag.poda = false; renderAg(); break;
+    case 'agPoda': S.ag.poda = !S.ag.poda; renderAg(); break;
+    case 'agOn': agToggle(b); break;
+    case 'retryAuth': $('#gate').hidden = true; S.auth = 'ok'; boot(); break;
+  }
+});
+document.addEventListener('submit', function (e) {
+  var f = e.target; e.preventDefault();
+  if (f.id === 'askF') submitAsk(f);
+  else if (f.id === 'decF') submitDecide(f);
+  else if (f.id === 'compF') submitCompile(f);
+  else if (f.id === 'draftF') submitDraft(f);
+});
+document.addEventListener('input', function (e) {
+  var t = e.target;
+  if (t.id === 'agQ') { S.ag.q = t.value; clearTimeout(t._d); t._d = setTimeout(renderAg, 120); }
+  else if (t.id === 'objTexto') S.objs.texto = t.value;
+  else if (t.type === 'range' && t.dataset.id) showLim(t);
+});
+document.addEventListener('change', function (e) { var t = e.target; if (t.type === 'range' && t.dataset.id) agLimiar(t); });
+window.addEventListener('hashchange', route);
+document.addEventListener('visibilitychange', function () {
+  if (document.hidden) Live.stop();
+  else if (S.auth === 'ok') { Live.start(); loadPainel(); }
+});
+
+/* ===================== DEMONSTRAÇÃO (?demo=1) ===================== */
+var Mock = (function () {
+  if (!DEMO) return { api: function () { return Promise.reject(new Error('demo desligado')); }, liveStart: function () {}, liveStop: function () {} };
+  var seed = 7; function rnd() { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }
+  var D = [
+    ['nfe.entrada-x-transferencia', 'detector', 'regra', ['nfe.importada'], ['nfe.classificada'], 'Classifica a NF-e em entrada ou transferência pelo CNPJ raiz e CFOP.'],
+    ['nfe.item-sem-card', 'detector', 'regra', ['nfe.classificada'], ['nfe.item-orfao'], 'Acha item de entrada sem card (procura card existente antes).'],
+    ['nfe.formato-fornecedor', 'analista', 'ia-barata', ['nfe.item-orfao'], ['dado-faltante'], 'Lê referência e tamanho literal do formato do fornecedor; faltou, avisa.'],
+    ['nfe.custo-medio', 'detector', 'regra', ['nfe.classificada'], ['preco.custo-atualizado'], 'Atualiza o custo médio (só NF-e de entrada).'],
+    ['estoque.ruptura-grade', 'detector', 'regra', ['venda.registrada', 'relogio.diario'], ['estoque.ruptura'], 'Grade quebrada: tamanho-chave zerado na loja.'],
+    ['estoque.parado', 'detector', 'regra', ['relogio.semanal', 'relogio.objetivo'], ['estoque.parado'], 'Produto sem venda há muitos dias com estoque físico.'],
+    ['estoque.transferencia-sugerida', 'analista', 'ia-barata', ['estoque.ruptura', 'estoque.parado'], ['proposta.transferencia'], 'Sobra numa loja e falta em outra: sugere transferência.'],
+    ['bipe.acima-comprado', 'detector', 'regra', ['bipe.registrado'], ['bipe.conferir-loja'], 'Bipes acima do comprado: pede conferência física.'],
+    ['bipe.codigo-desconhecido', 'detector', 'regra', ['bipe.registrado'], ['bipe.resolver-codigo'], 'Código bipado não casa: procura nas NF-e.'],
+    ['bipe.tamanho-pendente', 'detector', 'regra', ['bipe.registrado', 'dado-faltante'], ['dono.pendencia'], 'Tamanho sem confirmação da caixa.'],
+    ['nuvem.sem-foto', 'detector', 'regra', ['nuvem.webhook', 'relogio.diario'], ['nuvem.incompleto'], 'Publicado na Nuvemshop sem foto ou descrição.'],
+    ['nuvem.sem-classificacao', 'detector', 'regra', ['nuvem.webhook', 'relogio.diario'], ['nuvem.incompleto'], 'Falta uma das 4 classificações.'],
+    ['nuvem.estoque-divergente', 'detector', 'regra', ['relogio.hora'], ['nuvem.divergente'], 'Variante com estoque diferente do físico.'],
+    ['nuvem.correcao', 'analista', 'ia-barata', ['nuvem.incompleto', 'nuvem.divergente'], ['proposta.nuvem'], 'Monta a correção pronta para aprovar.'],
+    ['conteudo.descricao', 'analista', 'ia-barata', ['nuvem.incompleto'], ['proposta.descricao'], 'Descrição técnica a partir dos dados reais do card.'],
+    ['preco.abaixo-custo', 'detector', 'regra', ['preco.custo-atualizado', 'relogio.diario'], ['proposta.preco'], 'Preço menor ou igual ao custo.'],
+    ['preco.plano-markdown', 'especialista', 'ia-forte', ['estoque.parado'], ['proposta.preco'], 'Plano de remarcação com margem mínima.'],
+    ['venda.meta-dia', 'detector', 'regra', ['relogio.hora'], ['venda.abaixo-meta'], 'Venda abaixo de 60% da meta até as 15h.'],
+    ['venda.intervencao', 'analista', 'ia-barata', ['venda.abaixo-meta'], ['proposta.acao-loja'], 'Ação de loja para recuperar o dia.'],
+    ['crm.cliente-sumido', 'detector', 'regra', ['relogio.semanal'], ['crm.reativar'], 'Cliente com cashback parado e sem compra.'],
+    ['crm.rascunho-whatsapp', 'analista', 'ia-barata', ['crm.reativar', 'whatsapp.mensagem'], ['proposta.whatsapp'], 'Rascunho de WhatsApp (nunca envia sozinho).'],
+    ['mkt.recebimento', 'detector', 'regra', ['nfe.classificada'], ['mkt.chegada'], 'Mercadoria nova vira carrossel de chegada.'],
+    ['mkt.campanha', 'especialista', 'ia-forte', ['mkt.chegada', 'relogio.objetivo'], ['proposta.campanha'], 'Campanha completa, revisada pela Constituição.'],
+    ['fin.conta-vencendo', 'detector', 'regra', ['relogio.diario'], ['dono.pendencia'], 'Contas a pagar vencendo.'],
+    ['compra.reposicao', 'analista', 'ia-barata', ['estoque.ruptura'], ['proposta.reposicao'], 'Sugere reposição com histórico.'],
+    ['club.medalha-pendente', 'detector', 'regra', ['torneio.finalizado'], ['proposta.emitir-medalhas'], 'Final encerrada: prévia de medalhas.'],
+    ['dono.resposta', 'analista', 'ia-barata', ['dono.pergunta'], ['dono.resposta'], 'Responde perguntas com ferramentas de leitura.'],
+    ['dono.objetivo', 'especialista', 'ia-forte', ['dono.pergunta'], ['objetivo.criado'], 'Compila objetivo em KPI, região e orçamento.'],
+    ['nuvem.publicar', 'atuador', 'regra', ['nuvem.aprovado'], [], 'Publica na Nuvemshop o que foi aprovado.']
+  ];
+  var perm = { detector: 'ler', analista: 'propor', especialista: 'propor', atuador: 'agir' };
+  var neus = D.map(function (x, i) {
+    var dis = Math.round(rnd() * 400), ac = Math.round(rnd() * 30), er = Math.round(rnd() * 8);
+    return { id: x[0], camada: x[1], custo: x[2], escuta: x[3], emite: x[4], missao: x[5], permissao: perm[x[1]], dominio: x[0].split('.')[0], ativo: i !== 12, limiar: x[1] === 'detector' ? 0 : Number((0.3 + rnd() * 0.4).toFixed(2)), disparos: dis, acertos: x[0] === 'venda.intervencao' ? 0 : ac, erros: x[0] === 'venda.intervencao' ? 6 : er, custoRS: x[2] === 'regra' ? 0 : Number((rnd() * 2).toFixed(4)), ultimoUso: new Date(Date.now() - rnd() * 6 * 864e5).toISOString() };
+  });
+  var poda = [{ id: 'venda.intervencao', motivo: '6 propostas rejeitadas e nenhuma aprovada' }];
+  var gasto = 1.37;
+  function ago(min) { return new Date(Date.now() - min * 60000).toISOString(); }
+  var traces = {};
+  function walk(tipo, origem, min, live) {
+    var tr = 'tr_demo' + Math.round(rnd() * 1e8).toString(36), t = Date.now() - (min || 0) * 60000, sinais = [], ativ = [], props = [], evs = [];
+    function mk(tp, org, prof, cam, imp) { var s = { id: 'sig_' + Math.round(rnd() * 1e9).toString(36), tipo: tp, origem: org, forca: org.indexOf('s.') === 0 ? 1 : Number((0.5 + rnd() * 0.5).toFixed(2)), impactoRS: imp || null, loja: rnd() > 0.5 ? 'LOJA05' : null, traceId: tr, profundidade: prof, externo: false, dados: { _caminho: cam }, criadoEm: new Date(t += 40 + rnd() * 160).toISOString() }; sinais.push(s); evs.push({ evento: 'sinal', tipo: tp, origem: org, traceId: tr }); return s; }
+    var q = [mk(tipo, origem, 0, [origem])];
+    while (q.length) {
+      var s = q.shift(); if (s.profundidade >= 4) continue;
+      neus.filter(function (n) { return n.ativo && n.escuta.some(function (e) { return escutaCasa(e, s.tipo); }) && s.dados._caminho.indexOf(n.id) < 0; }).forEach(function (n) {
+        if (n.custo === 'ia-forte' && origem !== 's.dono' && rnd() > 0.4) return;
+        var x = rnd(), st = x < 0.62 ? 'ok' : x < 0.88 ? 'sem-saida' : x < 0.94 ? 'erro' : 'sem-orcamento';
+        var custo = n.custo === 'regra' ? 0 : n.custo === 'ia-barata' ? Number((0.002 + rnd() * 0.01).toFixed(4)) : Number((0.03 + rnd() * 0.06).toFixed(4));
+        var a = { id: 'at_' + Math.round(rnd() * 1e9).toString(36), neuronio: n.id, sinalId: s.id, traceId: tr, status: st, custoRS: st === 'sem-orcamento' ? 0 : custo, ms: Math.round(n.custo === 'regra' ? 4 + rnd() * 40 : 600 + rnd() * 2400), ativacao: Number((0.5 + rnd() * 0.6).toFixed(4)), saida: null, erro: st === 'erro' ? 'tempo esgotado (20000ms)' : st === 'sem-orcamento' ? 'teto diário de IA atingido (R$ 5)' : null, criadoEm: new Date(t += 30 + rnd() * 300).toISOString() };
+        ativ.push(a); evs.push({ evento: 'ativacao', neuronio: n.id, status: st, traceId: tr });
+        if (st !== 'ok') return;
+        n.emite.forEach(function (tp) {
+          if (tp.indexOf('proposta.') === 0) {
+            var p = mkProp(n, s, tp, tr); props.push(p); evs.push({ evento: 'proposta', neuronio: n.id, traceId: tr });
+          } else q.push(mk(tp, n.id, s.profundidade + 1, s.dados._caminho.concat(n.id), s.impactoRS || (rnd() > 0.6 ? Math.round(rnd() * 3000) : null)));
+        });
+      });
+    }
+    if (!live) traces[tr] = { traceId: tr, sinais: sinais, ativacoes: ativ, propostas: props };
+    return { tr: tr, evs: evs, sinais: sinais, ativ: ativ, props: props };
+  }
+  var TIT = { 'proposta.preco': 'Corrigir preço abaixo do custo: Tênis Exemplo Run 2 (demo)', 'proposta.nuvem': 'Completar card na Nuvemshop: foto e descrição (demo)', 'proposta.descricao': 'Nova descrição técnica para Camiseta Exemplo Dry (demo)', 'proposta.transferencia': 'Transferir 6 pares de LOJA02 para LOJA05 (demo)', 'proposta.reposicao': 'Repor grade 39–42 do modelo Exemplo (demo)', 'proposta.whatsapp': 'Rascunho de WhatsApp para 18 clientes (demo)', 'proposta.acao-loja': 'Ação de loja para recuperar a tarde (demo)', 'proposta.campanha': 'Campanha de chegada da semana (demo)', 'proposta.emitir-medalhas': 'Emitir medalhas da final (demo)' };
+  var props = [];
+  function mkProp(n, s, tp, tr) {
+    var r = rnd(), p = { id: 'ap_' + Math.round(rnd() * 1e9).toString(36), type: 'rna_' + tp.slice(9).replace(/[^a-z0-9_]/gi, '_'), title: TIT[tp] || ('Proposta ' + tp + ' (demo)'), description: 'Exemplo fictício gerado pelo modo demonstração.', riskLevel: r < 0.33 ? 'low' : r < 0.75 ? 'medium' : 'high', status: 'pending', createdAt: new Date().toISOString(), decisionNote: null,
+      payload: { rna: { neuronio: n.id, sinalId: s.id, traceId: tr, caminho: s.dados._caminho.concat(n.id), impactoRS: Math.round(200 + rnd() * 4000) }, acao: { nome: 'rna.registrar', args: { exemplo: true } }, previa: { produto: 'Exemplo (demo)', de: 'R$ 199,90', para: 'R$ 249,90', motivo: 'preço abaixo do custo' }, evidencia: [{ fonte: 'NF-e de entrada (demo)', campo: 'vUnCom', valor: 'R$ 210,00' }, { fonte: 'Product.price (demo)', valor: 'R$ 199,90' }] } };
+    props.unshift(p); return p;
+  }
+  ['nfe.importada:s.nfe:3', 'relogio.diario:s.relogio:40', 'bipe.registrado:s.bipe:75', 'relogio.semanal:s.relogio:180', 'dono.pergunta:s.dono:300', 'venda.registrada:s.venda:420'].forEach(function (x) { var p = x.split(':'); walk(p[0], p[1], Number(p[2])); });
+  props.forEach(function (p, i) { if (i === props.length - 1) { p.status = 'executed'; p.payload.execucao = { em: ago(60), por: 'demo', resultado: { ok: true, nota: 'registrado' } }; } else if (i === props.length - 2) { p.status = 'rejected'; p.decisionNote = 'Produto já foi corrigido na loja.'; } else if (i === props.length - 3) p.status = 'approved'; });
+  var objetivos = [{ id: 'ob_demo1', texto: 'Girar o estoque parado da Tambaú em 30 dias sem baixar a margem de 35% (demo)', kpis: [{ nome: 'giro', meta: '+20%', filtro: 'LOJA05' }, { nome: 'margem_bruta', meta: '>= 35%' }], regiao: ['estoque.*', 'preco.*', 'mkt.*'], restricoes: ['nada ao cliente sem aprovação', 'desconto > 15% só com pricing', 'nunca inventar dado'], orcamento: { rs: 40, ativacoesIA: 400 }, gastoRS: 12.4, ativacoes: 96, loja: 'LOJA05', prazo: new Date(Date.now() + 19 * 864e5).toISOString(), status: 'ativo', criadoPor: 'demo', criadoEm: ago(60 * 24 * 11) }];
+  function ultimas() { var a = []; Object.keys(traces).forEach(function (k) { a = a.concat(traces[k].ativacoes); }); return a.sort(function (x, y) { return x.criadoEm < y.criadoEm ? 1 : -1; }).slice(0, 40); }
+  function bad(m, st) { return Object.assign(new Error(m), { status: st || 400 }); }
+  function wait(v, ms) { return new Promise(function (ok) { setTimeout(function () { ok(JSON.parse(JSON.stringify(v))); }, ms || 220); }); }
+  var timer = 0, q = [];
+  var M = {
+    api: function (m, path, b) {
+      var u = path.split('?'), p = u[0], qs = new URLSearchParams(u[1] || ''), x;
+      try {
+        if (m === 'GET' && p === '/painel') return wait({ ativa: true, tetoDiaRS: 5, gastoHojeRS: gasto, pendentes: props.filter(function (x) { return x.status === 'pending'; }).length, errosRegistro: [], neuronios: neus, objetivos: objetivos.filter(function (o) { return o.status === 'ativo' || o.status === 'pausado'; }), ultimas: ultimas(), poda: poda, acoes: [{ nome: 'rna.registrar', descricao: 'Só registra a decisão (correção feita por pessoa).' }] });
+        if (m === 'GET' && p === '/propostas') { var st = qs.get('status') || 'pending'; return wait({ propostas: props.filter(function (x) { return st === 'todas' || x.status === st; }) }); }
+        if (m === 'POST' && (x = p.match(/^\/propostas\/([^/]+)\/decisao$/))) {
+          var pr = props.filter(function (y) { return y.id === x[1]; })[0]; if (!pr) throw bad('Proposta da rede não encontrada', 404); if (pr.status !== 'pending') throw bad('Proposta já decidida (' + pr.status + ')', 409);
+          pr.status = b.decisao; pr.decisionNote = b.nota || null;
+          var dl = { approved: 0.05, rejected: -0.08, correction_requested: 0.01 }[b.decisao], c = pr.payload.rna.caminho, aj = [];
+          for (var i = 0; i < c.length - 1; i++) { var de = Number((0.4 + rnd() * 0.3).toFixed(2)); aj.push({ origem: c[i], destino: c[i + 1], de: de, para: Number((de + dl).toFixed(2)) }); }
+          var ne = neus.filter(function (n) { return n.id === pr.payload.rna.neuronio; })[0];
+          if (ne && b.decisao !== 'correction_requested') { var l0 = ne.limiar, l1 = Number(Math.max(0, Math.min(0.95, l0 + (b.decisao === 'rejected' ? 0.03 : -0.01))).toFixed(2)); if (l1 !== l0) { aj.push({ id: ne.id, de: l0, para: l1 }); ne.limiar = l1; } if (b.decisao === 'approved') ne.acertos++; else ne.erros++; }
+          return wait({ proposta: pr, aprendizagem: { ajustes: aj } }, 500);
+        }
+        if (m === 'POST' && (x = p.match(/^\/propostas\/([^/]+)\/executar$/))) {
+          var pe = props.filter(function (y) { return y.id === x[1]; })[0]; if (!pe) throw bad('Proposta não encontrada', 404); if (pe.status !== 'approved') throw bad('Só executa proposta APROVADA (status atual: ' + pe.status + ')', 409);
+          pe.status = 'executed'; pe.payload.execucao = { em: new Date().toISOString(), por: 'demo', resultado: { ok: true, nota: 'registrado' } };
+          return wait({ ok: true, acao: 'rna.registrar', resultado: { ok: true, nota: 'registrado' } }, 600);
+        }
+        if (m === 'PATCH' && (x = p.match(/^\/neuronios\/(.+)$/))) {
+          var n = neus.filter(function (y) { return y.id === decodeURIComponent(x[1]); })[0]; if (!n) throw bad('Mini agente não encontrado', 404);
+          if (typeof b.ativo === 'boolean') n.ativo = b.ativo; if (b.limiar != null) { if (!(b.limiar >= 0 && b.limiar <= 0.95)) throw bad('limiar entre 0 e 0.95'); n.limiar = b.limiar; }
+          return wait({ neuronio: n });
+        }
+        if (m === 'GET' && p === '/objetivos') return wait({ objetivos: objetivos });
+        if (m === 'POST' && p === '/objetivos/compilar') {
+          if (String(b.texto || '').trim().length < 8) throw bad('Descreva o objetivo.');
+          return wait({ rascunho: { kpis: [{ nome: 'giro', meta: '+20%', filtro: 'marca citada no texto' }, { nome: 'margem_bruta', meta: '>= 35%' }], regiao: ['estoque.*', 'preco.*', 'mkt.*', 'crm.*'], restricoes: ['nada ao cliente sem aprovação', 'desconto > 15% só com pricing', 'nunca inventar dado'], loja: /tamba/i.test(b.texto) ? 'LOJA05' : null, prazoDias: 30, orcamentoRS: 30, duvidas: ['Qual a base de giro atual? (demo)'], custoRS: 0.0412 } }, 1400);
+        }
+        if (m === 'POST' && p === '/objetivos') { var o = { id: 'ob_' + Date.now().toString(36), texto: b.texto, kpis: b.kpis, regiao: b.regiao, restricoes: b.restricoes, orcamento: { rs: Math.min(b.orcamentoRS || 30, 200), ativacoesIA: 400 }, gastoRS: 0, ativacoes: 0, loja: b.loja, prazo: new Date(Date.now() + (b.prazoDias || 30) * 864e5).toISOString(), status: 'ativo', criadoPor: 'demo', criadoEm: new Date().toISOString() }; objetivos.unshift(o); return wait({ objetivo: o }, 400); }
+        if (m === 'PATCH' && (x = p.match(/^\/objetivos\/([^/]+)$/))) { var ob = objetivos.filter(function (y) { return y.id === x[1]; })[0]; if (!ob) throw bad('não encontrado', 404); ob.status = b.status; return wait({ objetivo: ob }); }
+        if (m === 'POST' && p === '/sinais') { var w = walk('dono.pergunta', 's.dono', 0); setTimeout(function () { play(w.evs); }, 200); return wait({ traceId: w.tr, sinalId: w.sinais[0].id }); }
+        if (m === 'GET' && p === '/traces') return wait({ traces: Object.keys(traces).map(function (k) { var t = traces[k], r = t.sinais[0]; return { traceId: k, tipo: r.tipo, origem: r.origem, loja: r.loja, em: r.criadoEm, sinais: t.sinais.length, ativacoes: t.ativacoes.length, custoRS: t.ativacoes.reduce(function (s, a) { return s + a.custoRS; }, 0) }; }).sort(function (a, b2) { return a.em < b2.em ? 1 : -1; }) });
+        if (m === 'GET' && (x = p.match(/^\/traces\/(.+)$/))) { var t = traces[decodeURIComponent(x[1])]; if (!t) throw bad('Rastro não encontrado', 404); return wait(t); }
+        throw bad('rota demo desconhecida: ' + m + ' ' + p, 404);
+      } catch (e) { return new Promise(function (_, no) { setTimeout(function () { no(e); }, 150); }); }
+    },
+    liveStart: function () {
+      if (timer) return;
+      var tipos = ['nfe.importada', 'venda.registrada', 'bipe.registrado', 'nuvem.webhook', 'relogio.hora', 'relogio.diario', 'whatsapp.mensagem'];
+      timer = setInterval(function () {
+        if (q.length) return;
+        var tp = tipos[Math.floor(Math.random() * tipos.length)];
+        var w = walk(tp, SENSORES[tp], 0, false);
+        gasto += w.ativ.reduce(function (s, a) { return s + a.custoRS; }, 0);
+        play(w.evs);
+      }, 3200);
+    },
+    liveStop: function () { clearInterval(timer); timer = 0; q = []; }
+  };
+  var playing = false;
+  function play(evs) { q = q.concat(evs); if (playing) return; playing = true; (function step() { var ev = q.shift(); if (!ev) { playing = false; return; } ev.em = Date.now(); onLive(ev); setTimeout(step, 260 + Math.random() * 260); })(); }
+  return M;
+})();
+
+/* ===================== início ===================== */
+function boot() {
+  if (!DEMO && !token()) { needLogin('sem'); return; }
+  S.auth = 'ok'; $('#gate').hidden = true;
+  loadPainel().then(function () { if (S.auth === 'ok') Live.start(); });
+  route();
+}
+Net.init();
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { Net.dirty = true; Net.resize(); });
+boot();
+</script>
+</body>
+</html>

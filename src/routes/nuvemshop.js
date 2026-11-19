@@ -15,6 +15,19 @@ const adminRouter = express.Router();
 adminRouter.use(authMiddleware);
 adminRouter.use(adminMiddleware);
 
+// Subida automática (de hora em hora). Rodar agora: POST /auto-upload/run {limit}
+adminRouter.get('/auto-upload/status', (_req, res) => {
+  res.json(require('../services/nuvemshopAutoUpload').getNuvemshopAutoUploadState());
+});
+adminRouter.post('/auto-upload/run', async (req, res) => {
+  try {
+    const r = await require('../services/nuvemshopAutoUpload').runNuvemshopAutoUpload({ limit: req.body?.limit });
+    res.json(r);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 adminRouter.get('/stock-status', (_req, res) => {
   res.json(require('../services/nuvemshopStockCron').getNuvemshopCronState());
 });
@@ -211,6 +224,7 @@ router.post('/webhooks/nuvemshop', express.json({ limit: '5mb' }), async (req, r
 
     // Processamento simplificado em background (fire-and-forget)
     setImmediate(() => processWebhook(stored.id).catch((e) => console.error('[webhook process] erro:', e)));
+    require('../ai/rede/ganchos').nuvemWebhook(event, resourceId);
   } catch (err) {
     console.error('[webhook] erro:', err);
     res.status(200).json({ ok: false, error: err.message });
