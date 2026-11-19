@@ -190,6 +190,7 @@ async function seriesChampions(slug) {
       if (champ) {
         const ids = [champ.championId, champ.runnerUpId].filter(Boolean);
         const es = await prisma.tournamentEntry.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, logoUrl: true } });
+        await require('./clubIdentity').brand(es); // Liga F2: nome/escudo do clube
         const by = Object.fromEntries(es.map((e) => [e.id, e]));
         champion = by[champ.championId] || null;
         runnerUp = champ.runnerUpId ? by[champ.runnerUpId] || null : null;

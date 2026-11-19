@@ -87,6 +87,11 @@ const limits = {
     message: 'Muitos códigos pedidos para este WhatsApp. Tente de novo em 1 hora.',
   }),
   signupIp: make({ max: 30, keyGenerator: (req) => 'ip:' + clientIp(req), message: 'Muitas tentativas de cadastro deste aparelho. Tente de novo em 1 hora.' }),
+  // Liga F2 — convite de elenco e junção de perfis duplicados
+  rosterInvite: make({ max: 120, message: 'Muitos convites gerados em pouco tempo. Tente de novo em 1 hora.' }),
+  rosterClaim: make({ max: 20, message: 'Muitas tentativas de entrar no elenco. Tente de novo em 1 hora.' }),
+  mergeStart: make({ max: 5, message: 'Muitos pedidos de junção de perfil. Tente de novo em 1 hora.' }),
+  mergeConfirm: make({ max: 10, message: 'Muitas tentativas de confirmar a junção. Tente de novo em 1 hora.' }),
 };
 
 module.exports = { limits, make, onlyWhen, userOrIp, ipKey, phoneFromBody };

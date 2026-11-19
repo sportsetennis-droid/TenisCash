@@ -3072,6 +3072,11 @@ model Club {
   inviteCode     String?  @unique // convite por link/código (/clube/:slug?convite=CODE)
 
   memberships ClubMembership[]
+  // Liga Aberta F2: inscrições de time ligadas a este clube (nome/escudo/cores vêm daqui)
+  entries     TournamentEntry[]
+  // Liga Aberta F2: torneio onde o clube NASCEU (criado pela inscrição/migração). Só nesse
+  // caso a coordenação do torneio pode editar o clube; clube permanente (nulo) = só o dono.
+  originTournamentId String?
 
   @@index([city])
   @@index([sportScope])
@@ -3916,6 +3921,9 @@ model TournamentEntry {
   status    String   @default("CONFIRMED") // PENDING | CONFIRMED | WITHDRAWN
   entryPaid Boolean  @default(false) // pagou inscrição em TenisCash (fase 2)
   entryTxId String? // id da Transaction do débito da inscrição (idempotência + estorno)
+  // Liga Aberta F2: clube permanente do time (nome/escudo/cores). Nulo = usa os campos da inscrição.
+  clubId    String?
+  club      Club?    @relation(fields: [clubId], references: [id], onDelete: SetNull)
   createdAt DateTime @default(now())
 
   members     EntryMember[]
@@ -3926,6 +3934,7 @@ model TournamentEntry {
 
   @@index([categoryId])
   @@index([tournamentId])
+  @@index([clubId])
 }
 
 model EntryMember {
@@ -4159,10 +4168,48 @@ model RosterPlayer {
   isCaptain    Boolean  @default(false)
   role         String   @default("PLAYER") // PLAYER | COACH (técnico) | ASSISTANT (auxiliar)
   started      Boolean  @default(false) // titular (início) x banco
-  userId       String? // futuro: conta do atleta
+  userId       String? // conta do atleta (reivindicada por convite — Liga F2 — ou ligada pela coordenação)
   createdAt    DateTime @default(now())
 
   @@index([entryId])
+  @@index([userId])
+}
+
+// Liga Aberta F2 — convite para o jogador REIVINDICAR a vaga no elenco (RosterPlayer).
+// Token aleatório (no banco só o hash), validade e uso único. Quem gera: coordenação,
+// admin ou treinador do time. O sistema não envia nada: devolve link + texto de WhatsApp.
+model RosterInvite {
+  id              String    @id @default(cuid())
+  tokenHash       String    @unique
+  rosterPlayerId  String
+  entryId         String
+  tournamentId    String
+  createdByUserId String
+  expiresAt       DateTime
+  usedAt          DateTime?
+  usedByUserId    String?
+  revokedAt       DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([rosterPlayerId])
+  @@index([tournamentId])
+}
+
+// Liga Aberta F2 — fusão de perfis duplicados do MESMO atleta (só com confirmação dele).
+// status: PENDING (código enviado ao telefone do outro perfil) | DONE | CANCELED
+model ProfileMergeRequest {
+  id          String    @id @default(cuid())
+  userId      String // perfil que FICA (logado)
+  otherUserId String // perfil que é desativado
+  method      String    @default("CODE") // CODE (código no telefone do outro perfil) | PASSWORD (login nos dois)
+  status      String    @default("PENDING")
+  expiresAt   DateTime
+  report      Json?
+  createdAt   DateTime  @default(now())
+  doneAt      DateTime?
+
+  @@index([userId, createdAt])
+  @@index([otherUserId])
 }
 
 // MatchEvent: cada evento da súmula. GOAL/ASSIST/YELLOW/RED referenciam

@@ -473,7 +473,7 @@ function tplAtleta(fmt, d) {
   const cell = (v, l) => div({ flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: isOg ? 190 : px(290, fmt), height: isOg ? 130 : px(190, fmt), backgroundColor: PANEL, borderRadius: px(22, fmt), borderBottom: `${px(8, fmt)}px solid ${ORANGE}` },
     text({ ...H, fontSize: isOg ? 64 : px(90, fmt), color: WHITE, lineHeight: 1 }, v),
     text({ ...B, fontSize: isOg ? 24 : px(30, fmt), color: MUTED, letterSpacing: 1 }, up(l)));
-  const cells = [cell(a.matches, 'Jogos'), cell(a.wins, 'Vitórias'), cell(a.goals, 'Gols'), cell(a.winRate + '%', 'Aproveit.'), cell(a.tournaments, 'Torneios'), cell(a.trainings, 'Treinos')];
+  const cells = [cell(a.matches, 'Jogos'), cell(a.wins, 'Vitórias'), cell(a.goals, 'Gols'), cell(a.assists || 0, 'Assist.'), cell(a.titles || 0, 'Títulos'), cell(a.tournaments, 'Torneios')];
   const idBlock = div({ flexDirection: 'column', alignItems: isOg ? 'flex-start' : 'center' },
     text({ ...H, fontSize: isOg ? 74 : px(100, fmt), color: WHITE, lineHeight: 1, textAlign: 'center' }, up(cut(a.name, 26))),
     a.username ? text({ ...B, fontSize: isOg ? 38 : px(44, fmt), color: ORANGE, marginTop: px(8, fmt) }, '@' + a.username) : null,
@@ -531,6 +531,8 @@ async function loadSponsors(tournamentId) {
 
 async function entryView(e) {
   if (!e) return null;
+  // Liga F2: nome e escudo do CLUBE quando o time tem clube (fallback: campos da inscrição)
+  if (e.id && e.entryName === undefined) await require('./clubIdentity').brand(e);
   return { id: e.id, name: e.name, logo: e.logoUrl ? await loadImage(e.logoUrl, 300) : '' };
 }
 
@@ -637,6 +639,7 @@ async function buildData(t, tipo, q) {
       if (!byG.has(g)) byG.set(g, []);
       byG.get(g).push(s);
     }
+    await require('./clubIdentity').brandNested(standings, ['entry']); // Liga F2: nome do clube
     let groups = [...byG.entries()].map(([name, rows]) => ({ name, rows }));
     if (q.grupo) groups = groups.filter((g) => g.name.toLowerCase() === String(q.grupo).toLowerCase());
     if (!groups.length) throw new ArtError(404, 'grupo não encontrado');
@@ -680,14 +683,11 @@ async function buildData(t, tipo, q) {
     if (!handle) throw new ArtError(400, 'informe handle');
     const userId = await engine.resolveUserId(String(handle));
     if (!userId) throw new ArtError(404, 'atleta não encontrado');
-    const card = await engine.buildAthleteCard(userId);
+    // Liga F2: números do HISTÓRICO único (todas as ligas), só torneios PÚBLICOS —
+    // a arte é imagem pública (og:image), nunca mostra torneio privado.
+    const card = await engine.buildAthleteCard(userId, { viewer: null });
     if (!card) throw new ArtError(404, 'atleta não encontrado');
-    // gols/assistências da súmula (elenco ligado à conta do atleta)
-    let goals = 0;
-    try {
-      const rp = await prisma.rosterPlayer.findMany({ where: { userId }, select: { id: true } });
-      if (rp.length) goals = await prisma.matchEvent.count({ where: { playerId: { in: rp.map((p) => p.id) }, type: 'GOAL' } });
-    } catch (_) { /* sem súmula */ }
+    const goals = card.stats.goals || 0;
     const r0 = card.ratings[0];
     return {
       ...base,
@@ -696,6 +696,7 @@ async function buildData(t, tipo, q) {
         photo: card.user.avatarUrl ? await loadImage(card.user.avatarUrl, 600, true) : '',
         matches: card.stats.matchesPlayed, wins: card.stats.wins, winRate: card.stats.winRate,
         tournaments: card.stats.tournaments, trainings: card.stats.trainings, goals,
+        assists: card.stats.assists || 0, titles: card.stats.titles || 0, draws: card.stats.draws || 0,
         rating: r0 ? r0.rating.toFixed(1) : null, ratingSport: r0 ? SPORT_LABEL[r0.sport] || r0.sport : null,
       },
       url: card.user.username ? `${publicDomain()}/atleta/${card.user.username}` : base.url,
@@ -784,4 +785,4 @@ async function buildArt(idOrSlug, tipo, query = {}, opts = {}) {
   }
 }
 
-module.exports = { buildArt, ArtError, FORMATS, TYPES, loadImage, _renderPng: renderPng };
+module.exports = { buildArt, ArtError, FORMATS, TYPES, loadImage, _renderPng: renderPng, _buildData: buildData };

@@ -481,6 +481,8 @@ async function confirmRegistration(regId, { reason } = {}) {
   if (!res.ok || res.already) return res;
   const reg = res.reg;
   await audit(prisma, { tournamentId: reg.tournamentId, registrationId: reg.id, action: 'CONFIRMED', data: { reason: reason || null, paidCents: reg.paidCents, tcCents: reg.tcCents } });
+  // Liga F2: time inscrito online ganha o CLUBE (depois do pagamento; nunca derruba a confirmação)
+  if (reg.kind === 'TEAM' && reg.entryId) await require('./clubIdentity').attachClubToTeamEntry(reg.entryId, { ownerUserId: reg.userId || null });
   // admin do time → papel no torneio (clube único: vale pra todas as categorias)
   if (reg.kind === 'TEAM' && reg.userId && reg.entryId) {
     await roles.assignRole(reg.tournamentId, { userId: reg.userId, role: 'TEAM_ADMIN', entryId: reg.entryId }).catch(() => {});

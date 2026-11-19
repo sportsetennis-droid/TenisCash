@@ -26,6 +26,12 @@ async function listTeams(tournamentId) {
     seen[e.name] = { entryId: e.id, name: e.name, logoUrl: e.logoUrl || null };
     out.push(seen[e.name]);
   }
+  // Liga F2: escudo/cores do clube (name segue o nome da inscrição = chave do vínculo)
+  const clubs = await require('./clubIdentity').clubsForEntryIds(out.map((o) => o.entryId));
+  out.forEach((o) => {
+    const c = clubs.get(String(o.entryId));
+    if (c) Object.assign(o, { displayName: c.name, logoUrl: c.crestUrl || o.logoUrl, clubId: c.id, clubSlug: c.slug, primaryColor: c.primaryColor, secondaryColor: c.secondaryColor });
+  });
   return out;
 }
 

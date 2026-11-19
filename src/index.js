@@ -1670,7 +1670,10 @@ app.get('/t/:slug', async (req, res) => {
   function hue(s){var h=0;s=(s==null?'':''+s);for(var i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))>>>0;return h%360;}
   function crest(entry){
     if(entry.logoUrl) return '<img class="tb big logo" src="'+esc(entry.logoUrl)+'" alt="">';
-    return '<span class="tb big" style="--h:'+hue(entry.name)+'">'+ini(entry.name)+'</span>';
+    // Liga F2: sem escudo, o selo usa as CORES do clube (quando o time tem clube)
+    var pc=/^#[0-9A-Fa-f]{6}$/.test(entry.primaryColor||'')?entry.primaryColor:'';
+    var sc=/^#[0-9A-Fa-f]{6}$/.test(entry.secondaryColor||'')?entry.secondaryColor:'#fff';
+    return '<span class="tb big" style="'+(pc?'background:'+pc+';color:'+sc:'--h:'+hue(entry.name))+'">'+ini(entry.name)+'</span>';
   }
   function sideEl(entry,label,win){
     if(!entry){var t=label||'A definir';return '<div class="side"><span class="tb big tbd">?</span><span class="sn tbd">'+esc(t)+'</span></div>';}
@@ -2015,7 +2018,18 @@ app.get('/atleta/:username', async (req, res) => {
         .status(404)
         .send('<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h1>Atleta não encontrado</h1></body></html>');
     }
-    const card = await engine.buildAthleteCard(userId);
+    // Liga F2: perfil antigo juntado a outro → manda para o perfil que ficou
+    const { prisma } = require('./middleware');
+    const me = await prisma.user.findUnique({ where: { id: userId }, select: { active: true } });
+    if (me && me.active === false) {
+      const merged = await prisma.profileMergeRequest.findFirst({ where: { otherUserId: userId, status: 'DONE' }, orderBy: { doneAt: 'desc' }, select: { userId: true } }).catch(() => null);
+      if (merged) {
+        const keep = await prisma.user.findUnique({ where: { id: merged.userId }, select: { id: true, username: true } });
+        if (keep) return res.redirect(302, '/atleta/' + encodeURIComponent(keep.username || keep.id));
+      }
+    }
+    // Página pública: só torneios PÚBLICOS (o próprio atleta logado vê os privados pelo JS abaixo)
+    const card = await engine.buildAthleteCard(userId, { viewer: null });
     if (!card) return res.status(404).send('Atleta não encontrado');
 
     const u = card.user;
@@ -2058,10 +2072,11 @@ app.get('/atleta/:username', async (req, res) => {
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <title>${apexEsc(u.name)} — Card do Atleta</title>
 <meta property="og:title" content="${apexEsc(u.name)} — Card do Atleta">
-<meta property="og:description" content="${apexEsc('Rating ' + overall + ' · ' + s.matchesPlayed + ' jogos · ' + s.wins + ' vitórias · ' + s.trainings + ' treinos · Sports & Tennis')}">
+<meta property="og:description" content="${apexEsc(s.matchesPlayed + ' jogos · ' + s.wins + ' vitórias · ' + (s.goals || 0) + ' gols · ' + (s.titles || 0) + ' títulos · ' + s.tournaments + ' campeonatos · Sports & Tennis')}">
 <meta property="og:type" content="profile">
 <meta property="og:site_name" content="Club Sports & Tennis">
 <meta property="og:url" content="${apexEsc(athOrigin + '/atleta/' + encodeURIComponent(req.params.username))}">
@@ -2074,8 +2089,22 @@ app.get('/atleta/:username', async (req, res) => {
 <meta name="twitter:image" content="${apexEsc(athOgImg)}">
 <style>
   *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
-  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0b0b0d;color:#fff;line-height:1.5;min-height:100vh;padding:18px 14px env(safe-area-inset-bottom)}
-  .wrap{max-width:440px;margin:0 auto}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0b0b0d;color:#fff;line-height:1.5;min-height:100vh;padding:calc(18px + env(safe-area-inset-top)) 14px calc(18px + env(safe-area-inset-bottom))}
+  .wrap{max-width:480px;margin:0 auto}
+  .hs{margin-top:18px;position:relative}
+  .hs h2{font-size:10px;font-weight:800;letter-spacing:1.2px;color:#E5571E;text-transform:uppercase;margin-bottom:8px}
+  .hrow{display:flex;justify-content:space-between;gap:10px;align-items:center;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:13px;padding:10px 12px;margin-bottom:8px;min-height:44px}
+  .hrow b{font-size:13px}
+  .hrow span{font-size:11px;color:#b9b9c0}
+  .hrow .n{font-size:12px;color:#fff;font-weight:700;text-align:right;white-space:nowrap}
+  a.hrow{color:#fff;text-decoration:none}
+  .htabs{display:flex;gap:8px;overflow-x:auto;margin-bottom:8px;scrollbar-width:none}
+  .htabs::-webkit-scrollbar{display:none}
+  .htab{flex-shrink:0;min-height:44px;padding:0 16px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;font-weight:800;font-size:13px}
+  .htab.on{background:#E5571E;border-color:#E5571E}
+  .tt{display:flex;align-items:center;gap:10px}
+  .tt i{font-style:normal;font-size:18px}
+  .priv{font-size:11px;color:#ffd479;margin-top:6px}
   .card{position:relative;background:linear-gradient(155deg,#2a2118 0%,#1a1a1f 45%,#0f0f12 100%);border:1.5px solid #E5571E;border-radius:22px;padding:22px;box-shadow:0 18px 50px rgba(229,87,30,.22),inset 0 1px 0 rgba(255,255,255,.06);overflow:hidden}
   .card:before{content:"";position:absolute;top:-60px;right:-60px;width:180px;height:180px;background:radial-gradient(circle,rgba(229,87,30,.35),transparent 70%);}
   .top{display:flex;gap:16px;align-items:center;position:relative}
@@ -2110,7 +2139,7 @@ app.get('/atleta/:username', async (req, res) => {
   .bdg{display:flex;flex-wrap:wrap;gap:6px;margin-top:16px;position:relative}
   .bdg span{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:5px 9px;font-size:11px;font-weight:700;color:#ffd479}
   .actions{display:flex;gap:10px;margin-top:18px}
-  .btn{flex:1;border:none;border-radius:13px;padding:14px;font-size:14px;font-weight:800;cursor:pointer;-webkit-tap-highlight-color:transparent}
+  .btn{flex:1;border:none;border-radius:13px;padding:14px;min-height:44px;font-size:14px;font-weight:800;cursor:pointer;-webkit-tap-highlight-color:transparent}
   .btn-p{background:#E5571E;color:#fff}
   .btn-s{background:rgba(255,255,255,.1);color:#fff}
   .foot{text-align:center;color:#5a5a62;font-size:11px;margin-top:18px}
@@ -2133,13 +2162,15 @@ app.get('/atleta/:username', async (req, res) => {
         ${place ? '<div class="loc">📍 ' + apexEsc(place) + '</div>' : ''}
       </div>
       <div class="grid">
-        ${statCell(s.trainings, 'Treinos')}
         ${statCell(s.matchesPlayed, 'Jogos')}
         ${statCell(s.wins, 'Vitórias')}
-        ${statCell(s.winRate + '%', 'Aproveit.')}
+        ${statCell(s.goals || 0, 'Gols')}
+        ${statCell(s.assists || 0, 'Assist.')}
+        ${statCell(s.titles || 0, 'Títulos')}
         ${statCell(s.tournaments, 'Torneios')}
-        ${statCell(s.xp, 'XP')}
       </div>
+      <div id="hist"></div>
+      <noscript><div class="hs"><h2>Histórico</h2><div class="hrow"><b>${s.matchesPlayed} jogos · ${s.wins}V ${s.draws || 0}E ${s.losses}D</b></div></div></noscript>
       ${levelRows ? '<div class="lvs"><div class="lvs-h">Nível por esporte (0 a 7)</div>' + levelRows + '</div>' : ''}
       ${ratingChips && !levelRows ? '<div class="rts">' + ratingChips + '</div>' : ''}
       ${card.badges.length ? '<div class="bdg">' + card.badges.map((b) => '<span>🏅 ' + apexEsc(b.key) + '</span>').join('') + '</div>' : ''}
@@ -2156,6 +2187,34 @@ app.get('/atleta/:username', async (req, res) => {
 (function(){
   var NAME=${JSON.stringify(u.name).replace(/</g, '\\u003c')};
   var HANDLE=${JSON.stringify(u.username || userId).replace(/</g, '\\u003c')};
+  // Liga F2 — histórico entre ligas (público). Logado como o próprio atleta/membro, o JS
+  // busca de novo com o login e mostra também os campeonatos privados dele.
+  var HIST=${JSON.stringify(card.history || {}).replace(/</g, '\\u003c')};
+  var SPORT=${JSON.stringify(APEX_SPORT_LABEL).replace(/</g, '\\u003c')};
+  var HVIEW='sport';
+  function e(x){x=(x==null?'':''+x);return x.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+  function line(r){var t=r.games+' jogos · '+r.wins+'V '+r.draws+'E '+r.losses+'D';var g=[];if(r.goals)g.push(r.goals+' gols');if(r.assists)g.push(r.assists+' assist.');if(r.yellow||r.red)g.push((r.yellow||0)+'🟨 '+(r.red||0)+'🟥');if(r.titles)g.push(r.titles+' 🏆');return {t:t,g:g.join(' · ')};}
+  function renderHist(h){
+    var el=document.getElementById('hist');if(!el||!h||!h.totals)return;
+    var out='';
+    if(!h.tournaments||!h.tournaments.length){el.innerHTML='<div class="hs"><h2>Histórico</h2><div class="hrow"><span>Ainda sem jogos encerrados em campeonatos públicos.</span></div></div>';return;}
+    out+='<div class="hs"><h2>Histórico</h2><div class="htabs" role="tablist">'+
+      '<button class="htab'+(HVIEW==='sport'?' on':'')+'" data-v="sport">Por esporte</button>'+
+      '<button class="htab'+(HVIEW==='season'?' on':'')+'" data-v="season">Por temporada</button>'+
+      '<button class="htab'+(HVIEW==='camp'?' on':'')+'" data-v="camp">Campeonatos</button></div>';
+    if(HVIEW==='sport'){(h.bySport||[]).forEach(function(r){var l=line(r);out+='<div class="hrow"><div><b>'+e(SPORT[r.sport]||r.sport)+'</b><br><span>'+e(l.g||'—')+'</span></div><div class="n">'+e(l.t)+'</div></div>';});}
+    else if(HVIEW==='season'){(h.bySeason||[]).forEach(function(r){var l=line(r);out+='<div class="hrow"><div><b>Temporada '+e(r.season)+'</b><br><span>'+e(l.g||'—')+'</span></div><div class="n">'+e(l.t)+'</div></div>';});}
+    else{(h.tournaments||[]).forEach(function(t){var l=line(t);var team=(t.teams||[]).map(function(x){return x.name;}).join(', ');var inner='<div><b>'+e(t.name)+'</b><br><span>'+e([SPORT[t.sport]||t.sport,t.season,team].filter(Boolean).join(' · '))+'</span>'+(t.visibility&&t.visibility!=='public'?'<div class="priv">🔒 visível só para você</div>':'')+'</div><div class="n">'+e(l.t)+(l.g?'<br><span>'+e(l.g)+'</span>':'')+'</div>';out+=t.slug&&t.visibility==='public'?'<a class="hrow" href="/t/'+encodeURIComponent(t.slug)+'">'+inner+'</a>':'<div class="hrow">'+inner+'</div>';});}
+    out+='</div>';
+    if(h.titles&&h.titles.length){out+='<div class="hs"><h2>Títulos</h2>';h.titles.forEach(function(x){out+='<div class="hrow tt"><i>🏆</i><div><b>'+e(x.tournament)+'</b><br><span>'+e([x.category,x.season,x.team].filter(Boolean).join(' · '))+'</span></div></div>';});out+='</div>';}
+    el.innerHTML=out;
+    Array.prototype.forEach.call(el.querySelectorAll('.htab'),function(b){b.addEventListener('click',function(){HVIEW=b.getAttribute('data-v');renderHist(HIST);});});
+  }
+  renderHist(HIST);
+  try{
+    var TK=localStorage.getItem('tc_token');
+    if(TK){fetch('/api/tournaments/athletes/'+encodeURIComponent(HANDLE)+'/history',{headers:{Authorization:'Bearer '+TK},cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(h){if(h&&h.totals&&h.includesNonPublic){HIST=h;renderHist(HIST);}}).catch(function(){});}
+  }catch(_){}
   document.getElementById('artBtn').addEventListener('click',function(){
     if(window.ClubMidia) ClubMidia.openArtSheet({tid:'club',slug:'atleta-'+HANDLE,title:'Arte do atleta',types:[['atleta','Card do atleta',{handle:HANDLE}]],shareTitle:NAME});
   });
@@ -2177,6 +2236,8 @@ app.get('/atleta/:username', async (req, res) => {
   }
 });
 
+// Liga F2 — convite de elenco: o jogador abre o link, entra/cria conta e reivindica a vaga
+app.get('/convite-elenco/:token', (req, res) => { res.set('Cache-Control', 'no-store'); res.set('Referrer-Policy', 'no-referrer'); res.sendFile(path.join(__dirname, '../public/convite-elenco.html'), { cacheControl: false }); });
 app.get('/ao-vivo/:token', (req, res) => { res.set('Cache-Control', 'no-store'); res.sendFile(path.join(__dirname, '../public/ao-vivo.html'), { cacheControl: false }); }); // APEX Beacon (sem conta)
 
 // Live commerce — vitrine ao vivo do cliente. /aovivo/LOJA01 (slug lido no front).

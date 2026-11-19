@@ -29,6 +29,7 @@ const { publicBaseUrl } = require('../config/publicUrl');
 const { limits, onlyWhen } = require('../services/ligaRateLimit');
 const { guardImageField, ImageGuardError } = require('../services/imageGuard');
 const access = require('../services/tournamentAccess');
+const clubIdentity = require('../services/clubIdentity');
 
 const apiRouter = express.Router();
 const publicRouter = express.Router();
@@ -256,7 +257,10 @@ publicRouter.use((req, res, next) => {
 function entryOut(e, origin) {
   if (!e) return null;
   const logo = e.logoUrl ? (e.logoUrl.startsWith('data:') ? `${origin}/api/public/entries/${e.id}/logo` : e.logoUrl) : null;
-  return { id: e.id, name: e.name, logoUrl: logo, groupName: e.groupName || undefined };
+  const out = { id: e.id, name: e.name, logoUrl: logo, groupName: e.groupName || undefined };
+  // Liga F2: cores e página do clube (só quando o time tem clube)
+  if (e.clubId) Object.assign(out, { clubId: e.clubId, clubSlug: e.clubSlug || null, primaryColor: e.primaryColor || null, secondaryColor: e.secondaryColor || null });
+  return out;
 }
 
 const SNAP_CACHE = new Map(); // tournamentId -> { at, data }
@@ -285,7 +289,14 @@ async function publicSnapshot(t, origin) {
     select: { categoryId: true, groupName: true, rank: true, played: true, won: true, drawn: true, lost: true, scoreFor: true, scoreAgainst: true, points: true, entry: entrySel },
   });
   const entries = await prisma.tournamentEntry.findMany({ where: { tournamentId: t.id, status: 'CONFIRMED' }, select: { id: true, name: true, logoUrl: true, groupName: true, categoryId: true }, orderBy: { name: 'asc' } });
+  // Liga F2: nome/escudo/cores vêm do clube (fallback: campos da inscrição)
+  await clubIdentity.brand([
+    ...matches.flatMap((m) => [m.homeEntry, m.awayEntry]).filter(Boolean),
+    ...standings.map((x) => x.entry).filter(Boolean),
+    ...entries,
+  ]);
 
+  const teamName = new Map(entries.map((e) => [e.id, e.name]));
   const cats = [];
   for (const c of categories) {
     let st = standings.filter((s) => s.categoryId === c.id);
@@ -315,7 +326,7 @@ async function publicSnapshot(t, origin) {
         entry: entryOut(s.entry, origin),
       })),
       provisional,
-      scorers: scorers.map((r) => ({ name: r.name, number: r.number, team: r.team, entryId: r.entryId, goals: r.goals, games: r.games })),
+      scorers: scorers.map((r) => ({ name: r.name, number: r.number, team: teamName.get(r.entryId) || r.team, entryId: r.entryId, goals: r.goals, games: r.games })),
     });
   }
   const data = {
@@ -360,7 +371,8 @@ function sendDataUri(res, uri) {
 }
 publicRouter.get('/entries/:id/logo', async (req, res) => {
   try {
-    const e = await prisma.tournamentEntry.findUnique({ where: { id: req.params.id }, select: { logoUrl: true, tournamentId: true } });
+    const e = await prisma.tournamentEntry.findUnique({ where: { id: req.params.id }, select: { id: true, logoUrl: true, tournamentId: true } });
+    if (e) await clubIdentity.brand(e); // Liga F2: escudo do clube (fallback: o da inscrição)
     if (!e || !e.logoUrl || !(await access.canSeeTournamentId(req, e.tournamentId))) return res.status(404).json({ error: 'sem escudo' });
     if (!e.logoUrl.startsWith('data:')) return res.redirect(302, e.logoUrl);
     sendDataUri(res, e.logoUrl);

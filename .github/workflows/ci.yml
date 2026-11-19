@@ -130,7 +130,7 @@ jobs:
       - run: npx prisma generate
       - name: Bancos descartáveis (um por suíte)
         run: |
-          for d in t_db t_f2 t_f3 t_f4 t_f5 t_f6 t_rem t_f0 t_f1; do
+          for d in t_db t_f2 t_f3 t_f4 t_f5 t_f6 t_rem t_f0 t_f1 t_f2id; do
             psql -c "create database $d" postgres
             DATABASE_URL=postgresql://postgres@localhost:55331/$d npx prisma db push --skip-generate
           done
@@ -142,6 +142,9 @@ jobs:
       - name: Liga Aberta F1 — permissão única (matriz papel × ação), privacidade (público/não listado/privado), auditoria, regerar chave, arquivar/transferir
         env: { DATABASE_URL: postgresql://postgres@localhost:55331/t_f1 }
         run: npm run test:liga-f1
+      - name: Liga Aberta F2 — clube e atleta como identidade (clubId + migração sem o Master Cup, convite de elenco, histórico entre ligas, fusão de perfis)
+        env: { DATABASE_URL: postgresql://postgres@localhost:55331/t_f2id }
+        run: npm run test:liga-f2
       - name: Campeonato no banco — fluxos, HTTP e schema aditivo
         env: { DATABASE_URL: postgresql://postgres@localhost:55331/t_db }
         run: node scripts/test-tournament-db.js

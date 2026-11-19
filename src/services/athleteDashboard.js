@@ -6,6 +6,7 @@
 // =====================================================================
 const { prisma } = require('../middleware');
 const training = require('./trainingSession');
+const clubIdentity = require('./clubIdentity');
 
 const DAY = 24 * 3600000;
 
@@ -32,8 +33,9 @@ async function dashboard(userId) {
   const teams = [];
   for (const [tid, set] of Object.entries(clubsByT)) {
     for (const clubName of set) {
-      const ent = await prisma.tournamentEntry.findFirst({ where: { tournamentId: tid, name: clubName }, select: { id: true, logoUrl: true } }).catch(() => null);
-      teams.push({ tournamentId: tid, tournament: tById[tid] ? tById[tid].name : '', clubName, entryId: ent ? ent.id : null, logoUrl: ent ? ent.logoUrl : null });
+      const ent = await prisma.tournamentEntry.findFirst({ where: { tournamentId: tid, name: clubName }, select: { id: true, name: true, logoUrl: true } }).catch(() => null);
+      if (ent) await clubIdentity.brand(ent); // Liga F2: escudo/nome do clube
+      teams.push({ tournamentId: tid, tournament: tById[tid] ? tById[tid].name : '', clubName, displayName: ent ? ent.name : clubName, clubSlug: ent ? ent.clubSlug || null : null, entryId: ent ? ent.id : null, logoUrl: ent ? ent.logoUrl : null });
     }
   }
 
@@ -55,13 +57,14 @@ async function dashboard(userId) {
         OR: [{ homeEntryId: { in: eids } }, { awayEntryId: { in: eids } }],
       },
       include: {
-        homeEntry: { select: { name: true, logoUrl: true } },
-        awayEntry: { select: { name: true, logoUrl: true } },
+        homeEntry: { select: { id: true, name: true, logoUrl: true } },
+        awayEntry: { select: { id: true, name: true, logoUrl: true } },
         category: { select: { name: true } },
       },
       orderBy: [{ scheduledAt: 'asc' }],
       take: 20,
     });
+    await clubIdentity.brandNested(ms);
     ms.forEach((m) => {
       if (m.status === 'SCHEDULED' && m.scheduledAt && new Date(m.scheduledAt).getTime() < now - 6 * 3600000) return; // passou e não foi fechado
       games.push({
@@ -183,14 +186,15 @@ async function myGames(userId, { scope = 'all', limit = 50 } = {}) {
   const ms = await prisma.tournamentMatch.findMany({
     where: { status: { in: statuses }, OR: [{ homeEntryId: { in: ids } }, { awayEntryId: { in: ids } }] },
     include: {
-      homeEntry: { select: { name: true, logoUrl: true } },
-      awayEntry: { select: { name: true, logoUrl: true } },
+      homeEntry: { select: { id: true, name: true, logoUrl: true } },
+      awayEntry: { select: { id: true, name: true, logoUrl: true } },
       category: { select: { name: true } },
       tournament: { select: { name: true, slug: true } },
     },
     orderBy: [{ scheduledAt: scope === 'upcoming' ? 'asc' : 'desc' }],
     take: lim,
   });
+  await clubIdentity.brandNested(ms);
   const games = ms.map((m) => {
     const myEntryId = ids.includes(m.homeEntryId) ? m.homeEntryId : m.awayEntryId;
     let result = null;
