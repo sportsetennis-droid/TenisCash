@@ -77,12 +77,27 @@ const INTERVIEW_V1 = [
 const QUESTIONS_V1 = JOB.questions.slice();
 JOB.questions = [
   'Por que você quer trabalhar na Sports & Tennis?',
-  'Conte um atendimento ou venda de que você se orgulha: o que o cliente precisava e o que você fez?',
+  'Conte uma vez em que você ajudou alguém a resolver um problema (no trabalho, na escola, no esporte ou em casa). O que você fez?',
   'A partir de quando você pode começar?',
 ];
-const { TEMPLATES } = require('./screening');
-JOB.screening = TEMPLATES.VENDEDOR.screening;
-JOB.cutoff = TEMPLATES.VENDEDOR.cutoff;
+const scrMod = require('./screening');
+const { TEMPLATES } = scrMod;
+JOB.screening = scrMod.normalize(TEMPLATES.VENDEDOR.screening);
+JOB.cutoffPct = TEMPLATES.VENDEDOR.cutoffPct;
+
+// Perguntas por perfil (dono 19/11/2026: "Pode colocar as perguntas certas para cada caso").
+// A vaga no ar troca o questionário único (V1) pelo de perfis só se ainda estiver igual ao V1, sem edição do dono.
+// A pergunta aberta sobre "venda de que se orgulha" vira uma que quem nunca trabalhou também consegue responder.
+const OPEN_RENAME = ["Conte um atendimento ou venda de que você se orgulha: o que o cliente precisava e o que você fez?", "Conte uma vez em que você ajudou alguém a resolver um problema (no trabalho, na escola, no esporte ou em casa). O que você fez?"];
+const sig = (list) => JSON.stringify((list || []).map((q) => [q.id, q.text, (q.options || []).map((o) => o.label)]));
+async function upgradeToProfiles(prisma, jobId) {
+  const [j] = await prisma.$queryRaw`SELECT "screening", "questions" FROM "HrJob" WHERE "id"=${jobId}`;
+  if (!j || sig(j.screening) !== sig(scrMod.normalize(scrMod.T_VENDEDOR_V1))) return false;
+  const qs = (Array.isArray(j.questions) ? j.questions : []).map((q) => (q === OPEN_RENAME[0] ? OPEN_RENAME[1] : q));
+  await prisma.$executeRaw`UPDATE "HrJob" SET "screening"=${JSON.stringify(JOB.screening)}::jsonb, "cutoffPct"=CASE WHEN "cutoff" IS NULL OR "cutoff"=24 THEN ${JOB.cutoffPct}::int ELSE LEAST(100, ROUND("cutoff" * 100.0 / 35))::int END, "cutoff"=NULL,
+    "questions"=${JSON.stringify(qs)}::jsonb, "updatedAt"=NOW() WHERE "id"=${jobId}`;
+  return true;
+}
 
 // Dono 19/11/2026: "Então não fala de escala" (a escala vai mudar de 6x1 para 5x2 pela lei).
 // Troca só o texto antigo exato; pergunta editada pelo dono não é tocada. Resposta já dada acompanha a pergunta.
@@ -108,24 +123,25 @@ async function seed(prisma) {
   const [has] = await prisma.$queryRaw`SELECT "id", "interviewQuestions", "questions", "screening", "screeningSeeded" FROM "HrJob" WHERE "slug"=${SLUG} LIMIT 1`;
   if (has) {
     await renameTexts(prisma, has);
+    await upgradeToProfiles(prisma, has.id);
     if (JSON.stringify(has.interviewQuestions) === JSON.stringify(INTERVIEW_V1)) {
       await prisma.$executeRaw`UPDATE "HrJob" SET "interviewQuestions"=${JSON.stringify(JOB.interviewQuestions)}::jsonb, "updatedAt"=NOW() WHERE "id"=${has.id}`;
     }
     // Entra uma vez só, e só se a vaga ainda não tem questionário. Se o dono apagar depois, não volta.
     if (!has.screeningSeeded && (!Array.isArray(has.screening) || !has.screening.length)) {
       const swapOpen = JSON.stringify(has.questions) === JSON.stringify(QUESTIONS_V1);
-      await prisma.$executeRaw`UPDATE "HrJob" SET "screening"=${JSON.stringify(JOB.screening)}::jsonb, "cutoff"=COALESCE("cutoff", ${JOB.cutoff}::int),
+      await prisma.$executeRaw`UPDATE "HrJob" SET "screening"=${JSON.stringify(JOB.screening)}::jsonb, "cutoffPct"=COALESCE("cutoffPct", ${JOB.cutoffPct}::int),
         "questions"=CASE WHEN ${swapOpen} THEN ${JSON.stringify(JOB.questions)}::jsonb ELSE "questions" END, "screeningSeeded"=true, "updatedAt"=NOW() WHERE "id"=${has.id}`;
     } else if (!has.screeningSeeded) {
       await prisma.$executeRaw`UPDATE "HrJob" SET "screeningSeeded"=true WHERE "id"=${has.id}`;
     }
     return false;
   }
-  await prisma.$executeRaw`INSERT INTO "HrJob" ("id","slug","title","jobTitle","description","openings","status","questions","storeOptions","interviewQuestions","screening","cutoff","screeningSeeded")
+  await prisma.$executeRaw`INSERT INTO "HrJob" ("id","slug","title","jobTitle","description","openings","status","questions","storeOptions","interviewQuestions","screening","cutoffPct","screeningSeeded")
     VALUES (${require('crypto').randomUUID()}, ${SLUG}, ${JOB.title}, 'VENDEDOR', ${JOB.description}, 1, 'ABERTA',
-      ${JSON.stringify(JOB.questions)}::jsonb, ${JSON.stringify(JOB.storeOptions)}::jsonb, ${JSON.stringify(JOB.interviewQuestions)}::jsonb, ${JSON.stringify(JOB.screening)}::jsonb, ${JOB.cutoff}::int, true)
+      ${JSON.stringify(JOB.questions)}::jsonb, ${JSON.stringify(JOB.storeOptions)}::jsonb, ${JSON.stringify(JOB.interviewQuestions)}::jsonb, ${JSON.stringify(JOB.screening)}::jsonb, ${JOB.cutoffPct}::int, true)
     ON CONFLICT ("slug") DO NOTHING`;
   return true;
 }
 
-module.exports = { RENAMES, seed, SLUG, JOB, INTERVIEW_V1, QUESTIONS_V1 };
+module.exports = { RENAMES, OPEN_RENAME, upgradeToProfiles, seed, SLUG, JOB, INTERVIEW_V1, QUESTIONS_V1 };

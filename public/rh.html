@@ -126,14 +126,20 @@ const VIEWS = {
   async candidatos() {
     const [cands, jobs] = await Promise.all([api('/candidates'), api('/jobs')]);
     const jf = new URLSearchParams(location.hash.split('?')[1] || '').get('job') || '';
-    const list = jf ? cands.filter((c) => c.jobId === jf) : cands;
+    const pf = new URLSearchParams(location.hash.split('?')[1] || '').get('perfil') || '';
+    const byJob = jf ? cands.filter((c) => c.jobId === jf) : cands;
+    const perfis = [...new Set(byJob.map((c) => c.profile).filter(Boolean))].sort();
+    const list = pf ? byJob.filter((c) => c.profile === pf) : byJob;
     $m().innerHTML = '<div class="card"><h2>Candidatos<span class="sp"></span><select id="jf" style="max-width:280px;margin:0"><option value="">Todas as vagas</option>' +
-      jobs.map((j) => '<option value="' + j.id + '"' + (j.id === jf ? ' selected' : '') + '>' + esc(j.title) + '</option>').join('') + '</select></h2><div class="kanban">' +
+      jobs.map((j) => '<option value="' + j.id + '"' + (j.id === jf ? ' selected' : '') + '>' + esc(j.title) + '</option>').join('') + '</select>' +
+      (perfis.length ? ' <select id="pf" style="max-width:280px;margin:0 0 0 8px"><option value="">Todos os perfis</option>' + perfis.map((x) => '<option' + (x === pf ? ' selected' : '') + '>' + esc(x) + '</option>').join('') + '</select>' : '') +
+      '</h2><div class="kanban">' +
       META.stages.map((s) => '<div class="col"><h3>' + STAGE_LABEL[s] + ' (' + list.filter((c) => c.stage === s).length + ')</h3>' +
         list.filter((c) => c.stage === s).sort(rankCand).map((c) => '<div class="cc" data-id="' + c.id + '"><b>' + esc(c.name) + '</b><small>' + esc(c.jobTitleText) + '</small><br>' + candBadges(c) + '<small>' + br(c.createdAt) +
           (c.rating ? ' · ' + '★'.repeat(c.rating) : '') + (c.resumeFile ? ' · 📎' : '') + (c.talentPool ? ' · banco de talentos' : '') + '</small></div>').join('') + '</div>').join('') + '</div>' +
-      '<div class="muted" style="margin-top:8px">Em cada etapa, quem tem a maior nota no questionário aparece primeiro. Resposta eliminatória só marca para revisar: ninguém é reprovado sozinho.</div></div>';
-    document.getElementById('jf').onchange = (e) => { location.hash = 'candidatos' + (e.target.value ? '?job=' + e.target.value : ''); VIEWS.candidatos(); };
+      '<div class="muted" style="margin-top:8px">Em cada etapa, quem tem a maior nota no questionário aparece primeiro (em %, porque cada perfil tem a sua nota máxima). Resposta eliminatória só marca para revisar: ninguém é reprovado sozinho.</div></div>';
+    const setHash = () => { const q = new URLSearchParams(); const a = document.getElementById('jf').value, b = (document.getElementById('pf') || {}).value; if (a) q.set('job', a); if (b) q.set('perfil', b); location.hash = 'candidatos' + (q.toString() ? '?' + q : ''); VIEWS.candidatos(); };
+    document.getElementById('jf').onchange = setHash; const pfs = document.getElementById('pf'); if (pfs) pfs.onchange = setHash;
     document.querySelectorAll('.cc').forEach((el) => el.onclick = () => candidate(el.dataset.id));
   },
 
@@ -198,12 +204,15 @@ function rankCand(a, b) {
   if (sa !== sb) return sb - sa;
   return new Date(b.createdAt) - new Date(a.createdAt);
 }
+const PERFIL_CURTO = (p) => (/primeiro emprego/i.test(p) ? '1º emprego' : /nunca em loja/i.test(p) ? 'nunca em loja' : /não de esporte/i.test(p) ? 'loja de outro ramo' : /loja de esporte/i.test(p) ? 'loja de esporte' : p);
+const fmtMax = (by) => { const e = Object.entries(by || {}); return e.length === 1 && e[0][0] === '' ? String(e[0][1]) : e.map(([k, v]) => k + ' ' + v).join(' · '); };
 function scorePill(c) {
   if (!c.scoreMax) return '';
   // corte gravado no dia da candidatura (se o dono trocar o questionário depois, o selo antigo não muda de sentido)
   const cut = c.cutoffAt != null && c.cutoffAt <= c.scoreMax ? c.cutoffAt : null;
   const pass = cut != null ? c.score >= cut : c.score / c.scoreMax >= 0.7;
-  return '<span class="pill ' + (pass ? 'p-ok' : 'p-mute') + '" title="Nota do questionário' + (cut != null ? ' (corte ' + cut + ')' : '') + '">' + c.score + '/' + c.scoreMax + '</span> ';
+  return '<span class="pill ' + (pass ? 'p-ok' : 'p-mute') + '" title="Nota do questionário' + (cut != null ? ' (corte ' + cut + ')' : '') + '">' + c.score + '/' + c.scoreMax + ' · ' + Math.round((c.score / c.scoreMax) * 100) + '%</span> ' +
+    (c.profile ? '<span class="pill p-mute">' + esc(PERFIL_CURTO(c.profile)) + '</span> ' : '');
 }
 function candBadges(c) {
   const e = c.evalSummary || {};
@@ -215,18 +224,18 @@ function candBadges(c) {
 function jobForm(j) {
   const TPL = META.screeningTemplates || {};
   j = j || { status: 'ABERTA', openings: 1, questions: ['Por que você quer trabalhar na Sports & Tennis?', ...((TPL.VENDEDOR || {}).open || []), 'A partir de quando você pode começar?'], salaryText: 'R$ 1.790,00 + comissão', jobTitle: 'VENDEDOR',
-    screeningText: (TPL.VENDEDOR || {}).text || '', cutoff: (TPL.VENDEDOR || {}).cutoff };
+    screeningText: (TPL.VENDEDOR || {}).text || '', cutoffPct: (TPL.VENDEDOR || {}).cutoffPct, screeningMaxBy: (TPL.VENDEDOR || {}).maxBy };
   drawer('<h2>' + (j.id ? 'Editar vaga' : 'Nova vaga') + '</h2>' +
     '<label>Título<input id="jt" value="' + esc(j.title || '') + '" placeholder="Ex.: Vendedor(a) — Sports & Tennis Praia do Bessa"></label>' +
     '<div class="row"><label>Loja<select id="js"><option value="">—</option>' + storeOpts(j.storeId) + '</select></label><label>Cargo<select id="jc">' + ['VENDEDOR', 'LOGISTICA', 'SUPERVISOR'].map((c) => '<option' + (j.jobTitle === c ? ' selected' : '') + '>' + c + '</option>').join('') + '</select></label><label>Vagas<input id="jo" type="number" min="1" value="' + (j.openings || 1) + '"></label></div>' +
-    '<div class="row"><label>Salário (texto)<input id="jsal" value="' + esc(j.salaryText || '') + '"></label><label>Horário<input id="jh" value="' + esc(j.schedule || '') + '" placeholder="Ex.: escala 6x1, 44h"></label></div>' +
+    '<div class="row"><label>Salário (texto)<input id="jsal" value="' + esc(j.salaryText || '') + '"></label><label>Horário<input id="jh" value="' + esc(j.schedule || '') + '" placeholder="Ex.: 44h semanais"></label></div>' +
     '<label>Sobre a vaga<textarea id="jd">' + esc(j.description || '') + '</textarea></label><label>O que procuramos<textarea id="jr">' + esc(j.requirements || '') + '</textarea></label>' +
     '<label>Lojas que o candidato pode escolher (uma por linha; em branco = não pergunta)<textarea id="jso" placeholder="Praia do Bessa (Parahyba Mall)">' + esc((j.storeOptions || []).join('\n')) + '</textarea></label>' +
     '<div class="card" style="background:#fafafa"><b>Questionário com nota</b><div class="muted" style="margin-top:4px">O candidato toca na resposta; a nota sai sozinha e o funil mostra os melhores primeiro. ' +
-      '<b>ELIM:</b> eliminatória (a resposta com "(reprova)" só marca para você revisar). <b>MC:</b> múltipla escolha, cada alternativa termina com "= pontos". Os pontos nunca aparecem para o candidato.</div>' +
-      '<div style="margin-top:8px">' + Object.entries(TPL).map(([k, t]) => '<button class="btn g" type="button" data-tpl="' + k + '" style="margin:4px 6px 0 0">Usar modelo ' + esc(t.label) + ' (' + t.max + ' pts)</button>').join('') + '</div>' +
+      '<b>PERFIL:</b> primeira pergunta, separa o candidato por perfil (cada alternativa termina com a letra, ex.: "[A]"); pergunta com "MC [A,B]:" só aparece para esses perfis, sem colchetes aparece para todos. <b>ELIM:</b> eliminatória (a resposta com "(reprova)" só marca para você revisar). <b>MC:</b> múltipla escolha, cada alternativa termina com "= pontos". Os pontos nunca aparecem para o candidato.</div>' +
+      '<div style="margin-top:8px">' + Object.entries(TPL).map(([k, t]) => '<button class="btn g" type="button" data-tpl="' + k + '" style="margin:4px 6px 0 0">Usar modelo ' + esc(t.label) + '</button>').join('') + '</div>' +
       '<textarea id="jscr" style="min-height:260px;font-family:ui-monospace,Consolas,monospace;font-size:12px" placeholder="ELIM: Você tem disponibilidade para sábados?&#10;- Sim&#10;- Não (reprova)&#10;&#10;MC: Experiência com vendas&#10;- Nenhuma = 0&#10;- 1 ano ou mais = 3">' + esc(j.screeningText || '') + '</textarea>' +
-      '<div class="row"><label>Nota de corte (chamar para entrevista a partir de)<input id="jcut" type="number" min="0" value="' + (j.cutoff == null ? '' : j.cutoff) + '"></label><label>Nota máxima<input id="jmax" disabled value="' + (j.screeningMax || '') + '"></label></div></div>' +
+      '<div class="row"><label>Nota de corte (% da nota máxima; chamar para entrevista a partir de)<input id="jcut" type="number" min="0" max="100" value="' + (j.cutoffPct != null ? j.cutoffPct : (j.cutoff != null && j.screeningMax ? Math.round((j.cutoff / j.screeningMax) * 100) : '')) + '"></label><label>Nota máxima' + (Object.keys(j.screeningMaxBy || {}).length > 1 ? ' por perfil' : '') + '<input id="jmax" disabled value="' + esc(fmtMax(j.screeningMaxBy)) + '"></label></div></div>' +
     '<label>Perguntas abertas da candidatura (uma por linha)<textarea id="jq">' + esc((j.questions || []).join('\n')) + '</textarea></label>' +
     '<label>Perguntas da entrevista por escrito (uma por linha; o candidato responde no celular depois de se candidatar)<textarea id="jiq" style="min-height:220px">' + esc((j.interviewQuestions || []).join('\n')) + '</textarea></label>' +
     '<label>Status<select id="jst">' + ['ABERTA', 'PAUSADA', 'FECHADA'].map((s) => '<option' + (j.status === s ? ' selected' : '') + '>' + s + '</option>').join('') + '</select></label>' +
@@ -235,12 +244,12 @@ function jobForm(j) {
   document.querySelectorAll('[data-tpl]').forEach((b) => b.onclick = () => {
     const t = TPL[b.dataset.tpl]; if (!t) return;
     if (jscr.value.trim() && !confirm('Trocar o questionário atual pelo modelo ' + t.label + '?')) return;
-    jscr.value = t.text; jcut.value = t.cutoff; jmax.value = t.max;
+    jscr.value = t.text; jcut.value = t.cutoffPct; jmax.value = fmtMax(t.maxBy);
     const cur = jq.value.split('\n').map((x) => x.trim()).filter(Boolean);
     jq.value = [...cur, ...t.open.filter((q) => !cur.includes(q))].join('\n');
   });
   document.getElementById('jgo').onclick = async () => {
-    const body = { screeningText: jscr.value, cutoff: jcut.value, title: jt.value, storeId: js.value, jobTitle: jc.value, openings: jo.value, salaryText: jsal.value, schedule: jh.value, description: jd.value, requirements: jr.value, questions: jq.value.split('\n'), storeOptions: jso.value.split('\n'), interviewQuestions: jiq.value.split('\n'), status: jst.value };
+    const body = { screeningText: jscr.value, cutoffPct: jcut.value, title: jt.value, storeId: js.value, jobTitle: jc.value, openings: jo.value, salaryText: jsal.value, schedule: jh.value, description: jd.value, requirements: jr.value, questions: jq.value.split('\n'), storeOptions: jso.value.split('\n'), interviewQuestions: jiq.value.split('\n'), status: jst.value };
     try { await (j.id ? api('/jobs/' + j.id, 'PUT', body) : api('/jobs', 'POST', body)); closeDrawer(); go('vagas'); } catch (e) { jm.className = 'msg bad'; jm.textContent = e.message; }
   };
 }
@@ -300,10 +309,11 @@ async function candidate(id) {
     iv.map(([q, a], i) => '<div style="margin-top:10px"><b>' + (i + 1) + '. ' + esc(q) + '</b><div style="white-space:pre-wrap">' + esc(a) + '</div></div>').join('') +
     (c.interviewDoneAt ? '' : '<div class="muted" style="margin-top:8px">Link para o candidato responder: <a href="' + esc(ivLink) + '" target="_blank">' + esc(ivLink) + '</a></div>') + '</div>' : '';
   const sAns = Object.values(c.screening || {});
-  const scrCard = sAns.length ? '<div class="card"><b>Questionário</b> ' + scorePill(c) + (c.cutoffAt != null ? '<span class="muted">corte ' + c.cutoffAt + '</span>' : '') +
+  const scrCard = sAns.length ? '<div class="card"><b>Questionário</b> ' + scorePill(c) + (c.cutoffAt != null ? '<span class="muted">corte ' + c.cutoffAt + ' pts</span>' : '') +
+    (c.profile ? '<div style="margin-top:6px">Perfil: <b>' + esc(c.profile) + '</b> <span class="muted">(declarado pelo candidato; confira com a experiência e o currículo)</span></div>' : '') +
     (c.eliminated ? '<div class="msg bad" style="margin-top:6px">⚠️ Marcou resposta eliminatória. Confirme com a pessoa antes de reprovar (ninguém é reprovado só pelo questionário).</div>' : '') +
     sAns.map((r) => '<div class="sa"><div><div>' + esc(r.q) + '</div><div class="muted">' + esc(r.a) + '</div></div><div class="pt">' +
-      (r.type === 'MC' ? '<span class="pill ' + (r.points === r.max ? 'p-ok' : r.points ? 'p-warn' : 'p-mute') + '">' + r.points + '/' + r.max + '</span>' : (r.elim ? '<span class="pill p-bad">reprova</span>' : '<span class="pill p-ok">ok</span>')) + '</div></div>').join('') + '</div>' : '';
+      (r.type === 'PERFIL' ? '<span class="pill p-brand">perfil</span>' : r.type === 'MC' ? '<span class="pill ' + (r.points === r.max ? 'p-ok' : r.points ? 'p-warn' : 'p-mute') + '">' + r.points + '/' + r.max + '</span>' : (r.elim ? '<span class="pill p-bad">reprova</span>' : '<span class="pill p-ok">ok</span>')) + '</div></div>').join('') + '</div>' : '';
   const extra = (c.referredBy ? '<div>🤝 Indicado por: <b>' + esc(c.referredBy) + '</b></div>' : '') + (c.talentPool ? '<div>⭐ Quer ficar no banco de talentos</div>' : '');
   drawer('<h2>' + esc(c.name) + '</h2><div class="muted">' + esc(c.jobTitleText) + ' · ' + br(c.createdAt) + ' · <span class="pill p-brand">' + STAGE_LABEL[c.stage] + '</span></div>' +
     '<div class="card"><div>📱 <a href="' + wa + '" target="_blank">' + esc(c.phone) + '</a>' + (c.email ? ' · ✉️ ' + esc(c.email) : '') + '</div>' + (c.city ? '<div>📍 ' + esc(c.city) + '</div>' : '') + lojas + extra + (c.birthDate ? '<div>🎂 ' + br(c.birthDate) + '</div>' : '') +
