@@ -173,19 +173,22 @@ function precisaFotoOficial(p, agora = new Date()) {
 
 async function fotosPeloSiteDaMarca(db, p, { buscarFotos, agora }) {
   const { usableImageCount } = require('./nuvemshopEligibility');
-  const eans = (await db.productSize.findMany({ where: { productId: p.id }, select: { barcode: true } })).map((s) => s.barcode).filter(Boolean);
+  // ordem fixa dos códigos (auditoria 19/11): mesma consulta a cada rodada
+  const eans = (await db.productSize.findMany({ where: { productId: p.id }, select: { barcode: true } })).map((s) => s.barcode).filter(Boolean).sort();
   const r = await buscarFotos({ marca: p.brand, eans });
   const atuais = usableImageCount(p);
   if (!r || !r.ok || !Array.isArray(r.fotos) || r.fotos.length <= atuais) {
     await mergeAiContext(db, p.id, { fotoOficialTentativa: { em: agora.toISOString(), motivo: (r && r.ok) ? `site tem ${r.fotos.length} foto(s), card já tem ${atuais}` : ((r && r.motivo) || 'sem resposta') } });
     return null;
   }
-  const evid = { fonte: r.fonte, consulta: r.consulta || null, codigo: r.ean, fotos: r.fotos.length, anteriores: [p.imageUrl, ...(Array.isArray(p.imageUrls) ? p.imageUrls : [])].filter(Boolean), em: agora.toISOString(), por: 'gerente da marca (site oficial)' };
-  // atômico: só troca se a foto principal continua a que foi lida
+  const { lojasDaMarca } = require('./corOficialMarca');
+  const oficial = !!(r.host && lojasDaMarca(p.brand).includes(r.host));
+  const evid = { fonte: r.fonte, consulta: r.consulta || null, host: r.host || null, codigo: r.ean, fotos: r.fotos.length, anteriores: [p.imageUrl, ...(Array.isArray(p.imageUrls) ? p.imageUrls : [])].filter(Boolean), em: agora.toISOString(), por: oficial ? 'gerente da marca (site oficial da marca)' : 'gerente da marca (revendedor, mesmo código de barras)' };
+  // atômico: só troca se a foto principal E a galeria continuam as que foram lidas (não atropela edição do meio)
   const n = await db.$executeRawUnsafe(
     'UPDATE "Product" SET "imageUrl" = $2, "imageUrls" = $3::jsonb, "aiContext" = (COALESCE("aiContext", \'{}\'::jsonb) - \'fotoOficialTentativa\') || jsonb_build_object(\'fotosOficiais\', $4::jsonb), "updatedAt" = now() ' +
-    'WHERE id = $1 AND (jsonb_typeof("aiContext") = \'object\' OR "aiContext" IS NULL) AND COALESCE("imageUrl", \'\') = $5::text',
-    p.id, r.fotos[0], JSON.stringify(r.fotos.slice(1)), JSON.stringify(evid), String(p.imageUrl || ''));
+    'WHERE id = $1 AND (jsonb_typeof("aiContext") = \'object\' OR "aiContext" IS NULL) AND COALESCE("imageUrl", \'\') = $5::text AND COALESCE("imageUrls", \'[]\'::jsonb) = $6::jsonb',
+    p.id, r.fotos[0], JSON.stringify(r.fotos.slice(1)), JSON.stringify(evid), String(p.imageUrl || ''), JSON.stringify(Array.isArray(p.imageUrls) ? p.imageUrls : []));
   return n === 1 ? { fotos: r.fotos.length, antes: atuais, fonte: r.fonte } : null;
 }
 
@@ -253,14 +256,21 @@ async function cuidar(db, { marca = null, aplicar = true, agora = new Date(), bu
 const state = { lastRunAt: null, lastResult: null, lastError: null };
 function iniciarCuidadorDeMarca(db) {
   if (process.env.CUIDADOR_DE_MARCA === '0') { console.log('[cuidador de marca] desligado (CUIDADOR_DE_MARCA=0)'); return; }
-  const rodar = () => cuidar(db).then(async (r) => {
-    const f = await cuidarFotos(db).catch((e) => ({ erro: e.message, fotos: 0, consultas: 0 }));
-    state.lastRunAt = new Date().toISOString();
-    state.lastResult = { cards: r.cards, preenchidos: r.preenchidos, campos: r.campos, cores: r.cores, fotosOficiais: f.fotos, fotosConsultas: f.consultas, ...(f.erro ? { fotosErro: f.erro } : {}) };
-    state.lastError = null;
-    if (r.preenchidos || r.cores || f.fotos) console.log('[cuidador de marca]', JSON.stringify(state.lastResult));
-  })
-    .catch((e) => { state.lastError = e.message; console.warn('[cuidador de marca] falhou:', e.message); });
+  // trava: uma rodada por vez (auditoria 19/11 — cor + fotos podem passar da hora no pior caso)
+  let rodando = false;
+  const rodar = () => {
+    if (rodando) { state.lastSkippedAt = new Date().toISOString(); return Promise.resolve(); }
+    rodando = true;
+    return cuidar(db).then(async (r) => {
+      const f = await cuidarFotos(db).catch((e) => ({ erro: e.message, fotos: 0, consultas: 0 }));
+      state.lastRunAt = new Date().toISOString();
+      state.lastResult = { cards: r.cards, preenchidos: r.preenchidos, campos: r.campos, cores: r.cores, fotosOficiais: f.fotos, fotosConsultas: f.consultas, ...(f.erro ? { fotosErro: f.erro } : {}) };
+      state.lastError = null;
+      if (r.preenchidos || r.cores || f.fotos) console.log('[cuidador de marca]', JSON.stringify(state.lastResult));
+    })
+      .catch((e) => { state.lastError = e.message; console.warn('[cuidador de marca] falhou:', e.message); })
+      .finally(() => { rodando = false; });
+  };
   setTimeout(rodar, 4 * 60 * 1000);
   setInterval(rodar, 60 * 60 * 1000);
   console.log('[cuidador de marca] ligado: cada marca preenche sozinha o que tem prova escrita (de hora em hora)');

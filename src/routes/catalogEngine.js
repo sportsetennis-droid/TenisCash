@@ -162,7 +162,8 @@ router.post('/approve-bulk', async (req, res) => {
       try {
         const p = await prisma.product.findUnique({ where: { id: it.id } });
         if (!p) { results.push({ id: it.id, ok: false, err: 'não encontrado' }); continue; }
-        const cat = (it.category || '').trim(), sub = (it.subcategory || '').trim();
+        // dono 19/11: roupa é "Roupas" — sugestão antiga com "Vestuário" não volta a gravar a categoria velha
+        const cat = /^vestu[aá]rio$/i.test((it.category || '').trim()) ? 'Roupas' : (it.category || '').trim(), sub = (it.subcategory || '').trim();
         const mod = (it.modality || '').trim(), tier = (it.tier || '').trim();
         if (!cat || !sub || !mod || !tier) { results.push({ id: it.id, ok: false, err: 'faltam campos' }); continue; }
         let ctx = {}; try { ctx = typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); } catch (_) {}

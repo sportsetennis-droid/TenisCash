@@ -56,7 +56,7 @@ const TREE = [
     ['Homem', CHUTEIRA_MODS],
     ['Menino', CHUTEIRA_MODS],
   ]],
-  ['Vestuário', [
+  ['Roupas', [ // dono 19/11: "Roupas", não "Vestuário"
     ['Tamanhos', []],
     ['Mulher', [
       ['Legging', []], ['Short', []], ['Bermuda', []], ['Saia', []],
