@@ -309,8 +309,18 @@ async function publicizePayload(body) {
  * Robusto: se a rota já respondeu, não manda de novo; erro ao serializar vira 500 (sem
  * rejeição solta derrubando o processo); falha na troca = payload original (imagem não some).
  */
+// A troca do base64 ANTIGO no JSON só começa depois do II Futsal Master Cup (20–22/11/2026):
+// durante o evento as páginas dele respondem exatamente como antes. LIGA_MEDIA_JSON_START
+// (ISO) muda a data; padrão 23/11/2026 00:00 de Fortaleza. Upload novo já vai para /media.
+function jsonStart() {
+  const v = process.env.LIGA_MEDIA_JSON_START;
+  const d = v ? new Date(v) : new Date('2026-11-23T03:00:00Z');
+  return Number.isNaN(d.getTime()) ? new Date('2026-11-23T03:00:00Z') : d;
+}
+
 function jsonMiddleware(req, res, next) {
   if (process.env.LIGA_MEDIA_JSON === '0') return next();
+  if (Date.now() < jsonStart().getTime()) return next();
   const orig = res.json.bind(res);
   const send = (b) => {
     if (res.headersSent || res.writableEnded) return;

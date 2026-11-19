@@ -1,4 +1,5 @@
 'use strict';
+process.env.LIGA_MEDIA_JSON_START = process.env.LIGA_MEDIA_JSON_START || '2020-01-01T00:00:00Z';
 // =====================================================================
 // Liga Aberta — FASE 2 (clube e atleta como identidade). npm run test:liga-f2
 //

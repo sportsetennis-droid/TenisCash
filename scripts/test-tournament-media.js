@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+process.env.LIGA_MEDIA_JSON_START = process.env.LIGA_MEDIA_JSON_START || '2020-01-01T00:00:00Z';
 // =====================================================================
 // Teste F2 — AO VIVO, MÍDIA E COMPARTILHAMENTO (torneios)
 // ---------------------------------------------------------------------

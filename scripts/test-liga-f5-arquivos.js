@@ -194,6 +194,7 @@ async function main() {
 
 async function dbSuite() {
   process.env.LIGA_PLAN_START = '2020-01-01T00:00:00Z'; // limites por torneio valem nos torneios do teste
+  process.env.LIGA_MEDIA_JSON_START = '2020-01-01T00:00:00Z'; // troca do base64 antigo no JSON já vale no teste
   const express = require('express');
   const jwt = require('jsonwebtoken');
   const { prisma, JWT_SECRET, designIsolationMiddleware } = require('../src/middleware');
@@ -779,6 +780,16 @@ async function dbSuite() {
       const r = await call('POST', `/api/tournaments/${MC.id}/categories`, { token: tok(U.mcOwner), body: { name: 'MC extra ' + i + ' ' + RUN } });
       assert.strictEqual(r.status, 201, r.text);
     }
+  });
+
+  await ok('antes de LIGA_MEDIA_JSON_START (padrão 23/11, fim do Master Cup) o JSON antigo sai igual a hoje', async () => {
+    const prev = process.env.LIGA_MEDIA_JSON_START;
+    process.env.LIGA_MEDIA_JSON_START = '2999-01-01T00:00:00Z';
+    try {
+      let threw = false;
+      try { await scanNoBase64(); } catch (_) { threw = true; }
+      assert.ok(threw, 'com a data no futuro o base64 antigo tem que continuar saindo (Master Cup intocado)');
+    } finally { process.env.LIGA_MEDIA_JSON_START = prev; }
   });
 
   // ================================================================ PROVA DE SABOTAGEM
