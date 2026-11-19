@@ -168,22 +168,25 @@ async function recipientsOf(entry) {
   const roster = await prisma.rosterPlayer.findMany({ where: { entryId: entry.id, userId: { not: null } } }).catch(() => []);
   roster.filter((r) => (r.role || 'PLAYER') === 'PLAYER').forEach((r) => ids.add(r.userId));
   if (!ids.size) return [];
-  return prisma.user.findMany({ where: { id: { in: [...ids] } }, select: { id: true, name: true, cpf: true } });
+  return prisma.user.findMany({ where: { id: { in: [...ids] } }, select: { id: true, name: true, cpf: true, birthDate: true } });
 }
+// Liga F7: conta que declara menor de 18 não recebe medalha (a credencial carrega nome + hash
+// do CPF; com LIGA_MINORS desligado nenhum dado de menor é coletado — mesma regra da F6).
+const isMinorAccount = (u) => !!(u && require('./ligaMinors').declaresMinor(u.birthDate));
 
-async function topScorers(categoryId, matches) {
+async function topScorers(categoryId, matches, db = prisma) {
   const ids = matches.filter((m) => DONE.includes(m.status)).map((m) => m.id);
   if (!ids.length) return [];
   // Liga F4: artilharia em PONTOS — gol = 1; basquete: cestas de 1/2/3 (mesma conta do histórico)
   const { PLAYER_POINT_VALUES, PLAYER_POINT_TYPES } = require('./tournamentRules');
-  const rows = await prisma.matchEvent.groupBy({ by: ['playerId', 'type'], where: { matchId: { in: ids }, type: { in: PLAYER_POINT_TYPES }, playerId: { not: null } }, _count: { _all: true } }).catch(() => []);
+  const rows = await db.matchEvent.groupBy({ by: ['playerId', 'type'], where: { matchId: { in: ids }, type: { in: PLAYER_POINT_TYPES }, playerId: { not: null } }, _count: { _all: true } }).catch(() => []);
   const byPlayer = new Map();
   for (const r of rows) byPlayer.set(r.playerId, (byPlayer.get(r.playerId) || 0) + r._count._all * (PLAYER_POINT_VALUES[r.type] || 1));
   const goals = [...byPlayer.entries()].map(([playerId, pts]) => ({ playerId, pts }));
   if (!goals.length) return [];
   const max = Math.max(...goals.map((g) => g.pts));
   const top = goals.filter((g) => g.pts === max);
-  const players = await prisma.rosterPlayer.findMany({ where: { id: { in: top.map((t) => t.playerId) } } });
+  const players = await db.rosterPlayer.findMany({ where: { id: { in: top.map((t) => t.playerId) } } });
   return players.map((p) => ({ playerId: p.id, userId: p.userId, name: p.name, entryId: p.entryId, goals: max }));
 }
 
@@ -211,6 +214,7 @@ async function previewTournament(tournamentId, user) {
         if (!people.length) c.blocked.push({ entry: e ? e.name : p.entryId, reason: 'Inscrição sem atleta com conta no Club' });
         for (const u of people) {
           const already = await prisma.medal.findFirst({ where: { tournamentId, categoryId: cat.id, userId: u.id, achievement: 'PLACEMENT' }, select: { serial: true } });
+          if (isMinorAccount(u)) { c.blocked.push({ entry: e.name, athlete: u.name, reason: 'Atleta menor de 18 anos (medalha só com o fluxo do responsável)' }); continue; }
           if (!validCpf(u.cpf)) { c.blocked.push({ entry: e.name, athlete: u.name, reason: 'Atleta sem CPF no cadastro (a medalha é presa ao CPF)' }); continue; }
           c.medals.push({ userId: u.id, athlete: u.name, entryId: e.id, entry: e.name, tier: p.tier, placement: p.placement, edition: p.edition, achievement: 'PLACEMENT', distinctions: p.placement === 1 && r.unbeaten ? ['UNBEATEN'] : [], result: p.result || null, issued: already ? already.serial : null });
         }
@@ -219,7 +223,8 @@ async function previewTournament(tournamentId, user) {
       const unit = rulesMod.scoreUnit(rulesMod.resolveRules(cat, t.sport)); // basquete: pontos; futsal: gols
       for (const s of await topScorers(cat.id, r.matches)) {
         if (!s.userId) { c.blocked.push({ athlete: s.name, reason: 'Artilheiro sem conta ligada no elenco' }); continue; }
-        const u = await prisma.user.findUnique({ where: { id: s.userId }, select: { id: true, name: true, cpf: true } });
+        const u = await prisma.user.findUnique({ where: { id: s.userId }, select: { id: true, name: true, cpf: true, birthDate: true } });
+        if (isMinorAccount(u)) { c.blocked.push({ athlete: s.name, reason: 'Atleta menor de 18 anos (medalha só com o fluxo do responsável)' }); continue; }
         if (!u || !validCpf(u.cpf)) { c.blocked.push({ athlete: s.name, reason: 'Artilheiro sem CPF no cadastro' }); continue; }
         const already = await prisma.medal.findFirst({ where: { tournamentId, categoryId: cat.id, userId: u.id, achievement: 'TOP_SCORER' }, select: { serial: true } });
         c.medals.push({ userId: u.id, athlete: u.name, entryId: s.entryId, tier: 'SPECIAL', placement: null, edition: { n: 1, total: 1 }, achievement: 'TOP_SCORER', distinctions: [], goals: s.goals, goalsText: rulesMod.plural(s.goals, unit), issued: already ? already.serial : null });
@@ -249,9 +254,9 @@ async function issueTournament(tournamentId, user, opts = {}) {
     const list = c.medals.slice();
     const mvpUser = opts.mvp && opts.mvp[c.categoryId];
     if (mvpUser) {
-      const u = await prisma.user.findUnique({ where: { id: mvpUser }, select: { id: true, name: true, cpf: true } });
+      const u = await prisma.user.findUnique({ where: { id: mvpUser }, select: { id: true, name: true, cpf: true, birthDate: true } });
       const inCat = c.medals.some((m) => m.userId === mvpUser);
-      if (u && validCpf(u.cpf) && inCat) list.push({ userId: u.id, athlete: u.name, tier: 'SPECIAL', placement: null, edition: { n: 1, total: 1 }, achievement: 'MVP', distinctions: [] });
+      if (u && validCpf(u.cpf) && inCat && !isMinorAccount(u)) list.push({ userId: u.id, athlete: u.name, tier: 'SPECIAL', placement: null, edition: { n: 1, total: 1 }, achievement: 'MVP', distinctions: [] });
     }
     for (const m of list) {
       if (m.issued) { skipped.push({ athlete: m.athlete, reason: 'já emitida (' + m.issued + ')' }); continue; }
@@ -289,7 +294,8 @@ async function issueManual(user, { issuerId, templateId, categoryName, gender, e
     if (r.cpf && validCpf(r.cpf)) { const u = await prisma.user.findUnique({ where: { cpf: onlyDigits(r.cpf) }, select: { id: true } }); uid = u && u.id; }
     if (!uid && r.username) uid = await engine.resolveUserId(r.username);
     if (!uid) { skipped.push({ who: r.username || 'cpf ***' + onlyDigits(r.cpf).slice(-3), reason: 'atleta não encontrado no Club' }); continue; }
-    const u = await prisma.user.findUnique({ where: { id: uid }, select: { id: true, name: true, cpf: true } });
+    const u = await prisma.user.findUnique({ where: { id: uid }, select: { id: true, name: true, cpf: true, birthDate: true } });
+    if (isMinorAccount(u)) { skipped.push({ who: u.name, reason: 'menor de 18 anos (medalha só com o fluxo do responsável)' }); continue; }
     if (!validCpf(u.cpf)) { skipped.push({ who: u.name, reason: 'sem CPF no cadastro' }); continue; }
     const tier = TIERS.includes(r.tier) ? r.tier : 'FINISHER';
     const achievement = ACHIEVEMENTS.includes(r.achievement) ? r.achievement : 'PLACEMENT';
@@ -516,6 +522,6 @@ function jsonLdContext() {
 module.exports = {
   MedalError, REVOKE_REASONS, TIERS, ACHIEVEMENTS, DISTINCTIONS, ISSUER_KINDS,
   createIssuer, publicIssuer, assertIssuerOwner, saveTemplate,
-  categoryResult, previewTournament, issueTournament, issueManual, issueOne, buildCredential,
+  categoryResult, topScorers, previewTournament, issueTournament, issueManual, issueOne, buildCredential,
   setStatus, statusList, history, viewOf, bySerial, shelf, wallet, jsonLdContext, qrOf, BASE,
 };

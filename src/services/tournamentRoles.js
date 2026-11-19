@@ -65,7 +65,9 @@ const ACTIONS = [
 //   REPORT            denunciar (qualquer conta logada)
 //   CREATE_TOURNAMENT criar/duplicar torneio (logado e organizador NÃO suspenso; admin sempre)
 //   PRIVACY_SELF      baixar/apagar os PRÓPRIOS dados (logado; opts.targetUserId = ele mesmo)
-const GLOBAL_ACTIONS = new Set(['MODERATE', 'REPORT', 'CREATE_TOURNAMENT', 'PRIVACY_SELF']);
+// Liga F7:
+//   PLAN_ADMIN        trocar o plano de um organizador (só admin global; sem preço)
+const GLOBAL_ACTIONS = new Set(['MODERATE', 'REPORT', 'CREATE_TOURNAMENT', 'PRIVACY_SELF', 'PLAN_ADMIN']);
 // Torneio SUSPENSO pela moderação: nada se escreve (só o admin global); o dono ainda vê/lê auditoria.
 const SUSPENDED_OK = new Set(['VIEW', 'VIEW_AUDIT']);
 // Organizador SUSPENSO: perde a GESTÃO em qualquer torneio (dono/fundador/coordenador deixam
@@ -107,7 +109,7 @@ async function isNominated(userId, matchId) {
 // Pode executar `action` neste torneio? opts: { entryId, matchId, targetUserId }
 async function can(userId, userRole, tournamentId, action, opts = {}) {
   if (GLOBAL_ACTIONS.has(action)) {
-    if (action === 'MODERATE') return isGlobalAdmin(userRole);
+    if (action === 'MODERATE' || action === 'PLAN_ADMIN') return isGlobalAdmin(userRole);
     if (!userId) return false;
     if (action === 'REPORT') return true;
     if (action === 'PRIVACY_SELF') return !!opts.targetUserId && opts.targetUserId === userId;

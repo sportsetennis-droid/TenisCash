@@ -96,6 +96,10 @@ const limits = {
   report: make({ max: 20, message: 'Muitas denúncias em pouco tempo. Tente de novo em 1 hora.' }),
   privacyExport: make({ max: 5, message: 'Muitos pedidos de cópia dos dados. Tente de novo em 1 hora.' }),
   privacyDelete: make({ max: 5, message: 'Muitas tentativas de apagar os dados. Tente de novo em 1 hora.' }),
+  // Liga F7 — orçamento de uniforme e pagamento de TenisCash por conquista
+  uniformQuote: make({ max: 10, message: 'Muitos pedidos de orçamento de uniforme em pouco tempo. Tente de novo em 1 hora.' }),
+  cashPay: make({ max: 20, message: 'Muitas tentativas de pagamento em pouco tempo. Tente de novo em 1 hora.' }),
+  planAdmin: make({ max: 60, message: 'Muitas trocas de plano em pouco tempo. Tente de novo em 1 hora.' }),
 };
 
 module.exports = { limits, make, onlyWhen, userOrIp, ipKey, phoneFromBody };

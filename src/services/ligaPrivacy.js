@@ -73,6 +73,9 @@ async function exportData(userId) {
   const tIds = [...new Set([].concat(entryMembers.map((m) => m.entry && m.entry.tournamentId), posts.map((p) => p.tournamentId), teamMems.map((m) => m.tournamentId), tRoles.map((r) => r.tournamentId), pickups.map((p) => p.tournamentId)).filter(Boolean))];
   const ts = tIds.length ? await prisma.tournament.findMany({ where: { id: { in: tIds } }, select: { id: true, name: true, slug: true } }) : [];
   const rEntries = roster.length ? await prisma.tournamentEntry.findMany({ where: { id: { in: [...new Set(roster.map((r) => r.entryId))] } }, select: { id: true, name: true, tournamentId: true } }) : [];
+  // Liga F7: pedidos de orçamento de uniforme (Meta Fardamentos) e TenisCash por conquista
+  const uniformLeads = await require('./uniformQuote').leadsOfUser(uid);
+  const cashAwards = await require('./ligaCashRules').awardsOfUser(uid);
   const out = {
     geradoEm: new Date().toISOString(),
     fusoHorario: 'America/Fortaleza',
@@ -102,6 +105,8 @@ async function exportData(userId) {
     treinos: trainings,
     desafios: challenges,
     avisosNoApp: notifs,
+    pedidosDeUniforme: uniformLeads,
+    tenisCashPorConquista: cashAwards.map((a) => ({ torneioId: a.tournamentId, categoriaId: a.categoryId, conquista: a.rule, valor: a.amount, transacaoId: a.transactionId, em: a.createdAt })),
   };
   await prisma.privacyRequest.create({ data: { userId: uid, kind: 'EXPORT', status: 'DONE', summary: { counts: { inscricoes: out.inscricoes.length, elenco: out.elenco.length, lances: events.length, avisos: posts.length, medalhas: medals.length } } } });
   return out;
@@ -208,6 +213,17 @@ async function eraseSportData(userId, { confirm } = {}) {
     done.menores = mn.count;
   }, { timeout: 60000 });
 
+  // Liga F7: pedido de orçamento de uniforme — nome/telefone saem do lead (o pedido fica para a
+  // Meta Fardamentos sem os dados de contato; o consentimento de contato deixa de valer).
+  try {
+    const leads = await prisma.mfLead.findMany({ where: { requestedByUserId: uid, source: 'liga' }, select: { id: true, resumo: true } });
+    for (const l of leads) {
+      // a "Observação" é texto livre da pessoa: sai junto com nome e telefone
+      const resumo = String(l.resumo || '').split('\n').filter((ln) => !/^Observação:/.test(ln)).join('\n');
+      await prisma.mfLead.update({ where: { id: l.id }, data: { name: null, phone: null, consentAt: null, resumo } });
+    }
+    done.pedidosDeUniforme = leads.length;
+  } catch (_) { done.pedidosDeUniforme = 0; }
   if (hasExcluded) ties.push('jogos num torneio em andamento da lista de exclusão (Master Cup) — o admin conclui depois do evento');
   let loginExcluded = false;
   let status = 'DONE';
