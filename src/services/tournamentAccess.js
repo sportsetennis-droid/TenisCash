@@ -67,6 +67,9 @@ async function isMember(userId, t) {
     prisma.teamMembership.findFirst({ where: { tournamentId: tid, userId, status: 'ACTIVE' }, select: { id: true } }).catch(() => null),
   ]);
   if (role || em || tm) return true;
+  // Liga F3: jogador do racha com conta ligada também é membro
+  const pk = await prisma.pickupPlayer.findFirst({ where: { tournamentId: tid, userId }, select: { id: true } }).catch(() => null);
+  if (pk) return true;
   // conta ligada a um nome do elenco (RosterPlayer não tem relação no schema)
   const linked = await prisma.rosterPlayer.findMany({ where: { userId }, select: { entryId: true }, take: 200 }).catch(() => []);
   if (!linked.length) return false;

@@ -1396,6 +1396,8 @@ app.get('/t/:slug', async (req, res) => {
       },
     });
     if (!t) return tAccess.sendNotFound(res, 'html');
+    // Liga F3: racha não tem tabela — a página dele é a do racha (presença, times, placar)
+    if (t.format === 'PICKUP') return res.redirect(302, '/racha/' + encodeURIComponent(t.slug));
     // não listado: fora de buscadores
     if (t.visibility === 'unlisted') res.set('X-Robots-Tag', 'noindex, nofollow');
 
@@ -1708,8 +1710,9 @@ app.get('/t/:slug', async (req, res) => {
     var tlHtml='';
     if((live||done)&&tl.length){
       tlHtml='<div class="tlv">'+tl.slice().reverse().slice(0,live?8:12).map(function(e){
-        var ic=e.type==='GOAL'?'<span class="gi"></span>':'<span class="ki'+(e.type==='RED'?' r':'')+'"></span>';
-        var who=(e.number!=null?e.number+' ':'')+(e.player||(e.type==='GOAL'?'Gol':'Cartão'));
+        var sc=e.type==='GOAL'||e.type==='SET'||/^PT[123]$/.test(e.type);
+        var ic=sc?'<span class="gi"></span>':'<span class="ki'+(e.type==='RED'?' r':'')+'"></span>';
+        var who=(e.number!=null?e.number+' ':'')+(e.player||(e.type==='GOAL'?'Gol':e.type==='SET'?'Set':/^PT/.test(e.type)?('+'+e.type.slice(2)):'Cartão'));
         return '<div class="tle'+(e.side==='away'?' a':'')+'">'+ic+'<b>'+(e.minute!=null?esc(e.minute)+"'":'')+'</b><span>'+esc(who)+'</span></div>';
       }).join('')+'</div>';
     }
@@ -2237,6 +2240,10 @@ app.get('/atleta/:username', async (req, res) => {
 });
 
 // Liga F2 — convite de elenco: o jogador abre o link, entra/cria conta e reivindica a vaga
+// Liga Aberta F3 — criação em 2 minutos (assistente), racha e link do time (páginas mobile-first)
+app.get('/criar-liga', (req, res) => { res.set('Cache-Control', 'no-store'); res.sendFile(path.join(__dirname, '../public/criar-liga.html'), { cacheControl: false }); });
+app.get('/racha/:slug', (req, res) => { res.set('Cache-Control', 'no-store'); res.set('X-Robots-Tag', 'noindex'); res.sendFile(path.join(__dirname, '../public/racha.html'), { cacheControl: false }); });
+app.get('/convite-time/:token', (req, res) => { res.set('Cache-Control', 'no-store'); res.set('Referrer-Policy', 'no-referrer'); res.sendFile(path.join(__dirname, '../public/convite-time.html'), { cacheControl: false }); });
 app.get('/convite-elenco/:token', (req, res) => { res.set('Cache-Control', 'no-store'); res.set('Referrer-Policy', 'no-referrer'); res.sendFile(path.join(__dirname, '../public/convite-elenco.html'), { cacheControl: false }); });
 app.get('/ao-vivo/:token', (req, res) => { res.set('Cache-Control', 'no-store'); res.sendFile(path.join(__dirname, '../public/ao-vivo.html'), { cacheControl: false }); }); // APEX Beacon (sem conta)
 

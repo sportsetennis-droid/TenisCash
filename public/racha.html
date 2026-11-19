@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0b0b0d">
+<meta name="robots" content="noindex">
+<title>Racha — Club Sports &amp; Tennis</title>
+<link rel="manifest" href="/manifest.json">
+<style>
+  :root{--bg:#0b0b0d;--card:#16161b;--line:rgba(255,255,255,.12);--mut:#a3a3ad;--or:#E5571E;--ok:#16a34a;--bad:#dc2626}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
+  html,body{background:var(--bg)}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#fff;line-height:1.45;min-height:100vh;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+  .phone{max-width:480px;margin:0 auto;min-height:100vh;position:relative;background:var(--bg);display:flex;flex-direction:column}
+  header{padding:14px 16px 4px}
+  .eyebrow{font-size:11px;font-weight:800;letter-spacing:1.4px;color:var(--or);text-transform:uppercase}
+  h1{font-size:23px;font-weight:900;line-height:1.15;margin-top:4px}
+  .day{color:var(--mut);font-size:13px;margin-top:2px}
+  main{flex:1;padding:12px 16px calc(96px + env(safe-area-inset-bottom))}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px;margin-bottom:12px}
+  .card h2{font-size:15px;font-weight:800;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;border:none;border-radius:13px;font-size:16px;font-weight:800;padding:0 16px;cursor:pointer;color:#fff;-webkit-tap-highlight-color:transparent;text-decoration:none}
+  .btn-p{background:var(--or)}.btn-s{background:rgba(255,255,255,.1)}.btn-ok{background:var(--ok)}.btn-bad{background:rgba(220,38,38,.2);color:#fecaca}
+  .btn:disabled{opacity:.45}
+  .full{width:100%}
+  .row{display:flex;gap:8px;align-items:center}
+  .row>*{flex:1}
+  .pl{display:flex;align-items:center;gap:10px;min-height:52px;padding:6px 0;border-bottom:1px solid var(--line)}
+  .pl:last-child{border-bottom:none}
+  .pl b{flex:1;font-size:15px;font-weight:700;word-break:break-word}
+  .pill{font-size:12px;font-weight:800;border-radius:99px;padding:4px 10px;background:rgba(255,255,255,.1);color:#ddd;white-space:nowrap}
+  .pill.in{background:rgba(22,163,74,.2);color:#bbf7d0}.pill.out{background:rgba(220,38,38,.18);color:#fecaca}
+  .lv{font-size:12px;color:var(--mut);white-space:nowrap}
+  .tog{min-width:52px;min-height:44px;border-radius:12px;border:1px solid var(--line);background:transparent;color:#fff;font-weight:800;font-size:13px;cursor:pointer}
+  .tog.in{background:var(--ok);border-color:var(--ok)}
+  select,input,textarea{width:100%;min-height:48px;border-radius:12px;border:1px solid rgba(255,255,255,.18);background:#15151a;color:#fff;font-size:16px;padding:10px 12px;font-family:inherit}
+  select.sm{min-height:44px;width:auto;padding:6px 8px;font-size:14px}
+  textarea{min-height:110px}
+  label{display:block;font-size:13px;font-weight:700;margin:12px 0 6px;color:#e6e6ea}
+  .team{border-radius:16px;padding:12px;margin-bottom:10px;border:1px solid var(--line);background:#121217}
+  .team .th{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+  .team .th b{font-size:17px}
+  .team .th span{color:var(--or);font-weight:800;font-size:14px}
+  .team ul{list-style:none}
+  .team li{display:flex;justify-content:space-between;font-size:14px;padding:4px 0;color:#ddd}
+  .game{border:1.5px solid var(--line);border-radius:18px;padding:12px;margin-bottom:12px}
+  .score{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;text-align:center}
+  .score .nm{font-weight:800;font-size:15px}
+  .score .n{font-size:44px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1}
+  .plus{min-height:72px;font-size:26px;border-radius:16px;width:100%}
+  .minus{min-height:44px;font-size:14px;width:100%;margin-top:6px}
+  .goals{font-size:12.5px;color:var(--mut);margin-top:8px;text-align:center}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:9px 6px;border-bottom:1px solid var(--line)}
+  th{color:var(--mut);font-size:12px;text-transform:uppercase}
+  td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+  .muted{color:var(--mut);font-size:13px}
+  .msg{margin-top:10px;font-size:14px;border-radius:12px;padding:10px 12px;display:none}
+  .msg.err{display:block;background:rgba(220,38,38,.15);border:1px solid rgba(220,38,38,.45);color:#fecaca}
+  .msg.ok{display:block;background:rgba(22,163,74,.15);border:1px solid rgba(22,163,74,.45);color:#bbf7d0}
+  .hidden{display:none}
+  .tabs2{display:flex;gap:8px;margin:10px 0}
+  .tabs2 button{flex:1;min-height:44px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:#fff;font-weight:800}
+  .tabs2 button.on{background:var(--or);border-color:var(--or)}
+  nav.bottom{position:fixed;left:0;right:0;bottom:0;z-index:20;background:rgba(11,11,13,.96);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:6px 8px calc(6px + env(safe-area-inset-bottom))}
+  nav.bottom .in{max-width:480px;margin:0 auto;display:flex}
+  nav.bottom button{flex:1;min-height:52px;border:none;background:transparent;color:var(--mut);font-weight:800;font-size:12.5px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer}
+  nav.bottom button i{font-style:normal;font-size:19px}
+  nav.bottom button.on{color:var(--or)}
+  .sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:40;display:none;align-items:flex-end;justify-content:center}
+  .sheet-bg.on{display:flex}
+  .sheet{width:100%;max-width:480px;background:#16161b;border-radius:22px 22px 0 0;padding:14px 16px calc(18px + env(safe-area-inset-bottom));max-height:80vh;overflow:auto}
+  .sheet .grab{width:44px;height:5px;border-radius:9px;background:rgba(255,255,255,.25);margin:0 auto 12px}
+  .sheet h3{font-size:17px;margin-bottom:10px}
+  .sheet .btn{margin-top:8px}
+  @media (min-width:900px){
+    body{background:#050507;padding:28px 0}
+    .phone{min-height:calc(100vh - 56px);border-radius:34px;box-shadow:0 30px 80px rgba(0,0,0,.6),0 0 0 10px #111,0 0 0 11px #2a2a2e;overflow:hidden}
+    nav.bottom{position:sticky;bottom:0;border-radius:0 0 34px 34px}
+    main{padding-bottom:20px}
+  }
+</style>
+</head>
+<body>
+<div class="phone">
+  <header><div class="eyebrow">Racha</div><h1 id="title">Carregando…</h1><div class="day" id="day"></div></header>
+  <main id="app"></main>
+  <nav class="bottom" id="nav"><div class="in">
+    <button data-tab="presenca" type="button"><i aria-hidden="true">✋</i>Presença</button>
+    <button data-tab="times" type="button"><i aria-hidden="true">⚖️</i>Times</button>
+    <button data-tab="placar" type="button"><i aria-hidden="true">⚽</i>Placar</button>
+    <button data-tab="artilharia" type="button"><i aria-hidden="true">🏅</i>Artilharia</button>
+  </div></nav>
+</div>
+<div class="sheet-bg" id="sheetbg"><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+<script>
+(function(){
+  'use strict';
+  var SLUG=decodeURIComponent((location.pathname.split('/').filter(Boolean)[1]||''));
+  var TK='';try{TK=localStorage.getItem('tc_token')||'';}catch(_){}
+  var TAB='presenca';try{TAB=localStorage.getItem('racha_tab')||'presenca';}catch(_){}
+  var V=null,SC=null,AUTH={mode:'login',codeSent:false};
+  var app=document.getElementById('app');
+  function e(x){x=(x==null?'':''+x);return x.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+  function api(method,url,body){
+    var h={'Content-Type':'application/json'};if(TK)h.Authorization='Bearer '+TK;
+    return fetch(url,{method:method,headers:h,body:body?JSON.stringify(body):undefined,cache:'no-store'})
+      .then(function(r){return r.json().catch(function(){return {};}).then(function(j){return {status:r.status,ok:r.ok,json:j};});});
+  }
+  function msg(t,k){var m=document.getElementById('msg');if(!m)return alert(t);m.className='msg '+(k||'err');m.textContent=t;}
+  function openSheet(h){document.getElementById('sheet').innerHTML='<div class="grab"></div>'+h;document.getElementById('sheetbg').classList.add('on');}
+  function closeSheet(){document.getElementById('sheetbg').classList.remove('on');}
+  document.getElementById('sheetbg').onclick=function(ev){if(ev.target.id==='sheetbg')closeSheet();};
+  var BASE='/api/tournaments/';
+  function load(){
+    return api('GET',BASE+encodeURIComponent(SLUG)+'/pickup').then(function(r){
+      if(r.status===401){TK='';try{localStorage.removeItem('tc_token');}catch(_){}return load();}
+      if(!r.ok){
+        document.getElementById('title').textContent='Racha não encontrado';document.getElementById('nav').classList.add('hidden');
+        // racha privado: quem é membro entra e vê (sem login, privado responde igual a "não existe")
+        if(!TK){app.innerHTML='<p class="muted" style="margin-bottom:12px">Se o racha é privado, entre com a sua conta.</p>'+authBox();wireAuth();}
+        else app.innerHTML='<p class="muted">Confira o link com o organizador.</p>';
+        return;
+      }
+      document.getElementById('nav').classList.remove('hidden');
+      V=r.json;document.getElementById('title').textContent=V.tournament.name;
+      var p=V.session.dayKey.split('-');document.getElementById('day').textContent='Dia '+p[2]+'/'+p[1]+'/'+p[0]+' · '+V.confirmed+' confirmado(s)';
+      render();
+    }).catch(function(){app.innerHTML='<p class="muted">Sem conexão. Puxe para atualizar.</p>';});
+  }
+  function setTab(t){TAB=t;try{localStorage.setItem('racha_tab',t);}catch(_){}render();window.scrollTo(0,0);}
+  [].forEach.call(document.querySelectorAll('nav.bottom button'),function(b){b.onclick=function(){setTab(b.getAttribute('data-tab'));};});
+  function lvTxt(p){return 'nível '+String(p.levelUsed).replace('.',',')+(p.levelSource==='glicko'?' (ranking)':p.levelSource==='padrão'?' (padrão)':'');}
+  function authBox(){
+    var h='<div class="card"><h2>Entre para confirmar presença</h2><div class="tabs2"><button data-m="login" class="'+(AUTH.mode==='login'?'on':'')+'" type="button">Já tenho conta</button><button data-m="signup" class="'+(AUTH.mode==='signup'?'on':'')+'" type="button">Criar conta</button></div>';
+    if(AUTH.mode==='login')h+='<label for="ph">WhatsApp ou e-mail</label><input id="ph" inputmode="email" autocomplete="username"><label for="pw">Senha</label><input id="pw" type="password" autocomplete="current-password"><button class="btn btn-p full" id="go" type="button" style="margin-top:12px">Entrar</button>';
+    else h+='<label for="sn">Seu nome</label><input id="sn" autocomplete="name"><label for="ph">WhatsApp com DDD</label><input id="ph" inputmode="tel" autocomplete="tel">'+
+      '<div class="'+(AUTH.codeSent?'':'hidden')+'"><label for="cd">Código de 6 dígitos</label><input id="cd" inputmode="numeric" maxlength="6" autocomplete="one-time-code"><label for="pw">Crie uma senha (4 a 20)</label><input id="pw" type="password" autocomplete="new-password"></div>'+
+      '<button class="btn btn-p full" id="go" type="button" style="margin-top:12px">'+(AUTH.codeSent?'Criar conta':'Receber código no WhatsApp')+'</button>';
+    return h+'<div id="msg" class="msg"></div></div>';
+  }
+  function wireAuth(){
+    [].forEach.call(app.querySelectorAll('[data-m]'),function(b){b.onclick=function(){AUTH.mode=b.getAttribute('data-m');AUTH.codeSent=false;if(V)render();else{app.innerHTML=authBox();wireAuth();}};});
+    var go=document.getElementById('go');if(!go)return;
+    go.onclick=function(){
+      var ph=document.getElementById('ph').value.trim();
+      if(AUTH.mode==='login'){
+        var pw=document.getElementById('pw').value;if(!ph||!pw)return msg('Preencha login e senha.');
+        var body=ph.indexOf('@')>=0?{email:ph,password:pw}:{phone:ph.replace(/\D/g,''),password:pw};
+        api('POST','/api/auth/login',body).then(function(r){if(!r.ok||!r.json.token)return msg((r.json&&r.json.error)||'Login não confere.');TK=r.json.token;try{localStorage.setItem('tc_token',TK);}catch(_){}load();});
+        return;
+      }
+      var digits=ph.replace(/\D/g,'');if(digits.length<10)return msg('Informe o WhatsApp com DDD.');
+      var nm=document.getElementById('sn').value;
+      if(!AUTH.codeSent){api('POST',BASE+'athletes/register/start',{whatsapp:digits}).then(function(r){if(!r.ok)return msg((r.json&&r.json.error)||'Não foi possível enviar o código.');AUTH.codeSent=true;if(V)render();else{app.innerHTML=authBox();wireAuth();}document.getElementById('sn').value=nm;document.getElementById('ph').value=digits;msg('Se este número puder receber, o código chega no WhatsApp.','ok');});return;}
+      var code=document.getElementById('cd').value.replace(/\D/g,''),pw2=document.getElementById('pw').value;
+      if(!nm.trim())return msg('Informe seu nome.');if(code.length!==6)return msg('Código de 6 dígitos.');if(pw2.length<4||pw2.length>20)return msg('Senha de 4 a 20.');
+      api('POST',BASE+'athletes/register',{name:nm.trim(),whatsapp:digits,code:code,password:pw2}).then(function(r){if(!r.ok||!r.json.token)return msg((r.json&&r.json.error)||'Não foi possível criar a conta.');TK=r.json.token;try{localStorage.setItem('tc_token',TK);}catch(_){}load();});
+    };
+  }
+  // ---------------- PRESENÇA
+  function presenca(){
+    var h='';var me=V.me,M=me.canManage;
+    if(!me.loggedIn)h+=authBox();
+    else{
+      var st=me.status;
+      h+='<div class="card"><h2>Você vai hoje?</h2><div class="row"><button class="btn '+(st==='IN'?'btn-ok':'btn-s')+'" data-att="1" type="button">✋ Vou</button><button class="btn '+(st==='OUT'?'btn-bad':'btn-s')+'" data-att="0" type="button">Não vou</button></div>'+
+        '<p class="muted" style="margin-top:8px">'+(st==='IN'?'Presença confirmada.':st==='OUT'?'Você avisou que não vai.':'Confirme para entrar no sorteio dos times.')+'</p><div id="msg" class="msg"></div></div>';
+    }
+    h+='<div class="card"><h2><span>Lista do dia</span><span class="pill in">'+V.confirmed+' vão</span></h2>';
+    if(!V.players.length)h+='<p class="muted">Ninguém na lista ainda.</p>';
+    V.players.slice().sort(function(a,b){return (a.status==='IN'?0:a.status==='OUT'?2:1)-(b.status==='IN'?0:b.status==='OUT'?2:1)||a.name.localeCompare(b.name);}).forEach(function(p){
+      h+='<div class="pl"><b>'+e(p.name)+'</b><span class="lv">'+e(lvTxt(p))+'</span>'+
+        (M?'<button class="tog'+(p.status==='IN'?' in':'')+'" data-pid="'+e(p.id)+'" data-on="'+(p.status==='IN'?0:1)+'" type="button" aria-label="presença de '+e(p.name)+'">'+(p.status==='IN'?'Vai':'—')+'</button>'+
+          '<select class="sm" data-lv="'+e(p.id)+'" aria-label="nível de '+e(p.name)+'"><option value="">nível</option>'+[1,2,3,4,5,6,7].map(function(n){return '<option value="'+n+'"'+(p.level===n?' selected':'')+'>'+n+'</option>';}).join('')+'</select>'
+          :'<span class="pill '+(p.status==='IN'?'in':p.status==='OUT'?'out':'')+'">'+(p.status==='IN'?'vai':p.status==='OUT'?'não vai':'?')+'</span>')+'</div>';
+    });
+    h+='</div>';
+    if(M)h+='<div class="card"><h2>Adicionar jogadores</h2><textarea id="newp" placeholder="Um nome por linha"></textarea><button class="btn btn-s full" id="addp" type="button" style="margin-top:8px">Adicionar</button>'+
+      '<p class="muted" style="margin-top:8px">Nível de 1 a 7 (o mesmo do ranking do Club). Quem tem ranking no esporte usa o ranking; sem nível, entra como 3.</p>'+
+      '<button class="btn btn-s full" id="sharel" type="button" style="margin-top:10px">Compartilhar o link de presença</button></div>';
+    app.innerHTML=h;
+    if(!me.loggedIn)wireAuth();
+    [].forEach.call(app.querySelectorAll('[data-att]'),function(b){b.onclick=function(){api('POST',BASE+V.tournament.id+'/pickup/attendance',{confirm:b.getAttribute('data-att')==='1'}).then(function(r){if(!r.ok)return msg(r.json.error||'Erro');load();});};});
+    [].forEach.call(app.querySelectorAll('[data-pid]'),function(b){b.onclick=function(){api('POST',BASE+V.tournament.id+'/pickup/attendance',{playerId:b.getAttribute('data-pid'),confirm:b.getAttribute('data-on')==='1'}).then(function(r){if(!r.ok)return alert(r.json.error||'Erro');load();});};});
+    [].forEach.call(app.querySelectorAll('[data-lv]'),function(s){s.onchange=function(){api('PATCH',BASE+'pickup/players/'+s.getAttribute('data-lv'),{level:s.value===''?null:Number(s.value)}).then(function(r){if(!r.ok)return alert(r.json.error||'Erro');load();});};});
+    var addp=document.getElementById('addp');if(addp)addp.onclick=function(){var v=document.getElementById('newp').value;if(!v.trim())return;api('POST',BASE+V.tournament.id+'/pickup/players',{names:v.split(/\r?\n/)}).then(function(r){if(!r.ok)return alert(r.json.error||'Erro');load();});};
+    var sh=document.getElementById('sharel');if(sh)sh.onclick=function(){var u=location.origin+'/racha/'+V.tournament.slug,t='Confirme sua presença no racha "'+V.tournament.name+'": '+u;if(navigator.share)navigator.share({title:V.tournament.name,text:t,url:u}).catch(function(){});else window.open('https://wa.me/?text='+encodeURIComponent(t),'_blank','noopener');};
+  }
+  // ---------------- TIMES
+  function times(){
+    var s=V.session,h='';
+    if(V.me.canManage)h+='<div class="card"><h2>Sortear times</h2><div class="row"><div><label for="tc">Times</label><select id="tc">'+[2,3,4].map(function(n){return '<option value="'+n+'"'+(s.teamCount===n?' selected':'')+'>'+n+' times</option>';}).join('')+'</select></div>'+
+      '<div><label for="sd">Semente (opcional)</label><input id="sd" maxlength="64" placeholder="automática"></div></div>'+
+      '<button class="btn btn-p full" id="draw" type="button" style="margin-top:12px">Sortear com '+V.confirmed+' confirmados</button>'+
+      '<p class="muted" style="margin-top:8px">Equilibra pela soma de nível. A semente fica registrada: com a mesma lista e a mesma semente, o sorteio sai igual.</p><div id="msg" class="msg"></div></div>';
+    if(!s.teams||!s.teams.length)h+='<div class="card"><p class="muted">Os times ainda não foram sorteados.</p></div>';
+    else{
+      var sums=s.teams.map(function(t){return t.levelSum;});
+      h+='<p class="muted" style="margin-bottom:10px">Semente: <b>'+e(s.seed)+'</b> · diferença de nível: <b>'+String(Math.round((Math.max.apply(null,sums)-Math.min.apply(null,sums))*10)/10).replace('.',',')+'</b></p>';
+      s.teams.forEach(function(t){h+='<div class="team"><div class="th"><b>'+e(t.name)+'</b><span>soma '+String(t.levelSum).replace('.',',')+'</span></div><ul>'+t.players.map(function(p){return '<li><span>'+e(p.name)+'</span><span class="lv">'+String(p.level).replace('.',',')+'</span></li>';}).join('')+'</ul></div>';});
+    }
+    app.innerHTML=h;
+    var d=document.getElementById('draw');if(d)d.onclick=function(){d.disabled=true;var body={teamCount:Number(document.getElementById('tc').value)};var sd=document.getElementById('sd').value.trim();if(sd)body.seed=sd;
+      api('POST',BASE+V.tournament.id+'/pickup/draw',body).then(function(r){d.disabled=false;if(!r.ok)return msg(r.json.error||'Erro');load();});};
+  }
+  // ---------------- PLACAR
+  function placar(){
+    var s=V.session,h='',M=V.me.canManage,SCR=V.me.canScore||M;
+    if(M&&s.teams&&s.teams.length>=2){
+      var opts=function(sel){return s.teams.map(function(t){return '<option value="'+t.index+'"'+(t.index===sel?' selected':'')+'>'+e(t.name)+'</option>';}).join('');};
+      h+='<div class="card"><h2>Novo jogo</h2><div class="row"><select id="gh" aria-label="time da casa">'+opts(0)+'</select><span style="flex:0;color:var(--mut)">×</span><select id="ga" aria-label="time visitante">'+opts(1)+'</select></div><button class="btn btn-p full" id="newg" type="button" style="margin-top:10px">Começar jogo</button><div id="msg" class="msg"></div></div>';
+    }
+    if(!V.games.length)h+='<div class="card"><p class="muted">'+(s.teams&&s.teams.length?'Nenhum jogo hoje ainda.':'Sorteie os times para começar.')+'</p></div>';
+    V.games.slice().reverse().forEach(function(g){
+      var live=g.status!=='FINISHED';
+      h+='<div class="game"><div class="score"><div class="nm">'+e(g.home)+'</div><div class="n">'+g.homeScore+' <span style="color:var(--mut)">×</span> '+g.awayScore+'</div><div class="nm">'+e(g.away)+'</div></div>';
+      if(live&&SCR)h+='<div class="row" style="margin-top:10px"><div><button class="btn btn-p plus" data-sc="home" data-g="'+g.id+'" type="button">+1</button><button class="btn btn-s minus" data-un="home" data-g="'+g.id+'" type="button">−1</button></div>'+
+        '<div><button class="btn btn-p plus" data-sc="away" data-g="'+g.id+'" type="button">+1</button><button class="btn btn-s minus" data-un="away" data-g="'+g.id+'" type="button">−1</button></div></div>'+
+        '<button class="btn btn-ok full" data-fin="'+g.id+'" type="button" style="margin-top:10px">Encerrar jogo</button>';
+      else h+='<p class="muted" style="text-align:center;margin-top:6px">'+(live?'ao vivo':'encerrado')+'</p>';
+      var gl=g.goals.filter(function(x){return x.player;});
+      if(gl.length)h+='<div class="goals">⚽ '+gl.map(function(x){return e(x.player);}).join(' · ')+'</div>';
+      h+='</div>';
+    });
+    app.innerHTML=h;
+    var ng=document.getElementById('newg');if(ng)ng.onclick=function(){var a=Number(document.getElementById('gh').value),b=Number(document.getElementById('ga').value);if(a===b)return msg('Escolha dois times diferentes.');
+      api('POST',BASE+V.tournament.id+'/pickup/games',{home:a,away:b}).then(function(r){if(!r.ok)return msg(r.json.error||'Erro');load();});};
+    [].forEach.call(app.querySelectorAll('[data-sc]'),function(b){b.onclick=function(){scorerSheet(b.getAttribute('data-g'),b.getAttribute('data-sc'));};});
+    [].forEach.call(app.querySelectorAll('[data-un]'),function(b){b.onclick=function(){api('POST',BASE+'pickup/games/'+b.getAttribute('data-g')+'/score',{side:b.getAttribute('data-un'),delta:-1}).then(function(r){if(!r.ok)return alert(r.json.error||'Erro');load();});};});
+    [].forEach.call(app.querySelectorAll('[data-fin]'),function(b){b.onclick=function(){if(!confirm('Encerrar o jogo com este placar?'))return;api('POST',BASE+'pickup/games/'+b.getAttribute('data-fin')+'/finish').then(function(r){if(!r.ok)return alert(r.json.error||'Erro');load();});};});
+  }
+  // gol: escolhe o autor (opcional) numa folha de baixo
+  function scorerSheet(gid,side){
+    var g=V.games.find(function(x){return x.id===gid;});var eid=side==='home'?g.homeEntryId:g.awayEntryId;
+    var t=(V.session.teams||[]).find(function(x){return x.entryId===eid;});
+    var h='<h3>Gol do '+e(t?t.name:'time')+' — quem fez?</h3>';
+    (t?t.players:[]).forEach(function(p){h+='<button class="btn btn-s full" data-rp="'+e(p.rosterPlayerId)+'" type="button">'+e(p.name)+'</button>';});
+    h+='<button class="btn btn-p full" data-rp="" type="button">Sem autor (só o gol)</button>';
+    openSheet(h);
+    [].forEach.call(document.querySelectorAll('#sheet [data-rp]'),function(b){b.onclick=function(){var pid=b.getAttribute('data-rp');closeSheet();
+      api('POST',BASE+'pickup/games/'+gid+'/score',pid?{side:side,delta:1,playerId:pid}:{side:side,delta:1}).then(function(r){if(!r.ok)return alert(r.json.error||'Erro');load();});};});
+  }
+  // ---------------- ARTILHARIA
+  function artilharia(){
+    app.innerHTML='<div class="card"><p class="muted">Carregando…</p></div>';
+    api('GET',BASE+encodeURIComponent(SLUG)+'/pickup/scorers').then(function(r){
+      if(!r.ok){app.innerHTML='<div class="card"><p class="muted">Não deu para carregar.</p></div>';return;}
+      SC=r.json;var h='<div class="card"><h2><span>Artilharia '+SC.season+'</span><span class="pill">'+SC.games+' jogos</span></h2>';
+      if(!SC.scorers.length)h+='<p class="muted">Ninguém marcou ainda nesta temporada (só conta jogo encerrado com o autor do gol).</p>';
+      else{h+='<table><thead><tr><th>#</th><th>Jogador</th><th class="n">Gols</th><th class="n">Jogos</th></tr></thead><tbody>';
+        SC.scorers.forEach(function(s,i){h+='<tr><td>'+(i+1)+'</td><td>'+e(s.name)+'</td><td class="n"><b>'+s.goals+'</b></td><td class="n">'+s.games+'</td></tr>';});h+='</tbody></table>';}
+      app.innerHTML=h+'<p class="muted" style="margin-top:8px">Temporada = ano no horário de João Pessoa.</p></div>';
+    });
+  }
+  function render(){
+    [].forEach.call(document.querySelectorAll('nav.bottom button'),function(b){b.classList.toggle('on',b.getAttribute('data-tab')===TAB);});
+    if(!V)return;
+    if(TAB==='times')times();else if(TAB==='placar')placar();else if(TAB==='artilharia')artilharia();else presenca();
+  }
+  load();
+})();
+</script>
+</body>
+</html>

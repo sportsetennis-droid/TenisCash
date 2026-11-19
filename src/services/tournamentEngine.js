@@ -10,8 +10,22 @@
 // =====================================================================
 
 const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const { AsyncLocalStorage } = require('async_hooks');
 const F = require('./tournamentFormats');
+
+// Liga F3: o motor pode rodar DENTRO de uma transação (criação rápida: torneio + times +
+// tabela numa transação só — falha no meio não deixa lixo). withDb(tx, fn) faz todas as
+// chamadas `prisma.*` deste arquivo, durante fn, irem pro tx. Fora disso = cliente normal.
+const basePrisma = new PrismaClient();
+const dbScope = new AsyncLocalStorage();
+const prisma = new Proxy({}, {
+  get(_t, k) {
+    const db = dbScope.getStore() || basePrisma;
+    const v = db[k];
+    return typeof v === 'function' ? v.bind(db) : v;
+  },
+});
+function withDb(db, fn) { return dbScope.run(db, fn); }
 
 // Fases "de tabela" (empate vale ponto; classificação recalculada).
 // Todo o resto (mata-mata, dupla eliminação, final) não pode empatar.
@@ -117,6 +131,8 @@ async function generateFixtures(categoryId, opts = {}) {
   if (entries.length < 2) return { ok: false, error: 'mínimo 2 inscritos confirmados' };
 
   const format = category.format || category.tournament.format || 'KNOCKOUT';
+  // Racha (Liga F3): não tem tabela — os jogos nascem no dia, depois do sorteio dos times.
+  if (format === 'PICKUP') return { ok: false, error: 'racha não tem tabela: os jogos são criados no dia, depois do sorteio dos times' };
 
   // limpa fixtures antigos (idempotente)
   await prisma.tournamentMatch.deleteMany({ where: { categoryId } });
@@ -1017,6 +1033,7 @@ async function buildAthleteCard(userId, opts = {}) {
 }
 
 module.exports = {
+  withDb,
   generateFixtures,
   generateKnockoutFromGroups,
   generateSwissNextRound,

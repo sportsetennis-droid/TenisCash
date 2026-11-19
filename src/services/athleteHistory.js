@@ -154,15 +154,17 @@ async function history(userId, { viewer = null } = {}) {
     const mInfo = new Map(finishedIds.map((m) => [m.id, m]));
     if (mInfo.size) {
       const evs = await prisma.matchEvent.findMany({
-        where: { playerId: { in: myRoster.map((r) => r.id) }, matchId: { in: [...mInfo.keys()] }, type: { in: ['GOAL', 'ASSIST', 'YELLOW', 'RED'] } },
+        where: { playerId: { in: myRoster.map((r) => r.id) }, matchId: { in: [...mInfo.keys()] }, type: { in: ['GOAL', 'ASSIST', 'YELLOW', 'RED', 'PT1', 'PT2', 'PT3'] } },
         select: { type: true, matchId: true },
       });
-      const key = { GOAL: 'goals', ASSIST: 'assists', YELLOW: 'yellow', RED: 'red' };
+      // Liga F3: no basquete os "gols" são os pontos das cestas (PT1/PT2/PT3 = 1/2/3)
+      const key = { GOAL: 'goals', ASSIST: 'assists', YELLOW: 'yellow', RED: 'red', PT1: 'goals', PT2: 'goals', PT3: 'goals' };
+      const val = { PT1: 1, PT2: 2, PT3: 3 };
       for (const ev of evs) {
         const m = mInfo.get(ev.matchId);
         const t = tById.get(m.tournamentId);
         const season = matchSeason.has(m.id) ? matchSeason.get(m.id) : seasonOf(m.scheduledAt || m.updatedAt);
-        touch(m.tournamentId, t.sport, season, key[ev.type]);
+        touch(m.tournamentId, t.sport, season, key[ev.type], val[ev.type] || 1);
       }
     }
   }
