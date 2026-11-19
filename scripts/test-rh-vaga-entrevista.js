@@ -11,7 +11,8 @@ const prisma = new PrismaClient();
 let n = 0;
 const ok = (name) => { n++; console.log('  ✓', name); };
 const fails = async (fn, status, re) => { try { await fn(); } catch (e) { assert.strictEqual(e.status, status, e.message); if (re) assert.match(e.message, re); return; } assert.fail('devia falhar com ' + status); };
-const base = (extra) => ({ name: 'Candidata Teste', phone: '(83) 98888-0001', consent: 'true', answers: JSON.stringify(['a', 'b', 'c', 'd', 'e']), ...extra });
+const base = (extra) => ({ name: 'Candidata Teste', phone: '(83) 98888-0001', consent: 'true', answers: JSON.stringify(['a', 'b', 'c', 'd', 'e']),
+  screening: JSON.stringify(Object.fromEntries((JOB.screening || []).map((q) => [q.id, 0]))), ...extra });
 
 (async () => {
   await rh.ensureSchema(prisma);
