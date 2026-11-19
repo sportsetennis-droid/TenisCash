@@ -70,6 +70,7 @@ textarea{min-height:90px;resize:vertical}
 </head>
 <body>
 <div id="app"></div>
+<script src="/rh-upload.js"></script>
 <script>
 const $app = document.getElementById('app');
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -164,7 +165,8 @@ async function jobView(slug) {
       sAns[j.screening[qi].id] = +el.value;
     }
     if (!f.consent.checked) { m.className = 'msg bad'; m.textContent = 'Marque a autorização para enviar.'; return; }
-    if (fileInput.files[0] && fileInput.files[0].size > 8 * 1024 * 1024) { m.className = 'msg bad'; m.textContent = 'Currículo grande demais (máx. 8 MB).'; return; }
+    let resume = null;
+    try { resume = await window.rhPrepareFile(fileInput.files[0]); } catch (err) { m.className = 'msg bad'; m.textContent = err.message; return; }
     const fd = new FormData();
     ['name', 'phone', 'email', 'city', 'experience', 'website', 'referredBy'].forEach((k) => fd.append(k, f[k].value));
     fd.append('screening', JSON.stringify(sAns));
@@ -173,7 +175,7 @@ async function jobView(slug) {
     fd.append('storeChoices', JSON.stringify(picked));
     fd.append('answers', JSON.stringify((j.questions || []).map((_, i) => f['q' + i].value)));
     const src = new URLSearchParams(location.search).get('src'); if (src) fd.append('source', src);
-    if (fileInput.files[0]) fd.append('resume', fileInput.files[0]);
+    if (resume) fd.append('resume', resume, resume.name || 'curriculo.jpg');
     const btn = document.getElementById('send'); btn.disabled = true; btn.textContent = 'Enviando…';
     try {
       const r = await fetch('/api/rh/public/jobs/' + encodeURIComponent(slug) + '/apply', { method: 'POST', body: fd });

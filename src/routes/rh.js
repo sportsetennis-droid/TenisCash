@@ -19,7 +19,7 @@ const send = (res, p) => p.then((data) => res.json(data)).catch((e) => {
 });
 function withFile(field) {
   return (req, res, next) => upload.single(field)(req, res, (err) => {
-    if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'Arquivo grande demais (máx. 8 MB).' : 'Arquivo inválido.' });
+    if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'Arquivo grande demais (máx. 20 MB).' : 'Arquivo inválido.' });
     next();
   });
 }

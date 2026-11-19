@@ -13,12 +13,12 @@ const EXT_BY_MIME = Object.freeze({
   'image/png': 'png',
   'image/webp': 'webp',
 });
-const MAX_BYTES = 8 * 1024 * 1024;
+const MAX_BYTES = 20 * 1024 * 1024; // foto já chega reduzida pelo celular (public/rh-upload.js); PDF até 20 MB
 
 function save(file) {
   const ext = EXT_BY_MIME[file && file.mimetype];
   if (!ext) throw Object.assign(new Error('Envie PDF ou foto (JPG, PNG, WEBP).'), { status: 400 });
-  if (!file.buffer || file.buffer.length > MAX_BYTES) throw Object.assign(new Error('Arquivo grande demais (máx. 8 MB).'), { status: 400 });
+  if (!file.buffer || file.buffer.length > MAX_BYTES) throw Object.assign(new Error('Arquivo grande demais (máx. 20 MB).'), { status: 400 });
   // Confere a assinatura do arquivo (não confia só no tipo declarado).
   const b = file.buffer;
   const sig = ext === 'pdf' ? b.slice(0, 4).toString() === '%PDF'

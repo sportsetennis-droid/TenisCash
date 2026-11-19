@@ -59,6 +59,7 @@ textarea{min-height:80px}
   <button data-t="docs"><span>📄</span>Documentos</button>
   <button data-t="aval"><span>⭐</span>Avaliação</button>
 </div></nav>
+<script src="/rh-upload.js"></script>
 <script>
 const K = new URLSearchParams(location.search).get('k');
 const TOKEN = localStorage.getItem('tc_token');
@@ -166,8 +167,9 @@ function bind() {
   if (dgo) dgo.onclick = async () => {
     const f = $('df').files[0]; const m = $('dm');
     if (!f) { m.className = 'msg bad'; m.textContent = 'Escolha a foto ou o PDF.'; return; }
-    if (f.size > 8 * 1024 * 1024) { m.className = 'msg bad'; m.textContent = 'Arquivo grande demais (máx. 8 MB).'; return; }
-    const fd = new FormData(); fd.append('type', $('dt').value); fd.append('issuedAt', $('di').value); fd.append('file', f);
+    let up = null;
+    try { up = await window.rhPrepareFile(f); } catch (err) { m.className = 'msg bad'; m.textContent = err.message; return; }
+    const fd = new FormData(); fd.append('type', $('dt').value); fd.append('issuedAt', $('di').value); fd.append('file', up, up.name || 'documento.jpg');
     dgo.disabled = true; dgo.textContent = 'Enviando…';
     try { await api('/documents', 'POST', fd, true); await load(); TAB = 'docs'; render(); $('dm').className = 'msg ok'; $('dm').textContent = 'Documento enviado. Obrigado!'; }
     catch (e) { m.className = 'msg bad'; m.textContent = e.message; dgo.disabled = false; dgo.textContent = 'Enviar'; }
