@@ -110,4 +110,73 @@ async function buscarCorOficial({ marca, eans = [] }, opts = {}) {
   return { ok: true, cor: r.value, bruto, fonte: a.link ? `https://${a.host}${new URL(a.link, 'https://x').pathname}` : a.fonte, consulta: a.fonte, ean: a.ean, produto: a.produto, referencia: a.referencia, conferidos: achados.length };
 }
 
-module.exports = { LOJAS, lojasDaMarca, consultarLoja, buscarCorOficial, corDoProduto, titulo };
+// ---------------------------------------------------------------------
+// FOTOS OFICIAIS PELO SITE DA MARCA — dono, 19/11/2026: "Faça sem crédito".
+// A busca paga (Serper) acabou o crédito. A foto vem do MESMO lugar da cor:
+// a API pública do site oficial da marca, pelo CÓDIGO DE BARRAS exato do card.
+// Grátis, sem chave, e a cor é certa por definição (são as fotos do item com
+// aquele código). Trava: os códigos do card têm de cair no MESMO produto do
+// site (mesma cor); conflito → não usa.
+// ---------------------------------------------------------------------
+function imagensDoItem(item) {
+  const vistas = new Set(); const out = [];
+  for (const im of (item && Array.isArray(item.images) ? item.images : [])) {
+    const u = String((im && im.imageUrl) || '').trim();
+    if (!/^https:\/\//i.test(u) || vistas.has(u)) continue;
+    vistas.add(u); out.push(u);
+  }
+  return out;
+}
+
+async function consultarFotos(host, ean, { fetchFn = fetch, timeoutMs = 10000 } = {}) {
+  const url = `https://${host}/api/catalog_system/pub/products/search?fq=alternateIds_Ean:${ean13(ean)}`;
+  let lista;
+  try {
+    const r = await fetchFn(url, { headers: UA, signal: AbortSignal.timeout(timeoutMs) });
+    if (!r || !r.ok) return null;
+    lista = await r.json();
+  } catch (_) { return null; }
+  if (!Array.isArray(lista)) return null;
+  for (const prod of lista) {
+    const item = (prod.items || []).find((i) => mesmoCodigo(i.ean, ean) || (i.referenceId || []).some((x) => mesmoCodigo(x && x.Value, ean)));
+    if (!item) continue;
+    const fotos = imagensDoItem(item);
+    if (!fotos.length) continue;
+    return { fotos, produtoId: String(prod.productId || ''), cor: corDoProduto(prod, item), produto: prod.productName || null, link: prod.link || null, fonte: url };
+  }
+  return null;
+}
+
+// Revendedores multimarca na mesma plataforma (API pública de catálogo, sem chave): depois do site
+// da marca, a foto do item com o MESMO código de barras num revendedor também é da cor certa.
+// Conferidos 19/11/2026 (acharam fotos pelo código exato). Mudar sem deploy: FOTO_REVENDEDORES (vírgula).
+function revendedores() {
+  const env = String(process.env.FOTO_REVENDEDORES || '').split(',').map((s) => s.trim()).filter(Boolean);
+  return env.length ? env : ['www.shopcoopera.com.br', 'www.paquetaesportes.com.br', 'www.oscarcalcados.com.br'];
+}
+
+// Fotos oficiais de um card pelos seus códigos de barras (até `maxCodigos`, no máximo 5 fotos).
+// Ordem: site oficial da marca → revendedores. A primeira loja que acha manda.
+async function buscarFotosOficiais({ marca, eans = [] }, opts = {}) {
+  const lojas = [...new Set([...lojasDaMarca(marca), ...(opts.semRevendedores ? [] : revendedores())])];
+  if (!lojas.length) return { ok: false, motivo: 'marca sem loja oficial cadastrada' };
+  const codigos = [...new Set((eans || []).map((e) => String(e || '').replace(/\D/g, '')).filter((e) => e.length >= 8 && e.length <= 14))].slice(0, opts.maxCodigos || 3);
+  if (!codigos.length) return { ok: false, motivo: 'card sem código de barras' };
+  const achados = [];
+  for (const host of lojas) {
+    for (const e of codigos) {
+      const r = await consultarFotos(host, e, opts);
+      if (r) achados.push({ ...r, ean: e, host });
+    }
+    if (achados.length) break;
+  }
+  if (!achados.length) return { ok: false, motivo: 'código não encontrado no site oficial nem nos revendedores' };
+  const produtos = [...new Set(achados.map((a) => a.produtoId + '|' + norm(a.cor || '')))];
+  if (produtos.length > 1) return { ok: false, motivo: 'conflito: códigos do card caem em produtos/cores diferentes no site' };
+  const a = achados.slice().sort((x, y) => y.fotos.length - x.fotos.length)[0];
+  const max = Math.min(Math.max(Number(opts.max || 5), 1), 5);
+  return { ok: true, fotos: a.fotos.slice(0, max), ean: a.ean, host: a.host, consulta: a.fonte,
+    fonte: a.link ? `https://${a.host}${new URL(a.link, 'https://x').pathname}` : a.fonte, produto: a.produto, cor: a.cor || null };
+}
+
+module.exports = { LOJAS, lojasDaMarca, revendedores, consultarLoja, buscarCorOficial, corDoProduto, titulo, imagensDoItem, consultarFotos, buscarFotosOficiais };

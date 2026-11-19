@@ -1242,10 +1242,10 @@ let activeEnrichJobId = null;
 const ENRICH_BATCH_CONCURRENCY = 5;
 const ENRICH_PER_PRODUCT_BRL_ESTIMATE = parseFloat(process.env.AI_ENRICH_PER_PRODUCT_BRL || '0.20');
 
-const ALLOWED_CATEGORIES = ['Tênis', 'Vestuário', 'Acessórios', 'Calçado', 'Esportes'];
+const ALLOWED_CATEGORIES = ['Tênis', 'Roupas', 'Acessórios', 'Calçado', 'Esportes']; // dono 19/11: "Roupas"
 const ALLOWED_SUBCATEGORIES = {
   'Tênis': ['Corrida', 'Casual', 'Futebol Campo', 'Futsal', 'Society', 'Lifestyle', 'Treino', 'Caminhada'],
-  'Vestuário': ['Camiseta', 'Short', 'Calça', 'Jaqueta'],
+  'Roupas': ['Camiseta', 'Short', 'Calça', 'Jaqueta'],
   'Acessórios': ['Meias', 'Boné', 'Mochila', 'Proteção'],
   'Calçado': ['Sandália', 'Chinelo'],
   'Esportes': ['Bola', 'Luvas'],
@@ -1258,7 +1258,7 @@ function normalizeCategory(raw) {
     if (c.toLowerCase() === s) return c;
   }
   if (s === 'tenis' || s === 'tênis') return 'Tênis';
-  if (s === 'vestuario' || s === 'vestuário' || s === 'roupa' || s === 'roupas') return 'Vestuário';
+  if (s === 'vestuario' || s === 'vestuário' || s === 'roupa' || s === 'roupas') return 'Roupas';
   if (s === 'acessorio' || s === 'acessório' || s === 'acessorios' || s === 'acessórios') return 'Acessórios';
   if (s === 'calcado' || s === 'calçado' || s === 'calcados' || s === 'calçados') return 'Calçado';
   if (s === 'esporte' || s === 'esportes') return 'Esportes';
@@ -1288,7 +1288,7 @@ function buildEnrichmentPrompt(p) {
     + '(categoria atual no banco: ' + cabec + ', SKU ' + sku + ') e me retorne JSON estruturado com:\n'
     + '{\n'
     + '  "imageUrl": "URL DIRETA da imagem oficial — DEVE terminar em .jpg, .jpeg, .png ou .webp. NUNCA URL de página HTML.",\n'
-    + '  "category": "uma de: Tênis, Vestuário, Acessórios, Calçado, Esportes",\n'
+    + '  "category": "uma de: Tênis, Roupas, Acessórios, Calçado, Esportes",\n'
     + '  "subcategory": "subcategoria conforme tabela abaixo",\n'
     + '  "shortDescription": "1 frase descrevendo o produto",\n'
     + '  "longDescription": "parágrafo de 2-3 frases sobre o produto, construção, propósito",\n'

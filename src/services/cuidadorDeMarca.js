@@ -29,11 +29,13 @@ const vazio = (v) => VAZIOS.has(norm(v));
 
 // Só valores que existem na ÁRVORE OFICIAL (scripts/seed-category-tree.js), por categoria.
 // Sandálias (categoria) e Unissex não estão na árvore: o gerente não preenche — vai para o dono.
-const CATEGORIA_DO_TIPO = { 'tênis': 'Tênis', chuteira: 'Chuteiras', 'acessório': 'Acessórios', roupa: 'Vestuário' };
+// Roupa → "Roupas" (dono 19/11: entre Roupas e Vestuário, fica "Roupas").
+const CATEGORIA_DO_TIPO = { 'tênis': 'Tênis', chuteira: 'Chuteiras', 'acessório': 'Acessórios', roupa: 'Roupas' };
 const PUBLICO_DA_ARVORE = {
   TENIS: { masculino: 'Homem', feminino: 'Feminino', infantil_masculino: 'Menino', infantil_feminino: 'Menina' },
   CHUTEIRAS: { masculino: 'Homem', infantil_masculino: 'Menino', infantil_sem_genero: 'Menino' }, // árvore: só Homem/Menino
   VESTUARIO: { masculino: 'Homem', feminino: 'Mulher', infantil_masculino: 'Menino', infantil_feminino: 'Menina' },
+  ROUPAS: { masculino: 'Homem', feminino: 'Mulher', infantil_masculino: 'Menino', infantil_feminino: 'Menina' },
   ACESSORIOS: { masculino: 'Homem', feminino: 'Mulher', infantil_masculino: 'Menino', infantil_feminino: 'Menina' },
 };
 const MODALIDADE = { FUTSAL: 'Futsal', SOCIETY: 'Society', CAMPO: 'Campo' };
@@ -61,7 +63,7 @@ function temNumeracaoInfantil(p, cat = norm(p.category)) {
 // Prova de ADULTO pela grade: pelo menos um tamanho real legível (não placeholder T-/Único-) e nenhum infantil.
 function gradeProvaAdulto(p, cat = norm(p.category)) {
   const reais = (p.tamanhos || []).map((t) => String(t || '').trim()).filter((t) => t && !/^T-/i.test(t) && !/^(U|UN|UNICO|ÚNICO|UNICA)$/i.test(t) && !/^[uú]nico-/i.test(t));
-  if (!(p.tamanhos || []).length) return !(cat === 'TENIS' || cat === 'CHUTEIRAS' || cat === 'VESTUARIO') && !temNumeracaoInfantil(p, cat); // acessório sem grade: só se o nome não tiver numeração infantil
+  if (!(p.tamanhos || []).length) return !(cat === 'TENIS' || cat === 'CHUTEIRAS' || cat === 'VESTUARIO' || cat === 'ROUPAS') && !temNumeracaoInfantil(p, cat); // acessório sem grade: só se o nome não tiver numeração infantil
   return reais.length > 0 && !temNumeracaoInfantil(p, cat);
 }
 
@@ -153,6 +155,63 @@ async function corPeloSiteDaMarca(db, p, { buscarCor, agora }) {
   return n === 1 ? { cor: r.cor, anterior: corLida || null, fonte: r.fonte } : null;
 }
 
+// ---------------------------------------------------------------------
+// FOTOS OFICIAIS (dono 19/11: "Faça sem crédito" — a busca paga acabou o crédito).
+// O gerente completa as 5 fotos (regra 27) com as fotos do SITE OFICIAL DA MARCA
+// para o código de barras exato do card: grátis e da cor certa. Troca as fotos
+// atuais só quando o site tem MAIS fotos válidas que o card (nunca piora o card).
+// Tentativa sem resultado fica 7 dias sem repetir (aiContext.fotoOficialTentativa).
+// ---------------------------------------------------------------------
+const SETE_DIAS = 7 * 24 * 3600 * 1000;
+function precisaFotoOficial(p, agora = new Date()) {
+  const { usableImageCount, minPhotos } = require('./nuvemshopEligibility');
+  const ctx = (p.aiContext && typeof p.aiContext === 'object' && !Array.isArray(p.aiContext)) ? p.aiContext : {};
+  if (usableImageCount(p) >= minPhotos()) return false;
+  const t = ctx.fotoOficialTentativa && Date.parse(ctx.fotoOficialTentativa.em);
+  return !(t && agora.getTime() - t < SETE_DIAS);
+}
+
+async function fotosPeloSiteDaMarca(db, p, { buscarFotos, agora }) {
+  const { usableImageCount } = require('./nuvemshopEligibility');
+  const eans = (await db.productSize.findMany({ where: { productId: p.id }, select: { barcode: true } })).map((s) => s.barcode).filter(Boolean);
+  const r = await buscarFotos({ marca: p.brand, eans });
+  const atuais = usableImageCount(p);
+  if (!r || !r.ok || !Array.isArray(r.fotos) || r.fotos.length <= atuais) {
+    await mergeAiContext(db, p.id, { fotoOficialTentativa: { em: agora.toISOString(), motivo: (r && r.ok) ? `site tem ${r.fotos.length} foto(s), card já tem ${atuais}` : ((r && r.motivo) || 'sem resposta') } });
+    return null;
+  }
+  const evid = { fonte: r.fonte, consulta: r.consulta || null, codigo: r.ean, fotos: r.fotos.length, anteriores: [p.imageUrl, ...(Array.isArray(p.imageUrls) ? p.imageUrls : [])].filter(Boolean), em: agora.toISOString(), por: 'gerente da marca (site oficial)' };
+  // atômico: só troca se a foto principal continua a que foi lida
+  const n = await db.$executeRawUnsafe(
+    'UPDATE "Product" SET "imageUrl" = $2, "imageUrls" = $3::jsonb, "aiContext" = (COALESCE("aiContext", \'{}\'::jsonb) - \'fotoOficialTentativa\') || jsonb_build_object(\'fotosOficiais\', $4::jsonb), "updatedAt" = now() ' +
+    'WHERE id = $1 AND (jsonb_typeof("aiContext") = \'object\' OR "aiContext" IS NULL) AND COALESCE("imageUrl", \'\') = $5::text',
+    p.id, r.fotos[0], JSON.stringify(r.fotos.slice(1)), JSON.stringify(evid), String(p.imageUrl || ''));
+  return n === 1 ? { fotos: r.fotos.length, antes: atuais, fonte: r.fonte } : null;
+}
+
+// Cards ativos com estoque nas lojas do site (publicados ou não) e menos de 5 fotos, de qualquer marca.
+async function cuidarFotos(db, { aplicar = true, agora = new Date(), buscarFotos = null, limite = Number(process.env.CUIDADOR_FOTO_LIMITE || 30) } = {}) {
+  const busca = buscarFotos || (process.env.CUIDADOR_FOTO_OFICIAL === '0' ? null : require('./corOficialMarca').buscarFotosOficiais);
+  const res = { verificados: 0, consultas: 0, fotos: 0, itens: [] };
+  if (!busca) return res;
+  const { nuvemshopStockStoreIds } = require('./nuvemshopEligibility');
+  const lojas = nuvemshopStockStoreIds();
+  const lista = await db.$queryRawUnsafe(
+    'SELECT p.id, p.name, p.brand, p."imageUrl", p."imageUrls", p."aiContext" FROM "Product" p WHERE p.active AND EXISTS (' +
+    'SELECT 1 FROM "ProductSize" s JOIN "StoreStock" ss ON ss."productSizeId" = s.id WHERE s."productId" = p.id AND ss.stock > 0' +
+    (lojas.length ? ' AND ss."storeId" = ANY($1::text[])' : '') + ') ORDER BY p."updatedAt" DESC', ...(lojas.length ? [lojas] : []));
+  for (const p of lista) {
+    if (res.consultas >= limite) break;
+    if (!precisaFotoOficial(p, agora)) continue; // qualquer marca: site oficial e revendedores pelo código exato
+    res.verificados++;
+    if (!aplicar) continue;
+    res.consultas++;
+    const f = await fotosPeloSiteDaMarca(db, p, { buscarFotos: busca, agora }).catch(() => null);
+    if (f) { res.fotos++; if (res.itens.length < 50) res.itens.push({ productId: p.id, nome: p.name, marca: p.brand, fotos: f.fotos, antes: f.antes, fonte: f.fonte }); }
+  }
+  return res;
+}
+
 async function cuidar(db, { marca = null, aplicar = true, agora = new Date(), buscarCor = null, limiteCor = Number(process.env.CUIDADOR_COR_LIMITE || 30) } = {}) {
   const { nuvemshopStockStoreIds } = require('./nuvemshopEligibility');
   const lista = await candidatos(db, { marca, storeIds: nuvemshopStockStoreIds() });
@@ -194,7 +253,13 @@ async function cuidar(db, { marca = null, aplicar = true, agora = new Date(), bu
 const state = { lastRunAt: null, lastResult: null, lastError: null };
 function iniciarCuidadorDeMarca(db) {
   if (process.env.CUIDADOR_DE_MARCA === '0') { console.log('[cuidador de marca] desligado (CUIDADOR_DE_MARCA=0)'); return; }
-  const rodar = () => cuidar(db).then((r) => { state.lastRunAt = new Date().toISOString(); state.lastResult = { cards: r.cards, preenchidos: r.preenchidos, campos: r.campos, cores: r.cores }; state.lastError = null; if (r.preenchidos || r.cores) console.log('[cuidador de marca]', JSON.stringify(state.lastResult)); })
+  const rodar = () => cuidar(db).then(async (r) => {
+    const f = await cuidarFotos(db).catch((e) => ({ erro: e.message, fotos: 0, consultas: 0 }));
+    state.lastRunAt = new Date().toISOString();
+    state.lastResult = { cards: r.cards, preenchidos: r.preenchidos, campos: r.campos, cores: r.cores, fotosOficiais: f.fotos, fotosConsultas: f.consultas, ...(f.erro ? { fotosErro: f.erro } : {}) };
+    state.lastError = null;
+    if (r.preenchidos || r.cores || f.fotos) console.log('[cuidador de marca]', JSON.stringify(state.lastResult));
+  })
     .catch((e) => { state.lastError = e.message; console.warn('[cuidador de marca] falhou:', e.message); });
   setTimeout(rodar, 4 * 60 * 1000);
   setInterval(rodar, 60 * 60 * 1000);
@@ -202,4 +267,4 @@ function iniciarCuidadorDeMarca(db) {
 }
 function estadoCuidadorDeMarca() { return JSON.parse(JSON.stringify(state)); }
 
-module.exports = { precisaCorOficial, corPeloSiteDaMarca, temNumeracaoInfantil, gradeProvaAdulto, planejar, pendencias, candidatos, cuidar, iniciarCuidadorDeMarca, estadoCuidadorDeMarca };
+module.exports = { precisaCorOficial, corPeloSiteDaMarca, precisaFotoOficial, fotosPeloSiteDaMarca, cuidarFotos, temNumeracaoInfantil, gradeProvaAdulto, planejar, pendencias, candidatos, cuidar, iniciarCuidadorDeMarca, estadoCuidadorDeMarca };
