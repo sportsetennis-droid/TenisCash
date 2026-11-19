@@ -12,6 +12,7 @@ const url = process.env.ROUND_TEST_DATABASE_URL;
 if (!url?.startsWith('postgresql://roundtest@127.0.0.1:55329/')) throw Error('Somente banco local isolado.');
 process.env.DATABASE_URL = url;
 process.env.PAYROLL_WHATSAPP = 'on';
+process.env.MEU_PAGAMENTO = '1'; // a tela do vendedor está desativada por padrão (dono, 19/11/2026)
 
 const mw = require('../src/middleware');
 const db = mw.prisma;

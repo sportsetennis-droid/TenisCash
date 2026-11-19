@@ -342,6 +342,10 @@ textarea.in{min-height:96px;resize:vertical}
       return res;
     }
     let data = null; try { data = await res.json(); } catch (_) {}
+    if (res.status === 403 && data && data.disabled) {
+      document.body.innerHTML = '<div style="padding:48px 24px;text-align:center;font-family:system-ui,sans-serif;color:#444"><p style="font-size:18px;font-weight:700">Meu pagamento está desativado.</p></div>';
+      throw new ApiError('desativado', 403);
+    }
     if (!res.ok) throw new ApiError((data && data.error) || 'Erro ao carregar (' + res.status + ')', res.status);
     return data;
   }

@@ -721,7 +721,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
     <div class="action-btn" onclick="showScreen('seller-schedule')"><span>📅</span><span>Escala e folgas</span></div>
     <div class="action-btn" onclick="showScreen('seller-production')"><span>✓</span><span>Produção diária</span></div>
     <div class="action-btn" onclick="showScreen('seller-clock')"><span>⏱</span><span>Ponto</span></div>
-    <div class="action-btn" onclick="showScreen('seller-payment')"><span>💵</span><span>Meu pagamento</span></div>
+    <div class="action-btn" id="seller-pay-btn" style="display:none" onclick="showScreen('seller-payment')"><span>💵</span><span>Meu pagamento</span></div>
     <div class="action-btn" onclick="showScreen('seller-portfolio')"><span>👥</span><span>Minha Carteira</span></div>
     <div class="action-btn" onclick="showScreen('seller-interview')"><span>📝</span><span>Entrevista</span></div>
   </div>
@@ -3840,6 +3840,14 @@ function updateBalance() {
 
 function toggleBalance() { balanceVisible = !balanceVisible; updateBalance(); }
 
+// "Meu pagamento" desativado pelo dono (19/11/2026): o botão só aparece se o servidor disser que está ligado.
+window.__meuPagamentoOn = false;
+fetch('/api/payroll/self-service', { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).then(j => {
+  window.__meuPagamentoOn = !!(j && j.enabled);
+  const b = document.getElementById('seller-pay-btn'); if (b) b.style.display = window.__meuPagamentoOn ? '' : 'none';
+  if (window.__meuPagamentoOn) { try { showAdminButton(); } catch (_) {} }
+}).catch(() => {});
+
 function showAdminButton() {
   if (user && (user.role === 'admin' || user.role === 'superadmin')) {
     const actions = document.getElementById('home-actions');
@@ -3853,7 +3861,7 @@ function showAdminButton() {
       btn.style.border = '2px solid rgba(255,255,255,0.4)';
       actions.appendChild(btn);
     }
-    if (!document.getElementById('pay-btn')) {
+    if (window.__meuPagamentoOn && !document.getElementById('pay-btn')) {
       const pb = document.createElement('div');
       pb.id = 'pay-btn';
       pb.className = 'action-btn';
