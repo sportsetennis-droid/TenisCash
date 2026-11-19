@@ -13,7 +13,7 @@ const crypto = require('crypto');
 const { prisma } = require('../middleware');
 const ns = require('./nuvemshop');
 const { mergeAiContext } = require('./aiContextMerge');
-const { assessProductForNuvemshop, nuvemshopStoreStocksQuery, physicalStock } = require('./nuvemshopEligibility');
+const { assessProductForNuvemshop, nuvemshopStoreStocksQuery, physicalStock, promocaoParaSite } = require('./nuvemshopEligibility');
 const storeRadio = require('./storeRadio');
 const { applyOrderStock } = require('./nuvemshopStockSafety');
 
@@ -1238,7 +1238,7 @@ function buildNuvemshopProductPayload(localProduct, sizes, opts = {}) {
   const variants = (hasSizes ? sizes : [{ size: null, stock: 0, barcode: null }]).map((s) => {
     const v = {
       price: String(Number(localProduct.price || 0).toFixed(2)),
-      promotional_price: localProduct.promoPrice != null ? String(Number(localProduct.promoPrice).toFixed(2)) : null,
+      promotional_price: promocaoParaSite(localProduct), // site sem promoção até o dono ligar NS_PROMOCAO_NO_SITE
       stock_management: true,
       stock: parseInt(s.stock || 0, 10),
       sku: s.barcode || (hasSizes ? `${localProduct.sku}-${s.size}` : localProduct.sku),
@@ -1360,7 +1360,7 @@ async function updateNuvemshopVariants(connection, nsProductId, localProduct, si
 
   const result = { updated: 0, created: 0, deleted: 0, unchanged: 0, errors: [] };
   const price = String(Number(localProduct.price || 0).toFixed(2));
-  const promo = localProduct.promoPrice != null ? String(Number(localProduct.promoPrice).toFixed(2)) : null;
+  const promo = promocaoParaSite(localProduct); // null = site sem promoção (dono 19/11)
   const sizeOf = (v) => (Array.isArray(v.values) && v.values[0]) ? String(v.values[0].pt || v.values[0].name || '').trim() : '';
   const matchVar = (sz) => nsVariants.find((v) =>
     v.sku === `${localProduct.sku}-${sz.size}` ||
@@ -1390,7 +1390,7 @@ async function updateNuvemshopVariants(connection, nsProductId, localProduct, si
     const payload = { stock_management: true, stock: desiredStock };
     if (!stockOnly || !nsVar) {
       payload.price = price;
-      // sem promoção no card → limpa a promoção da loja (tirar promoção também é alteração do card)
+      // sem promoção para o site → limpa a promoção da loja online (dono 19/11: entra sem promoção)
       payload.promotional_price = promo != null ? promo : null;
     }
     try {
