@@ -308,7 +308,10 @@ function formatPreShift(p, { nowMs = Date.now() } = {}) {
   return L.join('\n');
 }
 
-function enabled() { return String(process.env.PULSE_WHATSAPP || 'on').toLowerCase() !== 'off'; }
+// DESLIGADO (dono 19/11/2026): a mensagem da manhã e o aviso de ponto foram para o WhatsApp de um CLIENTE
+// cadastrado como vendedor ("Vc tá mandando mensagem pra cliente dizendo que é vendedor").
+// Só volta com PULSE_WHATSAPP=liberado-pelo-dono, depois de conferir o telefone de cada vendedor.
+function enabled() { return String(process.env.PULSE_WHATSAPP || '').trim() === 'liberado-pelo-dono'; }
 function defaultSend() { const wa = require('../whatsapp'); return (phone, msg) => wa.sendCustomMessage(phone, msg); }
 function minutes(hhmm) { const [h, m] = String(hhmm || '').split(':').map(Number); return Number.isFinite(h) ? h * 60 + (m || 0) : null; }
 
