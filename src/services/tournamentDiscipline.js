@@ -163,8 +163,10 @@ function slugify(s) {
 async function seriesChampions(slug) {
   const key = slugify(slug);
   if (!key) return null;
+  // Liga F1: histórico público da série = só torneios PÚBLICOS e não arquivados
+  // (não listado/privado/arquivado ficam fora da página da série).
   const tournaments = await prisma.tournament.findMany({
-    where: { seriesSlug: key },
+    where: { seriesSlug: key, visibility: 'public', archivedAt: null },
     include: { categories: true },
   });
   if (!tournaments.length) return { series: { slug: key, name: null }, editions: [], titles: [] };

@@ -516,7 +516,7 @@ class ArtError extends Error { constructor(status, msg) { super(msg); this.statu
 async function loadTournament(idOrSlug) {
   return prisma.tournament.findFirst({
     where: { OR: [{ id: idOrSlug }, { slug: idOrSlug }] },
-    select: { id: true, slug: true, name: true, sport: true, status: true, bannerUrl: true, city: true, state: true, startDate: true, endDate: true, prizeDescription: true, visibility: true },
+    select: { id: true, slug: true, name: true, sport: true, status: true, bannerUrl: true, city: true, state: true, startDate: true, endDate: true, prizeDescription: true, visibility: true, archivedAt: true },
   });
 }
 
@@ -754,7 +754,9 @@ async function renderPng(tipo, formato, data) {
 }
 
 // API principal: devolve { png, hash, width, height }
-async function buildArt(idOrSlug, tipo, query = {}) {
+// opts.allowPrivate: a ROTA já conferiu a visibilidade (membro de torneio privado).
+// Sem isso, privado/arquivado = 404 (uso direto continua seguro por padrão).
+async function buildArt(idOrSlug, tipo, query = {}, opts = {}) {
   if (!TYPES.includes(tipo)) throw new ArtError(400, 'tipo de arte inválido (' + TYPES.join(', ') + ')');
   const formato = FORMATS[query.formato] ? query.formato : (tipo === 'torneio' && !query.formato ? 'og' : 'story');
   let t = null;
@@ -762,20 +764,21 @@ async function buildArt(idOrSlug, tipo, query = {}) {
     t = { id: null, slug: '', name: 'Club Sports & Tennis', bannerUrl: null };
   } else {
     t = await loadTournament(idOrSlug);
-    if (!t || t.visibility === 'private') throw new ArtError(404, 'torneio não encontrado');
+    if (!t || t.archivedAt || (t.visibility === 'private' && !opts.allowPrivate)) throw new ArtError(404, 'torneio não encontrado');
   }
   const data = t.id ? await buildData(t, tipo, query) : await buildData({ ...t, id: '__none__' }, tipo, query);
   const hash = crypto.createHash('sha1').update(tipo + '|' + formato + '|' + JSON.stringify(data)).digest('hex');
   const fmt = FORMATS[formato];
-  if (PNG_CACHE.has(hash)) return { png: PNG_CACHE.get(hash), hash, width: fmt.w, height: fmt.h, cached: true };
-  if (INFLIGHT.has(hash)) return { png: await INFLIGHT.get(hash), hash, width: fmt.w, height: fmt.h, cached: true };
+  const priv = !!(t && t.visibility === 'private'); // arte de torneio privado não vai pra cache público
+  if (PNG_CACHE.has(hash)) return { png: PNG_CACHE.get(hash), hash, width: fmt.w, height: fmt.h, cached: true, private: priv };
+  if (INFLIGHT.has(hash)) return { png: await INFLIGHT.get(hash), hash, width: fmt.w, height: fmt.h, cached: true, private: priv };
   const p = renderPng(tipo, formato, data);
   INFLIGHT.set(hash, p);
   try {
     const png = await p;
     if (PNG_CACHE.size >= PNG_MAX) PNG_CACHE.delete(PNG_CACHE.keys().next().value);
     PNG_CACHE.set(hash, png);
-    return { png, hash, width: fmt.w, height: fmt.h, cached: false };
+    return { png, hash, width: fmt.w, height: fmt.h, cached: false, private: priv };
   } finally {
     INFLIGHT.delete(hash);
   }

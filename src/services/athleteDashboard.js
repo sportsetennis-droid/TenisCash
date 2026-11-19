@@ -21,7 +21,7 @@ async function dashboard(userId) {
   const owned = await prisma.tournament.findMany({ where: { ownerId: uid }, select: { id: true } });
 
   const ids = [...new Set(mems.map((m) => m.tournamentId).concat(roleRows.map((r) => r.tournamentId), owned.map((o) => o.id)))];
-  const ts = ids.length ? await prisma.tournament.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, slug: true, sport: true, status: true, ownerId: true } }) : [];
+  const ts = ids.length ? await prisma.tournament.findMany({ where: { id: { in: ids }, archivedAt: null }, select: { id: true, name: true, slug: true, sport: true, status: true, ownerId: true } }) : [];
   const tById = Object.fromEntries(ts.map((t) => [t.id, t]));
 
   // Times ativos (clube = nome, único por torneio)
@@ -218,7 +218,7 @@ async function myGames(userId, { scope = 'all', limit = 50 } = {}) {
 // Agrupa por conta ligada (userId) ou, sem conta, por nome+time. Só jogos encerrados.
 async function sportScorers(sport, { limit = 50 } = {}) {
   const lim = Math.max(1, Math.min(Number(limit) || 50, 200));
-  const ts = await prisma.tournament.findMany({ where: { sport: String(sport), visibility: 'public' }, select: { id: true } });
+  const ts = await prisma.tournament.findMany({ where: { sport: String(sport), visibility: 'public', archivedAt: null }, select: { id: true } });
   const tids = ts.map((t) => t.id);
   if (!tids.length) return { sport, scorers: [] };
   const matches = await prisma.tournamentMatch.findMany({ where: { tournamentId: { in: tids }, status: { in: ['FINISHED', 'WALKOVER'] } }, select: { id: true, homeEntryId: true, awayEntryId: true } });

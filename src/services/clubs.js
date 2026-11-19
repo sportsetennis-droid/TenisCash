@@ -282,11 +282,19 @@ async function removeMember(ctx, idOrSlug, targetUserId) {
 }
 
 // --------------------------------------------------------------- torneio
+// Liga F1: torneio privado/arquivado que o usuário não pode ver = "não existe".
+async function requireVisibleTournament(ctx, tournamentId) {
+  const access = require('./tournamentAccess');
+  const t = await prisma.tournament.findUnique({ where: { id: String(tournamentId || '') }, select: { id: true, ownerId: true, visibility: true, archivedAt: true } });
+  if (!t || !(await access.canSee({ userId: ctx.userId, userRole: ctx.userRole }, t))) fail(404, 'torneio não encontrado');
+  return t;
+}
 async function addLink(ctx, idOrSlug, { tournamentId, entryName } = {}) {
   const club = await loadClub(idOrSlug);
   await requireRole(club, ctx, ['owner']);
   const name = String(entryName || '');
   if (!tournamentId || !name) fail(400, 'informe o torneio e a inscrição');
+  await requireVisibleTournament(ctx, tournamentId);
   const entry = await prisma.tournamentEntry.findFirst({ where: { tournamentId: String(tournamentId), name }, select: { id: true } });
   if (!entry) fail(404, 'inscrição com esse nome exato não existe nesse torneio');
   return prisma.clubTournamentLink.upsert({
@@ -305,6 +313,7 @@ async function removeLink(ctx, idOrSlug, linkId) {
 async function entryOptions(ctx, idOrSlug, tournamentId) {
   const club = await loadClub(idOrSlug);
   await requireRole(club, ctx, ['owner']);
+  await requireVisibleTournament(ctx, tournamentId);
   const es = await prisma.tournamentEntry.findMany({ where: { tournamentId: String(tournamentId) }, select: { name: true }, orderBy: { name: 'asc' } });
   return [...new Set(es.map((e) => e.name))];
 }
