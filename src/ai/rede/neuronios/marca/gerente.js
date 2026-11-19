@@ -36,8 +36,8 @@ async function cadastroIncompleto(ler, marcasDoRelatorio, quando) {
   for (const r of rows) {
     const k = chave(r.brand);
     if (!k || !marcas.has(k)) continue;
-    // card fora do site é NOVO: a regra 27 exige 5 fotos válidas para subir
-    const falta = [Number(r.n_fotos || 0) < 5 && 'foto', r.sem_descricao && 'descricao'].filter(Boolean);
+    // card fora do site é NOVO: sobe com 3 fotos (dono 19/11); abaixo disso o agente de foto completa
+    const falta = [Number(r.n_fotos || 0) < require('../../../../services/nuvemshopEligibility').minPhotos() && 'foto', r.sem_descricao && 'descricao'].filter(Boolean);
     if (!falta.length) continue;
     const n = cont.get(k) || 0; if (n >= POR_MARCA()) continue; cont.set(k, n + 1);
     out.push({ tipo: 'marca.cadastro-incompleto', forca: 0.6, dados: { chave: 'cadastro|' + r.id, nFotos: Number(r.n_fotos || 0), productId: r.id, marca: k, falta, produto: { nome: r.name, marca: r.brand }, motivo: 'card com estoque nas lojas do site e fora da Nuvemshop' } });

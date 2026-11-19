@@ -16,7 +16,7 @@
 // O espelho do card (regra 28) leva as fotos para a Nuvemshop sozinho.
 // =====================================================================
 const { canSend } = require('./scanTransfers');
-const { usableImageCount, minPhotos } = require('./nuvemshopEligibility');
+const { usableImageCount, metaFotos } = require('./nuvemshopEligibility');
 const barcodePolicy = require('../../public/scanner-barcode-policy');
 
 const MAX_FOTOS = 5;
@@ -43,7 +43,7 @@ async function pendentes(db, actor, storeId, { limite = 300 } = {}) {
     'json_agg(json_build_object(\'tamanho\', s.size, \'estoque\', ss.stock) ORDER BY s.size) AS tamanhos ' +
     'FROM "Product" p JOIN "ProductSize" s ON s."productId" = p.id JOIN "StoreStock" ss ON ss."productSizeId" = s.id ' +
     'WHERE p.active AND ss."storeId" = $1 AND ss.stock > 0 GROUP BY p.id', storeId);
-  const min = minPhotos();
+  const min = metaFotos();
   return linhas
     .map((p) => ({ p, n: usableImageCount(p) }))
     .filter((x) => x.n < min)
@@ -128,7 +128,7 @@ async function salvar(db, actor, productId, { storeId, codigo, imagens, modo = '
       String(produto.imageUrl || ''), JSON.stringify(galeria(produto)));
     if (n !== 1) falha('As fotos deste produto mudaram enquanto você enviava. Abra de novo e envie.', 409);
   });
-  return { ok: true, productId: produto.id, fotos: finais.length, faltam: Math.max(0, minPhotos() - finais.length), codigo: tamanho.barcode };
+  return { ok: true, productId: produto.id, fotos: finais.length, faltam: Math.max(0, metaFotos() - finais.length), codigo: tamanho.barcode };
 }
 
 // Arquivo de fotos removidas (base64 curada não se perde). Aditivo e idempotente: o deploy não roda migração.

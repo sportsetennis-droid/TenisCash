@@ -30,11 +30,16 @@ async function partA() {
   await t('contagem de fotos: principal + galeria, sem repetir e só URL/arquivo válido', () => {
     assert.strictEqual(elig.usableImageCount(card()), 5, 'principal repetida na galeria conta 1 vez');
     assert.strictEqual(elig.usableImageCount(card({ imageUrls: ['https://lookaside.instagram.com/x', '', 'nada'] })), 1);
-    assert.strictEqual(elig.minPhotos(), 5);
+    assert.strictEqual(elig.minPhotos(), 3, 'sobe com 3 (dono 19/11)');
+    assert.strictEqual(elig.metaFotos(), 5, 'meta continua 5');
   });
-  await t('produto NOVO com menos de 5 fotos não sobe; com 5 sobe', () => {
-    const r4 = elig.assessProductForNuvemshop(card({ imageUrls: fotos(4) }), { isNew: true });
-    assert.ok(r4.reasons.some((x) => /menos de 5 fotos \(4\)/.test(x)), r4.reasons.join('|'));
+  await t('produto NOVO com menos de 3 fotos não sobe; com 3, 4 ou 5 sobe (dono 19/11)', () => {
+    const r2 = elig.assessProductForNuvemshop(card({ imageUrls: fotos(2) }), { isNew: true });
+    assert.ok(r2.reasons.some((x) => /menos de 3 fotos \(2\)/.test(x)), r2.reasons.join('|'));
+    for (const n of [3, 4]) {
+      const r = elig.assessProductForNuvemshop(card({ imageUrls: fotos(n) }), { isNew: true });
+      assert.ok(!r.reasons.some((x) => /fotos/.test(x)), n + ': ' + r.reasons.join('|'));
+    }
     const r5 = elig.assessProductForNuvemshop(card(), { isNew: true });
     assert.ok(!r5.reasons.some((x) => /fotos/.test(x)), r5.reasons.join('|'));
   });

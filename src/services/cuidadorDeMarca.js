@@ -164,9 +164,9 @@ async function corPeloSiteDaMarca(db, p, { buscarCor, agora }) {
 // ---------------------------------------------------------------------
 const SETE_DIAS = 7 * 24 * 3600 * 1000;
 function precisaFotoOficial(p, agora = new Date()) {
-  const { usableImageCount, minPhotos } = require('./nuvemshopEligibility');
+  const { usableImageCount, metaFotos } = require('./nuvemshopEligibility');
   const ctx = (p.aiContext && typeof p.aiContext === 'object' && !Array.isArray(p.aiContext)) ? p.aiContext : {};
-  if (usableImageCount(p) >= minPhotos()) return false;
+  if (usableImageCount(p) >= metaFotos()) return false;
   const t = ctx.fotoOficialTentativa && Date.parse(ctx.fotoOficialTentativa.em);
   return !(t && agora.getTime() - t < SETE_DIAS);
 }

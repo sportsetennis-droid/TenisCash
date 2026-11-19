@@ -37,7 +37,7 @@ const PASSOS = [
   { id: 'confirmacao', rx: /sem confirmacao humana/, titulo: 'Falta a confirmação para subir',
     como: 'A subida automática (de hora em hora) confirma sozinha o card que passa em TODAS as outras travas. Pelo envio manual do admin, a confirmação é marcada no card antes de enviar.',
     quem: 'subida automática / admin', dono: false },
-  { id: 'fotos-minimas', rx: /menos de \d+ fotos/, titulo: 'Menos de 5 fotos (regra do dono: todo produto tem 5)',
+  { id: 'fotos-minimas', rx: /menos de \d+ fotos/, titulo: 'Menos de 3 fotos (sobe com 3; a meta de todo produto continua 5)',
     como: 'Completar até 5 fotos DA MESMA COR do card, nesta ordem de fonte (usadas de verdade nas varreduras de fotos de 15/11 e 18/11/2026; registro na memória "fotos-oficiais"): ' +
       '1) lojas VTEX pelo código de barras exato — /api/catalog_system/pub/products/search?fq=alternateIds_Ean:<EAN> em americanas, paquetaesportes, oscarcalcados, shopcoopera, shopping.sicredi, pittol e nos sites oficiais (penalty, umbro, fila, asics, olympikus, kenner, mizuno, ous, cajubrasil, newbalance, skechers, underarmour); ' +
       '2) CDN oficial da marca pela referência+cor exata (fonte na ficha da marca); ' +

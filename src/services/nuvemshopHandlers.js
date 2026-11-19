@@ -1720,7 +1720,7 @@ async function _pushProductToNuvemshopInner(localProductId, connection) {
   // A single gate controls CREATE and UPDATE. If a previously mapped card
   // becomes invalid, it is actively unpublished instead of remaining frozen
   // and visible in the storefront.
-  // produto NOVO na loja (nunca publicado) também precisa de 5 fotos (regra do dono 2026-11-18).
+  // produto NOVO na loja (nunca publicado) precisa de no mínimo 3 fotos (dono 19/11/2026; meta continua 5).
   // Quem já teve publicação (mesmo que tenha saído do ar ao esgotar) NÃO é novo:
   // a regra das 5 fotos não pode impedir a volta de produto que já estava na loja.
   const eligibility = assessProductForNuvemshop(product, { isNew: !existingMapping });
