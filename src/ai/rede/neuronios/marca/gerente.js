@@ -14,12 +14,40 @@ const { chave } = require('../../regras/marcas');
 
 const DIAS_PARADO = () => Math.max(30, Number(process.env.RNA_PARADO_DIAS || 90));
 
+// Regra 31 (dono 18/11): o gerente é responsável por colocar a marca no site. Para cada card dele
+// com estoque nas lojas do site, fora da Nuvemshop e sem foto ou sem descrição, aciona os agentes
+// de foto oficial e de descrição (que PROPÕEM ao dono). Até 15 por marca por dia.
+const POR_MARCA = () => Math.max(1, Number(process.env.RNA_CADASTRO_POR_MARCA || 15));
+async function cadastroIncompleto(ler, marcasDoRelatorio, quando) {
+  const { nuvemshopStockStoreIds } = require('../../../../services/nuvemshopEligibility');
+  const lojas = nuvemshopStockStoreIds();
+  if (!lojas.length) return [];
+  const rows = await ler.$queryRawUnsafe(
+    'SELECT p.id, p.name, p.brand, ' +
+    "  (coalesce(btrim(p.\"longDescription\"), '') = '' AND coalesce(btrim(p.\"shortDescription\"), '') = '') AS sem_descricao, " +
+    "  (coalesce(btrim(p.\"imageUrl\"), '') = '' AND (CASE WHEN jsonb_typeof(p.\"imageUrls\"::jsonb) = 'array' THEN jsonb_array_length(p.\"imageUrls\"::jsonb) ELSE 0 END) = 0) AS sem_foto " +
+    'FROM "Product" p WHERE p.active = true ' +
+    ' AND EXISTS (SELECT 1 FROM "StoreStock" ss JOIN "ProductSize" ps ON ps.id = ss."productSizeId" WHERE ps."productId" = p.id AND ss.stock > 0 AND ss."storeId" = ANY($1::text[])) ' +
+    ' AND NOT EXISTS (SELECT 1 FROM "NuvemshopProductMapping" m WHERE m."localProductId" = p.id AND m."syncStatus" <> \'hidden-invalid\')', lojas);
+  const marcas = new Set(marcasDoRelatorio);
+  const cont = new Map(); const dia = quando.toISOString().slice(0, 10); const out = [];
+  for (const r of rows) {
+    const k = chave(r.brand);
+    if (!k || !marcas.has(k)) continue;
+    const falta = [r.sem_foto && 'foto', r.sem_descricao && 'descricao'].filter(Boolean);
+    if (!falta.length) continue;
+    const n = cont.get(k) || 0; if (n >= POR_MARCA()) continue; cont.set(k, n + 1);
+    out.push({ tipo: 'marca.cadastro-incompleto', forca: 0.6, dados: { chave: 'cadastro|' + r.id + '|' + dia, productId: r.id, marca: k, falta, produto: { nome: r.name, marca: r.brand }, motivo: 'card com estoque nas lojas do site e fora da Nuvemshop' } });
+  }
+  return out;
+}
+
 module.exports = {
   id: 'marca.gerente',
   camada: 'detector',
   missao: 'Montar o raio-x diário de cada marca (estoque, venda loja×site, site e cadastro) e apontar o que precisa do dono.',
   escuta: ['relogio.diario', 'marca.pedir'],
-  emite: ['marca.relatorio'],
+  emite: ['marca.relatorio', 'marca.cadastro-incompleto'],
   limiar: 0,
   custo: { tipo: 'regra' },
   permissao: 'ler',
@@ -33,12 +61,13 @@ module.exports = {
       if (!soMarca) return [{ tipo: 'marca.relatorio', forca: 0.1, dados: { chave: 'marca|?|' + Date.now(), erro: 'marca não informada ou indefinida', pedido: sinal.dados || {} } }];
     }
     const marcas = await raioX.calcular(ler, { agora: quando, soMarca, diasParado: DIAS_PARADO() });
+    const pedidos = await cadastroIncompleto(ler, marcas.map((m) => m.marca), quando).catch(() => []);
     const dia = quando.toISOString().slice(0, 10);
-    return marcas.map((m) => ({
+    return pedidos.concat(marcas.map((m) => ({
       tipo: 'marca.relatorio',
       forca: Math.max(0.1, m.atencao / 100),
       impactoRS: m.parados.valorCustoRS || null,
       dados: Object.assign({ chave: 'marca|' + m.marca + '|' + (soMarca ? 'pedido|' + quando.getTime() : dia), dia, geradoEm: quando.toISOString(), sobDemanda: !!soMarca }, m),
-    }));
+    })));
   },
 };

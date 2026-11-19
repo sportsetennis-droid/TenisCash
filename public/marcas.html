@@ -231,7 +231,8 @@ function detalhe(j) {
       '<tr><td>Cards conferidos</td><td>' + n(lc.conferidos) + '</td></tr>' +
       '<tr><td>No lugar certo</td><td>' + n(lc.noLugarCerto) + '</td></tr>' +
       '<tr><td>Fora do lugar (categoria, público ou modalidade)</td><td>' + n(lc.foraDoLugar) + (lc.foraDoLugarNoSite ? ' · ' + n(lc.foraDoLugarNoSite) + ' já no site' : '') + '</td></tr>' +
-      '<tr><td>Sem as 4 classificações</td><td>' + n(lc.incompletos) + '</td></tr></table>' +
+      '<tr><td>Sem as 4 classificações</td><td>' + n(lc.incompletos) + '</td></tr>' +
+      (r.cuidado ? '<tr><td>Preenchidos pelo gerente da marca (com prova escrita)</td><td>' + n(r.cuidado.preenchidosPeloGerente) + '</td></tr>' : '') + '</table>' +
       (mot.length ? '<p class="mut" style="margin-top:8px">O que está fora do lugar:</p><table class="tab">' + mot.map(function (k) { return '<tr><td>' + esc(k.replace(/^local: /, '')) + '</td><td>' + n(lc.motivos[k]) + '</td></tr>'; }).join('') + '</table>' : '') +
       ((lc.itens || []).length ? '<ul style="margin:6px 0 0 18px;font-size:12.5px;color:var(--wmut)">' + lc.itens.slice(0, 8).map(function (i) { return '<li>' + esc(i.nome) + ' · ' + esc(i.motivo) + (i.noSite ? ' · <b>no site</b>' : '') + '</li>'; }).join('') + '</ul>' : '') +
       '<p class="mut" style="margin-top:6px">Regra do dono: cada produto no lugar certo. A classificação do card (categoria, público, modalidade, especialidade) é o endereço dele no menu da loja online; ela tem que bater com o que o nome do produto diz.</p></div>';

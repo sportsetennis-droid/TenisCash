@@ -33,7 +33,7 @@ async function partA() {
     assert.ok(n, 'faltou marca.gerente');
     assert.strictEqual(n.custo.tipo, 'regra');
     assert.strictEqual(n.permissao, 'ler');
-    assert.deepStrictEqual(n.emite, ['marca.relatorio']);
+    assert.deepStrictEqual(n.emite, ['marca.relatorio', 'marca.cadastro-incompleto']);
     assert.ok(n.escuta.includes('relogio.diario') && n.escuta.includes('marca.pedir'));
   });
   await t('regra 30 — lugar certo: tipo escrito no nome × categoria, modalidade da chuteira, público; sem chute', () => {
@@ -183,11 +183,12 @@ async function partB() {
 
   const ler = ferramentas.soLeitura(prisma);
   const sinais = await gerente.disparar({ sinal: { tipo: 'relogio.diario', dados: {} }, ler, agora: new Date(agora) });
-  const R = Object.fromEntries(sinais.map((s) => [s.dados.marca, s.dados]));
+  const relatorios = sinais.filter((s) => s.tipo === 'marca.relatorio'); // os pedidos de cadastro (regra 31) têm teste próprio
+  const R = Object.fromEntries(relatorios.map((s) => [s.dados.marca, s.dados]));
 
   await t('1 relatório por marca: HOKA (3 grafias juntas, 5 cards) e PENALTY; sem marca e inativo ficam fora', () => {
     assert.deepStrictEqual(Object.keys(R).sort(), ['HOKA', 'PENALTY']);
-    assert.ok(sinais.every((s) => s.tipo === 'marca.relatorio' && s.dados.chave.startsWith('marca|')));
+    assert.ok(relatorios.length === 2 && relatorios.every((s) => s.dados.chave.startsWith('marca|')));
     assert.strictEqual(R.HOKA.cards, 5);
     assert.deepStrictEqual(R.HOKA.nomes.sort(), ['HOKA', 'Hoka', 'hoka']);
   });
@@ -281,8 +282,10 @@ async function partB() {
   });
   await t('pedido sob demanda (marca.pedir "hoka") gera só a HOKA; marca indefinida não inventa relatório', async () => {
     const s = await gerente.disparar({ sinal: { tipo: 'marca.pedir', dados: { marca: 'hoka' } }, ler, agora: new Date(agora) });
-    assert.deepStrictEqual(s.map((x) => x.dados.marca), ['HOKA']);
-    assert.ok(s[0].dados.sobDemanda);
+    const rel = s.filter((x) => x.tipo === 'marca.relatorio');
+    assert.deepStrictEqual(rel.map((x) => x.dados.marca), ['HOKA']);
+    assert.ok(rel[0].dados.sobDemanda);
+    assert.ok(s.filter((x) => x.tipo === 'marca.cadastro-incompleto').every((x) => x.dados.marca === 'HOKA'), 'pedido sob demanda só aciona a marca pedida');
     const v = await gerente.disparar({ sinal: { tipo: 'marca.pedir', dados: { marca: 'A DEFINIR' } }, ler, agora: new Date(agora) });
     assert.strictEqual(v.length, 1); assert.ok(v[0].dados.erro);
   });
@@ -291,6 +294,45 @@ async function partB() {
     await gerente.disparar({ sinal: { tipo: 'relogio.diario', dados: {} }, ler, agora: new Date(agora) });
     const depois = await Promise.all([prisma.product.count(), prisma.storeStock.count(), prisma.sale.count(), prisma.productSize.aggregate({ _sum: { stock: true } })]);
     assert.deepStrictEqual(depois, antes);
+  });
+  await t('regra 31: gerente aciona foto/descrição para card da marca com estoque no site e fora dele (sem descrição)', async () => {
+    const s = await gerente.disparar({ sinal: { tipo: 'relogio.diario', dados: {} }, ler, agora: new Date(agora) });
+    const pedidos = s.filter((x) => x.tipo === 'marca.cadastro-incompleto');
+    const f = pedidos.find((x) => x.dados.productId === F.id);
+    assert.ok(f && f.dados.falta.includes('descricao') && f.dados.marca === 'HOKA', JSON.stringify(pedidos.map((x) => x.dados)));
+    assert.ok(!pedidos.some((x) => x.dados.productId === A.id), 'o que já está no site não entra');
+    assert.ok(!pedidos.some((x) => x.dados.productId === H.id), 'estoque só em loja que não vende no site não entra');
+    // o agente de descrição escuta o pedido do gerente e propõe (com o texto de pedido do gerente)
+    const desc = require('../src/ai/rede/neuronios/conteudo/descricao');
+    assert.ok(desc.escuta.includes('marca.cadastro-incompleto'));
+    const props = await desc.disparar({ sinal: f, ler });
+    assert.ok(props[0] && props[0].tipo === 'proposta.descricao' && /pedido do gerente da marca/.test(props[0].dados.descricao), JSON.stringify(props));
+  });
+  await t('regra 31: o gerente PREENCHE sozinho só o que tem prova escrita, nunca sobrescreve, e registra a prova', async () => {
+    const cuidador = require('../src/services/cuidadorDeMarca');
+    const J = await prod({ sku: 'J1', name: 'CHUTEIRA FUTSAL JOMA TESTE JR (BRANCO/AZUL)', brand: 'JOMA', category: 'Chuteiras', subcategory: null, price: 300, costPrice: 150 }, [{ size: '33', barcode: '8424309000033', stock: 2 }]);
+    await loc(L.LOJA04, J.S['33'], 2);
+    const K2 = await prod({ sku: 'J2', name: 'CHUTEIRA FUTSAL JOMA TOP FLEX PITO', brand: 'JOMA', category: 'Chuteiras', subcategory: 'Homem', price: 300, costPrice: 150, aiContext: { classification: { modality: 'Society' } } }, [{ size: '40', barcode: '8424309000040', stock: 2 }]);
+    await loc(L.LOJA04, K2.S['40'], 1);
+    const B = await prod({ sku: 'J3', name: 'BOLA JOMA FUTSAL HYBRID', brand: 'JOMA', category: 'A CLASSIFICAR', price: 100, costPrice: 50 }, [{ size: 'U', barcode: '8424309000099', stock: 3 }]);
+    await loc(L.LOJA04, B.S.U, 1);
+    const seco = await cuidador.cuidar(prisma, { marca: 'JOMA', aplicar: false });
+    assert.strictEqual((await prisma.product.findUnique({ where: { id: J.id } })).subcategory, null, 'ensaio não grava');
+    assert.ok(seco.preenchidos >= 2);
+    await cuidador.cuidar(prisma, { marca: 'JOMA' });
+    const j = await prisma.product.findUnique({ where: { id: J.id } });
+    assert.strictEqual(j.subcategory, 'Menino', 'JR em Chuteiras → Menino (único nó infantil)');
+    assert.strictEqual(j.aiContext.classification.modality, 'Futsal');
+    assert.ok(j.aiContext.preenchidoPeloGerente && j.aiContext.preenchidoPeloGerente.provas.some((x) => /nome diz infantil/.test(x)), 'registra a prova');
+    const k = await prisma.product.findUnique({ where: { id: K2.id } });
+    assert.strictEqual(k.subcategory, 'Homem'); assert.strictEqual(k.aiContext.classification.modality, 'Society', 'nunca sobrescreve o que já está preenchido');
+    assert.ok(!k.aiContext.preenchidoPeloGerente, 'sem prova escrita nada muda (PITO não diz público)');
+    assert.strictEqual((await prisma.product.findUnique({ where: { id: B.id } })).category, 'Acessórios', 'BOLA → Acessórios');
+    // não mexe em preço, comprado nem estoque
+    assert.strictEqual(Number(j.price), 300); assert.strictEqual((await prisma.productSize.findUnique({ where: { id: J.S['33'].id } })).stock, 2);
+    // planejar: tênis infantil sem gênero escrito não é chutado
+    assert.deepStrictEqual(cuidador.planejar({ name: 'TENIS ADIDAS ADVANTAGE BASE JR', category: 'Tênis', subcategory: null, aiContext: {} }).mudancas, {});
+    assert.deepStrictEqual(cuidador.planejar({ name: 'TENIS FILA COMET FEMININO', category: 'Tênis', subcategory: '', aiContext: {} }).mudancas, { subcategory: 'Mulher' });
   });
   await limpar();
   await prisma.$disconnect();

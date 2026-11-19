@@ -58,7 +58,7 @@ module.exports = {
   id: 'conteudo.descricao',
   camada: 'analista',
   missao: 'Redigir a descrição de um card sem descrição usando só os dados reais do card.',
-  escuta: ['nuvem.incompleto'],
+  escuta: ['nuvem.incompleto', 'marca.cadastro-incompleto'],
   emite: ['proposta.descricao'],
   limiar: 0,
   custo: { tipo: 'ia-barata' },
@@ -102,7 +102,7 @@ module.exports = {
       dados: {
         chave: 'descricao:' + p.id,
         titulo: 'Descrição para ' + [dados.marca, dados.nome].join(' ').slice(0, 150),
-        descricao: 'Card publicado sem descrição. Texto montado só com os dados do card' + (recusado ? ' (texto da IA recusado pela trava anti-chute: ' + recusado.join('; ') + ')' : '') + '. Ao aprovar, grava só se o card continuar sem descrição.',
+        descricao: (sinal.tipo === 'marca.cadastro-incompleto' ? 'Card com estoque nas lojas do site, fora da Nuvemshop por falta de descrição (pedido do gerente da marca).' : 'Card publicado sem descrição.') + ' Texto montado só com os dados do card' + (recusado ? ' (texto da IA recusado pela trava anti-chute: ' + recusado.join('; ') + ')' : '') + '. Ao aprovar, grava só se o card continuar sem descrição.',
         risco: 'baixo',
         acao: { nome: 'nuvem.aplicar-descricao', args: { productId: p.id, texto: textoFinal } },
         previa: { productId: p.id, sku: p.sku, campo: 'longDescription', de: null, para: textoFinal, origem },

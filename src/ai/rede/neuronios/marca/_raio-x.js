@@ -46,6 +46,7 @@ function novaMarca(k) {
       bipadosMenosDe5Fotos: 0, itensMenosDe5Fotos: [],
     },
     // regra 30 (dono 18/11): cada produto no lugar certo — categoria, subcategoria (público), modalidade, especialidade
+    cuidado: { preenchidosPeloGerente: 0 },
     local: { conferidos: 0, noLugarCerto: 0, foraDoLugar: 0, foraDoLugarNoSite: 0, incompletos: 0, motivos: {}, motivosFora: {}, itens: [], itensNoSite: [], itensFora: [] },
     cadastro: { semCor: 0, semFoto: 0, menosDe5Fotos: 0, semCusto: 0, precoZerado: 0, precoAbaixoCusto: 0, tamanhoTecnicoComEstoque: 0, itensPreco: [] },
   };
@@ -61,6 +62,8 @@ async function calcular(ler, { agora = new Date(), soMarca = null, diasParado = 
     "  (p.\"aiContext\"->>'color') AS cor, " +
     // anúncio apagado na Nuvemshop: o card não volta sozinho (decisão do dono)
     "  (p.\"aiContext\"->'nsAnuncioSumiu') IS NOT NULL AS anuncio_sumiu, " +
+    // regra 31: o que o gerente preencheu sozinho (com prova escrita)
+    "  (p.\"aiContext\"->'preenchidoPeloGerente') IS NOT NULL AS preenchido_gerente, " +
     // fotos = mesma conta do portão (usableImageCount): principal + galeria, válidas e sem repetir — sem trazer o base64
     "  (SELECT count(DISTINCT md5(btrim(x))) FROM (SELECT p.\"imageUrl\" AS x UNION ALL SELECT jsonb_array_elements_text(CASE WHEN jsonb_typeof(p.\"imageUrls\"::jsonb) = 'array' THEN p.\"imageUrls\"::jsonb ELSE '[]'::jsonb END)) t " +
     "     WHERE btrim(x) ~* '^(https?://|data:image/[a-z0-9.+-]+.base64,)' AND btrim(x) !~* '(lookaside\\.instagram\\.com|/crawler/|google_widget|/seo/)') AS n_fotos, " +
@@ -88,6 +91,7 @@ async function calcular(ler, { agora = new Date(), soMarca = null, diasParado = 
       if (m.cadastro.itensPreco.length < TOP) m.cadastro.itensPreco.push({ productId: p.id, nome: p.name, preco, custo });
     }
     if (p.publicado) m.site.publicados++;
+    if (p.preenchido_gerente) m.cuidado.preenchidosPeloGerente++;
     // lugar certo (regra 30): o que está escrito no nome × a classificação que coloca o card no menu do site
     const lugar = conferirLocal({ name: p.name, category: p.category, subcategory: p.subcategory, aiContext: { classification: p.cls || {}, classification2: p.cls2 || undefined } });
     const lugarErrado = lugar.filter((x) => x !== INCOMPLETA);
