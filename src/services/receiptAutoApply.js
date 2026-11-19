@@ -9,9 +9,10 @@
 // histórico), sem esperar alguém ligar a remessa e confirmar.
 //
 // Regras:
-// - Só vale a partir de 18/11/2026 00:00 (horário de João Pessoa) — o dono pediu
-//   "hoje" — e nunca antes do início da contagem nova da loja. O que foi recebido
-//   antes fica como está.
+// - Vale desde o início da contagem nova de cada loja (09/11/2026). Dono, 18/11:
+//   "Valide todos… veja o que foi vendido nesse tempo e faça a diminuição" — a venda
+//   já baixa o estoque na hora; o recebimento anterior à contagem já está na recontagem
+//   física (somar daria em dobro), então fica como está. (Antes: só a partir de 18/11.)
 // - Só peça reconhecida, com variante e tamanho resolvidos (Adidas: tamanho
 //   confirmado na caixa). Leitura removida, trocada ou lote arquivado = desfaz.
 // - Uma leitura soma uma vez só (idempotente pelo clientScanId).
@@ -32,8 +33,8 @@ const ROUND_OPEN = ['counting', 'review'];
 
 // Ponto de partida pedido pelo dono ("eu falei de hoje", 18/11/2026). Ajustável sem deploy.
 function desde() {
-  const v = Date.parse(process.env.RECEBIMENTO_AUTOMATICO_DESDE || '2026-11-18T00:00:00-03:00');
-  return Number.isFinite(v) ? v : Date.parse('2026-11-18T00:00:00-03:00');
+  const v = Date.parse(process.env.RECEBIMENTO_AUTOMATICO_DESDE || '2026-11-09T00:00:00-03:00');
+  return Number.isFinite(v) ? v : Date.parse('2026-11-09T00:00:00-03:00');
 }
 
 function ctxOf(v) { return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; }
