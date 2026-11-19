@@ -260,32 +260,6 @@ app.get('/api/_fiscaldiag', async (req, res) => {
     res.status(500).set('Content-Type', 'text/plain; charset=utf-8').send('ERRO: ' + e.message);
   }
 });
-// TEMPORÁRIO (remover após uso, dono 19/11/2026): confere o telefone de cada vendedor contra os grupos
-// de WhatsApp da empresa (a mensagem da manhã foi para um cliente cadastrado como vendedor). Só lê.
-app.get('/api/_grupovend', async (req, res) => {
-  if (!_guardHash(req.query.g, _FISCALDIAG_SHA256, 'ROUTE_GUARD_FISCALDIAG')) return res.status(403).json({ error: 'forbidden' });
-  try {
-    const { prisma } = require('./middleware');
-    const base = String(process.env.EVOLUTION_API_URL || '').replace(/\/$/, ''); const key = process.env.EVOLUTION_API_KEY; const inst = process.env.EVOLUTION_INSTANCE || 'teniscash';
-    const r = await fetch(base + '/group/fetchAllGroups/' + encodeURIComponent(inst) + '?getParticipants=true', { headers: { apikey: key } });
-    const groups = r.ok ? await r.json() : [];
-    const digits = (v) => String(v || '').replace(/@.*/, '').replace(/\D/g, '');
-    const tail = (v) => digits(v).slice(-8);
-    const gs = (Array.isArray(groups) ? groups : []).map((g) => ({ name: g.subject, jid: g.id, members: (g.participants || []).map((m) => ({ id: m.id, phone: digits(m.phoneNumber || (String(m.id).endsWith('@s.whatsapp.net') ? m.id : '')), admin: m.admin || null })) }));
-    const since = new Date(Date.now() - 21 * 86400000);
-    const sellers = await prisma.user.findMany({ where: { role: 'seller', active: true }, select: { id: true, name: true, phone: true, store: { select: { code: true } } }, orderBy: { name: 'asc' } });
-    const [clock, sale] = await Promise.all([
-      prisma.clockIn.findMany({ where: { timestamp: { gte: since } }, distinct: ['userId'], select: { userId: true } }),
-      prisma.sale.findMany({ where: { createdAt: { gte: since } }, distinct: ['sellerId'], select: { sellerId: true } }),
-    ]);
-    const working = new Set([...clock.map((x) => x.userId), ...sale.map((x) => x.sellerId)]);
-    const out = sellers.map((u) => ({ nome: u.name, loja: u.store && u.store.code, telefone: u.phone, ativoUltimos21d: working.has(u.id),
-      nosGrupos: gs.filter((g) => g.members.some((m) => m.phone && tail(m.phone) === tail(u.phone))).map((g) => g.name) }));
-    const known = new Set(sellers.map((u) => tail(u.phone)));
-    res.json({ evolutionOk: r.ok, grupos: gs.map((g) => ({ nome: g.name, jid: g.jid, membros: g.members.length, semTelefoneVisivel: g.members.filter((m) => !m.phone).length,
-      foraDoCadastro: g.members.filter((m) => m.phone && !known.has(tail(m.phone))).map((m) => m.phone) })), vendedores: out });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
 // TEMPORÁRIO (remover junto com /api/_fiscaldiag): manda TODOS os agentes
 // fiscais se auto-atualizarem AGORA (POST /selfupdate com o token do banco).
 // Usado pra subir o agente v2.4-certinfo sem ninguém ir nas lojas.
