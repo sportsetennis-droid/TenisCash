@@ -7,8 +7,8 @@
   'use strict';
   function codeOf(value) { return String(value || '').trim(); }
   // Código alfanumérico do fornecedor impresso em Code 128 (ex.: Atama KIM10U0001011, NF-e "SEM GTIN").
-  // Estrito para referência de modelo não passar: só maiúsculas e números, 10–24, ≥3 letras e ≥2 números.
-  function isSupplierCode(value) { return /^(?=(?:[^A-Z]*[A-Z]){3})(?=(?:\D*\d){2})[A-Z0-9]{10,24}$/.test(codeOf(value)); }
+  // Estrito para referência de modelo não passar: só maiúsculas e números, 10–24, ≥2 letras e ≥2 números.
+  function isSupplierCode(value) { return /^(?=(?:[^A-Z]*[A-Z]){2})(?=(?:\D*\d){2})[A-Z0-9]{10,24}$/.test(codeOf(value)); }
   function isInternalCode(value) { const code = codeOf(value); return /^\d{16}$/.test(code) && !/^0+$/.test(code); }
   function isScanCode(value) {
     const code = codeOf(value);

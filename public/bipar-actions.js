@@ -2,7 +2,7 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const barcodePolicy = window.ScannerBarcodePolicy || {
-    isScanCode: value => (/^(?:\d{8}|\d{12,14}|\d{16})$/.test(String(value || '').trim()) && !/^0+$/.test(String(value || '').trim())) || /^(?=(?:[^A-Z]*[A-Z]){3})(?=(?:\D*\d){2})[A-Z0-9]{10,24}$/.test(String(value || '').trim()),
+    isScanCode: value => (/^(?:\d{8}|\d{12,14}|\d{16})$/.test(String(value || '').trim()) && !/^0+$/.test(String(value || '').trim())) || /^(?=(?:[^A-Z]*[A-Z]){2})(?=(?:\D*\d){2})[A-Z0-9]{10,24}$/.test(String(value || '').trim()),
   };
   const settingsKey = 'tc_bipar_actions_settings_v1', pendingKey = 'tc_bipar_actions_pending_v1';
   const read = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key) || 'null') || fallback; } catch (_) { return fallback; } };
