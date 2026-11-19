@@ -15,6 +15,20 @@ function usableImageUrls(remoteProduct) {
   return urls;
 }
 
+// Foto tirada de propósito do card (aiContext.fotosRemovidas: era de outra cor/outro código ou link
+// quebrado) NÃO volta da loja online: a loja ainda tem a foto errada e a recuperação a devolvia ao card
+// (auditoria 19/11: Top Minimal Glow Rose voltou com fotos Nude/Marsala/Rosa 3 min depois). Sem foto
+// certa, o card fica sem foto e a trava tira o produto do site até a foto certa chegar.
+function contextoDe(product) {
+  try {
+    return (typeof product?.aiContext === 'string' ? JSON.parse(product.aiContext) : product?.aiContext) || {};
+  } catch (_) { return {}; }
+}
+function fotoFoiRemovidaDePropósito(product) {
+  const r = contextoDe(product).fotosRemovidas;
+  return !!(r && typeof r === 'object' && (r.em || r.motivo));
+}
+
 async function backfillLocalImagesFromNuvemshop(options = {}) {
   const connection = options.connection || await nsHandlers.getConnection();
   if (!connection) throw new Error('Nuvemshop não conectada');
@@ -47,8 +61,10 @@ async function backfillLocalImagesFromNuvemshop(options = {}) {
 
   let recovered = 0;
   let noRemoteImage = 0;
+  let skippedRemovidas = 0;
   const errors = [];
   for (const product of candidates) {
+    if (fotoFoiRemovidaDePropósito(product)) { skippedRemovidas++; continue; }
     const remoteId = mappingByLocalId.get(product.id);
     const urls = usableImageUrls(remoteById.get(remoteId));
     if (!urls.length) {
@@ -88,8 +104,9 @@ async function backfillLocalImagesFromNuvemshop(options = {}) {
     candidates: candidates.length,
     recovered,
     noRemoteImage,
+    skippedRemovidas,
     errors: errors.slice(0, 50),
   };
 }
 
-module.exports = { backfillLocalImagesFromNuvemshop, usableImageUrls };
+module.exports = { backfillLocalImagesFromNuvemshop, usableImageUrls, fotoFoiRemovidaDePropósito };
