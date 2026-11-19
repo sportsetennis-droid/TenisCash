@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#E5571E">
+<link rel="icon" href="/icon-192.svg" type="image/svg+xml">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="description" content="Trabalhe na Sports & Tennis: vagas abertas nas nossas lojas em João Pessoa e Campina Grande.">
+<title>Trabalhe conosco · Sports & Tennis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&family=Barlow+Condensed:ital,wght@1,800;1,900&display=swap" rel="stylesheet">
+<style>
+:root{--brand:#E5571E;--brand-dark:#c4461a;--brand-soft:#fff1e8;--ink:#1d1d1f;--muted:#6e6e73;--line:#e8e8ed;--bg:#fff;--fill:#f6f6f8;--ok:#0a843d;--bad:#b42318;
+  --safe-b:env(safe-area-inset-bottom,0px);--safe-t:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:'Barlow',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--ink);font-size:16px;line-height:1.45;padding-top:var(--safe-t)}
+button,input,textarea,select{font:inherit;color:inherit}
+#app{max-width:520px;margin:0 auto;padding:0 16px calc(40px + var(--safe-b))}
+.hero{background:#111;color:#fff;margin:0 -16px;padding:28px 20px 24px;position:relative;overflow:hidden}
+.hero:after{content:"";position:absolute;right:-40px;top:-30px;width:180px;height:180px;border-radius:50%;background:var(--brand);opacity:.9}
+.hero .brand{font-family:'Barlow Condensed',sans-serif;font-style:italic;font-weight:900;letter-spacing:.5px;text-transform:uppercase;font-size:15px;color:var(--brand);position:relative;z-index:1}
+.hero h1{font-family:'Barlow Condensed',sans-serif;font-style:italic;font-weight:900;text-transform:uppercase;font-size:40px;line-height:.95;margin-top:8px;position:relative;z-index:1}
+.hero p{color:#d1d1d6;margin-top:10px;font-size:15px;position:relative;z-index:1;max-width:330px}
+.job{display:block;width:100%;text-align:left;background:var(--fill);border:0;border-radius:16px;padding:16px;margin-top:12px;cursor:pointer}
+.job h3{font-size:18px;font-weight:800}
+.job .meta{color:var(--muted);font-size:14px;margin-top:4px}
+.job .go{color:var(--brand);font-weight:800;margin-top:8px;font-size:14px}
+.empty{color:var(--muted);text-align:center;padding:40px 10px}
+.back{background:none;border:0;color:var(--brand);font-weight:700;padding:16px 0 4px;min-height:44px;cursor:pointer}
+h2{font-size:24px;font-weight:800;line-height:1.15}
+.tag{display:inline-block;background:var(--brand-soft);color:var(--brand-dark);font-weight:700;font-size:13px;border-radius:999px;padding:4px 10px;margin:8px 6px 0 0}
+.sec{margin-top:18px}
+.sec h4{font-size:13px;font-weight:800;text-transform:uppercase;color:var(--muted);letter-spacing:.4px;margin-bottom:6px}
+.sec p{white-space:pre-wrap}
+form{margin-top:22px;background:var(--fill);border-radius:18px;padding:16px}
+form h3{font-size:18px;font-weight:800;margin-bottom:6px}
+label{display:block;font-size:13px;font-weight:700;color:#3a3a3c;margin-top:12px}
+input,textarea,select{width:100%;min-height:48px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:#fff;font-size:16px;margin-top:5px}
+textarea{min-height:90px;resize:vertical}
+.file{display:flex;align-items:center;gap:10px;border:1.5px dashed #c7c7cc;border-radius:12px;padding:14px;background:#fff;margin-top:5px;cursor:pointer}
+.file input{display:none}
+.chk{display:flex;gap:10px;align-items:flex-start;font-weight:500;font-size:14px;color:#3a3a3c;margin-top:14px}
+.chk input{width:22px;min-height:22px;height:22px;margin-top:1px;accent-color:var(--brand)}
+.btn{width:100%;min-height:52px;border:0;border-radius:14px;background:var(--brand);color:#fff;font-weight:800;font-size:17px;margin-top:16px;cursor:pointer}
+.btn:disabled{opacity:.6}
+.msg{margin-top:10px;font-size:14px;font-weight:600}
+.msg.bad{color:var(--bad)}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+.done{text-align:center;padding:50px 10px}
+.done .big{font-size:56px}
+.done h2{margin-top:10px}
+.done p{color:var(--muted);margin-top:8px}
+.foot{color:var(--muted);font-size:12px;text-align:center;margin-top:28px}
+@media (min-width:900px){body{background:#f2f2f4}#app{background:#fff;min-height:100vh;box-shadow:0 0 40px rgba(0,0,0,.08)}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const $app = document.getElementById('app');
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const hero = '<div class="hero"><div class="brand">Sports &amp; Tennis</div><h1>Venha jogar<br>no nosso time</h1><p>Vagas abertas nas nossas lojas de João Pessoa e Campina Grande.</p></div>';
+
+async function listView() {
+  $app.innerHTML = hero + '<div class="empty">Carregando vagas…</div>';
+  let jobs = [];
+  try { jobs = await (await fetch('/api/rh/public/jobs', { cache: 'no-store' })).json(); } catch (_) {}
+  if (!Array.isArray(jobs) || !jobs.length) {
+    $app.innerHTML = hero + '<div class="empty">Nenhuma vaga aberta agora.<br>Volte em breve! 🧡</div><div class="foot">Sports &amp; Tennis</div>';
+    return;
+  }
+  $app.innerHTML = hero + jobs.map((j) => '<button class="job" data-slug="' + esc(j.slug) + '"><h3>' + esc(j.title) + '</h3><div class="meta">' +
+    esc([j.storeName, j.salaryText].filter(Boolean).join(' · ')) + '</div><div class="go">Ver vaga e me candidatar →</div></button>').join('') +
+    '<div class="foot">Sports &amp; Tennis · Trabalhe conosco</div>';
+  $app.querySelectorAll('.job').forEach((b) => b.onclick = () => { history.pushState({}, '', '?v=' + encodeURIComponent(b.dataset.slug)); jobView(b.dataset.slug); });
+}
+
+async function jobView(slug) {
+  $app.innerHTML = '<div class="empty">Carregando…</div>';
+  let j = null;
+  try { const r = await fetch('/api/rh/public/jobs/' + encodeURIComponent(slug), { cache: 'no-store' }); if (r.ok) j = await r.json(); } catch (_) {}
+  if (!j) { $app.innerHTML = '<button class="back" id="bk">← Todas as vagas</button><div class="empty">Esta vaga foi encerrada.</div>'; document.getElementById('bk').onclick = goList; return; }
+  document.title = j.title + ' · Sports & Tennis';
+  const qs = (j.questions || []).map((q, i) => '<label>' + esc(q) + '<textarea name="q' + i + '" maxlength="1000"></textarea></label>').join('');
+  $app.innerHTML = '<button class="back" id="bk">← Todas as vagas</button>' +
+    '<h2>' + esc(j.title) + '</h2>' + [j.storeName, j.salaryText, j.schedule].filter(Boolean).map((t) => '<span class="tag">' + esc(t) + '</span>').join('') +
+    (j.description ? '<div class="sec"><h4>Sobre a vaga</h4><p>' + esc(j.description) + '</p></div>' : '') +
+    (j.requirements ? '<div class="sec"><h4>O que procuramos</h4><p>' + esc(j.requirements) + '</p></div>' : '') +
+    '<form id="f" novalidate><h3>Quero me candidatar</h3>' +
+    '<label>Nome completo<input name="name" required maxlength="120" autocomplete="name"></label>' +
+    '<label>WhatsApp com DDD<input name="phone" required inputmode="tel" autocomplete="tel" placeholder="(83) 9 9999-9999"></label>' +
+    '<label>E-mail (opcional)<input name="email" type="email" inputmode="email" autocomplete="email"></label>' +
+    '<label>Cidade / bairro<input name="city" maxlength="80"></label>' +
+    '<label>Data de nascimento<input name="birthDate" type="date"></label>' +
+    '<label>Sua experiência (onde trabalhou, quanto tempo, o que fazia)<textarea name="experience" maxlength="3000"></textarea></label>' + qs +
+    '<label>Currículo (PDF ou foto, opcional)<div class="file" id="fl"><span>📎</span><span id="fn">Toque para anexar</span><input type="file" name="resume" accept="application/pdf,image/jpeg,image/png,image/webp"></div></label>' +
+    '<div class="hp" aria-hidden="true"><label>Site<input name="website" tabindex="-1" autocomplete="off"></label></div>' +
+    '<label class="chk"><input type="checkbox" name="consent"><span>Autorizo a Sports &amp; Tennis a usar meus dados só para este processo seletivo e a falar comigo pelo WhatsApp. Posso pedir para apagar quando quiser.</span></label>' +
+    '<button class="btn" id="send" type="submit">Enviar candidatura</button><div class="msg" id="m"></div></form>' +
+    '<div class="foot">Sports &amp; Tennis · Seus dados são protegidos pela LGPD.</div>';
+  document.getElementById('bk').onclick = goList;
+  const f = document.getElementById('f');
+  const fileInput = f.querySelector('input[type=file]');
+  document.getElementById('fl').onclick = () => fileInput.click();
+  fileInput.onchange = () => { document.getElementById('fn').textContent = fileInput.files[0] ? fileInput.files[0].name : 'Toque para anexar'; };
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    const m = document.getElementById('m'); m.className = 'msg'; m.textContent = '';
+    const name = f.name.value.trim(), phone = f.phone.value.replace(/\D/g, '');
+    if (name.length < 3) { m.className = 'msg bad'; m.textContent = 'Informe seu nome completo.'; f.name.focus(); return; }
+    if (phone.length < 10) { m.className = 'msg bad'; m.textContent = 'Informe seu WhatsApp com DDD.'; f.phone.focus(); return; }
+    if (!f.consent.checked) { m.className = 'msg bad'; m.textContent = 'Marque a autorização para enviar.'; return; }
+    if (fileInput.files[0] && fileInput.files[0].size > 8 * 1024 * 1024) { m.className = 'msg bad'; m.textContent = 'Currículo grande demais (máx. 8 MB).'; return; }
+    const fd = new FormData();
+    ['name', 'phone', 'email', 'city', 'birthDate', 'experience', 'website'].forEach((k) => fd.append(k, f[k].value));
+    fd.append('consent', 'true');
+    fd.append('answers', JSON.stringify((j.questions || []).map((_, i) => f['q' + i].value)));
+    const src = new URLSearchParams(location.search).get('src'); if (src) fd.append('source', src);
+    if (fileInput.files[0]) fd.append('resume', fileInput.files[0]);
+    const btn = document.getElementById('send'); btn.disabled = true; btn.textContent = 'Enviando…';
+    try {
+      const r = await fetch('/api/rh/public/jobs/' + encodeURIComponent(slug) + '/apply', { method: 'POST', body: fd });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || 'Não foi possível enviar. Tente de novo.');
+      $app.innerHTML = '<div class="done"><div class="big">🧡</div><h2>Candidatura enviada!</h2><p>Obrigado, ' + esc(name.split(' ')[0]) + '. Se o seu perfil combinar com a vaga, a gente chama você no WhatsApp.</p><button class="btn" id="mais">Ver outras vagas</button></div>';
+      document.getElementById('mais').onclick = goList;
+    } catch (err) { m.className = 'msg bad'; m.textContent = err.message; btn.disabled = false; btn.textContent = 'Enviar candidatura'; }
+  };
+}
+function goList() { history.pushState({}, '', location.pathname); document.title = 'Trabalhe conosco · Sports & Tennis'; listView(); }
+function route() { const v = new URLSearchParams(location.search).get('v'); v ? jobView(v) : listView(); }
+window.onpopstate = route;
+route();
+</script>
+</body>
+</html>

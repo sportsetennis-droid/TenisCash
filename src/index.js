@@ -518,6 +518,9 @@ app.use('/api/seller/production', sellerProductionRoutes);
 app.use('/api/seller/schedule', sellerScheduleRoutes);
 // Escala informada pelo vendedor (link pessoal do WhatsApp ou login do app) — dono 18/11/2026.
 app.use('/api/minha-escala', require('./routes/selfSchedule'));
+// RH completo (dono 18/11/2026): recrutamento + vagas públicas, férias CLT, documentos, admissão/desligamento, avaliação.
+app.use('/api/rh', require('./routes/rh'));
+app.get(['/vagas', '/trabalhe-conosco'], (req, res) => res.sendFile(require('path').join(__dirname, '..', 'public', 'vagas.html')));
 app.use('/api/seller/interview', weeklyInterviewRoutes);
 app.use('/api/admin/xml', xmlImportRoutes);
 app.use('/api/admin/recommendations', recommendationsRoutes);

@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#E5571E">
+<link rel="icon" href="/icon-192.svg" type="image/svg+xml">
+<meta name="robots" content="noindex">
+<title>RH · TenisCash</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--brand:#E5571E;--brand-dark:#c4461a;--brand-soft:#fff1e8;--ink:#1d1d1f;--muted:#6e6e73;--line:#e5e5ea;--bg:#f5f5f7;--card:#fff;--ok:#0a843d;--warn:#b25e00;--bad:#b42318}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Barlow',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.4}
+button,input,select,textarea{font:inherit;color:inherit}
+header{background:#111;color:#fff;padding:14px 20px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:20}
+header b{font-size:18px}header a{color:#ff9a6b;text-decoration:none;font-weight:700;margin-left:auto;font-size:13px}
+nav{display:flex;gap:6px;padding:10px 20px;overflow-x:auto;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:50px;z-index:19}
+nav button{border:0;background:none;padding:9px 14px;border-radius:10px;font-weight:700;color:var(--muted);white-space:nowrap;cursor:pointer;min-height:40px}
+nav button.on{background:var(--brand-soft);color:var(--brand-dark)}
+nav .b{background:var(--brand);color:#fff;border-radius:999px;font-size:11px;padding:1px 7px;margin-left:5px}
+main{max-width:1200px;margin:0 auto;padding:18px 20px 60px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.kpi{background:var(--card);border-radius:14px;padding:16px;border:1px solid var(--line);cursor:pointer}
+.kpi .n{font-size:30px;font-weight:800}.kpi .l{color:var(--muted);font-weight:600}
+.card{background:var(--card);border-radius:14px;border:1px solid var(--line);padding:16px;margin-top:14px}
+.card h2{font-size:16px;font-weight:800;margin-bottom:10px;display:flex;align-items:center;gap:10px}
+.card h2 .sp{margin-left:auto}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;color:var(--muted);font-size:12px;font-weight:700;padding:8px 6px;border-bottom:1px solid var(--line)}
+td{padding:9px 6px;border-bottom:1px solid #f0f0f2;vertical-align:top}
+tr.click{cursor:pointer}tr.click:hover{background:#fafafa}
+.btn{border:0;background:var(--brand);color:#fff;font-weight:700;border-radius:10px;padding:9px 14px;cursor:pointer;min-height:38px}
+.btn.g{background:#fff;color:var(--ink);border:1px solid var(--line)}.btn.r{background:#fff;color:var(--bad);border:1px solid #f3c1bb}.btn.ok{background:var(--ok)}
+.btn:disabled{opacity:.5}
+.pill{display:inline-block;font-size:11px;font-weight:700;border-radius:999px;padding:2px 8px}
+.p-ok{background:#e7f6ec;color:var(--ok)}.p-warn{background:#fff4e0;color:var(--warn)}.p-bad{background:#fde8e6;color:var(--bad)}.p-mute{background:#eee;color:var(--muted)}.p-brand{background:var(--brand-soft);color:var(--brand-dark)}
+.muted{color:var(--muted)}
+.kanban{display:grid;grid-template-columns:repeat(6,minmax(170px,1fr));gap:10px;overflow-x:auto}
+.col{background:#ececf0;border-radius:12px;padding:8px;min-height:120px}
+.col h3{font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;padding:4px 6px 8px}
+.cc{background:#fff;border-radius:10px;padding:10px;margin-bottom:8px;cursor:pointer;border:1px solid var(--line)}
+.cc b{display:block}.cc small{color:var(--muted)}
+label{display:block;font-size:12px;font-weight:700;color:#3a3a3c;margin-top:10px}
+input,select,textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:9px 10px;background:#fff;margin-top:4px;min-height:40px}
+textarea{min-height:80px}
+.row{display:flex;gap:10px;flex-wrap:wrap}.row>*{flex:1;min-width:140px}
+#drawer{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;z-index:50}
+#drawer .p{position:absolute;right:0;top:0;bottom:0;width:min(640px,100%);background:#fff;overflow:auto;padding:20px}
+#drawer .x{float:right}
+.tabs2{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}
+.tabs2 button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 12px;font-weight:700;cursor:pointer}
+.tabs2 button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.ev{border-left:3px solid var(--line);padding:4px 0 8px 10px;margin-left:4px}
+.msg{font-weight:600;margin-top:8px}.msg.bad{color:var(--bad)}.msg.ok{color:var(--ok)}
+.stars{display:flex;gap:4px}.stars button{width:36px;height:36px;border:1px solid var(--line);background:#fff;border-radius:8px;font-weight:800;cursor:pointer}.stars button.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+.login{max-width:380px;margin:80px auto;text-align:center}
+@media (max-width:700px){main{padding:12px}.kanban{grid-template-columns:repeat(6,80vw)}}
+</style>
+</head>
+<body>
+<header><b>RH · Sports &amp; Tennis</b><a href="/vagas" target="_blank">Página de vagas ↗</a><a href="/admin.html" style="margin-left:14px">Voltar ao admin</a></header>
+<nav id="nav"></nav>
+<main id="main"></main>
+<div id="drawer"><div class="p" id="dp"></div></div>
+<script>
+const TOKEN = localStorage.getItem('tc_admin_token');
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const br = (d) => { if (!d) return ''; const s = String(d); return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s.split('-').reverse().join('/') : new Date(s).toLocaleDateString('pt-BR', { timeZone: 'America/Fortaleza' }); };
+const brl = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+async function api(p, method = 'GET', body = null, form = false) {
+  const o = { method, headers: { Authorization: 'Bearer ' + TOKEN }, cache: 'no-store' };
+  if (body) { if (form) o.body = body; else { o.headers['Content-Type'] = 'application/json'; o.body = JSON.stringify(body); } }
+  const r = await fetch('/api/rh/admin' + p, o); const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || ('Erro ' + r.status));
+  return d;
+}
+async function openFile(p) {
+  const r = await fetch('/api/rh/admin' + p, { headers: { Authorization: 'Bearer ' + TOKEN } });
+  if (!r.ok) return alert('Arquivo não encontrado.');
+  window.open(URL.createObjectURL(await r.blob()), '_blank');
+}
+const STAGE_LABEL = { NOVO: 'Novos', TRIAGEM: 'Triagem', ENTREVISTA: 'Entrevista', PROPOSTA: 'Proposta', CONTRATADO: 'Contratados', REPROVADO: 'Reprovados' };
+let META = null, DASH = null, TAB = 'painel';
+const TABS = [['painel', 'Painel'], ['vagas', 'Vagas'], ['candidatos', 'Candidatos'], ['equipe', 'Equipe'], ['ferias', 'Férias'], ['docs', 'Documentos'], ['check', 'Admissão / Desligamento'], ['aval', 'Avaliações']];
+const $m = () => document.getElementById('main');
+
+function nav() {
+  const badge = { candidatos: DASH && DASH.candidatosNovos, ferias: DASH && DASH.feriasPendentes, docs: DASH && DASH.documentosVencendo, check: DASH && DASH.checklistsAbertos };
+  document.getElementById('nav').innerHTML = TABS.map(([k, l]) => '<button data-t="' + k + '" class="' + (TAB === k ? 'on' : '') + '">' + l + (badge[k] ? '<span class="b">' + badge[k] + '</span>' : '') + '</button>').join('');
+  document.querySelectorAll('#nav button').forEach((b) => b.onclick = () => go(b.dataset.t));
+}
+async function go(t) { TAB = t; location.hash = t; nav(); $m().innerHTML = '<div class="muted">Carregando…</div>'; try { await VIEWS[t](); } catch (e) { $m().innerHTML = '<div class="card msg bad">' + esc(e.message) + '</div>'; } }
+function drawer(html) { document.getElementById('dp').innerHTML = '<button class="btn g x" onclick="closeDrawer()">Fechar</button>' + html; document.getElementById('drawer').style.display = 'block'; }
+function closeDrawer() { document.getElementById('drawer').style.display = 'none'; }
+document.getElementById('drawer').onclick = (e) => { if (e.target.id === 'drawer') closeDrawer(); };
+const storeOpts = (sel) => (META.stores || []).map((s) => '<option value="' + s.id + '"' + (s.id === sel ? ' selected' : '') + '>' + esc(s.code + ' · ' + s.name) + '</option>').join('');
+
+const VIEWS = {
+  async painel() {
+    DASH = await api('/dashboard'); nav();
+    const k = (n, l, t) => '<div class="kpi" onclick="go(\'' + t + '\')"><div class="n">' + n + '</div><div class="l">' + l + '</div></div>';
+    $m().innerHTML = '<div class="grid">' + k(DASH.funcionarios, 'Funcionários ativos', 'equipe') + k(DASH.vagasAbertas, 'Vagas abertas', 'vagas') +
+      k(DASH.candidatosNovos, 'Candidatos novos', 'candidatos') + k(DASH.candidatosEmAndamento, 'Em seleção', 'candidatos') + k(DASH.feriasPendentes, 'Férias para aprovar', 'ferias') +
+      k(DASH.documentosVencendo, 'Documentos vencendo', 'docs') + k(DASH.semDocumentos, 'Com documento faltando', 'equipe') + k(DASH.checklistsAbertos, 'Admissões/desligamentos abertos', 'check') + '</div>' +
+      (DASH.feriasVencidas.length ? '<div class="card"><h2>⚠️ Férias vencidas (pagar em dobro — CLT art. 137)</h2>' + DASH.feriasVencidas.map(esc).join(', ') + '</div>' : '') +
+      '<div class="card"><h2>Como funciona</h2><div class="muted">A folha legal (INSS, IRRF, eSocial) continua com o contador. Aqui ficam recrutamento, férias pela CLT, documentos, admissão e desligamento, avaliação e a ficha de cada um. Férias aprovadas entram sozinhas na agenda e tiram a pessoa da escala.</div></div>';
+  },
+
+  async vagas() {
+    const jobs = await api('/jobs');
+    $m().innerHTML = '<div class="card"><h2>Vagas<span class="sp"></span><button class="btn" id="nj">+ Nova vaga</button></h2><table><tr><th>Vaga</th><th>Loja</th><th>Status</th><th>Candidatos</th><th>Link</th></tr>' +
+      (jobs.map((j) => '<tr class="click" data-id="' + j.id + '"><td><b>' + esc(j.title) + '</b><div class="muted">' + esc(j.salaryText || '') + '</div></td><td>' + esc(j.storeName || '—') + '</td><td>' +
+        '<span class="pill ' + (j.status === 'ABERTA' ? 'p-ok' : 'p-mute') + '">' + j.status + '</span></td><td>' + j.candidates + (j.newCandidates ? ' <span class="pill p-brand">' + j.newCandidates + ' novos</span>' : '') +
+        '</td><td><button class="btn g" data-copy="' + esc(j.slug) + '">Copiar link</button></td></tr>').join('') || '<tr><td colspan="5" class="muted">Nenhuma vaga ainda.</td></tr>') + '</table></div>';
+    document.getElementById('nj').onclick = () => jobForm(null);
+    document.querySelectorAll('tr[data-id]').forEach((tr) => tr.onclick = (e) => { if (e.target.dataset.copy) return; jobForm(jobs.find((j) => j.id === tr.dataset.id)); });
+    document.querySelectorAll('[data-copy]').forEach((b) => b.onclick = () => { const u = location.origin + '/vagas?v=' + b.dataset.copy; navigator.clipboard.writeText(u).then(() => { b.textContent = 'Copiado ✓'; }); });
+  },
+
+  async candidatos() {
+    const [cands, jobs] = await Promise.all([api('/candidates'), api('/jobs')]);
+    const jf = new URLSearchParams(location.hash.split('?')[1] || '').get('job') || '';
+    const list = jf ? cands.filter((c) => c.jobId === jf) : cands;
+    $m().innerHTML = '<div class="card"><h2>Candidatos<span class="sp"></span><select id="jf" style="max-width:280px;margin:0"><option value="">Todas as vagas</option>' +
+      jobs.map((j) => '<option value="' + j.id + '"' + (j.id === jf ? ' selected' : '') + '>' + esc(j.title) + '</option>').join('') + '</select></h2><div class="kanban">' +
+      META.stages.map((s) => '<div class="col"><h3>' + STAGE_LABEL[s] + ' (' + list.filter((c) => c.stage === s).length + ')</h3>' +
+        list.filter((c) => c.stage === s).map((c) => '<div class="cc" data-id="' + c.id + '"><b>' + esc(c.name) + '</b><small>' + esc(c.jobTitleText) + '</small><br><small>' + br(c.createdAt) +
+          (c.rating ? ' · ' + '★'.repeat(c.rating) : '') + (c.resumeFile ? ' · 📎' : '') + '</small></div>').join('') + '</div>').join('') + '</div></div>';
+    document.getElementById('jf').onchange = (e) => { location.hash = 'candidatos' + (e.target.value ? '?job=' + e.target.value : ''); VIEWS.candidatos(); };
+    document.querySelectorAll('.cc').forEach((el) => el.onclick = () => candidate(el.dataset.id));
+  },
+
+  async equipe() {
+    const team = await api('/team');
+    $m().innerHTML = '<div class="card"><h2>Equipe (' + team.length + ')</h2><table><tr><th>Nome</th><th>Loja</th><th>Admissão</th><th>Férias disponíveis</th><th>Documentos</th></tr>' +
+      team.map((t) => '<tr class="click" data-id="' + t.id + '"><td><b>' + esc(t.name) + '</b></td><td>' + esc(t.store || '—') + '</td><td>' + (t.admissionDate ? br(t.admissionDate) : '<span class="pill p-warn">sem data</span>') + '</td><td>' +
+        t.vacationAvailable + ' dias' + (t.vacationOverdue ? ' <span class="pill p-bad">vencidas</span>' : '') + '</td><td>' + (t.docsMissing ? '<span class="pill p-warn">faltam ' + t.docsMissing + '</span>' : '<span class="pill p-ok">completo</span>') +
+        (t.docsExpired ? ' <span class="pill p-bad">' + t.docsExpired + ' vencido</span>' : '') + '</td></tr>').join('') + '</table></div>';
+    document.querySelectorAll('tr[data-id]').forEach((tr) => tr.onclick = () => employee(tr.dataset.id));
+  },
+
+  async ferias() {
+    const [pend, all] = await Promise.all([api('/vacations?status=PENDENTE'), api('/vacations')]);
+    const row = (v, actions) => '<tr><td><b>' + esc(v.userName) + '</b></td><td>' + br(v.startDate) + ' a ' + br(v.endDate) + '</td><td>' + v.days + (v.soldDays ? ' + ' + v.soldDays + ' vendidos' : '') +
+      '</td><td>' + (v.warnings && v.warnings.length ? '<span class="pill p-warn" title="' + esc(v.warnings.join(' ')) + '">atenção</span> <small class="muted">' + esc(v.warnings.join(' ')) + '</small>' : '') + '</td><td>' + actions(v) + '</td></tr>';
+    $m().innerHTML = '<div class="card"><h2>Para aprovar (' + pend.length + ')</h2><table><tr><th>Funcionário</th><th>Período</th><th>Dias</th><th>Avisos</th><th></th></tr>' +
+      (pend.map((v) => row(v, (x) => '<button class="btn ok" data-ok="' + x.id + '">Aprovar</button> <button class="btn r" data-no="' + x.id + '">Recusar</button>')).join('') || '<tr><td colspan="5" class="muted">Nenhum pedido pendente.</td></tr>') +
+      '</table></div><div class="card"><h2>Todas</h2><table><tr><th>Funcionário</th><th>Período</th><th>Dias</th><th>Avisos</th><th>Situação</th></tr>' +
+      all.map((v) => row(v, (x) => '<span class="pill ' + ({ APROVADA: 'p-ok', PENDENTE: 'p-warn', RECUSADA: 'p-bad', CANCELADA: 'p-mute' }[x.status] || 'p-mute') + '">' + x.status + '</span>' +
+        (x.status === 'APROVADA' ? ' <button class="btn g" data-cancel="' + x.id + '">Cancelar</button>' : ''))).join('') + '</table></div>';
+    document.querySelectorAll('[data-ok]').forEach((b) => b.onclick = async () => { try { const r = await api('/vacations/' + b.dataset.ok + '/decide', 'POST', { approve: true }); alert('Aprovada. Entrou na agenda. Pagar as férias até ' + br(r.payUntil) + ' (CLT art. 145).'); go('ferias'); } catch (e) { alert(e.message); } });
+    document.querySelectorAll('[data-no]').forEach((b) => b.onclick = async () => { const n = prompt('Motivo da recusa (o funcionário vê):'); if (n === null) return; try { await api('/vacations/' + b.dataset.no + '/decide', 'POST', { approve: false, note: n }); go('ferias'); } catch (e) { alert(e.message); } });
+    document.querySelectorAll('[data-cancel]').forEach((b) => b.onclick = async () => { if (!confirm('Cancelar estas férias aprovadas? Sai da agenda.')) return; try { await api('/vacations/' + b.dataset.cancel + '/cancel', 'POST', {}); go('ferias'); } catch (e) { alert(e.message); } });
+  },
+
+  async docs() {
+    const exp = await api('/documents/expiring');
+    $m().innerHTML = '<div class="card"><h2>Documentos vencidos ou vencendo em 30 dias</h2><table><tr><th>Funcionário</th><th>Documento</th><th>Vence</th><th></th></tr>' +
+      (exp.map((d) => '<tr class="click" data-u="' + d.userId + '"><td><b>' + esc(d.userName) + '</b></td><td>' + esc(d.typeLabel) + '</td><td>' + br(d.expiresAt) + ' <span class="pill ' + (d.situation === 'VENCIDO' ? 'p-bad' : 'p-warn') + '">' + d.situation.toLowerCase() + '</span></td><td><button class="btn g" data-f="' + d.id + '">Ver</button></td></tr>').join('') ||
+        '<tr><td colspan="4" class="muted">Nada vencendo. 👍</td></tr>') + '</table><div class="muted" style="margin-top:10px">Os documentos de cada pessoa ficam na ficha (aba Equipe). O exame (ASO) vence em 12 meses.</div></div>';
+    document.querySelectorAll('[data-f]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); openFile('/documents/' + b.dataset.f + '/file'); });
+    document.querySelectorAll('tr[data-u]').forEach((tr) => tr.onclick = () => employee(tr.dataset.u, 'docs'));
+  },
+
+  async check() {
+    const cls = await api('/checklists');
+    $m().innerHTML = '<div class="card"><h2>Admissão e desligamento</h2><table><tr><th>Funcionário</th><th>Tipo</th><th>Andamento</th><th>Prazo</th></tr>' +
+      (cls.map((c) => '<tr class="click" data-id="' + c.id + '"><td><b>' + esc(c.userName) + '</b></td><td>' + (c.kind === 'ADMISSAO' ? '🟢 Admissão' : '🔴 Desligamento') + '</td><td>' + c.done + '/' + c.total +
+        (c.status === 'CONCLUIDO' ? ' <span class="pill p-ok">concluído</span>' : '') + '</td><td>' + br(c.dueDate) + '</td></tr>').join('') || '<tr><td colspan="4" class="muted">Nenhum. Ao contratar um candidato, a admissão abre sozinha.</td></tr>') + '</table></div>';
+    document.querySelectorAll('tr[data-id]').forEach((tr) => tr.onclick = () => checklist(cls.find((c) => c.id === tr.dataset.id)));
+  },
+
+  async aval() {
+    const cycles = await api('/cycles');
+    $m().innerHTML = '<div class="card"><h2>Ciclos de avaliação<span class="sp"></span><button class="btn" id="nc">+ Novo ciclo</button></h2><table><tr><th>Ciclo</th><th>Período</th><th>Avaliados</th><th>Status</th></tr>' +
+      (cycles.map((y) => '<tr class="click" data-id="' + y.id + '"><td><b>' + esc(y.name) + '</b></td><td>' + br(y.periodFrom) + ' a ' + br(y.periodTo) + '</td><td>' + y.done + '/' + y.people + '</td><td><span class="pill ' + (y.status === 'ABERTO' ? 'p-ok' : 'p-mute') + '">' + y.status + '</span></td></tr>').join('') ||
+        '<tr><td colspan="4" class="muted">Nenhum ciclo ainda.</td></tr>') + '</table></div>';
+    document.getElementById('nc').onclick = () => {
+      drawer('<h2>Novo ciclo de avaliação</h2><label>Nome<input id="cn" placeholder="Ex.: Avaliação dezembro 2026"></label><div class="row"><label>De<input id="cf" type="date"></label><label>Até<input id="ct" type="date"></label></div>' +
+        '<div class="muted" style="margin-top:8px">Entra toda a equipe ativa. Cada vendedor também faz a autoavaliação pelo Meu RH.</div><div class="msg" id="cm"></div><button class="btn" style="margin-top:12px" id="cgo">Criar</button>');
+      document.getElementById('cgo').onclick = async () => { try { await api('/cycles', 'POST', { name: document.getElementById('cn').value, periodFrom: document.getElementById('cf').value, periodTo: document.getElementById('ct').value }); closeDrawer(); go('aval'); } catch (e) { document.getElementById('cm').className = 'msg bad'; document.getElementById('cm').textContent = e.message; } };
+    };
+    document.querySelectorAll('tr[data-id]').forEach((tr) => tr.onclick = () => cycle(tr.dataset.id));
+  },
+};
+
+function jobForm(j) {
+  j = j || { status: 'ABERTA', openings: 1, questions: ['Já trabalhou com vendas? Onde e por quanto tempo?', 'Tem disponibilidade para trabalhar aos sábados e em escala?'], salaryText: 'R$ 1.790,00 + comissão', jobTitle: 'VENDEDOR' };
+  drawer('<h2>' + (j.id ? 'Editar vaga' : 'Nova vaga') + '</h2>' +
+    '<label>Título<input id="jt" value="' + esc(j.title || '') + '" placeholder="Ex.: Vendedor(a) — Sports & Tennis Praia do Bessa"></label>' +
+    '<div class="row"><label>Loja<select id="js"><option value="">—</option>' + storeOpts(j.storeId) + '</select></label><label>Cargo<select id="jc">' + ['VENDEDOR', 'LOGISTICA', 'SUPERVISOR'].map((c) => '<option' + (j.jobTitle === c ? ' selected' : '') + '>' + c + '</option>').join('') + '</select></label><label>Vagas<input id="jo" type="number" min="1" value="' + (j.openings || 1) + '"></label></div>' +
+    '<div class="row"><label>Salário (texto)<input id="jsal" value="' + esc(j.salaryText || '') + '"></label><label>Horário<input id="jh" value="' + esc(j.schedule || '') + '" placeholder="Ex.: escala 6x1, 44h"></label></div>' +
+    '<label>Sobre a vaga<textarea id="jd">' + esc(j.description || '') + '</textarea></label><label>O que procuramos<textarea id="jr">' + esc(j.requirements || '') + '</textarea></label>' +
+    '<label>Perguntas para o candidato (uma por linha)<textarea id="jq">' + esc((j.questions || []).join('\n')) + '</textarea></label>' +
+    '<label>Status<select id="jst">' + ['ABERTA', 'PAUSADA', 'FECHADA'].map((s) => '<option' + (j.status === s ? ' selected' : '') + '>' + s + '</option>').join('') + '</select></label>' +
+    '<div class="msg" id="jm"></div><button class="btn" style="margin-top:12px" id="jgo">Salvar</button>' + (j.id ? ' <button class="btn g" style="margin-top:12px" onclick="location.hash=\'candidatos?job=' + j.id + '\';closeDrawer();go(\'candidatos\')">Ver candidatos</button>' : ''));
+  document.getElementById('jgo').onclick = async () => {
+    const body = { title: jt.value, storeId: js.value, jobTitle: jc.value, openings: jo.value, salaryText: jsal.value, schedule: jh.value, description: jd.value, requirements: jr.value, questions: jq.value.split('\n'), status: jst.value };
+    try { await (j.id ? api('/jobs/' + j.id, 'PUT', body) : api('/jobs', 'POST', body)); closeDrawer(); go('vagas'); } catch (e) { jm.className = 'msg bad'; jm.textContent = e.message; }
+  };
+}
+
+async function candidate(id) {
+  const c = await api('/candidates/' + id);
+  const ans = Object.entries(c.answers || {}).map(([q, a]) => '<div style="margin-top:8px"><b>' + esc(q) + '</b><div>' + esc(a || '—') + '</div></div>').join('');
+  const wa = 'https://wa.me/55' + String(c.phone).replace(/^55/, '');
+  drawer('<h2>' + esc(c.name) + '</h2><div class="muted">' + esc(c.jobTitleText) + ' · ' + br(c.createdAt) + ' · <span class="pill p-brand">' + STAGE_LABEL[c.stage] + '</span></div>' +
+    '<div class="card"><div>📱 <a href="' + wa + '" target="_blank">' + esc(c.phone) + '</a>' + (c.email ? ' · ✉️ ' + esc(c.email) : '') + '</div>' + (c.city ? '<div>📍 ' + esc(c.city) + '</div>' : '') + (c.birthDate ? '<div>🎂 ' + br(c.birthDate) + '</div>' : '') +
+    (c.resumeFile ? '<button class="btn g" style="margin-top:10px" id="cv">📎 Abrir currículo</button>' : '<div class="muted" style="margin-top:6px">Sem currículo anexado.</div>') + '</div>' +
+    (c.experience ? '<div class="card"><b>Experiência</b><div style="white-space:pre-wrap">' + esc(c.experience) + '</div></div>' : '') + (ans ? '<div class="card">' + ans + '</div>' : '') +
+    (c.stage === 'CONTRATADO' ? '<div class="card msg ok">Contratado. A ficha está na aba Equipe.</div>' :
+    '<div class="card"><b>Mover no processo</b><div class="row"><label>Etapa<select id="cs">' + META.stages.filter((s) => s !== 'CONTRATADO').map((s) => '<option value="' + s + '"' + (s === c.stage ? ' selected' : '') + '>' + STAGE_LABEL[s] + '</option>').join('') + '</select></label>' +
+    '<label>Nota (1–5)<select id="cr"><option value="">—</option>' + [1, 2, 3, 4, 5].map((n) => '<option' + (c.rating === n ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></label><label>Entrevista em<input id="ci" type="datetime-local"></label></div>' +
+    '<label>Anotação<textarea id="cnote" placeholder="Como foi a conversa, pontos fortes, dúvidas…"></textarea></label><label id="rrl" style="display:none">Motivo da reprovação<input id="rr"></label><div class="msg" id="cmm"></div><button class="btn" style="margin-top:10px" id="cgo">Salvar</button></div>' +
+    '<div class="card"><b>Contratar</b><div class="row"><label>Loja<select id="hs">' + storeOpts(c.storeId) + '</select></label><label>Admissão<input id="ha" type="date"></label><label>Salário (R$)<input id="hsal" value="1790,00"></label></div>' +
+    '<div class="muted" style="margin-top:6px">Cria o funcionário (vendedor, loja, salário, admissão) e abre o checklist de admissão. Ele entra no app pelo "esqueci a senha" com código no WhatsApp.</div><button class="btn ok" style="margin-top:10px" id="hgo">Contratar ' + esc(c.name.split(' ')[0]) + '</button><div class="msg" id="hm"></div></div>') +
+    '<div class="card"><b>Histórico</b>' + c.events.map((e) => '<div class="ev"><small class="muted">' + new Date(e.createdAt).toLocaleString('pt-BR', { timeZone: 'America/Fortaleza' }) + '</small><div>' + esc(e.kind.replace('_', ' ').toLowerCase()) +
+      (e.toStage && e.fromStage && e.toStage !== e.fromStage ? ': ' + STAGE_LABEL[e.fromStage] + ' → ' + STAGE_LABEL[e.toStage] : '') + (e.scheduledAt ? ' · ' + new Date(e.scheduledAt).toLocaleString('pt-BR', { timeZone: 'America/Fortaleza' }) : '') + (e.note ? '<div>' + esc(e.note) + '</div>' : '') + '</div></div>').join('') + '</div>');
+  const cv = document.getElementById('cv'); if (cv) cv.onclick = () => openFile('/candidates/' + id + '/resume');
+  const cs = document.getElementById('cs'); if (cs) cs.onchange = () => { document.getElementById('rrl').style.display = cs.value === 'REPROVADO' ? 'block' : 'none'; };
+  const g = document.getElementById('cgo'); if (g) g.onclick = async () => { try { await api('/candidates/' + id + '/move', 'POST', { stage: cs.value, rating: cr.value, note: cnote.value, rejectReason: rr.value, scheduledAt: ci.value ? new Date(ci.value).toISOString() : null }); candidate(id); } catch (e) { cmm.className = 'msg bad'; cmm.textContent = e.message; } };
+  const h = document.getElementById('hgo'); if (h) h.onclick = async () => {
+    const cents = Math.round(Number(String(hsal.value).replace(/\./g, '').replace(',', '.')) * 100);
+    if (!confirm('Contratar ' + c.name + '? Cria o cadastro de funcionário.')) return;
+    h.disabled = true;
+    try { const r = await api('/candidates/' + id + '/hire', 'POST', { storeId: hs.value, admissionDate: ha.value, salaryCents: cents }); closeDrawer(); alert('Contratado para ' + r.store + '. Admissão aberta no checklist.'); go('check'); } catch (e) { hm.className = 'msg bad'; hm.textContent = e.message; h.disabled = false; }
+  };
+}
+
+async function employee(id, tab = 'dados') {
+  const f = await api('/employees/' + id);
+  const u = f.user;
+  const T = [['dados', 'Dados'], ['ferias', 'Férias'], ['docs', 'Documentos'], ['check', 'Admissão/Desligamento'], ['aval', 'Avaliações'], ['ocorr', 'Ocorrências e treinamentos']];
+  const body = {
+    dados: '<div class="card"><div><b>Loja:</b> ' + esc(u.store || '—') + '</div><div><b>Cargo:</b> ' + esc(u.jobTitle || 'VENDEDOR') + '</div><div><b>Telefone:</b> ' + esc(u.phone) + '</div>' +
+      '<div><b>Admissão:</b> ' + (f.vacation.admissionDate ? br(f.vacation.admissionDate) : '<span class="pill p-warn">sem data — preencha em Admin › Vendedores › Contrato e salário</span>') + '</div>' +
+      '<div><b>Salário:</b> ' + (f.profile && f.profile.baseSalaryCents ? brl(f.profile.baseSalaryCents / 100) : '—') + '</div><button class="btn g" style="margin-top:10px" id="lk">📲 Link do Meu RH (férias, documentos, autoavaliação)</button><div class="msg" id="lkm"></div></div>',
+    ferias: (f.vacation.periods || []).slice().reverse().map((p) => '<div class="card"><b>' + br(p.periodStart) + ' a ' + br(p.periodEnd) + '</b> ' + (p.overdue ? '<span class="pill p-bad">vencidas</span>' : p.dueSoon ? '<span class="pill p-warn">vence em breve</span>' : !p.complete ? '<span class="pill p-mute">em andamento</span>' : '') +
+      '<div>Direito ' + p.rightDays + ' · tiradas ' + p.usedDays + ' · pendentes ' + p.pendingDays + ' · <b>disponível ' + p.availableDays + '</b>' + (p.complete ? ' · tirar até ' + br(p.concessiveEnd) : '') + '</div>' + (p.adjustReason ? '<div class="muted">Ajuste: ' + esc(p.adjustReason) + '</div>' : '') +
+      '<button class="btn g" style="margin-top:6px" data-adj="' + p.periodStart + '">Ajustar direito (faltas)</button></div>').join('') +
+      '<div class="card"><b>Lançar férias</b><div class="row"><label>Período<select id="ep">' + (f.vacation.periods || []).filter((p) => p.complete).map((p) => '<option value="' + p.periodStart + '">' + br(p.periodStart) + ' (' + p.availableDays + ' disp.)</option>').join('') + '</select></label><label>Início<input id="es" type="date"></label><label>Dias<input id="ed" type="number" value="30" min="5" max="30"></label><label>Vender<input id="ev" type="number" value="0" min="0" max="10"></label></div><div class="msg" id="em"></div><button class="btn" style="margin-top:8px" id="ego">Lançar (fica pendente para aprovar)</button></div>',
+    docs: '<div class="card">' + (f.documents.missing.length ? '<div>Faltam: ' + f.documents.missing.map((m) => '<span class="pill p-warn">' + esc(m.label) + '</span>').join(' ') + '</div>' : '<span class="pill p-ok">Documentos obrigatórios completos</span>') + '</div>' +
+      '<div class="card"><table><tr><th>Documento</th><th>Vence</th><th></th></tr>' + (f.documents.documents.map((d) => '<tr><td>' + esc(d.typeLabel) + (d.uploadedBySelf ? ' <small class="muted">(enviado por ele)</small>' : '') + '</td><td>' + (d.expiresAt ? br(d.expiresAt) + ' <span class="pill ' + (d.situation === 'VENCIDO' ? 'p-bad' : d.situation === 'VENCENDO' ? 'p-warn' : 'p-ok') + '">' + d.situation.toLowerCase() + '</span>' : '—') +
+        '</td><td><button class="btn g" data-f="' + d.id + '">Ver</button> <button class="btn r" data-del="' + d.id + '">Remover</button></td></tr>').join('') || '<tr><td colspan="3" class="muted">Nenhum documento.</td></tr>') + '</table></div>' +
+      '<div class="card"><b>Anexar documento</b><div class="row"><label>Tipo<select id="dt">' + Object.entries(META.docTypes).map(([k, v]) => '<option value="' + k + '">' + esc(v.label) + '</option>').join('') + '</select></label><label>Data do documento<input id="di" type="date"></label><label>Vence em (opcional)<input id="dx" type="date"></label></div><label>Arquivo (PDF ou foto)<input id="df" type="file" accept="application/pdf,image/*"></label><div class="msg" id="dm"></div><button class="btn" style="margin-top:8px" id="dgo">Anexar</button></div>',
+    check: f.checklists.map((c) => '<div class="card"><b>' + (c.kind === 'ADMISSAO' ? 'Admissão' : 'Desligamento') + '</b> ' + c.done + '/' + c.total + ' <button class="btn g" data-cl="' + c.id + '">Abrir</button></div>').join('') +
+      '<div class="card"><button class="btn g" id="sa">Abrir checklist de admissão</button> <button class="btn r" id="so">Iniciar desligamento</button></div>',
+    aval: f.reviews.map((r) => '<div class="card"><b>' + esc(r.cycleName) + '</b> · nota ' + (r.score != null ? r.score.toFixed(1) : '—') + ' · autoavaliação ' + (r.selfScore != null ? r.selfScore.toFixed(1) : '—') + (r.goals ? '<div class="muted">Metas: ' + esc(r.goals) + '</div>' : '') + '</div>').join('') || '<div class="card muted">Nenhuma avaliação.</div>',
+    ocorr: '<div class="card"><b>Ocorrências</b>' + (f.incidents.map((i) => '<div class="ev"><small class="muted">' + br(i.createdAt) + '</small><div>' + esc(i.type || i.kind || '') + ' ' + esc(i.description || i.title || '') + '</div></div>').join('') || '<div class="muted">Nenhuma.</div>') +
+      '</div><div class="card"><b>Treinamentos</b>' + (f.trainings.map((t) => '<div class="ev"><small class="muted">' + br(t.completedAt) + '</small><div>' + esc(t.topic) + (t.certified ? ' ✅' : '') + '</div></div>').join('') || '<div class="muted">Nenhum.</div>') + '</div>',
+  };
+  drawer('<h2>' + esc(u.name) + '</h2><div class="tabs2">' + T.map(([k, l]) => '<button data-et="' + k + '" class="' + (k === tab ? 'on' : '') + '">' + l + '</button>').join('') + '</div>' + body[tab]);
+  document.querySelectorAll('[data-et]').forEach((b) => b.onclick = () => employee(id, b.dataset.et));
+  const q = (s) => document.getElementById(s);
+  if (q('lk')) q('lk').onclick = async () => { const r = await api('/employees/' + id + '/link', 'POST', {}); await navigator.clipboard.writeText(r.link).catch(() => {}); q('lkm').className = 'msg ok'; q('lkm').innerHTML = 'Link copiado (vale 45 dias): <a href="' + esc(r.link) + '" target="_blank">abrir</a>'; };
+  document.querySelectorAll('[data-adj]').forEach((b) => b.onclick = async () => { const d = prompt('Dias de direito neste período (CLT art. 130: 30 / 24 / 18 / 12 conforme faltas injustificadas):', '24'); if (d === null) return; const why = prompt('Motivo:', 'Faltas injustificadas no período'); if (!why) return; try { await api('/employees/' + id + '/vacation-right', 'POST', { periodStart: b.dataset.adj, rightDays: d, reason: why }); employee(id, 'ferias'); } catch (e) { alert(e.message); } });
+  if (q('ego')) q('ego').onclick = async () => { try { const r = await api('/employees/' + id + '/vacations', 'POST', { periodStart: q('ep').value, startDate: q('es').value, days: q('ed').value, soldDays: q('ev').value }); alert('Lançada até ' + br(r.endDate) + '. Aprove na aba Férias.' + (r.warnings.length ? '\n\nAtenção: ' + r.warnings.join(' ') : '')); employee(id, 'ferias'); } catch (e) { q('em').className = 'msg bad'; q('em').textContent = e.message; } };
+  document.querySelectorAll('[data-f]').forEach((b) => b.onclick = () => openFile('/documents/' + b.dataset.f + '/file'));
+  document.querySelectorAll('[data-del]').forEach((b) => b.onclick = async () => { if (!confirm('Remover este documento?')) return; await api('/documents/' + b.dataset.del, 'DELETE'); employee(id, 'docs'); });
+  if (q('dgo')) q('dgo').onclick = async () => { const file = q('df').files[0]; if (!file) { q('dm').className = 'msg bad'; q('dm').textContent = 'Escolha o arquivo.'; return; } const fd = new FormData(); fd.append('type', q('dt').value); fd.append('issuedAt', q('di').value); fd.append('expiresAt', q('dx').value); fd.append('file', file); try { await api('/employees/' + id + '/documents', 'POST', fd, true); employee(id, 'docs'); } catch (e) { q('dm').className = 'msg bad'; q('dm').textContent = e.message; } };
+  document.querySelectorAll('[data-cl]').forEach((b) => b.onclick = async () => { const all = await api('/checklists'); checklist(all.find((c) => c.id === b.dataset.cl), id); });
+  if (q('sa')) q('sa').onclick = async () => { await api('/employees/' + id + '/checklists', 'POST', { kind: 'ADMISSAO' }); employee(id, 'check'); };
+  if (q('so')) q('so').onclick = async () => { const last = prompt('Último dia de trabalho (AAAA-MM-DD), se já souber:', ''); if (last === null) return; const note = prompt('Observação (pedido de demissão, dispensa…):', '') || ''; await api('/employees/' + id + '/offboarding', 'POST', { lastDay: last, note }); employee(id, 'check'); };
+}
+
+function checklist(c, backTo) {
+  if (!c) return;
+  drawer('<h2>' + (c.kind === 'ADMISSAO' ? '🟢 Admissão' : '🔴 Desligamento') + ' · ' + esc(c.userName) + '</h2>' + (c.note ? '<div class="muted">' + esc(c.note) + '</div>' : '') + (c.dueDate ? '<div class="muted">Prazo: ' + br(c.dueDate) + '</div>' : '') +
+    '<div class="card">' + c.items.map((it) => '<label style="display:flex;gap:10px;align-items:center;font-size:14px;font-weight:500;min-height:40px"><input type="checkbox" style="width:20px;min-height:20px;margin:0" data-i="' + it.i + '"' + (it.done ? ' checked' : '') + '>' + esc(it.label) +
+      (it.doneAt ? ' <small class="muted">· ' + br(it.doneAt) + '</small>' : '') + '</label>').join('') + '</div>' + (backTo ? '<button class="btn g" onclick="employee(\'' + backTo + '\',\'check\')">← Ficha</button>' : ''));
+  document.querySelectorAll('[data-i]').forEach((x) => x.onchange = async () => { try { const r = await api('/checklists/' + c.id + '/items/' + x.dataset.i, 'POST', { done: x.checked }); c.items = r.items; c.status = r.status; if (r.status === 'CONCLUIDO') alert('Checklist concluído ✅'); } catch (e) { alert(e.message); x.checked = !x.checked; } });
+}
+
+async function cycle(id) {
+  const d = await api('/cycles/' + id);
+  drawer('<h2>' + esc(d.cycle.name) + '</h2><div class="muted">' + br(d.cycle.periodFrom) + ' a ' + br(d.cycle.periodTo) + ' · ' + d.cycle.status + '</div>' +
+    '<div class="card"><table><tr><th>Funcionário</th><th>Vendas no período</th><th>Nota</th><th>Auto</th></tr>' + d.reviews.map((r) => '<tr class="click" data-r="' + r.id + '"><td><b>' + esc(r.userName) + '</b></td><td>' + brl(r.sales.total) + ' <small class="muted">(' + r.sales.count + ')</small></td><td>' + (r.score != null ? r.score.toFixed(1) : '<span class="pill p-warn">avaliar</span>') + '</td><td>' + (r.selfScore != null ? r.selfScore.toFixed(1) : '—') + '</td></tr>').join('') + '</table></div>' +
+    (d.cycle.status === 'ABERTO' ? '<button class="btn g" id="close">Encerrar ciclo</button>' : ''));
+  document.querySelectorAll('[data-r]').forEach((tr) => tr.onclick = () => reviewForm(d, d.reviews.find((r) => r.id === tr.dataset.r)));
+  const cl = document.getElementById('close'); if (cl) cl.onclick = async () => { if (!confirm('Encerrar? Ninguém mais edita.')) return; await api('/cycles/' + id + '/close', 'POST', {}); closeDrawer(); go('aval'); };
+}
+
+function reviewForm(d, r) {
+  const sc = Object.assign({}, r.scores || {});
+  drawer('<h2>' + esc(r.userName) + '</h2><div class="muted">' + esc(d.cycle.name) + ' · vendas no período ' + brl(r.sales.total) + '</div>' +
+    '<div class="card">' + d.criteria.map(([k, l]) => '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0"><div>' + esc(l) + (r.selfScores && r.selfScores[k] ? ' <small class="muted">(auto: ' + r.selfScores[k] + ')</small>' : '') + '</div><div class="stars" data-k="' + k + '">' +
+      [1, 2, 3, 4, 5].map((n) => '<button data-n="' + n + '" class="' + (sc[k] === n ? 'on' : '') + '">' + n + '</button>').join('') + '</div></div>').join('') + '</div>' +
+    (r.selfComment ? '<div class="card"><b>O que ele escreveu:</b><div>' + esc(r.selfComment) + '</div></div>' : '') +
+    '<label>Pontos fortes<textarea id="rs">' + esc(r.strengths || '') + '</textarea></label><label>O que melhorar<textarea id="ri">' + esc(r.improve || '') + '</textarea></label><label>Metas para o próximo período<textarea id="rg">' + esc(r.goals || '') + '</textarea></label>' +
+    '<div class="msg" id="rm"></div><button class="btn" style="margin-top:10px" id="rgo">Salvar avaliação</button> <button class="btn g" style="margin-top:10px" id="rb">← Voltar</button>');
+  document.querySelectorAll('.stars').forEach((s) => s.querySelectorAll('button').forEach((b) => b.onclick = () => { sc[s.dataset.k] = Number(b.dataset.n); s.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); }));
+  document.getElementById('rb').onclick = () => cycle(d.cycle.id);
+  document.getElementById('rgo').onclick = async () => { try { await api('/reviews/' + r.id, 'PUT', { scores: sc, strengths: rs.value, improve: ri.value, goals: rg.value }); cycle(d.cycle.id); } catch (e) { rm.className = 'msg bad'; rm.textContent = e.message; } };
+}
+
+(async () => {
+  if (!TOKEN) { $m().innerHTML = '<div class="login card"><h2>Entre no admin primeiro</h2><a class="btn" href="/admin.html">Ir para o admin</a></div>'; return; }
+  try { META = await api('/meta'); DASH = await api('/dashboard'); }
+  catch (e) { $m().innerHTML = '<div class="login card"><h2>' + esc(e.message) + '</h2><a class="btn" href="/admin.html">Entrar no admin</a></div>'; return; }
+  const h = (location.hash || '').slice(1).split('?')[0];
+  go(TABS.some(([k]) => k === h) ? h : 'painel');
+})();
+</script>
+</body>
+</html>

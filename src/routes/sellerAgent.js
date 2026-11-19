@@ -2428,6 +2428,11 @@ const TOOLS = [
     input_schema: { type: 'object', properties: {} },
   },
   {
+    name: 'minhas_ferias',
+    description: 'Saldo de ferias do PROPRIO vendedor (periodos pela CLT, dias livres, prazo para tirar, pedidos pendentes/aprovados) e o link pessoal do Meu RH, onde ele pede ferias, envia documentos e faz a autoavaliacao. Use para qualquer pergunta sobre ferias, documentos do RH ou avaliacao.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
     name: 'ask_manager',
     description: 'Encaminha a pergunta ao GERENTE dos agentes (e, se ele nao souber, ao dono Douglas). Use SEMPRE que nao houver dado real nas tools/contexto para responder, ou quando for decisao da empresa: desconto fora da regra, excecao, troca/devolucao especial, regra de RH/salario/comissao nao coberta, politica nova. Nunca invente nesses casos.',
     input_schema: { type: 'object', properties: { question: { type: 'string', description: 'A pergunta do vendedor, clara e completa.' }, what_i_know: { type: 'string', description: 'O que voce ja sabe/encontrou que ajuda o gerente (opcional).' } }, required: ['question'] },
@@ -2457,6 +2462,16 @@ async function execTool(name, input, snapshot) {
     return powers.requestTransfer(prisma, sellerOf(), input, { send: (phone, msg) => wa.sendCustomMessage(phone, msg) });
   }
   if (name === 'venda_perdida') return powers.lostSale(prisma, sellerOf(), input || {});
+  if (name === 'minhas_ferias') {
+    const rh = require('../services/rh');
+    const bal = await rh.vacationBalance(prisma, snapshot.seller.id);
+    const base = process.env.PUBLIC_BASE_URL || 'https://teniscash.com.br';
+    return { admissao: bal.admissionDate, faltaCadastro: bal.missing || null,
+      periodos: (bal.periods || []).map((p) => ({ de: p.periodStart, ate: p.periodEnd, completo: p.complete, direito: p.rightDays, livres: Math.max(0, p.availableDays - p.pendingDays), aguardandoAprovacao: p.pendingDays, tirarAte: p.complete ? p.concessiveEnd : null, vencidas: p.overdue })),
+      pedidos: (bal.vacations || []).map((v) => ({ inicio: v.startDate, fim: v.endDate, dias: v.days, vendidos: v.soldDays, situacao: v.status })),
+      linkMeuRH: rh.signedLink(snapshot.seller.id, base),
+      regras: 'Ate 3 partes, uma com 14+ dias e as outras com 5+; nao comeca nos 2 dias antes de domingo/feriado; pedir com 30 dias; pode vender ate 10 dias. O Douglas aprova pelo RH.' };
+  }
   if (name === 'placar_da_loja') return powers.storeScoreboard(prisma, sellerOf());
   if (name === 'get_my_results') return myResultsForAgent(snapshot);
   if (name === 'get_my_schedule') return myScheduleForAgent(snapshot);
@@ -2492,7 +2507,7 @@ Regras:
 - Se o vendedor pedir produto sem falar de estoque, use recommend_products antes de recomendar; use search_products apenas para busca simples/listagem.
 - Diga no maximo 180 palavras. Nada de texto motivacional generico.
 - Para vendas, meta, comissao ou ranking DO VENDEDOR use get_my_results. Para escala, folga e horario use get_my_schedule. So mostre dados do proprio vendedor; nunca de colegas.
-- Cliente: use ficha_do_cliente (historico + TenisCash) e sugira o proximo produto pelo que ele ja levou. Foto pedida: foto_do_produto. Venda perdida: venda_perdida. "Como ta a loja?": placar_da_loja. Transferencia: confira o estoque da origem, confirme com o vendedor e so entao pedir_transferencia com confirmar=true.
+- Cliente: use ficha_do_cliente (historico + TenisCash) e sugira o proximo produto pelo que ele ja levou. Foto pedida: foto_do_produto. Venda perdida: venda_perdida. "Como ta a loja?": placar_da_loja. Transferencia: confira o estoque da origem, confirme com o vendedor e so entao pedir_transferencia com confirmar=true. Ferias/documentos/avaliacao: minhas_ferias (mande o link do Meu RH).
 - Se a mensagem trouxer "[Foto enviada pelo vendedor]", use os codigos/modelo identificados para consultar search_store_stock (codigo de barras primeiro) e diga em que lojas e tamanhos tem. Se a identificacao for incerta, diga o que conseguiu ler e peca a etiqueta/codigo.
 - Se a mensagem vier de "[Audio do vendedor]", responda ao conteudo normalmente.
 - Se nao houver dado real para responder, ou se for decisao da empresa (desconto fora da regra, excecao, troca especial, RH, politica nova), use ask_manager. Nunca invente. As respostas oficiais do dono abaixo valem como regra da empresa.
