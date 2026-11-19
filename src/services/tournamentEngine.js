@@ -929,7 +929,7 @@ async function resolveUserId(idOrHandle) {
   return byAthlete ? byAthlete.userId : null;
 }
 
-async function buildAthleteCard(userId) {
+async function buildAthleteCard(userId, opts = {}) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { id: true, name: true, username: true, city: true, state: true },
@@ -945,42 +945,17 @@ async function buildAthleteCard(userId) {
     prisma.activity.count({ where: { userId, startedAt: { gte: since } } }),
   ]);
 
-  const myEntries = await prisma.entryMember.findMany({
-    where: { userId },
-    select: { entryId: true, entry: { select: { tournamentId: true } } },
-  });
-  const entryIds = myEntries.map((e) => e.entryId);
-  const tournamentsCount = new Set(myEntries.map((e) => e.entry.tournamentId)).size;
-
-  let played = 0;
-  let wins = 0;
-  let setsFor = 0;
-  let setsAgainst = 0;
-  let playedYear = 0;
-  if (entryIds.length) {
-    const matches = await prisma.tournamentMatch.findMany({
-      where: {
-        status: { in: ['FINISHED', 'WALKOVER'] },
-        OR: [{ homeEntryId: { in: entryIds } }, { awayEntryId: { in: entryIds } }],
-      },
-      select: {
-        homeEntryId: true,
-        awayEntryId: true,
-        winnerEntryId: true,
-        homeScore: true,
-        awayScore: true,
-        updatedAt: true,
-      },
-    });
-    for (const m of matches) {
-      const isHome = entryIds.includes(m.homeEntryId);
-      played++;
-      if (m.updatedAt >= since) playedYear++;
-      if (entryIds.includes(m.winnerEntryId)) wins++;
-      setsFor += (isHome ? m.homeScore : m.awayScore) || 0;
-      setsAgainst += (isHome ? m.awayScore : m.homeScore) || 0;
-    }
-  }
+  // Liga F2: histórico ÚNICO entre ligas (EntryMember + elenco reivindicado), só jogos
+  // encerrados e só torneios que quem olha pode ver (sem viewer = só públicos).
+  const history = await require('./athleteHistory').history(userId, { viewer: opts.viewer || null });
+  const ht = history.totals;
+  const tournamentsCount = ht.tournaments || 0;
+  const played = ht.games;
+  const wins = ht.wins;
+  const setsFor = ht.scoreFor;
+  const setsAgainst = ht.scoreAgainst;
+  const curSeason = require('./athleteHistory').seasonOf(new Date());
+  const playedYear = (history.bySeason.find((x) => x.season === curSeason) || {}).games || 0;
 
   const challenges = await prisma.playChallenge.findMany({
     where: { status: 'PLAYED', OR: [{ challengerId: userId }, { challengedId: userId }] },
@@ -1024,12 +999,19 @@ async function buildAthleteCard(userId) {
       matchesPlayed: totalMatches,
       matchesPlayedYear: playedYear,
       wins: totalWins,
-      losses: totalMatches - totalWins,
+      losses: totalMatches - totalWins - ht.draws,
       winRate: totalMatches ? Math.round((totalWins / totalMatches) * 100) : 0,
       setsFor,
       setsAgainst,
+      draws: ht.draws,
+      goals: ht.goals,
+      assists: ht.assists,
+      yellow: ht.yellow,
+      red: ht.red,
+      titles: ht.titles,
       badgeCount: badges.length,
     },
+    history,
     badges: badges.map((b) => ({ key: b.badgeKey, at: b.earnedAt })),
   };
 }

@@ -9,7 +9,45 @@
 // =====================================================================
 
 const STATEMENTS = [
-  // Liga Aberta F1 — PRIMEIRO da lista (as rotas de torneio leem essas colunas: quanto antes
+  // Liga Aberta F2 — clube e atleta como identidade. PRIMEIRO da lista (as rotas de torneio
+  // passam a ler TournamentEntry.clubId). Aditivo, nunca apaga.
+  `ALTER TABLE "TournamentEntry" ADD COLUMN IF NOT EXISTS "clubId" TEXT`,
+  `ALTER TABLE "Club" ADD COLUMN IF NOT EXISTS "originTournamentId" TEXT`,
+  `CREATE INDEX IF NOT EXISTS "TournamentEntry_clubId_idx" ON "TournamentEntry"("clubId")`,
+  `DO $$ BEGIN ALTER TABLE "TournamentEntry" ADD CONSTRAINT "TournamentEntry_clubId_fkey" FOREIGN KEY ("clubId") REFERENCES "Club"("id") ON DELETE SET NULL ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object OR invalid_foreign_key OR foreign_key_violation THEN NULL; END $$`,
+  `CREATE INDEX IF NOT EXISTS "RosterPlayer_userId_idx" ON "RosterPlayer"("userId")`,
+  `CREATE TABLE IF NOT EXISTS "RosterInvite" (
+     "id" TEXT NOT NULL,
+     "tokenHash" TEXT NOT NULL,
+     "rosterPlayerId" TEXT NOT NULL,
+     "entryId" TEXT NOT NULL,
+     "tournamentId" TEXT NOT NULL,
+     "createdByUserId" TEXT NOT NULL,
+     "expiresAt" TIMESTAMP(3) NOT NULL,
+     "usedAt" TIMESTAMP(3),
+     "usedByUserId" TEXT,
+     "revokedAt" TIMESTAMP(3),
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "RosterInvite_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "RosterInvite_tokenHash_key" ON "RosterInvite"("tokenHash")`,
+  `CREATE INDEX IF NOT EXISTS "RosterInvite_rosterPlayerId_idx" ON "RosterInvite"("rosterPlayerId")`,
+  `CREATE INDEX IF NOT EXISTS "RosterInvite_tournamentId_idx" ON "RosterInvite"("tournamentId")`,
+  `CREATE TABLE IF NOT EXISTS "ProfileMergeRequest" (
+     "id" TEXT NOT NULL,
+     "userId" TEXT NOT NULL,
+     "otherUserId" TEXT NOT NULL,
+     "method" TEXT NOT NULL DEFAULT 'CODE',
+     "status" TEXT NOT NULL DEFAULT 'PENDING',
+     "expiresAt" TIMESTAMP(3) NOT NULL,
+     "report" JSONB,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     "doneAt" TIMESTAMP(3),
+     CONSTRAINT "ProfileMergeRequest_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE INDEX IF NOT EXISTS "ProfileMergeRequest_userId_createdAt_idx" ON "ProfileMergeRequest"("userId", "createdAt")`,
+  `CREATE INDEX IF NOT EXISTS "ProfileMergeRequest_otherUserId_idx" ON "ProfileMergeRequest"("otherUserId")`,
+  // Liga Aberta F1 — logo depois da F2 (as rotas de torneio leem essas colunas: quanto antes
   // existirem depois do deploy, menor a janela de erro). Aditivo, nunca apaga.
   `ALTER TABLE "Tournament" ADD COLUMN IF NOT EXISTS "archivedAt" TIMESTAMP(3)`,
   `ALTER TABLE "Tournament" ADD COLUMN IF NOT EXISTS "archivedBy" TEXT`,

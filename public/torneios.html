@@ -786,6 +786,7 @@ on('POST',rx('\\/matches\\/(\\w+)\\/(schedule|teams|result|live)'),(b,m)=>{const
 on('GET',rx('\\/entries\\/(\\w+)\\/players'),(b,m)=>({players:playersOf(m[1])}));
 on('POST',rx('\\/entries\\/(\\w+)\\/players'),(b,m)=>{const p=P(b.name,b.number,b);playersOf(m[1]).push(p);return {ok:true,player:p};});
 on('POST',rx('\\/players\\/(\\w+)\\/link'),(b,m)=>{const f=allPlayers().find(x=>x.p.id===m[1]);if(f)f.p.userId=b.userId||null;return {ok:true};});
+on('POST',rx('\\/players\\/(\\w+)\\/invite'),()=>({ok:true,url:location.origin+'/convite-elenco/demo',whatsappUrl:'https://wa.me/?text='+encodeURIComponent('Convite demo'),expiresAt:new Date(Date.now()+7*864e5).toISOString()}));
 on('DELETE',rx('\\/players\\/(\\w+)'),(b,m)=>{Object.keys(ROSTER).forEach(k=>{ROSTER[k]=ROSTER[k].filter(p=>p.id!==m[1]);});return {ok:true};});
 on('POST',rx('\\/entries\\/(\\w+)\\/(logo|approve)'),()=>({ok:true}));
 on('DELETE',rx('\\/entries\\/(\\w+)'),()=>({ok:true}));
@@ -1690,12 +1691,24 @@ async function teamLinkPlayerSheet(eid,pid,pname,linked,cat){
   const tid=TEAM_CTX.tid;if(!tid)return toast('Abra pelo torneio');
   let d={active:[]};try{d=await api('/'+tid+'/teams/'+eid+'/members');}catch(e){return toast(e.message);}
   let h='<h3>Ligar à conta</h3><p class="muted">'+esc(pname)+' — os gols, assistências e cartões da súmula passam a contar no painel do atleta.</p><div class="sp8"></div>';
+  // Liga F2: convite por link (uso único, 7 dias) — o próprio jogador entra e reivindica a vaga
+  if(!linked)h+='<button class="btn" data-act="team-invite" data-eid="'+eid+'" data-cat="'+esc(cat||'')+'" data-pid="'+pid+'" data-pname="'+esc(pname)+'">'+I.link+'Gerar convite por link (WhatsApp)</button><div class="sp12"></div>';
   if(!(d.active||[]).length)h+=emptyB(I.link,'Nenhum atleta com vínculo ativo neste time ainda. Convide o atleta e espere ele aceitar.','sm');
   (d.active||[]).forEach(m=>{const u=m.user||{};const on=linked&&linked===u.id;
     h+='<div class="listitem"><div class="av round">'+esc(initials(u.name||'A'))+'</div><div class="grow"><div class="nm">'+esc(u.name||'Atleta')+'</div><div class="sub">'+(u.username?'@'+esc(u.username):'')+'</div></div>'+
       (on?'<span class="pill ok">'+I.check+'ligado</span>':'<button class="btn sm" data-act="team-linkdo" data-eid="'+eid+'" data-cat="'+esc(cat||'')+'" data-pid="'+pid+'" data-uid="'+esc(u.id)+'">'+I.link+'Ligar</button>')+'</div>';});
   if(linked)h+='<div class="sp12"></div><button class="btn sec" data-act="team-linkdo" data-eid="'+eid+'" data-cat="'+esc(cat||'')+'" data-pid="'+pid+'" data-uid="">Desligar da conta</button>';
   openSheet(h);
+}
+// Liga F2: gera o link de convite da vaga + texto pronto. QUEM MANDA é o organizador
+// (botão abre o WhatsApp dele com o texto); o sistema não envia mensagem sozinho.
+async function teamInviteSheet(eid,pid,pname,cat){
+  let r;try{r=await api('/players/'+pid+'/invite',{method:'POST',body:{}});}catch(e){return toast(e.message);}
+  const exp=new Date(r.expiresAt).toLocaleDateString('pt-BR',{timeZone:'America/Fortaleza'});
+  openSheet('<h3>Convite para '+esc(pname)+'</h3><p class="muted">Link de uso único, vale até '+esc(exp)+'. Gerar outro invalida este.</p><div class="sp8"></div>'+
+    '<input id="inv-url" readonly value="'+esc(r.url)+'">'+
+    '<div class="sp12"></div><button class="btn" data-act="team-invite-copy">'+I.link+'Copiar link</button>'+
+    '<div class="sp8"></div><a class="btn sec full" style="text-align:center" href="'+esc(r.whatsappUrl)+'" target="_blank" rel="noopener">Abrir no meu WhatsApp para enviar</a>');
 }
 async function teamLinkDo(eid,pid,uid,cat){
   try{await api('/players/'+pid+'/link',{method:'POST',body:{userId:uid||null}});closeSheet();toast(uid?'Ligado à conta do atleta':'Desligado');renderRoster(eid,cat);}catch(e){toast(e.message);}
@@ -2985,6 +2998,8 @@ document.addEventListener('click',async(ev)=>{
   if(a==='logout'){if(confirm('Sair da sua conta?')){localStorage.removeItem('tc_token');localStorage.removeItem('tc_user');location.href='/';}return;}
   if(a==='team-linkplayer'){teamLinkPlayerSheet(el.dataset.eid,el.dataset.pid,el.dataset.pname,el.dataset.linked,el.dataset.cat);return;}
   if(a==='team-linkdo'){teamLinkDo(el.dataset.eid,el.dataset.pid,el.dataset.uid,el.dataset.cat);return;}
+  if(a==='team-invite'){teamInviteSheet(el.dataset.eid,el.dataset.pid,el.dataset.pname,el.dataset.cat);return;}
+  if(a==='team-invite-copy'){const i=document.getElementById('inv-url');if(i){try{navigator.clipboard.writeText(i.value);}catch(e){i.select();}}toast('Link copiado');return;}
   if(a==='dash-rsvp'){try{await api('/trainings/'+el.dataset.sid+'/confirm',{method:'POST',body:{rsvp:el.dataset.v}});toast('Marcado: '+(RSVP_LBL[el.dataset.v]||el.dataset.v));renderHome();}catch(e){toast(e.message);}return;}
   if(a==='dash-mem'){try{await api('/'+el.dataset.tid+'/memberships/'+el.dataset.mid+'/respond',{method:'POST',body:{action:el.dataset.ac}});toast(el.dataset.ac==='accept'?'Você entrou no time':'Convite recusado');renderHome();}catch(e){toast(e.message);}return;}
   if(a==='train-remind'){trainRemind(el.dataset.sid);return;}

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>Convite do elenco — Club Sports &amp; Tennis</title>
+<link rel="manifest" href="/manifest.json">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0b0b0d;color:#fff;line-height:1.5;min-height:100vh;
+    padding:calc(18px + env(safe-area-inset-top)) 16px calc(18px + env(safe-area-inset-bottom))}
+  .wrap{max-width:480px;margin:0 auto}
+  .card{background:linear-gradient(155deg,#2a2118 0%,#1a1a1f 45%,#0f0f12 100%);border:1.5px solid #E5571E;border-radius:22px;padding:22px}
+  .eyebrow{font-size:11px;font-weight:800;letter-spacing:1.4px;color:#E5571E;text-transform:uppercase}
+  h1{font-size:24px;font-weight:900;line-height:1.15;margin-top:6px}
+  .team{display:flex;gap:14px;align-items:center;margin-top:18px}
+  .crest{width:64px;height:64px;border-radius:16px;object-fit:contain;background:#fff;flex-shrink:0}
+  .ini{width:64px;height:64px;border-radius:16px;background:#E5571E;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:24px;flex-shrink:0}
+  .team b{font-size:18px;display:block}
+  .team span{font-size:13px;color:#b9b9c0}
+  .vaga{margin-top:16px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:12px 14px;font-size:15px}
+  .vaga b{font-size:18px}
+  p.lead{color:#cfcfd6;font-size:14px;margin-top:14px}
+  label{display:block;font-size:13px;font-weight:700;margin:14px 0 6px;color:#e6e6ea}
+  input{width:100%;min-height:48px;border-radius:12px;border:1px solid rgba(255,255,255,.18);background:#15151a;color:#fff;font-size:16px;padding:0 14px}
+  .btn{display:block;width:100%;min-height:48px;border:none;border-radius:13px;font-size:16px;font-weight:800;margin-top:16px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+  .btn-p{background:#E5571E;color:#fff}
+  .btn-s{background:rgba(255,255,255,.1);color:#fff}
+  .tabs{display:flex;gap:8px;margin-top:18px}
+  .tab{flex:1;min-height:44px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;font-weight:800;font-size:14px}
+  .tab.on{background:#E5571E;border-color:#E5571E}
+  .msg{margin-top:14px;font-size:14px;border-radius:12px;padding:12px 14px;display:none}
+  .msg.err{display:block;background:rgba(220,38,38,.15);border:1px solid rgba(220,38,38,.45);color:#fecaca}
+  .msg.ok{display:block;background:rgba(22,163,74,.15);border:1px solid rgba(22,163,74,.45);color:#bbf7d0}
+  .muted{color:#9a9aa2;font-size:12px;margin-top:10px}
+  .foot{text-align:center;color:#5a5a62;font-size:11px;margin-top:18px}
+  .hidden{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card" id="app">
+    <div class="eyebrow">Convite do elenco</div>
+    <h1>Carregando…</h1>
+  </div>
+  <div class="foot">Club Sports &amp; Tennis</div>
+</div>
+<script>
+(function(){
+  var TOKEN_INV = decodeURIComponent((location.pathname.split('/').filter(Boolean)[1] || ''));
+  var app = document.getElementById('app');
+  var TK = '';
+  try { TK = localStorage.getItem('tc_token') || ''; } catch (_) {}
+  var INFO = null; var MODE = 'login'; var CODE_SENT = false;
+  function e(x){x=(x==null?'':''+x);return x.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+  function ini(s){s=(s||'?').replace(/[^0-9A-Za-zÀ-ÿ ]/g,' ').trim().split(/\s+/);return ((s[0]||'?').charAt(0)+((s[1]||'').charAt(0))).toUpperCase();}
+  function api(method, url, body, auth){
+    var h = { 'Content-Type': 'application/json' };
+    if (auth && TK) h.Authorization = 'Bearer ' + TK;
+    return fetch(url, { method: method, headers: h, body: body ? JSON.stringify(body) : undefined, cache: 'no-store' })
+      .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ return { status: r.status, ok: r.ok, json: j }; }); });
+  }
+  function msg(text, kind){ var m = document.getElementById('msg'); if (!m) return; m.className = 'msg ' + (kind || 'err'); m.textContent = text; }
+  function header(){
+    var t = INFO.team || {}; var pc = /^#[0-9A-Fa-f]{6}$/.test(t.primaryColor || '') ? t.primaryColor : '#E5571E';
+    return '<div class="eyebrow">Convite do elenco</div><h1>Você foi chamado para o time</h1>' +
+      '<div class="team">' + (t.logoUrl ? '<img class="crest" src="' + e(t.logoUrl) + '" alt="">' : '<div class="ini" style="background:' + pc + '">' + e(ini(t.name)) + '</div>') +
+      '<div><b>' + e(t.name) + '</b><span>' + e(INFO.tournament && INFO.tournament.name) + '</span></div></div>' +
+      '<div class="vaga">Vaga: <b>' + e(INFO.player.name) + '</b>' + (INFO.player.number != null ? ' · nº ' + e(INFO.player.number) : '') + '</div>';
+  }
+  function closed(title, text){
+    app.innerHTML = '<div class="eyebrow">Convite do elenco</div><h1>' + e(title) + '</h1><p class="lead">' + e(text) + '</p><a class="btn btn-s" style="text-align:center;line-height:48px;text-decoration:none" href="/">Abrir o app</a>';
+  }
+  function render(){
+    if (!INFO) return;
+    if (INFO.status === 'used') return closed('Esta vaga já foi reivindicada', 'Se não foi você, avise o organizador do campeonato.');
+    if (INFO.status === 'expired') return closed('Convite expirado', 'Peça um link novo ao organizador do time.');
+    if (INFO.status === 'revoked') return closed('Convite substituído', 'O organizador gerou um link mais novo. Peça o link atualizado.');
+    var h = header() + '<p class="lead">Entre com a sua conta para guardar seus jogos, gols e títulos no seu histórico de atleta — em todas as ligas.</p>';
+    if (TK) {
+      h += '<button class="btn btn-p" id="claim">Sou eu — entrar no elenco</button><button class="btn btn-s" id="other">Usar outra conta</button><div id="msg" class="msg"></div>';
+      app.innerHTML = h;
+      document.getElementById('claim').onclick = claim;
+      document.getElementById('other').onclick = function(){ try { localStorage.removeItem('tc_token'); } catch (_) {} TK = ''; render(); };
+      return;
+    }
+    h += '<div class="tabs" role="tablist"><button class="tab' + (MODE === 'login' ? ' on' : '') + '" data-m="login">Já tenho conta</button><button class="tab' + (MODE === 'signup' ? ' on' : '') + '" data-m="signup">Criar conta</button></div>';
+    if (MODE === 'login') {
+      h += '<label for="ph">WhatsApp ou e-mail</label><input id="ph" inputmode="email" autocomplete="username" placeholder="(83) 9…">' +
+        '<label for="pw">Senha</label><input id="pw" type="password" autocomplete="current-password">' +
+        '<button class="btn btn-p" id="go">Entrar e reivindicar a vaga</button>';
+    } else {
+      h += '<label for="nm">Seu nome</label><input id="nm" autocomplete="name" value="' + e(INFO.player.name) + '">' +
+        '<label for="ph">WhatsApp com DDD</label><input id="ph" inputmode="tel" autocomplete="tel" placeholder="(83) 9…">' +
+        '<div id="codebox" class="' + (CODE_SENT ? '' : 'hidden') + '"><label for="cd">Código de 6 dígitos (chegou no WhatsApp)</label><input id="cd" inputmode="numeric" maxlength="6" autocomplete="one-time-code">' +
+        '<label for="pw">Crie uma senha (4 a 20 caracteres)</label><input id="pw" type="password" autocomplete="new-password"></div>' +
+        '<button class="btn btn-p" id="go">' + (CODE_SENT ? 'Criar conta e reivindicar a vaga' : 'Receber código no WhatsApp') + '</button>' +
+        '<p class="muted">O código chega no seu WhatsApp. Ninguém recebe mensagem em seu nome.</p>';
+    }
+    h += '<div id="msg" class="msg"></div>';
+    app.innerHTML = h;
+    Array.prototype.forEach.call(app.querySelectorAll('.tab'), function(b){ b.onclick = function(){ MODE = b.getAttribute('data-m'); CODE_SENT = false; render(); }; });
+    document.getElementById('go').onclick = MODE === 'login' ? doLogin : doSignup;
+  }
+  function claim(){
+    var b = document.getElementById('claim'); if (b) b.disabled = true;
+    api('POST', '/api/tournaments/roster-invites/' + encodeURIComponent(TOKEN_INV) + '/claim', {}, true).then(function(r){
+      if (r.ok) {
+        app.innerHTML = header() + '<div class="msg ok" style="display:block">Pronto! Você está no elenco. Seus gols e jogos agora entram no seu histórico.</div>' +
+          '<a class="btn btn-p" style="text-align:center;line-height:48px;text-decoration:none" href="/">Abrir o app</a>';
+        return;
+      }
+      if (r.status === 401) { try { localStorage.removeItem('tc_token'); } catch (_) {} TK = ''; render(); return msg('Sua sessão expirou. Entre de novo.'); }
+      if (r.json && r.json.status) { INFO.status = r.json.status; return render(); }
+      if (b) b.disabled = false;
+      msg((r.json && r.json.error) || 'Não deu certo. Tente de novo.');
+    }).catch(function(){ if (b) b.disabled = false; msg('Sem conexão. Tente de novo.'); });
+  }
+  function doLogin(){
+    var u = (document.getElementById('ph').value || '').trim(); var p = document.getElementById('pw').value || '';
+    if (!u || !p) return msg('Preencha login e senha.');
+    var body = u.indexOf('@') >= 0 ? { email: u, password: p } : { phone: u.replace(/\D/g, ''), password: p };
+    api('POST', '/api/auth/login', body).then(function(r){
+      if (!r.ok || !r.json.token) return msg((r.json && r.json.error) || 'Login não confere.');
+      TK = r.json.token; try { localStorage.setItem('tc_token', TK); } catch (_) {}
+      render(); claim();
+    }).catch(function(){ msg('Sem conexão. Tente de novo.'); });
+  }
+  function doSignup(){
+    var ph = (document.getElementById('ph').value || '').replace(/\D/g, '');
+    if (ph.length < 10) return msg('Informe o WhatsApp com DDD.');
+    if (!CODE_SENT) {
+      api('POST', '/api/tournaments/athletes/register/start', { whatsapp: ph }).then(function(r){
+        if (!r.ok) return msg((r.json && r.json.error) || 'Não foi possível enviar o código.');
+        CODE_SENT = true; var keepName = document.getElementById('nm').value; render();
+        document.getElementById('nm').value = keepName; document.getElementById('ph').value = ph;
+        msg('Se este número puder receber, o código chega no WhatsApp em instantes.', 'ok');
+      }).catch(function(){ msg('Sem conexão. Tente de novo.'); });
+      return;
+    }
+    var name = (document.getElementById('nm').value || '').trim();
+    var code = (document.getElementById('cd').value || '').replace(/\D/g, '');
+    var pw = document.getElementById('pw').value || '';
+    if (!name) return msg('Informe seu nome.');
+    if (code.length !== 6) return msg('Informe o código de 6 dígitos.');
+    if (pw.length < 4 || pw.length > 20) return msg('A senha precisa ter de 4 a 20 caracteres.');
+    api('POST', '/api/tournaments/athletes/register', { name: name, whatsapp: ph, code: code, password: pw }).then(function(r){
+      if (!r.ok || !r.json.token) return msg((r.json && r.json.error) || 'Não foi possível criar a conta.');
+      TK = r.json.token; try { localStorage.setItem('tc_token', TK); } catch (_) {}
+      render(); claim();
+    }).catch(function(){ msg('Sem conexão. Tente de novo.'); });
+  }
+  api('GET', '/api/tournaments/roster-invites/' + encodeURIComponent(TOKEN_INV)).then(function(r){
+    if (!r.ok || !r.json || !r.json.player) return closed('Convite inválido', 'Confira se o link foi copiado inteiro ou peça um novo ao organizador.');
+    INFO = r.json; render();
+  }).catch(function(){ closed('Sem conexão', 'Tente abrir o link de novo.'); });
+})();
+</script>
+</body>
+</html>

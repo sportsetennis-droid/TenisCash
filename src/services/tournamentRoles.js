@@ -315,6 +315,12 @@ async function myTeam(userId, userRole, tournamentId) {
     if (e.logoUrl && !c.logoUrl) c.logoUrl = e.logoUrl;
     c.entries.push({ entryId: e.id, category: cById[e.categoryId] || '', categoryId: e.categoryId, roster: rosterCount[e.id] || 0 });
   });
+  // Liga F2: escudo/nome/cores do CLUBE (name segue a chave da inscrição)
+  const clubMap = await require('./clubIdentity').clubsForEntryIds(entries.map((e) => e.id));
+  Object.values(byClub).forEach((c) => {
+    const k = c.entries.map((x) => clubMap.get(String(x.entryId))).find(Boolean);
+    if (k) Object.assign(c, { displayName: k.name, logoUrl: k.crestUrl || c.logoUrl, clubId: k.id, clubSlug: k.slug, primaryColor: k.primaryColor, secondaryColor: k.secondaryColor });
+  });
   return { clubs: Object.values(byClub) };
 }
 

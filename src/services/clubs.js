@@ -165,7 +165,10 @@ async function updateClub(ctx, idOrSlug, b = {}) {
   }
   if (b.privacyLevel !== undefined) { if (!PRIVACY.has(b.privacyLevel)) fail(400, 'privacidade inválida'); data.privacyLevel = b.privacyLevel; }
   if (b.slug !== undefined) data.slug = await uniqueSlug(slugify(b.slug), club.id);
-  return prisma.club.update({ where: { id: club.id }, data });
+  const updated = await prisma.club.update({ where: { id: club.id }, data });
+  // Liga F2: escudo removido do clube → o escudo antigo das inscrições ligadas não volta
+  if (data.crestUrl === null) await prisma.tournamentEntry.updateMany({ where: { clubId: club.id }, data: { logoUrl: null } }).catch(() => {});
+  return updated;
 }
 
 // -------------------------------------------------------------- convite
@@ -372,7 +375,14 @@ async function publicView(idOrSlug, viewer = {}) {
   // Liga F1: só torneio que quem olha pode ver na LISTA (público e não arquivado; não
   // listado/privado só pra membro ou admin global). O resto some do clube.
   const access = require('./tournamentAccess');
-  const allLinks = await prisma.clubTournamentLink.findMany({ where: { clubId: club.id }, orderBy: { createdAt: 'asc' } });
+  const explicitLinks = await prisma.clubTournamentLink.findMany({ where: { clubId: club.id }, orderBy: { createdAt: 'asc' } });
+  // Liga F2: inscrições ligadas pelo clubId também contam (o clube É o time nessas inscrições)
+  let clubEntries = [];
+  try { clubEntries = await prisma.tournamentEntry.findMany({ where: { clubId: club.id }, select: { tournamentId: true, name: true }, orderBy: { createdAt: 'asc' } }); } catch (_) { clubEntries = []; }
+  const seenPair = new Set(explicitLinks.map((l) => l.tournamentId + '|' + l.entryName));
+  const allLinks = explicitLinks.concat(clubEntries
+    .filter((e) => { const k = e.tournamentId + '|' + e.name; if (seenPair.has(k)) return false; seenPair.add(k); return true; })
+    .map((e) => ({ id: null, tournamentId: e.tournamentId, entryName: e.name, viaClubId: true })));
   const allTids = [...new Set(allLinks.map((l) => l.tournamentId))];
   const allTs = allTids.length ? await prisma.tournament.findMany({ where: { id: { in: allTids } }, select: { id: true, name: true, slug: true, sport: true, status: true, ownerId: true, visibility: true, archivedAt: true } }) : [];
   const tournaments = [];
@@ -395,12 +405,15 @@ async function publicView(idOrSlug, viewer = {}) {
         id: true, tournamentId: true, stage: true, round: true, scheduledAt: true, location: true, status: true,
         homeScore: true, awayScore: true,
         category: { select: { name: true } },
-        homeEntry: { select: { name: true, logoUrl: true } },
-        awayEntry: { select: { name: true, logoUrl: true } },
+        homeEntry: { select: { id: true, name: true, logoUrl: true } },
+        awayEntry: { select: { id: true, name: true, logoUrl: true } },
       },
     });
+    // pares casam pelo nome da INSCRIÇÃO; depois sobrepõe nome/escudo do clube (Liga F2)
+    ms.forEach((m) => { if (m.homeEntry) m.homeEntry.key = m.homeEntry.name; if (m.awayEntry) m.awayEntry.key = m.awayEntry.name; });
+    await require('./clubIdentity').brandNested(ms, ['homeEntry', 'awayEntry'], prisma);
     upcoming = ms
-      .filter((m) => (m.homeEntry && pairs.has(m.tournamentId + '|' + m.homeEntry.name)) || (m.awayEntry && pairs.has(m.tournamentId + '|' + m.awayEntry.name)))
+      .filter((m) => (m.homeEntry && pairs.has(m.tournamentId + '|' + m.homeEntry.key)) || (m.awayEntry && pairs.has(m.tournamentId + '|' + m.awayEntry.key)))
       .sort((a, b) => (a.scheduledAt ? a.scheduledAt.getTime() : Infinity) - (b.scheduledAt ? b.scheduledAt.getTime() : Infinity))
       .slice(0, 20)
       .map((m) => ({
@@ -432,7 +445,7 @@ async function publicView(idOrSlug, viewer = {}) {
     medals: canSeeMembers ? medals : [],
     upcoming,
     trainings: isMember || viewerRole === 'admin' ? trainings : [],
-    links: links.map((l) => ({ id: l.id, tournamentId: l.tournamentId, tournament: tmap.get(l.tournamentId) ? tmap.get(l.tournamentId).name : null, slug: tmap.get(l.tournamentId) ? tmap.get(l.tournamentId).slug : null, entryName: l.entryName })),
+    links: links.map((l) => ({ id: l.id, tournamentId: l.tournamentId, tournament: tmap.get(l.tournamentId) ? tmap.get(l.tournamentId).name : null, slug: tmap.get(l.tournamentId) ? tmap.get(l.tournamentId).slug : null, entryName: l.entryName, viaClubId: !!l.viaClubId })),
     viewer: viewer.userId ? { userId: viewer.userId, role: viewerRole, status: myMembership ? myMembership.status : null, pendingRole: myMembership && myMembership.status === 'PENDING' ? normRole(myMembership.role) : null } : null,
   };
 }

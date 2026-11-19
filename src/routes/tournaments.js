@@ -29,6 +29,10 @@ const { guardImageField, guardImageDataUri, ImageGuardError } = require('../serv
 const signupCode = require('../services/athleteSignupCode');
 const access = require('../services/tournamentAccess');
 const audit = require('../services/tournamentAudit');
+const clubIdentity = require('../services/clubIdentity');
+const rosterInvite = require('../services/rosterInvite');
+const athleteHistory = require('../services/athleteHistory');
+const profileMerge = require('../services/profileMerge');
 
 const router = express.Router();
 
@@ -1124,10 +1128,11 @@ router.post('/:id/entries', authMiddleware, entryLimitUnlessManager, async (req,
         // Time = clube único entre categorias: quem não organiza não pode "entrar"
         // num clube que já existe no torneio só repetindo o nome — a não ser que
         // já seja ADMIN desse clube (aí está inscrevendo o próprio time em outra categoria).
-        const sameClub = await prisma.tournamentEntry.findMany({
-          where: { tournamentId: t.id, name: { equals: teamName, mode: 'insensitive' } },
-          select: { id: true },
-        });
+        // Liga F2: compara pelo nome NORMALIZADO (caixa, acento, espaço) — o mesmo critério
+        // que o clube usa; "Cabo Brànco" não pode entrar no clube do "Cabo Branco".
+        const key = clubIdentity.normName(teamName);
+        const sameClub = (await prisma.tournamentEntry.findMany({ where: { tournamentId: t.id }, select: { id: true, name: true } }))
+          .filter((e) => clubIdentity.normName(e.name) === key);
         if (sameClub.length) {
           const isClubAdmin = await prisma.tournamentRole.findFirst({
             where: { tournamentId: t.id, userId: req.userId, role: 'TEAM_ADMIN', entryId: { in: sameClub.map((e) => e.id) } },
@@ -1140,25 +1145,42 @@ router.post('/:id/entries', authMiddleware, entryLimitUnlessManager, async (req,
         const count = await prisma.tournamentEntry.count({ where: { tournamentId: t.id } });
         if (count >= t.maxEntries) return res.status(409).json({ error: 'torneio lotado' });
       }
-      // Inscrição + papel de admin do time na MESMA transação: sem papel, sem inscrição.
-      const teamEntry = await prisma.$transaction(async (tx) => {
-        const created = await tx.tournamentEntry.create({
-          data: {
-            tournamentId: t.id,
-            categoryId: cat.id,
-            name: teamName,
-            seed,
-            groupName,
-            status,
-          },
-          include: { members: true },
+      // Inscrição + papel de admin do time + CLUBE (Liga F2) na MESMA transação:
+      // sem papel/clube, sem inscrição. Clube: o mesmo time em outra categoria deste
+      // torneio reaproveita o clube; senão o clube escolhido (body.clubId, que a pessoa
+      // administra) ou um clube novo com o nome do time. Torneio da lista de exclusão
+      // (Futsal Master Cup durante o evento) segue sem clube.
+      let teamEntry;
+      try {
+        teamEntry = await prisma.$transaction(async (tx) => {
+          const pick = await clubIdentity.clubForNewTeam(tx, t, {
+            teamName, userId: req.userId, userRole: req.userRole, manager,
+            requestedClubId: b.clubId ? String(b.clubId) : null, ownerMembership: !manager,
+          });
+          const created = await tx.tournamentEntry.create({
+            data: {
+              tournamentId: t.id,
+              categoryId: cat.id,
+              name: teamName,
+              seed,
+              groupName,
+              status,
+              clubId: pick.clubId || null,
+            },
+            include: { members: true },
+          });
+          if (!manager) {
+            // Quem criou o próprio time vira administrador DESTE time (só desta inscrição).
+            await tx.tournamentRole.create({ data: { tournamentId: t.id, userId: req.userId, role: 'TEAM_ADMIN', entryId: created.id } });
+          }
+          created.clubCreated = !!pick.created;
+          return created;
         });
-        if (!manager) {
-          // Quem criou o próprio time vira administrador DESTE time (só desta inscrição).
-          await tx.tournamentRole.create({ data: { tournamentId: t.id, userId: req.userId, role: 'TEAM_ADMIN', entryId: created.id } });
-        }
-        return created;
-      });
+      } catch (e) {
+        if (e instanceof clubIdentity.ClubLinkError) return res.status(e.status).json({ error: e.message });
+        throw e;
+      }
+      await clubIdentity.brand(teamEntry);
       if (!manager) {
         try {
           await notify(t.ownerId, { type: 'entry', title: 'Novo pedido de inscrição', body: `${teamName} pediu vaga em "${t.name}". Aprove na categoria.`, link: '#/t/' + t.id });
@@ -1266,6 +1288,7 @@ router.get('/:id/entries', async (req, res) => {
         category: { select: { id: true, name: true } },
       },
     });
+    await clubIdentity.brand(list); // Liga F2: nome/escudo/cores do clube
     res.json({ entries: list });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1595,6 +1618,7 @@ router.get('/:id/categories/:catId/matches', async (req, res) => {
     }
     // placar AO VIVO (gols da súmula) + lance a lance (gol/cartão com jogador e minuto)
     try { await live.attachLive(matches); } catch (e) { console.error('[tournaments] attachLive', e.message); }
+    await clubIdentity.brandNested(matches); // Liga F2: nome/escudo/cores do clube
     res.json({ matches });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1635,7 +1659,10 @@ router.get('/:id/categories/:catId/standings', async (req, res) => {
         },
       },
     });
-    if (standings.length) return res.json({ standings, ...meta });
+    if (standings.length) {
+      await clubIdentity.brandNested(standings, ['entry']); // Liga F2
+      return res.json({ standings, ...meta });
+    }
 
     // Nenhum jogo finalizado ainda → monta a tabela ZERADA com todos os inscritos
     // (pra classificação aparecer desde o início, como todo sistema de torneio).
@@ -1648,6 +1675,7 @@ router.get('/:id/categories/:catId/standings', async (req, res) => {
       played: 0, won: 0, drawn: 0, lost: 0, scoreFor: 0, scoreAgainst: 0, points: 0,
       entry: { id: e.id, name: e.name, logoUrl: e.logoUrl, members: [] },
     }));
+    await clubIdentity.brandNested(zero, ['entry']); // Liga F2
     zero.sort((a, b) => (a.groupName || '').localeCompare(b.groupName || '') || a.entry.name.localeCompare(b.entry.name));
     zero.forEach((r, i) => { r.rank = i + 1; });
     res.json({ standings: zero, provisional: true, ...meta });
@@ -1850,6 +1878,16 @@ router.post('/entries/:entryId/players', authMiddleware, async (req, res) => {
     const name = String(b.name || '').trim();
     if (!name) return res.status(400).json({ error: 'nome do jogador obrigatório' });
     const role = ['PLAYER', 'COACH', 'ASSISTANT'].includes(String(b.role || '').toUpperCase()) ? String(b.role).toUpperCase() : 'PLAYER';
+    // Liga F2: conta na vaga só com vínculo ATIVO no time (igual a /players/:id/link) —
+    // senão o gol entraria no histórico de quem não aceitou. Sem vínculo: gere o convite.
+    if (b.userId) {
+      const en = await prisma.tournamentEntry.findUnique({ where: { id: entry.id }, select: { name: true } });
+      if (!(await isActiveMember(entry.tournamentId, en.name, String(b.userId)))) {
+        return res.status(400).json({ error: 'esse atleta não tem vínculo ativo com o time — gere o convite da vaga para ele reivindicar' });
+      }
+      const dupLink = await prisma.rosterPlayer.findFirst({ where: { entryId: entry.id, userId: String(b.userId) }, select: { name: true } });
+      if (dupLink) return res.status(409).json({ error: 'essa conta já está ligada a "' + dupLink.name + '" neste time' });
+    }
     const player = await prisma.rosterPlayer.create({
       data: {
         entryId: entry.id, name: name.slice(0, 80),
@@ -1870,9 +1908,13 @@ router.post('/entries/:entryId/players', authMiddleware, async (req, res) => {
 // body { logo: dataURI } ou { logo: null } pra limpar. Guarda data URI pequeno.
 router.post('/entries/:entryId/logo', authMiddleware, limits.upload, async (req, res) => {
   try {
-    const entry = await prisma.tournamentEntry.findUnique({ where: { id: req.params.entryId }, select: { id: true, name: true, tournamentId: true } });
+    const entry = await prisma.tournamentEntry.findUnique({ where: { id: req.params.entryId }, select: { id: true, name: true, tournamentId: true, clubId: true } });
     if (!entry) return res.status(404).json({ error: 'time não encontrado' });
-    if (!(await roles.can(req.userId, req.userRole, entry.tournamentId, 'MANAGE_TEAM', { entryId: entry.id }))) {
+    // Liga F2: time com clube → editar o escudo = dono/técnico do clube OU MANAGE_TEAM no
+    // torneio (este último só se o clube for exclusivo deste torneio). Sem clube: MANAGE_TEAM.
+    const clubPerm = entry.clubId ? await clubIdentity.canEditClubViaEntry(req.userId, req.userRole, entry) : null;
+    if (clubPerm && !clubPerm.ok) return res.status(clubPerm.status).json({ error: clubPerm.error });
+    if (!clubPerm && !(await roles.can(req.userId, req.userRole, entry.tournamentId, 'MANAGE_TEAM', { entryId: entry.id }))) {
       return res.status(403).json({ error: 'sem permissão (coordenador ou admin do time)' });
     }
     const raw = (req.body || {}).logo;
@@ -1881,8 +1923,17 @@ router.post('/entries/:entryId/logo', authMiddleware, limits.upload, async (req,
     // Liga F0: imagem PNG/JPEG/WEBP real (magic bytes + sharp, máx 4096 px,
     // reencodada até caber em ~800 KB) ou link https:// / caminho do próprio site.
     try { logoUrl = await guardImageField(raw, { maxChars: 800000 }); } catch (e) { if (imageError(res, e)) return; throw e; }
-    // Time é UM clube só, em várias categorias: a logo é do CLUBE → aplica em TODAS as
-    // inscrições do mesmo time (mesmo nome, mesmo torneio). Vale pra todos (dono 2026-11-09).
+    // Liga F2: time com clube → o escudo é do CLUBE (Club.crestUrl), vale em todas as
+    // categorias e torneios desse clube. Limpar = limpa o clube e o escudo antigo das inscrições.
+    if (entry.clubId) {
+      await prisma.club.update({ where: { id: entry.clubId }, data: { crestUrl: logoUrl } });
+      await audit.record({ tournamentId: entry.tournamentId, userId: req.userId, action: 'club.update', entity: 'Club', entityId: entry.clubId, after: { crestChanged: true, cleared: !logoUrl, via: clubPerm ? clubPerm.via : null } });
+      let cleared = 0;
+      if (!logoUrl) cleared = (await prisma.tournamentEntry.updateMany({ where: { clubId: entry.clubId }, data: { logoUrl: null } })).count;
+      return res.json({ ok: true, logoUrl, clubId: entry.clubId, savedOn: 'club', entriesCleared: cleared });
+    }
+    // Sem clube (ex.: Futsal Master Cup): time é UM clube só, em várias categorias → a logo
+    // vale em TODAS as inscrições do mesmo time (mesmo nome, mesmo torneio) (dono 2026-11-09).
     const r = await prisma.tournamentEntry.updateMany({
       where: { tournamentId: entry.tournamentId, name: entry.name },
       data: { logoUrl },
@@ -1891,6 +1942,82 @@ router.post('/entries/:entryId/logo', authMiddleware, limits.upload, async (req,
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// =====================================================================
+// Liga Aberta F2 — CLUBE do time (nome, escudo, cores vêm do Club)
+// Editar = dono/técnico do clube (ou admin global) OU MANAGE_TEAM no torneio para
+// aquele time — este último só se o clube for exclusivo deste torneio.
+// body { name?, primaryColor?, secondaryColor?, crestUrl? (null limpa) }
+// =====================================================================
+router.patch('/entries/:entryId/club', authMiddleware, onlyWhen(hasBody('crestUrl'), limits.upload), async (req, res) => {
+  try {
+    const entry = await prisma.tournamentEntry.findUnique({ where: { id: req.params.entryId }, select: { id: true, tournamentId: true, clubId: true } });
+    if (!entry) return res.status(404).json({ error: 'time não encontrado' });
+    const perm = await clubIdentity.canEditClubViaEntry(req.userId, req.userRole, entry);
+    if (!perm.ok) return res.status(perm.status).json({ error: perm.error });
+    const b = req.body || {};
+    const data = {};
+    if (b.name !== undefined) {
+      const n = String(b.name || '').trim().slice(0, 80);
+      if (n.length < 2) return res.status(400).json({ error: 'nome do clube inválido' });
+      data.name = n;
+    }
+    for (const k of ['primaryColor', 'secondaryColor']) {
+      if (b[k] === undefined) continue;
+      if (b[k] === null || b[k] === '') { data[k] = null; continue; }
+      if (!/^#[0-9a-fA-F]{6}$/.test(String(b[k]).trim())) return res.status(400).json({ error: 'cor inválida (use #RRGGBB)' });
+      data[k] = String(b[k]).trim().toUpperCase();
+    }
+    if (b.crestUrl !== undefined) {
+      if (b.crestUrl != null && typeof b.crestUrl !== 'string') return res.status(400).json({ error: 'escudo inválido (envie uma imagem)' });
+      try { data.crestUrl = await guardImageField(b.crestUrl, { maxChars: 800000 }); } catch (e) { if (imageError(res, e)) return; throw e; }
+    }
+    if (!Object.keys(data).length) return res.status(400).json({ error: 'nada para alterar' });
+    const before = await prisma.club.findUnique({ where: { id: entry.clubId }, select: { name: true, primaryColor: true, secondaryColor: true } });
+    const club = await prisma.club.update({ where: { id: entry.clubId }, data, select: { id: true, slug: true, name: true, crestUrl: true, primaryColor: true, secondaryColor: true } });
+    if (data.crestUrl === null) await prisma.tournamentEntry.updateMany({ where: { clubId: entry.clubId }, data: { logoUrl: null } });
+    await audit.record({ tournamentId: entry.tournamentId, userId: req.userId, action: 'club.update', entity: 'Club', entityId: club.id, before, after: { name: club.name, primaryColor: club.primaryColor, secondaryColor: club.secondaryColor, crestChanged: data.crestUrl !== undefined, via: perm.via } });
+    res.json({ ok: true, club });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =====================================================================
+// Liga Aberta F2 — CONVITE DE ELENCO (o jogador reivindica a vaga)
+// =====================================================================
+function inviteErr(res, e) {
+  if (e instanceof rosterInvite.InviteError) { res.status(e.status).json({ error: e.message, ...(e.extra || {}) }); return true; }
+  return false;
+}
+// Gera o link (uso único, validade em dias — padrão 7) + texto pronto de WhatsApp.
+// Quem manda é o organizador: o sistema NÃO envia nada sozinho.
+router.post('/players/:playerId/invite', authMiddleware, limits.rosterInvite, async (req, res) => {
+  try {
+    res.status(201).json(await rosterInvite.createInvite({ playerId: req.params.playerId, userId: req.userId, userRole: req.userRole, days: (req.body || {}).days }));
+  } catch (e) { if (inviteErr(res, e)) return; res.status(500).json({ error: e.message }); }
+});
+// O que o jogador vê ao abrir o link (público, sem login).
+router.get('/roster-invites/:token', async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const info = await rosterInvite.inviteInfo(req.params.token);
+    if (info.status === 'invalid') return res.status(404).json({ status: 'invalid', error: 'convite inválido' });
+    res.json(info);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Reivindica a vaga (logado). Uso único.
+router.post('/roster-invites/:token/claim', authMiddleware, limits.rosterClaim, async (req, res) => {
+  try {
+    res.json(await rosterInvite.claim(req.params.token, { userId: req.userId }));
+  } catch (e) { if (inviteErr(res, e)) return; res.status(500).json({ error: e.message }); }
+});
+// Desvincula a conta da vaga: o próprio atleta ou a coordenação. Auditado.
+router.post('/players/:playerId/unlink', authMiddleware, async (req, res) => {
+  try {
+    res.json(await rosterInvite.unlink({ playerId: req.params.playerId, userId: req.userId, userRole: req.userRole, reason: (req.body || {}).reason }));
+  } catch (e) { if (inviteErr(res, e)) return; res.status(500).json({ error: e.message }); }
 });
 
 // Liga (ou desliga) um nome do elenco à CONTA do atleta, pra produção dos jogos
@@ -1905,6 +2032,15 @@ router.post('/players/:playerId/link', authMiddleware, async (req, res) => {
       return res.status(403).json({ error: 'sem permissão (coordenador, admin ou treinador do time)' });
     }
     const uid = (req.body || {}).userId ? String(req.body.userId) : null;
+    // Liga F2: tirar (ou trocar) a conta de uma vaga já ligada é do PRÓPRIO atleta ou da
+    // COORDENAÇÃO — admin/treinador do time não desfaz o vínculo de outra pessoa. Auditado.
+    const cur = await prisma.rosterPlayer.findUnique({ where: { id: req.params.playerId }, select: { userId: true } });
+    if (cur && cur.userId && cur.userId !== uid) {
+      const self = cur.userId === req.userId && !uid;
+      if (!self && !(await roles.can(req.userId, req.userRole, ctx.entry.tournamentId, 'MANAGE_TOURNAMENT'))) {
+        return res.status(403).json({ error: 'só o próprio atleta ou a coordenação do campeonato desvincula a conta desta vaga' });
+      }
+    }
     if (uid) {
       const entry = await prisma.tournamentEntry.findUnique({ where: { id: ctx.entry.id }, select: { name: true, tournamentId: true } });
       if (!(await isActiveMember(entry.tournamentId, entry.name, uid))) {
@@ -1914,6 +2050,9 @@ router.post('/players/:playerId/link', authMiddleware, async (req, res) => {
       if (dup) return res.status(409).json({ error: 'essa conta já está ligada a "' + dup.name + '" neste time' });
     }
     const player = await prisma.rosterPlayer.update({ where: { id: req.params.playerId }, data: { userId: uid } });
+    if ((cur && cur.userId) !== uid) {
+      await audit.record({ tournamentId: ctx.entry.tournamentId, userId: req.userId, action: uid ? 'roster.link' : 'roster.unlink', entity: 'RosterPlayer', entityId: player.id, before: { userId: (cur && cur.userId) || null }, after: { userId: uid } });
+    }
     res.json({ ok: true, player });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2083,6 +2222,9 @@ router.get('/:id/stats/:kind', async (req, res) => {
     const t = await access.loadVisibleTournament(req, req.params.id, { select: { id: true } });
     if (!t) return access.sendNotFound(res);
     const rows = await sheet.playerStats(t.id, { kind, scope, categoryId: req.query.categoryId || null });
+    // Liga F2: nome do time = nome do clube
+    const clubs = await clubIdentity.clubsForEntryIds(rows.map((r) => r.entryId));
+    if (clubs.size) rows.forEach((r) => { const c = clubs.get(String(r.entryId)); if (c) { r.team = c.name; r.clubSlug = c.slug; } });
     res.json({ kind, scope, ranking: rows });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2282,13 +2424,49 @@ router.get('/athletes/:handle/card', async (req, res) => {
   try {
     const userId = await resolveUserId(req.params.handle);
     if (!userId) return res.status(404).json({ error: 'atleta não encontrado' });
-    const card = await engine.buildAthleteCard(userId);
+    // Liga F2: torneio privado só entra para o próprio atleta / membro (login opcional)
+    const card = await engine.buildAthleteCard(userId, { viewer: await access.viewer(req) });
     if (!card) return res.status(404).json({ error: 'atleta não encontrado' });
     res.json(card);
   } catch (err) {
     console.error('[tournaments] card', err);
     res.status(500).json({ error: err.message });
   }
+});
+
+// Liga F2 — HISTÓRICO do atleta entre ligas (jogos, V/E/D, gols, assistências, cartões,
+// títulos; por esporte e por temporada). Público: só torneios públicos; o próprio atleta
+// e membros veem também os privados/não listados dele (login opcional).
+router.get('/athletes/:handle/history', async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const userId = await resolveUserId(req.params.handle);
+    if (!userId) return res.status(404).json({ error: 'atleta não encontrado' });
+    res.json(await athleteHistory.history(userId, { viewer: await access.viewer(req) }));
+  } catch (err) {
+    console.error('[tournaments] history', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Liga F2 — JUNTAR PERFIS DUPLICADOS (só com confirmação do próprio atleta).
+// start { phone | username | inviteToken, method: 'CODE' | 'PASSWORD' }
+// confirm { requestId, code | password }
+function mergeErr(res, e) {
+  if (e instanceof profileMerge.MergeError) { res.status(e.status).json({ error: e.message }); return true; }
+  return false;
+}
+router.post('/athletes/merge/start', authMiddleware, limits.mergeStart, async (req, res) => {
+  try {
+    const b = req.body || {};
+    res.json(await profileMerge.start({ userId: req.userId, phone: b.phone || b.whatsapp, username: b.username, inviteToken: b.inviteToken, method: b.method }));
+  } catch (e) { if (mergeErr(res, e)) return; console.error('[tournaments] merge start', e); res.status(500).json({ error: 'erro ao pedir a junção' }); }
+});
+router.post('/athletes/merge/confirm', authMiddleware, limits.mergeConfirm, async (req, res) => {
+  try {
+    const b = req.body || {};
+    res.json(await profileMerge.confirm({ userId: req.userId, requestId: b.requestId, code: b.code, password: b.password }));
+  } catch (e) { if (mergeErr(res, e)) return; console.error('[tournaments] merge confirm', e); res.status(500).json({ error: 'erro ao juntar os perfis' }); }
 });
 
 // Ranking por esporte (rating)
