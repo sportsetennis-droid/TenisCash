@@ -139,3 +139,15 @@ for (const label of ['T-6100', '7891234567890', '', 'SEM TAMANHO']) {
 }
 
 console.log('nuvemshopEligibility: OK');
+
+// promoção nunca vai ao site abaixo do custo, zerada ou maior que o preço (regra do markup, 18/11/2026)
+{
+  const ok = assessProductForNuvemshop(validProduct({ promoPrice: 300 }), { requireConfirmation: false, isNew: false });
+  assert.ok(!ok.reasons.some((r) => /promocao/.test(r)), 'promoção entre custo e preço passa: ' + ok.reasons.join('; '));
+  for (const [promo, motivo] of [[0, 'promocao zerada'], [9999, 'promocao nao e menor que o preco'], [1, 'promocao nao supera o custo']]) {
+    const r = assessProductForNuvemshop(validProduct({ promoPrice: promo }), { requireConfirmation: false, isNew: false });
+    assert.ok(r.reasons.includes(motivo), promo + ' → ' + r.reasons.join('; '));
+  }
+  assert.ok(!assessProductForNuvemshop(validProduct({ promoPrice: null }), { requireConfirmation: false, isNew: false }).reasons.some((r) => /promocao/.test(r)));
+  console.log('ok promoção: trava contra custo/zero/maior que preço');
+}

@@ -210,6 +210,13 @@ function assessProductForNuvemshop(product, options = {}) {
   const cost = Number(product?.costPrice || 0);
   if (!(price > 0)) reasons.push('preco de venda zerado');
   if (cost > 0 && price <= cost) reasons.push('preco de venda nao supera o custo');
+  // promoção também nunca vai ao site abaixo do custo, zerada ou maior que o preço (regra do markup)
+  if (product?.promoPrice != null && product.promoPrice !== '') {
+    const promo = Number(product.promoPrice);
+    if (!(promo > 0)) reasons.push('promocao zerada');
+    else if (price > 0 && promo >= price) reasons.push('promocao nao e menor que o preco');
+    else if (cost > 0 && promo <= cost) reasons.push('promocao nao supera o custo');
+  }
 
   if (requireConfirmation && ctx.confirmedForNuvemshop !== true) {
     reasons.push('sem confirmacao humana para Nuvemshop');
