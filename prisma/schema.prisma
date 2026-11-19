@@ -5826,7 +5826,19 @@ model MfLead {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
+  // Liga Aberta F7 — pedido de orçamento de uniforme vindo da Liga (source="liga").
+  // Nada é enviado: a equipe da Meta Fardamentos vê o lead e decide o contato.
+  crestUrl          String? // escudo: /media/<sha>.<ext> ou https (nunca base64)
+  colors            String? // cores do time (texto curto)
+  athleteCount      Int? // nº de atletas
+  tournamentId      String?
+  entryId           String?
+  clubId            String?
+  requestedByUserId String? // quem pediu (logado); nome/telefone vêm só dessa conta
+  consentAt         DateTime? // autorizou a Meta Fardamentos a entrar em contato
+
   @@index([status, createdAt])
+  @@index([requestedByUserId, createdAt])
 }
 
 model MfOrder {
@@ -7248,6 +7260,51 @@ model OrganizerSubscription {
   planKey   String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// =====================================================================
+// Liga Aberta F7 — dinheiro (planos por tamanho, TenisCash por conquista)
+// =====================================================================
+// Troca de plano de organizador feita pelo admin global (registro: quem, quando, de/para).
+model OrganizerPlanLog {
+  id        String   @id @default(cuid())
+  userId    String // organizador
+  fromPlan  String?
+  toPlan    String
+  actorId   String // admin global que trocou
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
+}
+
+// Regras de TenisCash por conquista de UM torneio (rascunho do organizador).
+// Só paga com Tournament.cashEnabled (que só o admin liga). Valores padrão = 0.
+model TournamentCashConfig {
+  tournamentId String   @id
+  rules        Json // { TITLE: {amount}, RUNNER_UP: {amount}, TOP_SCORER: {amount} } (TenisCash por atleta)
+  updatedBy    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// Crédito pago por conquista. Chave única = nunca paga 2x a mesma conquista ao mesmo atleta.
+model TournamentCashAward {
+  id            String   @id @default(cuid())
+  tournamentId  String
+  categoryId    String
+  rule          String // TITLE | RUNNER_UP | TOP_SCORER
+  userId        String
+  entryId       String?
+  amount        Float
+  transactionId String?
+  paidBy        String?
+  createdAt     DateTime @default(now())
+
+  @@unique([tournamentId, categoryId, rule, userId])
+  @@index([tournamentId, createdAt])
+  @@index([userId])
 }
 
 // =====================================================================

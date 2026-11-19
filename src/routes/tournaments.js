@@ -45,6 +45,17 @@ const pag = require('../services/pagination');
 const plans = require('../services/organizerPlan');
 const contentFilter = require('../services/contentFilter');
 const minors = require('../services/ligaMinors');
+const cashRules = require('../services/ligaCashRules');
+const uniformQuote = require('../services/uniformQuote');
+
+// Liga F7 — erro de serviço com status + código (CashRuleError, UniformQuoteError, ContentFilter).
+function f7Err(res, e) {
+  if (e && Number.isInteger(e.status) && e.status >= 400 && e.status < 500 && e.message) {
+    res.status(e.status).json({ error: e.message, ...(e.code ? { code: e.code } : {}), ...(e.extra || {}) });
+    return true;
+  }
+  return false;
+}
 
 // Liga F6 — filtro de nome/texto ofensivo. Torneio da lista de exclusão (Master Cup) NÃO
 // passa pelo filtro (nada da F6 mexe nele durante o evento). false = já respondeu 400.
@@ -86,7 +97,7 @@ const PARAM_GUARDS = {
   },
   entryId: {
     tid: async (v) => (await prisma.tournamentEntry.findUnique({ where: { id: String(v) }, select: { tournamentId: true } }))?.tournamentId,
-    gone: (req, res) => res.status(404).json({ error: /\/(players|logo)$/.test(req.path) ? 'time não encontrado' : 'inscrição não encontrada' }),
+    gone: (req, res) => res.status(404).json({ error: /\/(players|logo|uniform-quote)$/.test(req.path) ? 'time não encontrado' : 'inscrição não encontrada' }),
   },
   matchId: {
     tid: async (v) => (await prisma.tournamentMatch.findUnique({ where: { id: String(v) }, select: { tournamentId: true } }))?.tournamentId,
@@ -1113,6 +1124,37 @@ router.post('/:id/pay-prize', authMiddleware, async (req, res) => {
     console.error('[tournaments] pay-prize', err);
     res.status(500).json({ error: err.message });
   }
+});
+
+// =====================================================================
+// Liga Aberta F7 — TenisCash POR CONQUISTA (título, vice, artilharia)
+// Rascunho do fundador; só paga com cashEnabled (que só o admin global liga).
+// =====================================================================
+// Painel: regras, travas, prévia por categoria e o que já foi pago (fundador/coordenador/admin).
+router.get('/:id/cash-rules', authMiddleware, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const t = await loadForAction(req, res, req.params.id, 'MANAGE_TOURNAMENT', {}, 'só a organização vê o TenisCash por conquista');
+    if (!t) return;
+    res.json(await cashRules.view({ userId: req.userId, userRole: req.userRole }, t));
+  } catch (e) { if (f7Err(res, e)) return; console.error('[tournaments] cash-rules', e); res.status(500).json({ error: 'erro ao carregar as regras' }); }
+});
+// Grava o rascunho (dinheiro = só fundador/admin; com TenisCash ligado, só o admin global).
+router.put('/:id/cash-rules', authMiddleware, async (req, res) => {
+  try {
+    const t = await loadForAction(req, res, req.params.id, 'MONEY', {}, 'só o fundador mexe no TenisCash por conquista');
+    if (!t) return;
+    res.json(await cashRules.saveRules({ userId: req.userId, userRole: req.userRole }, t, (req.body || {}).rules));
+  } catch (e) { if (f7Err(res, e)) return; console.error('[tournaments] cash-rules save', e); res.status(500).json({ error: 'erro ao salvar as regras' }); }
+});
+// Paga o que falta (idempotente; tetos por conquista e por torneio). body { categoryId?, confirm:true }
+router.post('/:id/cash-rules/pay', authMiddleware, limits.cashPay, async (req, res) => {
+  try {
+    const t = await loadForAction(req, res, req.params.id, 'MONEY', {}, 'só o fundador paga TenisCash por conquista');
+    if (!t) return;
+    const b = req.body || {};
+    res.json(await cashRules.pay({ userId: req.userId, userRole: req.userRole }, t.id, { categoryId: b.categoryId || null, confirm: b.confirm }));
+  } catch (e) { if (f7Err(res, e)) return; console.error('[tournaments] cash-rules pay', e); res.status(500).json({ error: 'erro ao pagar — nada foi creditado' }); }
 });
 
 // =====================================================================
@@ -2256,6 +2298,20 @@ router.delete('/entries/:entryId/team-invite', authMiddleware, async (req, res) 
   try {
     res.json(await teamInvite.revokeInvite({ entryId: req.params.entryId, userId: req.userId, userRole: req.userRole }));
   } catch (e) { if (svcErr(res, e)) return; res.status(500).json({ error: e.message }); }
+});
+// Liga Aberta F7 — "Pedir orçamento de uniforme" (Meta Fardamentos). Quem gerencia o time
+// (can MANAGE_TEAM). Gera um lead; o sistema NÃO envia mensagem nenhuma.
+router.get('/entries/:entryId/uniform-quote', authMiddleware, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json(await uniformQuote.status(req.params.entryId, { id: req.userId, role: req.userRole }));
+  } catch (e) { if (f7Err(res, e)) return; console.error('[tournaments] uniform-quote', e); res.status(500).json({ error: 'erro ao carregar o pedido' }); }
+});
+router.post('/entries/:entryId/uniform-quote', authMiddleware, limits.uniformQuote, async (req, res) => {
+  try {
+    const r = await uniformQuote.request(req.params.entryId, { id: req.userId, role: req.userRole }, req.body || {});
+    res.status(r.duplicate ? 200 : 201).json(r);
+  } catch (e) { if (f7Err(res, e)) return; console.error('[tournaments] uniform-quote create', e); res.status(500).json({ error: 'erro ao enviar o pedido — tente de novo' }); }
 });
 // O que a pessoa vê ao abrir o link (público): valid | expired | revoked | full.
 router.get('/team-invites/:token', async (req, res) => {

@@ -28,6 +28,8 @@
     "test:liga-f5-ui": "node scripts/test-liga-f5-ui.js",
     "test:liga-f6": "node scripts/test-liga-f6-moderacao.js",
     "test:liga-f6-ui": "node scripts/test-liga-f6-ui.js",
+    "test:liga-f7": "node scripts/test-liga-f7-dinheiro.js",
+    "test:liga-f7-ui": "node scripts/test-liga-f7-ui.js",
     "migrate:liga-f5-media": "node scripts/migrate-liga-f5-media.js",
     "test:fin": "node scripts/test-fin-core.js && node scripts/test-stone-connect.js && node scripts/test-fin-payables.js",
     "test:payroll": "node scripts/test-payroll-engine.js",

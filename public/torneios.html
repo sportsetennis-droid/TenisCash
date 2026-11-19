@@ -845,6 +845,11 @@ on('GET',rx('\\/(t\\d+)\\/athletes\\/(\\w+)\\/prontuario'),(b,m)=>({user:{name:m
 on('POST',rx('\\/(t\\d+)\\/athletes\\/(\\w+)\\/evaluations'),()=>({ok:true}));
 on('DELETE',rx('\\/(t\\d+)\\/(evaluations|training-templates)\\/(\\w+)'),()=>({ok:true}));
 on('POST',rx('\\/(t\\d+)\\/(status|pay-prize)'),()=>({ok:true,prizeCash:500}));
+// Liga F7 (mock): TenisCash por conquista e orçamento de uniforme
+on('GET',rx('\\/(t\\d+)\\/cash-rules'),()=>({rules:{TITLE:{amount:0},RUNNER_UP:{amount:0},TOP_SCORER:{amount:0}},catalog:[{key:'TITLE',label:'Título (campeão)',help:'cada atleta com conta do time/dupla campeão'},{key:'RUNNER_UP',label:'Vice-campeão',help:'cada atleta com conta do time/dupla vice'},{key:'TOP_SCORER',label:'Artilharia',help:'artilheiro(s) da categoria (empate: todos)'}],cashEnabled:false,excluded:false,locked:false,canEdit:true,canPay:false,payBlockedReason:'TenisCash desligado neste torneio — só o administrador do sistema liga',caps:{perRule:0,perTournament:2000},paidTotal:0,prizePaid:0,categories:[],paid:[]}));
+on('PUT',rx('\\/(t\\d+)\\/cash-rules'),b=>({ok:true,rules:b.rules,warnings:[]}));
+on('GET',rx('\\/entries\\/(\\w+)\\/uniform-quote'),()=>({team:{name:'Unipê',crestUrl:null,colors:'azul / branco',athleteCount:12},tournament:{name:'II Futsal Master Cup 2026'},contact:{phoneMasked:'8399••••00'},recent:null,dedupeHours:24}));
+on('POST',rx('\\/entries\\/(\\w+)\\/uniform-quote'),()=>({ok:true,duplicate:false,message:'Pedido enviado para a Meta Fardamentos. A equipe vai falar com você.'}));
 // Liga F1 (mock): regerar chave pede confirmação; com jogo encerrado, a frase do fundador
 on('POST',rx('\\/(t\\d+)\\/categories\\/(\\w+)\\/(generate|knockout)'),b=>{
   if(!b.confirm)return {__status:409,code:'CONFIRM_REQUIRED',existingMatches:11,finishedMatches:3,error:'isso apaga os 11 jogo(s) já gerados — confirme para gerar de novo'};
@@ -926,6 +931,7 @@ const I={
  doc:ic('<path d="M5.5 3.5h9L19 8v12.5H5.5Z"/><path d="M14.5 3.5V8H19M8.5 12h7M8.5 15.5h7"/>'),
  mail:ic('<rect x="3.5" y="5.5" width="17" height="13" rx="2.5"/><path d="m4 7 8 6 8-6"/>'),
  bolt:ic('<path d="M13 3 5 13.5h6L10 21l8-10.5h-6L13 3Z"/>'),
+ shirt:ic('<path d="M8.5 3.5 4 6l1.8 4.2L8 9.5V20.5h8V9.5l2.2.7L20 6l-4.5-2.5a3.5 3.5 0 0 1-7 0Z"/>'),
  dumbbell:ic('<path d="M6.5 7v10M17.5 7v10M3.5 9.5v5M20.5 9.5v5M6.5 12h11"/>'),
  cog:ic('<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>'),
  warn:ic('<path d="M12 4 2.8 19.5h18.4L12 4Z"/><path d="M12 10v4.5M12 17.2v.1"/>'),
@@ -1241,9 +1247,29 @@ async function renderPlan(){
   if(ts.length){html+='<div class="card">'+cardH(I.grid,'Seus torneios ativos');
     ts.forEach(t=>{html+='<div class="listitem" style="min-height:44px"><div class="grow"><div class="nm">'+esc(t.name)+'</div><div class="sub">'+t.categories+' categoria(s) · maior categoria com '+t.maxTeamsInCategory+' time(s)'+(t.grandfathered?' · sem limite por torneio':'')+'</div></div></div>';});
     html+='</div>';}
+  // Liga F7: planos por TAMANHO — sem preço e sem pagamento aqui
+  const cat=d.catalog||[];
+  if(cat.length){html+='<div class="card" data-testid="plan-tiers">'+cardH(I.grid,'Planos por tamanho');
+    cat.forEach(p=>{const L=p.limits||{};html+='<div class="listitem" style="min-height:44px"><div class="grow"><div class="nm">'+esc(p.name)+(p.current?' <span class="pill ok">seu plano</span>':'')+'</div><div class="sub">'+
+      [L.activeTournaments!=null?L.activeTournaments+' torneios ativos':'',L.teamsPerCategory!=null?L.teamsPerCategory+' times por categoria':'',L.categoriesPerTournament!=null?L.categoriesPerTournament+' categorias':'',L.imagesPerMonth!=null?L.imagesPerMonth+' imagens/mês':''].filter(Boolean).join(' · ')+'</div></div></div>';});
+    html+='<div class="sp12"></div>'+(d.contactUrl?'<a class="btn full" style="text-align:center" href="'+esc(d.contactUrl)+'" target="_blank" rel="noopener" data-testid="plan-contact">'+I.send+'Fale com a gente para ampliar</a>':'<button class="btn full" data-act="plan-contact" data-testid="plan-contact">'+I.send+'Fale com a gente para ampliar</button>')+
+      '<p class="muted" style="margin-top:10px;font-size:12.5px">Os planos maiores são liberados pela equipe do Club. Não há cobrança por aqui.</p></div>';}
+  if(isGlobalAdminMe())html+='<div class="card" data-testid="plan-admin">'+cardH(I.cog,'Trocar plano de organizador (admin)')+
+    '<label for="pa-who">Organizador (@usuário ou telefone)</label><input id="pa-who" placeholder="@usuario ou 83999990000">'+
+    '<label for="pa-plan">Plano</label><select id="pa-plan">'+cat.map(p=>'<option value="'+esc(p.key)+'">'+esc(p.name)+'</option>').join('')+'</select>'+
+    '<label for="pa-note">Motivo (fica no registro)</label><input id="pa-note" maxlength="300">'+
+    '<div class="sp12"></div><button class="btn sec full" data-act="plan-assign">'+I.check+'Trocar plano</button></div>';
   html+='</div></div>';app.innerHTML=html;
 }
 
+// Liga F7: troca de plano pelo admin global (rota /api/liga/admin/organizer-plan; registro no servidor)
+async function planAssign(){
+  const who=(document.getElementById('pa-who').value||'').trim();if(!who)return toast('Informe o @ ou o telefone do organizador');
+  const body={planKey:document.getElementById('pa-plan').value,note:document.getElementById('pa-note').value.trim()||undefined};
+  if(/^@|[a-z_]/i.test(who))body.username=who.replace(/^@/,'');else body.phone=who.replace(/\D/g,'');
+  try{const r=await fetch('/api/liga/admin/organizer-plan',{method:'POST',headers:{'Content-Type':'application/json',...(TOKEN?{'Authorization':'Bearer '+TOKEN}:{})},body:JSON.stringify(body)});const j=await r.json().catch(()=>null);
+    if(!r.ok)return toast((j&&j.error)||'erro '+r.status);toast(j.unchanged?'Já estava nesse plano':'Plano de '+((j.user&&j.user.name)||'organizador')+': '+j.plan.name);}catch(e){toast(e.message);}
+}
 // ---------- create ----------
 // Liga F1 — visibilidade: público (vitrine + link), não listado (só link), privado (só membros)
 const VIS_OPTS=[['public','Público — aparece na vitrine'],['unlisted','Não listado — só quem tem o link'],['private','Privado — só membros do torneio']];
@@ -1396,6 +1422,10 @@ async function renderTournament(id){
   side='<div class="card wh">'+cardH(I.id,'Inscrição online')+'<p class="muted" style="margin:-4px 0 12px">Link de inscrição com PIX, TenisCash, cupom, lista de espera e check-in por QR.</p>'+
     '<button class="btn full" data-act="nav" data-h="inscricoes/'+t.id+'">'+I.users+'Inscrições e check-in</button></div>'+side;
   if(CURCAPS.manageTournament||isGlobalAdminMe())side+=privacyCard(t);
+  // Liga F7: TenisCash por conquista (rascunho do fundador; só paga com TenisCash ligado pelo admin)
+  if(CURCAPS.manageTournament||isGlobalAdminMe())side+='<div class="card" data-testid="cash-card">'+cardH(I.bolt,'TenisCash por conquista',t.cashEnabled?'<span class="pill ok">ligado</span>':'<span class="pill">desligado</span>')+
+    '<p class="muted" style="margin:-4px 0 12px">Quanto cada atleta ganha por título, vice e artilharia. É um rascunho: só paga quando o administrador do sistema ligar o TenisCash neste torneio, com teto.</p>'+
+    '<button class="btn sm gho full" data-act="cash-rules" data-id="'+t.id+'">'+I.bolt+'Abrir regras de TenisCash</button></div>';
   if(CURCAPS.viewAudit)side+='<div class="card">'+cardH(I.list,'Auditoria')+'<p class="muted" style="margin:-4px 0 12px">Quem mudou resultado, súmula, chave, papéis, privacidade e dono — com o antes e o depois.</p>'+
     '<button class="btn sm gho full" data-act="audit" data-tid="'+t.id+'">'+I.list+'Ver auditoria</button></div>';
   if(CURCAPS.transfer||CURCAPS.archive)side+=founderCard(t);
@@ -1701,6 +1731,7 @@ async function loadMyTeam(tid,canLogo){
     return '<div class="club">'+
       '<div class="club-h">'+logo+'<div class="grow"><div class="nm" style="font-size:17px;font-weight:800">'+esc(c.name)+'</div><div class="sub">'+(c.entries||[]).length+' categoria(s)</div></div>'+
       (canLogo?'<button class="btn sm gho" data-act="team-logo-club" data-eid="'+first+'">'+I.upload+'Escudo</button>':'')+'</div>'+
+      (canLogo&&first?'<button class="btn sm sec full" data-act="uni-quote" data-eid="'+first+'" data-testid="uni-myteam">'+I.shirt+'Pedir orçamento de uniforme</button><div class="sp8"></div>':'')+
       '<button class="tog" data-act="team-members" data-eid="'+first+'">'+I.link+'<span>Atletas vinculados</span>'+CHV+'</button><div class="nest" id="members-'+first+'"></div>'+
       '<button class="tog" data-act="team-trainings" data-eid="'+first+'">'+I.dumbbell+'<span>Treinos</span>'+CHV+'</button><div class="nest" id="trainings-'+first+'"></div>'+
       ent+'</div>';
@@ -2209,6 +2240,7 @@ async function renderCatPanel(tab){
       body+='<div class="listitem">'+av+'<div class="grow"><div class="nm">'+esc(e.name)+'</div><div class="sub">'+(e.groupName?'Grupo '+esc(e.groupName)+(who?' · ':''):'')+esc(who)+'</div></div>'+
         '<button class="btn icon gho" data-act="team-logo" data-eid="'+e.id+'" title="escudo" aria-label="Escudo">'+I.img+'</button>'+
         (!(e.members||[]).length?'<button class="btn icon gho" data-act="team-link" data-eid="'+e.id+'" data-name="'+esc(e.name)+'" title="link do time" aria-label="Link do time para o elenco">'+I.link+'</button>':'')+
+        (!(e.members||[]).length?'<button class="btn icon gho" data-act="uni-quote" data-eid="'+e.id+'" title="orçamento de uniforme" aria-label="Pedir orçamento de uniforme" data-testid="uni-btn">'+I.shirt+'</button>':'')+
         '<button class="btn icon gho" aria-label="Remover inscrição" data-act="del-entry" data-eid="'+e.id+'">'+I.x+'</button></div>';});
     body+='<div class="sp16"></div>';
     if(isGroups)body+='<button class="btn" data-act="gen-groups" data-tid="'+tid+'" data-cid="'+cid+'">'+I.bolt+'Sortear grupos + gerar jogos</button>'+
@@ -2404,6 +2436,66 @@ async function teamLinkSheet(eid,name,fresh){
   });
 }
 async function teamLinkRevoke(eid){try{await api('/entries/'+eid+'/team-invite',{method:'DELETE'});closeSheet();toast('Link desativado');}catch(e){toast(e.message);}}
+// ---------- Liga F7: orçamento de uniforme (Meta Fardamentos) ----------
+function fmtDT(d){try{return new Date(d).toLocaleString('pt-BR',{timeZone:'America/Fortaleza',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});}catch(e){return '';}}
+async function uniQuoteSheet(eid){
+  let d=null;try{d=await api('/entries/'+eid+'/uniform-quote');}catch(e){return toast(e.message);}
+  const tm=d.team||{};
+  const crest=tm.crestUrl?'<img src="'+esc(tm.crestUrl)+'" alt="Escudo" style="width:56px;height:56px;border-radius:12px;object-fit:contain;background:#fff">':'<span class="crest">'+esc(initials(tm.name))+'</span>';
+  openSheet('<h3>Orçamento de uniforme</h3>'+
+    '<div style="display:flex;align-items:center;gap:12px;margin:6px 0 10px">'+crest+'<div class="grow"><div class="nm" style="font-weight:800">'+esc(tm.name||'')+'</div><div class="sub">'+esc((d.tournament&&d.tournament.name)||'')+'</div></div></div>'+
+    '<p class="muted">Vai um pedido para a <b>Meta Fardamentos</b> com o escudo, as cores e o número de atletas. Nada é enviado automaticamente: a equipe deles vê o pedido e fala com você.</p>'+
+    (d.recent?'<div class="alert warn" data-testid="uni-recent">'+I.clock+'Você já pediu em '+esc(fmtDT(d.recent.createdAt))+'. Pedir de novo nas próximas '+d.dedupeHours+' h não cria outro pedido.</div><div class="sp8"></div>':'')+
+    '<label for="uq-colors">Cores do time</label><input id="uq-colors" maxlength="60" placeholder="ex.: azul e branco" value="'+esc(tm.colors||'')+'">'+
+    '<label for="uq-n">Número de atletas</label><input id="uq-n" type="number" inputmode="numeric" min="1" max="300" value="'+(tm.athleteCount||'')+'">'+
+    '<label for="uq-note">Observação (opcional)</label><input id="uq-note" maxlength="300" placeholder="ex.: camisa + calção, numeração">'+
+    '<div class="sp8"></div><label class="tgl" style="display:flex;align-items:center;gap:12px;min-height:48px"><input type="checkbox" id="uq-consent" data-testid="uni-consent" style="width:22px;height:22px;flex:none"><span>Autorizo a Meta Fardamentos a me contatar'+(d.contact&&d.contact.phoneMasked?' no WhatsApp '+esc(d.contact.phoneMasked):'')+' sobre este orçamento.</span></label>'+
+    '<div class="sp12"></div><button class="btn full" data-act="uni-send" data-eid="'+eid+'" data-testid="uni-send">'+I.send+'Pedir orçamento de uniforme</button>');
+}
+async function uniQuoteSend(eid){
+  const c=document.getElementById('uq-consent');
+  if(!c||!c.checked)return toast('Marque a autorização de contato para pedir o orçamento');
+  const n=document.getElementById('uq-n').value;
+  const body={consent:true,colors:document.getElementById('uq-colors').value.trim()||undefined,athleteCount:n?Number(n):undefined,note:document.getElementById('uq-note').value.trim()||undefined};
+  try{const r=await api('/entries/'+eid+'/uniform-quote',{method:'POST',body});closeSheet();toast(r.message||'Pedido enviado');}catch(e){toast(e.message);}
+}
+// ---------- Liga F7: TenisCash por conquista ----------
+const CASH_ST={pay:['a pagar',''],paid:['pago','ok'],blocked:['não recebe','w']};
+async function cashRulesSheet(tid){
+  let d=null;try{d=await api('/'+tid+'/cash-rules');}catch(e){return toast(e.message);}
+  let h='<h3>TenisCash por conquista</h3>';
+  if(d.excluded)h+='<div class="alert warn">'+I.lock+'Este torneio está na lista de exclusão: TenisCash por conquista não vale aqui.</div>';
+  else if(!d.cashEnabled)h+='<div class="alert warn" data-testid="cash-off">'+I.lock+'TenisCash desligado neste torneio. As regras ficam como rascunho; só o administrador do sistema liga o pagamento.</div>';
+  else if(d.locked)h+='<div class="alert warn">'+I.lock+'TenisCash ligado: as regras estão travadas (só o administrador do sistema muda).</div>';
+  h+='<p class="muted" style="margin-top:10px">Valor em TenisCash para <b>cada atleta com conta</b>. Time sem conta, menor de 18 anos e conta desativada não recebem. Teto por conquista: <b>'+d.caps.perRule+'</b> · teto do torneio: <b>'+d.caps.perTournament+'</b>.</p>';
+  d.catalog.forEach(r=>{const v=(d.rules[r.key]||{}).amount||0;
+    h+='<label for="cr-'+r.key+'">'+esc(r.label)+' <span class="sub" style="display:inline">('+esc(r.help)+')</span></label><input id="cr-'+r.key+'" type="number" inputmode="decimal" min="0" step="1" value="'+v+'"'+(d.canEdit?'':' disabled')+' data-testid="cash-in-'+r.key+'">';});
+  if(d.canEdit)h+='<div class="sp12"></div><button class="btn sec full" data-act="cash-save" data-id="'+tid+'" data-testid="cash-save">'+I.check+'Salvar rascunho</button>';
+  h+='<div class="sp16"></div><h3 style="font-size:16px">Prévia por categoria</h3>';
+  (d.categories||[]).forEach(c=>{
+    h+='<div class="listitem" style="display:block"><div class="nm">'+esc(c.name)+'</div>';
+    if(!c.done)h+='<div class="sub">'+esc(c.reason||'')+'</div>';
+    else if(!c.items.length)h+='<div class="sub">Nenhuma conquista com valor configurado.</div>';
+    else c.items.forEach(it=>{const st=CASH_ST[it.status]||['',''];h+='<div class="sub" style="display:flex;justify-content:space-between;gap:8px;margin-top:6px"><span>'+esc(it.ruleLabel)+' · '+esc(it.name||'—')+(it.reason?' — '+esc(it.reason):'')+'</span><span class="pill '+st[1]+'">'+(it.amount||0)+' T$ · '+st[0]+'</span></div>';});
+    h+='</div>';});
+  if(!(d.categories||[]).length)h+=emptyB('', 'Sem categorias ainda.','sm');
+  h+='<p class="muted" style="margin-top:10px">Já pago por conquista: <b>'+d.paidTotal+'</b> TenisCash'+(d.prizePaid?' · prêmio do campeão: <b>'+d.prizePaid+'</b>':'')+'.</p>';
+  if(d.canPay)h+='<div class="sp12"></div><button class="btn full" data-act="cash-pay" data-id="'+tid+'" data-testid="cash-pay">'+I.bolt+'Pagar o que falta</button>';
+  else if(d.payBlockedReason&&!d.excluded)h+='<p class="muted" style="font-size:12.5px">Pagamento indisponível: '+esc(d.payBlockedReason)+'.</p>';
+  openSheet(h);
+}
+async function cashRulesSave(tid){
+  const rules={};['TITLE','RUNNER_UP','TOP_SCORER'].forEach(k=>{const el=document.getElementById('cr-'+k);if(el)rules[k]={amount:Number(el.value||0)};});
+  try{const r=await api('/'+tid+'/cash-rules',{method:'PUT',body:{rules}});toast(r.warnings&&r.warnings.length?r.warnings[0]:'Rascunho salvo');cashRulesSheet(tid);}catch(e){toast(e.message);}
+}
+function cashPaySheet(tid){
+  openSheet('<h3>Pagar TenisCash por conquista</h3><p class="muted">Credita TenisCash <b>REAL</b> no saldo dos atletas da prévia (só o que ainda não foi pago). Não dá para desfazer por aqui.</p>'+
+    '<div class="sp12"></div><button class="btn full" data-act="cash-pay-go" data-id="'+tid+'" data-testid="cash-pay-go">'+I.check+'Confirmar pagamento</button>'+
+    '<div class="sp8"></div><button class="btn gho full" data-act="cash-rules" data-id="'+tid+'">Voltar</button>');
+}
+async function cashPayGo(tid){
+  try{const r=await api('/'+tid+'/cash-rules/pay',{method:'POST',body:{confirm:true}});toast(r.paid&&r.paid.length?'Pago: '+r.total+' TenisCash para '+r.paid.length+' atleta(s)':'Nada a pagar agora');cashRulesSheet(tid);}catch(e){toast(e.message);}
+}
 // ---------- Liga F3: duplicar para a próxima temporada ----------
 function dupSheet(id,name){
   openSheet('<h3>Duplicar para a próxima temporada</h3><p class="muted">Copia categorias, regras, clubes, elencos e papéis de <b>'+esc(name)+'</b>. Não copia jogos, resultados nem datas. A nova edição nasce em rascunho.</p>'+
@@ -3133,6 +3225,14 @@ document.addEventListener('click',async(ev)=>{
   if(a==='team-link-new'){teamLinkSheet(el.dataset.eid,el.dataset.name,true);return;}
   if(a==='team-link-revoke'){teamLinkRevoke(el.dataset.eid);return;}
   if(a==='dup-sheet'){dupSheet(el.dataset.id,el.dataset.name||'');return;}
+  if(a==='uni-quote'){uniQuoteSheet(el.dataset.eid);return;}
+  if(a==='uni-send'){uniQuoteSend(el.dataset.eid);return;}
+  if(a==='cash-rules'){cashRulesSheet(el.dataset.id);return;}
+  if(a==='cash-save'){cashRulesSave(el.dataset.id);return;}
+  if(a==='cash-pay'){cashPaySheet(el.dataset.id);return;}
+  if(a==='cash-pay-go'){cashPayGo(el.dataset.id);return;}
+  if(a==='plan-assign'){planAssign();return;}
+  if(a==='plan-contact'){openSheet('<h3>Ampliar o plano</h3><p class="muted">Fale com a equipe do Club Sports &amp; Tennis em qualquer loja ou pelo Instagram <b>@sportsetennis</b> e diga o tamanho da sua liga. A troca de plano é feita pela equipe; não há cobrança por aqui.</p>');return;}
   if(a==='dup-do'){dupDo(el.dataset.id);return;}
   if(a==='sum-period'){sumSetPeriod(el.dataset.p);return;}
   if(a==='sum-delevent'){sumDelEvent(el.dataset.id);return;}

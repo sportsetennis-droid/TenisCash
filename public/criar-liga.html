@@ -230,7 +230,9 @@
       '<a class="btn btn-ok full" href="'+e(r.whatsappUrl)+'" target="_blank" rel="noopener">Mandar no meu WhatsApp</a>'+
       '<button class="btn btn-s full" id="copy" type="button">Copiar link</button>'+
       '<a class="btn btn-s full" href="'+e(r.path)+'">Ver a página</a>'+
-      '<a class="btn btn-s full" href="'+e(r.manageUrl)+'">Painel: datas, locais e regras</a></div><div id="msg" class="msg"></div></div>';
+      '<a class="btn btn-s full" href="'+e(r.manageUrl)+'">Painel: datas, locais e regras</a></div>'+
+      (r.tournament.format==='PICKUP'?'':'<p class="lead" data-testid="uni-offer" style="margin-top:16px">Uniforme para os times? No Painel, em cada time, toque em <b>Pedir orçamento de uniforme</b> e a Meta Fardamentos recebe o pedido com o escudo, as cores e o número de atletas. Nada é enviado sem você pedir.</p>')+
+      '<div id="msg" class="msg"></div></div>';
     document.getElementById('copy').onclick=function(){
       var ok=function(){msg('Link copiado!','ok');};
       if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(abs).then(ok,function(){msg('Copie o link acima.');});else msg('Copie o link acima.');

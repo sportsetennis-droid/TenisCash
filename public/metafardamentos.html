@@ -428,6 +428,7 @@ async function renderCRM(){
         const st={novo:'warn',contatado:'',orcamento:'',fechado:'ok',perdido:'dng'}[l.status]||'gray';
         return `<div class="card"><div class="row"><div><div class="nm">${H(l.name||l.phone||'Lead')}</div>
           <div class="mt">${H(l.tipoFardamento||l.resumo||'—')}${l.quantidade?' · '+H(l.quantidade):''}</div>
+          ${l.source==='liga'?`<div class="mt" style="display:flex;gap:10px;align-items:flex-start;margin-top:6px">${/^(\/media\/[0-9a-f]{64}\.(png|jpe?g|webp|gif)|https:\/\/[^\s"'<>]+)$/i.test(l.crestUrl||'')?`<img src="${H(l.crestUrl)}" alt="Escudo" style="width:44px;height:44px;border-radius:8px;object-fit:contain;background:#fff;flex:none">`:''}<div style="white-space:pre-line">${H(l.resumo||'')}</div></div>`:''}
           <div class="mt"><span class="tag">${H((l.source||'').toUpperCase())}</span> · ${dt(l.createdAt)}</div></div>
           <span class="pill ${st}">${H(l.status)}</span></div>
           <div class="row" style="margin-top:9px;gap:6px">

@@ -594,6 +594,7 @@ app.use('/api/club-push', require('./routes/clubPush')); // F5: Web Push do Club
 app.use('/api/clubs', require('./routes/clubs')); // F5: clube permanente (membros, convite, vínculo a torneio)
 app.use('/clube', require('./routes/clubPage')); // F5: página pública /clube/:slug
 app.use('/api/liga', require('./routes/ligaSafety')); // Liga F6: denúncia, moderação, privacidade e menores (LIGA_MINORS)
+app.use('/api/liga', require('./routes/ligaPlans')); // Liga F7: planos do organizador por tamanho (sem preço) + troca pelo admin
 app.use('/api/admin/rede', require('./routes/rede')); // Rede Neural de Agentes (painel/propostas/objetivos)
 app.use('/api/medals', require('./routes/medals')); // medalhas digitais (Open Badges 3.0)
 app.use('/api/search', require('./routes/search')); // busca tolerante a erro (pg_trgm) + catálogo offline do vendedor

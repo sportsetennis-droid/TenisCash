@@ -148,6 +148,47 @@ const STATEMENTS = [
      CONSTRAINT "MinorProfile_pkey" PRIMARY KEY ("id")
    )`,
   `CREATE INDEX IF NOT EXISTS "MinorProfile_guardianUserId_idx" ON "MinorProfile"("guardianUserId")`,
+  // Liga Aberta F7 — dinheiro. Logo depois do bloco F6 (que os testes dela exigem antes daqui)
+  // e ANTES de F3/F2/F1/F0. Nada em "Tournament" (as regras de TenisCash ficam numa tabela
+  // própria: coluna nova no Tournament derrubaria toda leitura de torneio na janela pós-deploy).
+  // As colunas do MfLead entram logo depois do bloco do clubId da F2 (o teste da F3 exige o
+  // primeiro clubId da lista no bloco da F2). Aditivo.
+  `CREATE TABLE IF NOT EXISTS "OrganizerPlanLog" (
+     "id" TEXT NOT NULL,
+     "userId" TEXT NOT NULL,
+     "fromPlan" TEXT,
+     "toPlan" TEXT NOT NULL,
+     "actorId" TEXT NOT NULL,
+     "note" TEXT,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "OrganizerPlanLog_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE INDEX IF NOT EXISTS "OrganizerPlanLog_userId_createdAt_idx" ON "OrganizerPlanLog"("userId", "createdAt")`,
+  `CREATE INDEX IF NOT EXISTS "OrganizerPlanLog_createdAt_idx" ON "OrganizerPlanLog"("createdAt")`,
+  `CREATE TABLE IF NOT EXISTS "TournamentCashConfig" (
+     "tournamentId" TEXT NOT NULL,
+     "rules" JSONB NOT NULL,
+     "updatedBy" TEXT,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "TournamentCashConfig_pkey" PRIMARY KEY ("tournamentId")
+   )`,
+  `CREATE TABLE IF NOT EXISTS "TournamentCashAward" (
+     "id" TEXT NOT NULL,
+     "tournamentId" TEXT NOT NULL,
+     "categoryId" TEXT NOT NULL,
+     "rule" TEXT NOT NULL,
+     "userId" TEXT NOT NULL,
+     "entryId" TEXT,
+     "amount" DOUBLE PRECISION NOT NULL,
+     "transactionId" TEXT,
+     "paidBy" TEXT,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "TournamentCashAward_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "TournamentCashAward_tournamentId_categoryId_rule_userId_key" ON "TournamentCashAward"("tournamentId", "categoryId", "rule", "userId")`,
+  `CREATE INDEX IF NOT EXISTS "TournamentCashAward_tournamentId_createdAt_idx" ON "TournamentCashAward"("tournamentId", "createdAt")`,
+  `CREATE INDEX IF NOT EXISTS "TournamentCashAward_userId_idx" ON "TournamentCashAward"("userId")`,
   // Liga Aberta F3 — criação em 2 minutos (regras por categoria, racha, link do time).
   // PRIMEIRO da lista (as rotas novas leem essas colunas/tabelas). Aditivo, nunca apaga.
   `ALTER TABLE "TournamentCategory" ADD COLUMN IF NOT EXISTS "gameRules" JSONB`,
@@ -211,6 +252,9 @@ const STATEMENTS = [
   `ALTER TABLE "Club" ADD COLUMN IF NOT EXISTS "originTournamentId" TEXT`,
   `CREATE INDEX IF NOT EXISTS "TournamentEntry_clubId_idx" ON "TournamentEntry"("clubId")`,
   `DO $$ BEGIN ALTER TABLE "TournamentEntry" ADD CONSTRAINT "TournamentEntry_clubId_fkey" FOREIGN KEY ("clubId") REFERENCES "Club"("id") ON DELETE SET NULL ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object OR invalid_foreign_key OR foreign_key_violation THEN NULL; END $$`,
+  // Liga Aberta F7 — pedido de orçamento de uniforme no MfLead (tabela que já existe em produção,
+  // veio do db push antigo: colunas com to_regclass). Aditivo, nunca apaga.
+  `DO $$ BEGIN IF to_regclass('"MfLead"') IS NOT NULL THEN ALTER TABLE "MfLead" ADD COLUMN IF NOT EXISTS "crestUrl" TEXT, ADD COLUMN IF NOT EXISTS "colors" TEXT, ADD COLUMN IF NOT EXISTS "athleteCount" INTEGER, ADD COLUMN IF NOT EXISTS "tournamentId" TEXT, ADD COLUMN IF NOT EXISTS "entryId" TEXT, ADD COLUMN IF NOT EXISTS "clubId" TEXT, ADD COLUMN IF NOT EXISTS "requestedByUserId" TEXT, ADD COLUMN IF NOT EXISTS "consentAt" TIMESTAMP(3); CREATE INDEX IF NOT EXISTS "MfLead_requestedByUserId_createdAt_idx" ON "MfLead"("requestedByUserId", "createdAt"); END IF; END $$`,
   `CREATE INDEX IF NOT EXISTS "RosterPlayer_userId_idx" ON "RosterPlayer"("userId")`,
   `CREATE TABLE IF NOT EXISTS "RosterInvite" (
      "id" TEXT NOT NULL,

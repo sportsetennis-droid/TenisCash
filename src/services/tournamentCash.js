@@ -36,6 +36,13 @@ const PRIZE_CASH_MAX = 2000; // teto de prêmio automático em TenisCash
 function isAdmin(role) {
   return ADMIN_ROLES.includes(role);
 }
+class PrizeBlocked extends Error {}
+// Teto TOTAL por torneio (prêmio + TenisCash por conquista da Liga F7): LIGA_CASH_TOURNAMENT_MAX
+// ou, sem ela, o próprio teto do prêmio.
+function tournamentCapTotal() {
+  const n = Number(process.env.LIGA_CASH_TOURNAMENT_MAX);
+  return process.env.LIGA_CASH_TOURNAMENT_MAX != null && process.env.LIGA_CASH_TOURNAMENT_MAX !== '' && Number.isFinite(n) && n >= 0 ? n : PRIZE_CASH_MAX;
+}
 
 // Debita a inscrição do atleta que registrou (members[0]).
 // Só age se o torneio tem cash ligado e taxa > 0. Idempotente.
@@ -159,7 +166,20 @@ async function payPrize(tournamentId) {
   if (!champ || !champ.members.length) return { ok: false, error: 'campeão sem atletas pra receber' };
 
   const share = t.prizeCash / champ.members.length;
-  const winners = await prisma.$transaction(async (tx) => {
+  let winners;
+  try {
+  winners = await prisma.$transaction(async (tx) => {
+    // Liga F7: mesma trava e mesmo TETO TOTAL do TenisCash por conquista (ligaCashRules) —
+    // prêmio + conquistas juntos não passam do teto; e o prêmio não é pago 2x em corrida.
+    await tx.$queryRaw`SELECT 1 AS locked FROM (SELECT pg_advisory_xact_lock(hashtext(${'liga-cash:' + tournamentId}))) AS l`;
+    const fresh = await tx.tournament.findUnique({ where: { id: tournamentId }, select: { prizePaidAt: true } });
+    if (fresh && fresh.prizePaidAt) throw new PrizeBlocked('o prêmio deste torneio já foi pago');
+    let awards = 0;
+    // erro de SQL dentro da transação aborta tudo: confere a tabela antes (janela pós-deploy)
+    const reg = await tx.$queryRaw`SELECT to_regclass('"TournamentCashAward"')::text AS r`;
+    if (reg && reg[0] && reg[0].r) { const ag = await tx.tournamentCashAward.aggregate({ where: { tournamentId }, _sum: { amount: true } }); awards = Number(ag._sum.amount) || 0; }
+    const cap = tournamentCapTotal();
+    if (awards > 0 && awards + t.prizeCash > cap) throw new PrizeBlocked(`prêmio + TenisCash por conquista passaria do teto total do torneio (${cap} TenisCash; já pago ${awards}) — precisa de liberação do dono`);
     const paid = [];
     for (const m of champ.members) {
       const u = await tx.user.update({
@@ -182,6 +202,10 @@ async function payPrize(tournamentId) {
     await tx.tournament.update({ where: { id: tournamentId }, data: { prizePaidAt: new Date() } });
     return paid;
   });
+  } catch (e) {
+    if (e instanceof PrizeBlocked) return { ok: false, error: e.message };
+    throw e;
+  }
 
   try {
     await notifyMany(champ.members.map((m) => m.userId), {
