@@ -118,6 +118,20 @@ const best = (list) => Object.fromEntries(list.map((q) => [q.id, q.type === 'MC'
   const re = await rh.getJob(prisma, job.id);
   assert.strictEqual(re.screening.length, 14); assert.strictEqual(re.cutoff, 24); assert.deepStrictEqual(re.questions, seedJobs.JOB.questions); ok('vaga já no ar sem questionário recebe o modelo (caso de produção)');
 
+  // ── sem falar de escala (dono 19/11): vaga no ar com o texto antigo é trocada e a resposta acompanha
+  assert.ok(!/escala|6x1|5x2/i.test(JSON.stringify(scr.TEMPLATES) + JSON.stringify(scr.GUIDE) + JSON.stringify(seedJobs.JOB.interviewQuestions)), 'ainda fala de escala');
+  const [[oldE1, newE1]] = seedJobs.RENAMES.screening, [[oldIq, newIq]] = seedJobs.RENAMES.interview;
+  const cur = await rh.getJob(prisma, job.id);
+  await prisma.$executeRaw`UPDATE "HrJob" SET "screening"=${JSON.stringify(cur.screening.map((q) => (q.id === 'E1' ? { ...q, text: oldE1 } : q)))}::jsonb,
+    "interviewQuestions"=${JSON.stringify(cur.interviewQuestions.map((q) => (q === newIq ? oldIq : q)))}::jsonb WHERE "id"=${job.id}`;
+  await prisma.$executeRaw`UPDATE "HrCandidate" SET "interview"=${JSON.stringify({ [oldIq]: 'Saio cedo de casa.' })}::jsonb WHERE "id"=${el.id}`;
+  await seedJobs.seed(prisma);
+  const fx = await rh.getJob(prisma, job.id);
+  assert.strictEqual(fx.screening.find((q) => q.id === 'E1').text, newE1); assert.ok(fx.interviewQuestions.includes(newIq) && !fx.interviewQuestions.includes(oldIq));
+  assert.deepStrictEqual((await rh.getCandidate(prisma, el.id)).interview, { [newIq]: 'Saio cedo de casa.' });
+  assert.ok(!/escala|6x1/i.test(JSON.stringify(rh.publicJob(fx))) && !/escala|6x1/i.test(JSON.stringify(fx.interviewQuestions)));
+  ok('vaga no ar deixa de falar de escala; resposta já dada continua na pergunta');
+
   // limpeza
   await prisma.$executeRaw`DELETE FROM "HrCandidateEvent" WHERE "candidateId" IN (SELECT "id" FROM "HrCandidate" WHERE "phone" LIKE '8397777000%')`;
   await prisma.$executeRaw`DELETE FROM "HrCandidate" WHERE "phone" LIKE '8397777000%'`;
