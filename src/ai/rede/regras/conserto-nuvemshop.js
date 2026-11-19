@@ -49,7 +49,10 @@ const PASSOS = [
     como: 'Gerar descrição técnica só com dados reais do card (marca, modelo, cor, material da NF-e) — o mini agente conteudo.descricao propõe e o dono aprova.',
     quem: 'conteudo.descricao', dono: true },
   { id: 'cor', rx: /sem cor|cor abreviada|cor crua/, titulo: 'Cor ausente, abreviada ou crua',
-    como: 'Escrever a cor POR EXTENSO e em português (Branco/Rosa, nunca BR/RO). Fonte: NF-e literal, etiqueta da caixa ou página oficial da referência. Sigla sem evidência fica pendente (colorReview), não se chuta.',
+    como: 'Escrever a cor POR EXTENSO e em português (Branco/Rosa, nunca BR/RO). Ordem: 1) NF-e literal (palavra inteira ou sigla certa do dicionário); ' +
+      '2) SE A NF-E NÃO TRAZ, PESQUISAR NO SITE OFICIAL DA MARCA pelo código de barras exato (/api/catalog_system/pub/products/search?fq=alternateIds_Ean:<EAN13>; FILA/Umbro fq=productId:<cProd>; ' +
+      'Puma/Asics na Drastosa; Adidas na página da REF; fora de linha no web.archive.org) — só o item do MESMO código, a cor do item, nunca "cor predominante"; o gerente de marca já faz isso sozinho ' +
+      'de hora em hora (src/services/corOficialMarca.js); 3) etiqueta da caixa (loja). Sigla confirmada no site entra no dicionário da marca (src/services/colorName.js, com a fonte). Sem evidência fica pendente (colorReview), não se chuta.',
     quem: 'cadastro', dono: false, usaFicha: 'cor' },
   { id: 'classificacao', rx: /(categoria|subcategoria|modalidade|especialidade) ausente/, titulo: 'Falta uma das 4 classificações',
     como: 'Preencher Categoria + Sub + Modalidade + Especialidade (regra inquebrável: sem as 4 não sobe).',
@@ -65,6 +68,9 @@ const PASSOS = [
     quem: 'nfe / financeiro', dono: false },
   { id: 'preco-zero', rx: /preco de venda zerado/, titulo: 'Preço de venda zerado',
     como: 'Preço de venda = custo × (1 + markup). Mudar preço é decisão do dono: o mini agente de preço propõe e o dono aprova.',
+    quem: 'preco (proposta)', dono: true },
+  { id: 'promocao', rx: /^promocao /, titulo: 'Promoção zerada, maior que o preço ou abaixo do custo',
+    como: 'A promoção que vai ao site tem que ficar entre o custo e o preço de venda (regra do markup: a loja nunca vende abaixo do custo). Corrigir ou tirar a promoção é decisão do dono — o mini agente de preço propõe.',
     quem: 'preco (proposta)', dono: true },
   { id: 'preco-custo', rx: /preco de venda nao supera o custo/, titulo: 'Preço menor ou igual ao custo',
     como: 'Conferir custo (NF-e de entrada) e aplicar o markup. Proposta de preço para o dono aprovar; nunca sobe com preço de custo.',

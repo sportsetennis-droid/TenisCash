@@ -10,6 +10,10 @@
 //   - público    ← MASCULINO/FEMININO/JR escrito no nome (JR só vira Menino em
 //                  Chuteiras, único nó infantil dessa árvore; Tênis precisa do gênero escrito)
 //   - modalidade ← FUTSAL/SOCIETY/CAMPO escrito no nome da chuteira
+// COR (dono 18/11: "se não traz aí vc pesquisa no site da marca"): cor vazia ou com sigla
+// que o portão recusa é buscada no SITE OFICIAL DA MARCA pelo código de barras exato
+// (corOficialMarca). Só grava se o site confirma aquele código e a cor vira português certo;
+// a cor antiga fica em colorRaw e a fonte em colorEvidencia.
 // O que exige julgamento (especialidade, cor sem prova, foto, descrição) vira
 // pendência/proposta para o dono. Publicar continua automático pela trava oficial
 // (subida automática de hora em hora); preço nunca é tocado.
@@ -118,11 +122,49 @@ async function gravarSeIgual(db, id, campo, lido, novo) {
   return r.count === 1;
 }
 
-async function cuidar(db, { marca = null, aplicar = true, agora = new Date() } = {}) {
+// Cor: só cor vazia ou que o portão recusa (sigla/código/tamanho na cor); nunca troca cor por extenso.
+function precisaCorOficial(p) {
+  const { rawColorReason } = require('./nuvemshopEligibility');
+  const ctx = (p.aiContext && typeof p.aiContext === 'object' && !Array.isArray(p.aiContext)) ? p.aiContext : {};
+  const cor = String(ctx.color || '').trim();
+  if (cor && !rawColorReason(cor)) return false;
+  const t = ctx.corOficialTentativa;
+  // não repete a mesma busca sem resposta por 7 dias
+  if (t && t.em && Date.now() - new Date(t.em).getTime() < 7 * 86400000 && t.corLida === cor) return false;
+  return true;
+}
+
+// Busca e grava a cor oficial (atômico: só se a cor no banco continuar a mesma que foi lida).
+async function corPeloSiteDaMarca(db, p, { buscarCor, agora }) {
+  const ctx = (p.aiContext && typeof p.aiContext === 'object' && !Array.isArray(p.aiContext)) ? p.aiContext : {};
+  const corLida = String(ctx.color || '').trim();
+  const eans = (await db.productSize.findMany({ where: { productId: p.id }, select: { barcode: true } })).map((s) => s.barcode).filter(Boolean);
+  const r = await buscarCor({ marca: p.brand, eans });
+  if (!r || !r.ok) {
+    await mergeAiContext(db, p.id, { corOficialTentativa: { em: agora.toISOString(), corLida, motivo: (r && r.motivo) || 'sem resposta' } });
+    return null;
+  }
+  const evid = { fonte: r.fonte, consulta: r.consulta || null, codigo: r.ean, corNoSite: r.bruto, anterior: corLida || null, em: agora.toISOString(), por: 'gerente da marca (site oficial)' };
+  const n = await db.$executeRawUnsafe(
+    `UPDATE "Product" SET "aiContext" = (COALESCE("aiContext", '{}'::jsonb) - 'colorReview' - 'corOficialTentativa') || jsonb_build_object('color', $2::text, 'colorEvidencia', $3::jsonb) ` +
+    `|| CASE WHEN COALESCE("aiContext"->>'colorRaw', '') = '' AND $4::text <> '' THEN jsonb_build_object('colorRaw', $4::text) ELSE '{}'::jsonb END ` +
+    `WHERE id = $1 AND (jsonb_typeof("aiContext") = 'object' OR "aiContext" IS NULL) AND btrim(COALESCE("aiContext"->>'color', '')) = $4::text`,
+    p.id, r.cor, JSON.stringify(evid), corLida);
+  return n === 1 ? { cor: r.cor, anterior: corLida || null, fonte: r.fonte } : null;
+}
+
+async function cuidar(db, { marca = null, aplicar = true, agora = new Date(), buscarCor = null, limiteCor = Number(process.env.CUIDADOR_COR_LIMITE || 30) } = {}) {
   const { nuvemshopStockStoreIds } = require('./nuvemshopEligibility');
   const lista = await candidatos(db, { marca, storeIds: nuvemshopStockStoreIds() });
-  const res = { cards: lista.length, preenchidos: 0, campos: 0, itens: [] };
+  const res = { cards: lista.length, preenchidos: 0, campos: 0, cores: 0, itens: [] };
+  const busca = buscarCor || (process.env.CUIDADOR_COR_OFICIAL === '0' ? null : require('./corOficialMarca').buscarCorOficial);
+  let consultas = 0;
   for (const p of lista) {
+    if (aplicar && busca && consultas < limiteCor && precisaCorOficial(p)) {
+      consultas++;
+      const c = await corPeloSiteDaMarca(db, p, { buscarCor: busca, agora }).catch(() => null);
+      if (c) { res.cores++; if (res.itens.length < 50) res.itens.push({ productId: p.id, nome: p.name, marca: p.brand, mudancas: { color: c.cor }, provas: ['cor ' + c.cor + ': site oficial da marca pelo código de barras (' + c.fonte + ')'] }); }
+    }
     const { mudancas, provas } = planejar(p);
     if (!Object.keys(mudancas).length) continue;
     if (!aplicar) { res.preenchidos++; res.campos += Object.keys(mudancas).length; if (res.itens.length < 50) res.itens.push({ productId: p.id, nome: p.name, marca: p.brand, mudancas, provas }); continue; }
@@ -152,7 +194,7 @@ async function cuidar(db, { marca = null, aplicar = true, agora = new Date() } =
 const state = { lastRunAt: null, lastResult: null, lastError: null };
 function iniciarCuidadorDeMarca(db) {
   if (process.env.CUIDADOR_DE_MARCA === '0') { console.log('[cuidador de marca] desligado (CUIDADOR_DE_MARCA=0)'); return; }
-  const rodar = () => cuidar(db).then((r) => { state.lastRunAt = new Date().toISOString(); state.lastResult = { cards: r.cards, preenchidos: r.preenchidos, campos: r.campos }; state.lastError = null; if (r.preenchidos) console.log('[cuidador de marca]', JSON.stringify(state.lastResult)); })
+  const rodar = () => cuidar(db).then((r) => { state.lastRunAt = new Date().toISOString(); state.lastResult = { cards: r.cards, preenchidos: r.preenchidos, campos: r.campos, cores: r.cores }; state.lastError = null; if (r.preenchidos || r.cores) console.log('[cuidador de marca]', JSON.stringify(state.lastResult)); })
     .catch((e) => { state.lastError = e.message; console.warn('[cuidador de marca] falhou:', e.message); });
   setTimeout(rodar, 4 * 60 * 1000);
   setInterval(rodar, 60 * 60 * 1000);
@@ -160,4 +202,4 @@ function iniciarCuidadorDeMarca(db) {
 }
 function estadoCuidadorDeMarca() { return JSON.parse(JSON.stringify(state)); }
 
-module.exports = { temNumeracaoInfantil, gradeProvaAdulto, planejar, pendencias, candidatos, cuidar, iniciarCuidadorDeMarca, estadoCuidadorDeMarca };
+module.exports = { precisaCorOficial, corPeloSiteDaMarca, temNumeracaoInfantil, gradeProvaAdulto, planejar, pendencias, candidatos, cuidar, iniciarCuidadorDeMarca, estadoCuidadorDeMarca };

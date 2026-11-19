@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#E5571E">
+<link rel="icon" href="/icon-192.svg" type="image/svg+xml">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Meu RH">
+<link rel="manifest" href="/manifest.json">
+<title>Meu RH · TenisCash</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--brand:#E5571E;--brand-dark:#c4461a;--brand-soft:#fff1e8;--ink:#1d1d1f;--muted:#6e6e73;--line:#e8e8ed;--bg:#fff;--fill:#f6f6f8;--ok:#0a843d;--warn:#b25e00;--bad:#b42318;
+  --safe-b:env(safe-area-inset-bottom,0px);--safe-t:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:'Barlow',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.4;padding-top:var(--safe-t)}
+button,input,select,textarea{font:inherit;color:inherit}
+#app{max-width:480px;margin:0 auto;padding:16px 16px calc(90px + var(--safe-b))}
+h1{font-size:22px;font-weight:800}
+.sub{color:var(--muted);font-size:14px;margin-top:2px}
+.card{background:var(--fill);border-radius:16px;padding:14px;margin-top:14px}
+.card h2{font-size:16px;font-weight:800;margin-bottom:8px}
+.per{background:#fff;border-radius:12px;padding:12px;margin-top:8px;border:1px solid var(--line)}
+.per b{font-size:20px}
+.pill{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:3px 9px;margin-left:6px}
+.p-ok{background:#e7f6ec;color:var(--ok)}.p-warn{background:#fff4e0;color:var(--warn)}.p-bad{background:#fde8e6;color:var(--bad)}.p-mute{background:#eee;color:var(--muted)}
+.muted{color:var(--muted);font-size:13px}
+label{display:block;font-size:13px;font-weight:700;color:#3a3a3c;margin-top:10px}
+input,select,textarea{width:100%;min-height:46px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:#fff;font-size:16px;margin-top:4px}
+textarea{min-height:80px}
+.row{display:flex;gap:10px}.row>*{flex:1}
+.btn{width:100%;min-height:48px;border:0;border-radius:12px;background:var(--brand);color:#fff;font-weight:800;margin-top:12px;cursor:pointer}
+.btn.ghost{background:#fff;color:var(--brand);border:1.5px solid var(--brand)}
+.btn:disabled{opacity:.55}
+.msg{font-size:14px;font-weight:600;margin-top:8px}
+.msg.bad{color:var(--bad)}.msg.ok{color:var(--ok)}.msg.warn{color:var(--warn)}
+.item{display:flex;justify-content:space-between;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:8px}
+.item small{display:block;color:var(--muted)}
+.lnk{background:none;border:0;color:var(--bad);font-weight:700;min-height:44px;padding:0 6px;cursor:pointer}
+.stars{display:flex;gap:6px;margin-top:4px}
+.stars button{flex:1;min-height:44px;border:1px solid var(--line);background:#fff;border-radius:10px;font-weight:800}
+.stars button.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+.tabs{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);display:flex;justify-content:center;padding-bottom:var(--safe-b);z-index:5}
+.tabs div{display:flex;max-width:480px;width:100%}
+.tabs button{flex:1;min-height:58px;border:0;background:none;font-weight:700;font-size:13px;color:var(--muted);cursor:pointer}
+.tabs button.on{color:var(--brand)}
+.tabs button span{display:block;font-size:20px}
+.err{padding:40px 10px;text-align:center;color:var(--muted)}
+@media (min-width:900px){body{background:#f2f2f4}#app{background:#fff;min-height:100vh;box-shadow:0 0 40px rgba(0,0,0,.08)}}
+</style>
+</head>
+<body>
+<div id="app"><div class="err">Carregando…</div></div>
+<nav class="tabs"><div>
+  <button data-t="ferias" class="on"><span>🏖️</span>Férias</button>
+  <button data-t="docs"><span>📄</span>Documentos</button>
+  <button data-t="aval"><span>⭐</span>Avaliação</button>
+</div></nav>
+<script>
+const K = new URLSearchParams(location.search).get('k');
+const TOKEN = localStorage.getItem('tc_token');
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const br = (d) => d ? d.split('-').reverse().join('/') : '';
+const url = (p) => '/api/rh/me' + p + (K ? (p.includes('?') ? '&' : '?') + 'k=' + encodeURIComponent(K) : '');
+const headers = () => (K || !TOKEN ? {} : { Authorization: 'Bearer ' + TOKEN });
+async function api(p, method = 'GET', body = null, isForm = false) {
+  const opt = { method, headers: headers(), cache: 'no-store' };
+  if (body) { if (isForm) opt.body = body; else { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); } }
+  const r = await fetch(url(p), opt); const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || 'Erro. Tente de novo.');
+  return d;
+}
+let D = null, TAB = 'ferias';
+const $ = (id) => document.getElementById(id);
+
+async function load() {
+  try { D = await api('/'); render(); }
+  catch (e) { document.getElementById('app').innerHTML = '<div class="err">' + esc(e.message) + '</div>'; }
+}
+function head() { return '<h1>Meu RH</h1><div class="sub">' + esc(D.name) + '</div>'; }
+
+function render() {
+  document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('on', b.dataset.t === TAB));
+  const app = document.getElementById('app');
+  if (TAB === 'ferias') app.innerHTML = head() + feriasHtml();
+  if (TAB === 'docs') app.innerHTML = head() + docsHtml();
+  if (TAB === 'aval') app.innerHTML = head() + avalHtml();
+  bind();
+}
+
+function feriasHtml() {
+  const v = D.vacation;
+  if (!v.admissionDate) return '<div class="card">' + esc(v.missing || 'Sem data de admissão. Fale com o Douglas.') + '</div>';
+  const per = v.periods.slice().reverse().map((p) => {
+    const st = p.overdue ? '<span class="pill p-bad">vencidas</span>' : p.dueSoon ? '<span class="pill p-warn">tirar logo</span>' : !p.complete ? '<span class="pill p-mute">em andamento</span>' : p.availableDays ? '<span class="pill p-ok">disponível</span>' : '<span class="pill p-mute">tiradas</span>';
+    return '<div class="per">' + (p.complete ? '<b>' + Math.max(0, p.availableDays - p.pendingDays) + '</b> de ' + p.rightDays + ' dias livres' : 'Completa em ' + br(addDays(p.periodEnd, 1))) + st +
+      '<div class="muted">Período ' + br(p.periodStart) + ' a ' + br(p.periodEnd) + (p.complete ? ' · tirar até ' + br(p.concessiveEnd) : '') + (p.pendingDays ? ' · ' + p.pendingDays + ' dia(s) aguardando aprovação' : '') + '</div></div>';
+  }).join('');
+  const avail = v.periods.filter((p) => p.complete && p.availableDays > 0);
+  const form = avail.length ? '<div class="card"><h2>Pedir férias</h2>' +
+    '<label>Período<select id="vp">' + avail.map((p) => '<option value="' + p.periodStart + '">' + br(p.periodStart) + ' a ' + br(p.periodEnd) + ' (' + p.availableDays + ' dias)</option>').join('') + '</select></label>' +
+    '<div class="row"><label>Começa em<input id="vs" type="date"></label><label>Quantos dias<input id="vd" type="number" min="5" max="30" value="30" inputmode="numeric"></label></div>' +
+    '<label>Vender dias (abono, até 10)<input id="vv" type="number" min="0" max="10" value="0" inputmode="numeric"></label>' +
+    '<label>Observação (opcional)<input id="vn" maxlength="300"></label>' +
+    '<div class="muted" style="margin-top:8px">Regras: até 3 partes, uma com pelo menos 14 dias e as outras com 5 ou mais. Não pode começar nos 2 dias antes de domingo ou feriado. Peça com 30 dias de antecedência.</div>' +
+    '<div class="msg" id="vm"></div><button class="btn" id="vgo">Enviar pedido</button></div>' : '<div class="card muted">Você ainda não tem férias disponíveis para pedir.</div>';
+  const reqs = (v.vacations || []).map((x) => '<div class="item"><div><b>' + br(x.startDate) + ' a ' + br(x.endDate) + '</b> · ' + x.days + ' dias' + (x.soldDays ? ' + ' + x.soldDays + ' vendidos' : '') +
+    '<small>' + (x.status === 'PENDENTE' ? 'Aguardando aprovação' : 'Aprovada ✅') + '</small></div>' + (x.status === 'PENDENTE' ? '<button class="lnk" data-cancel="' + x.id + '">Cancelar</button>' : '') + '</div>').join('');
+  return '<div class="card"><h2>Meu saldo de férias</h2>' + per + '</div>' + form + (reqs ? '<div class="card"><h2>Meus pedidos</h2>' + reqs + '</div>' : '');
+}
+function addDays(s, n) { const d = new Date(s + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+
+function docsHtml() {
+  const d = D.documents;
+  const sit = { OK: '<span class="pill p-ok">ok</span>', VENCENDO: '<span class="pill p-warn">vencendo</span>', VENCIDO: '<span class="pill p-bad">vencido</span>' };
+  const list = d.documents.map((x) => '<div class="item"><div><b>' + esc(x.typeLabel) + '</b>' + (sit[x.situation] || '') + '<small>' + esc(x.originalName || '') + (x.expiresAt ? ' · vence ' + br(x.expiresAt) : '') + '</small></div>' +
+    '<button class="lnk" style="color:var(--brand)" data-open="' + x.id + '">Ver</button></div>').join('') || '<div class="muted">Nenhum documento enviado ainda.</div>';
+  const miss = d.missing.length ? '<div class="card"><h2>Faltam ' + d.missing.length + '</h2>' + d.missing.map((m) => '<span class="pill p-warn" style="margin:4px 4px 0 0">' + esc(m.label) + '</span>').join('') + '</div>' : '';
+  const opts = Object.entries(D.docTypes).map(([k, v]) => '<option value="' + k + '"' + (d.missing[0] && d.missing[0].type === k ? ' selected' : '') + '>' + esc(v.label) + '</option>').join('');
+  return miss + '<div class="card"><h2>Enviar documento</h2><label>Qual documento<select id="dt">' + opts + '</select></label>' +
+    '<label>Foto ou PDF<input id="df" type="file" accept="application/pdf,image/jpeg,image/png,image/webp"></label>' +
+    '<label>Data do documento (opcional)<input id="di" type="date"></label>' +
+    '<div class="msg" id="dm"></div><button class="btn" id="dgo">Enviar</button></div><div class="card"><h2>Meus documentos</h2>' + list + '</div>';
+}
+
+let SELF = {};
+function avalHtml() {
+  const r = (D.reviews || [])[0];
+  if (!r) return '<div class="card muted">Nenhuma avaliação aberta agora.</div>';
+  if (r.cycleStatus !== 'ABERTO') return '<div class="card"><h2>' + esc(r.cycleName) + '</h2><div class="muted">Avaliação encerrada.</div></div>';
+  SELF = Object.assign({}, r.selfScores || {});
+  const rows = D.criteria.map(([k, l]) => '<label>' + esc(l) + '<div class="stars" data-k="' + k + '">' + [1, 2, 3, 4, 5].map((n) => '<button type="button" data-n="' + n + '" class="' + (SELF[k] === n ? 'on' : '') + '">' + n + '</button>').join('') + '</div></label>').join('');
+  return '<div class="card"><h2>Autoavaliação · ' + esc(r.cycleName) + '</h2><div class="muted">Dê uma nota de 1 a 5 para você mesmo em cada ponto.' + (r.selfDoneAt ? ' Você já respondeu; pode ajustar.' : '') + '</div>' + rows +
+    '<label>O que você quer melhorar ou aprender?<textarea id="ac" maxlength="2000">' + esc(r.selfComment || '') + '</textarea></label><div class="msg" id="am"></div><button class="btn" id="ago" data-id="' + r.id + '">Salvar autoavaliação</button></div>';
+}
+
+function bind() {
+  const vgo = $('vgo');
+  if (vgo) {
+    const check = async () => {
+      const body = { periodStart: $('vp').value, startDate: $('vs').value, days: $('vd').value, soldDays: $('vv').value };
+      if (!body.startDate) { $('vm').textContent = ''; return null; }
+      try { const c = await api('/vacations/check', 'POST', body); const m = $('vm');
+        if (c.errors.length) { m.className = 'msg bad'; m.textContent = c.errors.join(' '); }
+        else if (c.warnings.length) { m.className = 'msg warn'; m.textContent = 'Até ' + br(c.endDate) + '. Atenção: ' + c.warnings.join(' '); }
+        else { m.className = 'msg ok'; m.textContent = 'Férias de ' + br(body.startDate) + ' a ' + br(c.endDate) + '. Tudo certo.'; }
+        return c; } catch (e) { return null; }
+    };
+    ['vs', 'vd', 'vv', 'vp'].forEach((i) => $(i).addEventListener('change', check));
+    vgo.onclick = async () => {
+      vgo.disabled = true;
+      try { const r = await api('/vacations', 'POST', { periodStart: $('vp').value, startDate: $('vs').value, days: $('vd').value, soldDays: $('vv').value, note: $('vn').value });
+        await load(); TAB = 'ferias'; render(); alert('Pedido enviado! O Douglas aprova e as férias entram na sua agenda.');
+      } catch (e) { $('vm').className = 'msg bad'; $('vm').textContent = e.message; vgo.disabled = false; }
+    };
+  }
+  document.querySelectorAll('[data-cancel]').forEach((b) => b.onclick = async () => { if (!confirm('Cancelar este pedido de férias?')) return; try { await api('/vacations/' + b.dataset.cancel + '/cancel', 'POST', {}); await load(); } catch (e) { alert(e.message); } });
+  document.querySelectorAll('[data-open]').forEach((b) => b.onclick = async () => {
+    const w = window.open('', '_blank');
+    try { const r = await fetch(url('/documents/' + b.dataset.open + '/file'), { headers: headers() }); if (!r.ok) throw new Error('Não abriu.'); const blob = await r.blob(); const u = URL.createObjectURL(blob); if (w) w.location = u; else location.href = u; } catch (e) { if (w) w.close(); alert(e.message); }
+  });
+  const dgo = $('dgo');
+  if (dgo) dgo.onclick = async () => {
+    const f = $('df').files[0]; const m = $('dm');
+    if (!f) { m.className = 'msg bad'; m.textContent = 'Escolha a foto ou o PDF.'; return; }
+    if (f.size > 8 * 1024 * 1024) { m.className = 'msg bad'; m.textContent = 'Arquivo grande demais (máx. 8 MB).'; return; }
+    const fd = new FormData(); fd.append('type', $('dt').value); fd.append('issuedAt', $('di').value); fd.append('file', f);
+    dgo.disabled = true; dgo.textContent = 'Enviando…';
+    try { await api('/documents', 'POST', fd, true); await load(); TAB = 'docs'; render(); $('dm').className = 'msg ok'; $('dm').textContent = 'Documento enviado. Obrigado!'; }
+    catch (e) { m.className = 'msg bad'; m.textContent = e.message; dgo.disabled = false; dgo.textContent = 'Enviar'; }
+  };
+  document.querySelectorAll('.stars').forEach((s) => s.querySelectorAll('button').forEach((b) => b.onclick = () => {
+    SELF[s.dataset.k] = Number(b.dataset.n); s.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+  }));
+  const ago = $('ago');
+  if (ago) ago.onclick = async () => {
+    const m = $('am');
+    if (Object.keys(SELF).length < D.criteria.length) { m.className = 'msg bad'; m.textContent = 'Dê nota em todos os pontos.'; return; }
+    ago.disabled = true;
+    try { await api('/reviews/' + ago.dataset.id + '/self', 'POST', { scores: SELF, comment: $('ac').value }); await load(); TAB = 'aval'; render(); const m2 = $('am'); if (m2) { m2.className = 'msg ok'; m2.textContent = 'Salvo! Obrigado.'; } }
+    catch (e) { m.className = 'msg bad'; m.textContent = e.message; ago.disabled = false; }
+  };
+}
+document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => { TAB = b.dataset.t; if (D) render(); });
+if (!K && !TOKEN) document.getElementById('app').innerHTML = '<div class="err">Abra pelo link que chegou no seu WhatsApp ou entre no app TenisCash.</div>';
+else load();
+</script>
+</body>
+</html>
