@@ -44,7 +44,7 @@
     <span class="pill">Pendentes: <b id="kTotal">—</b></span>
     <select id="fCat">
       <option value="">Todas categorias</option>
-      <option>Calçados</option><option>Vestuário</option><option>Acessórios</option><option>INSUMO</option>
+      <option>Calçados</option><option>Roupas</option><option>Acessórios</option><option>INSUMO</option>
     </select>
     <select id="fConf">
       <option value="0">Qualquer confiança</option>
@@ -76,7 +76,7 @@
 </div>
 
 <script>
-const CATS=['Calçados','Vestuário','Acessórios','INSUMO'];
+const CATS=['Calçados','Roupas','Acessórios','INSUMO']; // dono 19/11: "Roupas", não "Vestuário"
 const GEN=['Homem','Mulher','Unissex','Menino','Menina'];
 const MODS=['Camiseta','Regata','Short','Calça','Legging','Top','Cropped','Corrida','LifeStyle','Futsal','Society','Campo','Sapatilha','Sandália','Natação','Bola','Meia','Bolsa','Prancha','Musculação / CrossFit / Hyrox','Estilo de Vida','Caminhada / Treino leve','Recuperação','Outro'];
 const TIERS=['Básica','casual','custo benefício','pro','Profissional','DryFit','máximo conforto','confortável','velocidade','Proteção UV','Iniciante','Poliamida','Treino','clássico','Outro'];
@@ -84,7 +84,8 @@ let page=0;
 
 function token(){ let t=localStorage.getItem('tc_admin_token'); if(!t){ t=prompt('Token admin (tc_admin_token):')||''; if(t) localStorage.setItem('tc_admin_token',t); } return t; }
 function api(path,opts){ return fetch('/api/admin/catalog-engine'+path,{...opts,headers:{'Content-Type':'application/json','Authorization':'Bearer '+token(),...(opts&&opts.headers||{})}}); }
-function opt(arr,v){ return arr.map(x=>`<option ${x===v?'selected':''}>${x}</option>`).join(''); }
+function opt(arr,v){ // valor fora da lista: pede escolha (não cai no 1º item calado — auditoria 19/11)
+  return (arr.includes(v)?'':'<option value="" selected>— escolher —</option>')+arr.map(x=>`<option ${x===v?'selected':''}>${x}</option>`).join(''); }
 function esc(s){ return (s||'').replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
 
 async function load(p){
@@ -116,7 +117,7 @@ function card(r){
       <div class="nm">${esc(r.name)}</div>
       <div class="br">${esc(r.brand||'—')}</div>
       <div class="fields">
-        <select class="f-cat">${opt(CATS,s.category)}</select>
+        <select class="f-cat">${opt(CATS,/^vestu/i.test(s.category||'')?'Roupas':s.category)}</select>
         <select class="f-gen">${opt(GEN,s.subcategory)}</select>
         <input class="f-mod" list="dlMod" value="${esc(s.modality||'')}">
         <input class="f-tier" list="dlTier" value="${esc(s.tier||'')}">
