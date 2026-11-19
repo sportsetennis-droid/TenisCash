@@ -57,7 +57,7 @@ function temNumeracaoInfantil(p, cat = norm(p.category)) {
 // Prova de ADULTO pela grade: pelo menos um tamanho real legível (não placeholder T-/Único-) e nenhum infantil.
 function gradeProvaAdulto(p, cat = norm(p.category)) {
   const reais = (p.tamanhos || []).map((t) => String(t || '').trim()).filter((t) => t && !/^T-/i.test(t) && !/^(U|UN|UNICO|ÚNICO|UNICA)$/i.test(t) && !/^[uú]nico-/i.test(t));
-  if (!(p.tamanhos || []).length) return !(cat === 'TENIS' || cat === 'CHUTEIRAS' || cat === 'VESTUARIO'); // acessório sem grade: ok
+  if (!(p.tamanhos || []).length) return !(cat === 'TENIS' || cat === 'CHUTEIRAS' || cat === 'VESTUARIO') && !temNumeracaoInfantil(p, cat); // acessório sem grade: só se o nome não tiver numeração infantil
   return reais.length > 0 && !temNumeracaoInfantil(p, cat);
 }
 
