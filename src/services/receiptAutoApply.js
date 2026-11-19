@@ -70,6 +70,94 @@ function deveSair(read, lot) {
   return !!(read.requiresSizeConfirmation && !String(read.confirmedSize || '').trim());
 }
 
+// ---------------------------------------------------------------------
+// RECEBIMENTO ANTERIOR À CONTAGEM NOVA (dono 18/11: "Valide todos… veja o que foi vendido
+// nesse tempo e faça a diminuição"). A contagem nova conta todas as mercadorias, mas as lojas
+// começaram pelo calçado: roupa e acessório recebidos antes dela nunca entraram no estoque e
+// ainda não foram contados (auditoria 18/11: ~1.800 peças, saldo negativo pelas vendas).
+// Entra quando: não é calçado nem insumo (calçado foi contado: tamanho sem bipe = peça que não
+// está na loja), aquele tamanho não foi bipado na contagem e a loja ainda não está contando a
+// família (menos de FAMILIA_CONTADA_MIN bipes). As vendas do tamanho entre o recebimento e o
+// início da contagem — baixa apagada quando o saldo antigo foi arquivado — são baixadas de novo,
+// uma vez (SOURCE_VENDAS). Se a contagem bipar a peça depois, o bipe pareia (não soma em dobro).
+// ---------------------------------------------------------------------
+const SOURCE_VENDAS = 'receipt-pre-round-sales';
+const FAMILIA_CONTADA_MIN = Number(process.env.RECEBIMENTO_FAMILIA_CONTADA_MIN || 20);
+const FAMILIAS_QUE_ENTRAM = new Set(['vestuario', 'acessorio']);
+function anteriorDesde() {
+  const v = Date.parse(process.env.RECEBIMENTO_ANTERIOR_DESDE || '2026-10-01T00:00:00-03:00');
+  return Number.isFinite(v) ? v : Date.parse('2026-10-01T00:00:00-03:00');
+}
+function familiaDaCategoria(cat) {
+  const c = String(cat || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim();
+  if (['TENIS', 'CHUTEIRAS', 'CHUTEIRA', 'SANDALIAS', 'SANDALIA', 'CALCADOS'].includes(c)) return 'calcado';
+  if (['VESTUARIO', 'ROUPAS', 'ROUPA'].includes(c)) return 'vestuario';
+  if (['ACESSORIOS', 'ACESSORIO'].includes(c)) return 'acessorio';
+  return 'outro'; // insumo, dropper, "a classificar"…: não entra sem conferência
+}
+const FAMILIA_SQL = {
+  calcado: "('TENIS','TÊNIS','CHUTEIRAS','CHUTEIRA','SANDALIAS','SANDÁLIAS','SANDALIA','SANDÁLIA','CALCADOS','CALÇADOS')",
+  vestuario: "('VESTUARIO','VESTUÁRIO','ROUPAS','ROUPA')",
+  acessorio: "('ACESSORIOS','ACESSÓRIOS','ACESSORIO','ACESSÓRIO')",
+};
+// cache por lote: { ps -> familia, 'fam:<f>' -> contada?, 'ps:<id>' -> bipado? }
+async function podeEntrarAnterior(tx, read, lot, round, cache) {
+  if (!lot || lot.mode !== 'receipt' || lot.status !== 'open' || !round || !round.open) return false;
+  if (deveSair(read, lot)) return false;
+  const t = new Date(read.scannedAt).getTime();
+  if (!(t < new Date(round.startedAt).getTime()) || t < anteriorDesde()) return false;
+  const ps = read.productSizeId;
+  if (!cache.has(ps)) {
+    const r = await tx.productSize.findUnique({ where: { id: ps }, select: { product: { select: { category: true } } } });
+    cache.set(ps, familiaDaCategoria(r && r.product && r.product.category));
+  }
+  const fam = cache.get(ps);
+  if (!FAMILIAS_QUE_ENTRAM.has(fam)) return false;
+  const kPs = 'ps:' + ps;
+  if (!cache.has(kPs)) {
+    const b = await tx.$queryRawUnsafe(
+      'SELECT 1 FROM "StockReplacementCheck" k JOIN "StocktakeBipe" b ON b.id = k."bipeId" WHERE k."roundId" = $1 AND k.status = \'applied\' AND k."reversedAt" IS NULL ' +
+      'AND k."appliedProductSizeId" = $2 AND b."storeId" = $3 AND b."excludedAt" IS NULL LIMIT 1', round.id, ps, lot.toStoreId);
+    cache.set(kPs, b.length > 0);
+  }
+  if (cache.get(kPs)) return false; // o tamanho foi contado: a contagem manda
+  const kFam = 'fam:' + fam;
+  if (!cache.has(kFam)) {
+    const [c] = await tx.$queryRawUnsafe(
+      'SELECT count(*)::int AS n FROM "StockReplacementCheck" k JOIN "StocktakeBipe" b ON b.id = k."bipeId" JOIN "ProductSize" s ON s.id = k."appliedProductSizeId" JOIN "Product" p ON p.id = s."productId" ' +
+      'WHERE k."roundId" = $1 AND k.status = \'applied\' AND k."reversedAt" IS NULL AND b."storeId" = $2 AND b."excludedAt" IS NULL AND upper(btrim(p.category)) IN ' + FAMILIA_SQL[fam], round.id, lot.toStoreId);
+    cache.set(kFam, (c && c.n) >= FAMILIA_CONTADA_MIN);
+  }
+  return !cache.get(kFam); // a loja já está contando essa família: a contagem manda
+}
+
+// Baixa das vendas apagadas pelo arquivamento: só para tamanho com recebimento ANTERIOR ativo
+// nesta contagem; alvo = soma das vendas (e estornos) entre o 1º recebimento anterior e o início
+// da contagem. Idempotente: grava só a diferença para o que já foi baixado.
+async function baixarVendasArquivadas(tx, storeId, productSizeId, round) {
+  if (!round || !round.open) return 0;
+  const [a] = await tx.$queryRawUnsafe(
+    'SELECT MIN(em) AS em FROM (SELECT metadata->>\'clientScanId\' AS cs, MIN(metadata->>\'scannedAt\') AS em, SUM(quantity) AS net, bool_or(metadata->>\'anteriorAContagem\' = \'true\') AS ant ' +
+    'FROM "StoreStockMovement" WHERE source IN ' + SRC_SQL + ' AND "storeId" = $1 AND "productSizeId" = $2 AND metadata->>\'roundId\' = $3 GROUP BY 1) x WHERE net > 0 AND ant',
+    storeId, productSizeId, round.id);
+  let alvo = 0;
+  if (a && a.em) {
+    const [v] = await tx.$queryRawUnsafe(
+      'SELECT COALESCE(SUM(quantity), 0)::int AS q FROM "StoreStockMovement" WHERE "storeId" = $1 AND "productSizeId" = $2 AND type ~ \'^(sale|exchange_|nuvemshop_order)\' AND "createdAt" >= $3::timestamp AND "createdAt" < $4::timestamp', // createdAt é UTC sem fuso: compara em UTC
+      storeId, productSizeId, new Date(a.em).toISOString(), new Date(round.startedAt).toISOString());
+    alvo = v ? v.q : 0;
+  }
+  const [j] = await tx.$queryRawUnsafe(
+    'SELECT COALESCE(SUM(quantity), 0)::int AS q FROM "StoreStockMovement" WHERE source = $1 AND "storeId" = $2 AND "productSizeId" = $3 AND metadata->>\'roundId\' = $4',
+    SOURCE_VENDAS, storeId, productSizeId, round.id);
+  const delta = alvo - (j ? j.q : 0);
+  if (!delta) return 0;
+  await applyStoreStockDelta(tx, { storeId, productSizeId, quantity: delta, type: 'inventory_adjustment', source: SOURCE_VENDAS,
+    reason: delta < 0 ? 'Vendas feitas antes da contagem nova (a baixa tinha sido arquivada) — recebimento anterior validado' : 'Recebimento anterior desfeito: devolve a baixa das vendas anteriores à contagem',
+    metadata: { roundId: round.id, desde: a && a.em ? a.em : null } });
+  return delta;
+}
+
 // Situação de cada leitura do lote: { clientScanId: { productSizeId, net, roundId } }
 async function aplicadoPorLeitura(tx, lotId) {
   const rows = await tx.$queryRawUnsafe(
@@ -109,6 +197,9 @@ async function aplicarLote(tx, lotId) {
   const atual = await aplicadoPorLeitura(tx, lotId);
   // planeja primeiro; trava todos os tamanhos em ordem; só então escreve
   const planos = [];
+  const cache = new Map();
+  // 'novo' = depois do início da contagem; 'anterior' = recebido antes e ainda não contado; null = não entra
+  const comoEntra = async (read) => (deveEntrar(read, lot, round) ? 'novo' : (await podeEntrarAnterior(tx, read, lot, round, cache)) ? 'anterior' : null);
   for (const read of lot.scans) {
     const ja = atual.get(read.clientScanId);
     const temEntrada = !!(ja && ja.net > 0);
@@ -116,9 +207,13 @@ async function aplicarLote(tx, lotId) {
     if (temEntrada && (deveSair(read, lot) || trocou)) {
       if (await podeDesfazer(tx, lot.toStoreId, ja, read.clientScanId)) {
         planos.push({ tipo: 'sai', read, ja });
-        if (trocou && deveEntrar(read, lot, round)) planos.push({ tipo: 'entra', read });
+        const modo = trocou ? await comoEntra(read) : null;
+        if (modo) planos.push({ tipo: 'entra', read, anterior: modo === 'anterior' });
       }
-    } else if (!temEntrada && deveEntrar(read, lot, round)) planos.push({ tipo: 'entra', read });
+    } else if (!temEntrada) {
+      const modo = await comoEntra(read);
+      if (modo) planos.push({ tipo: 'entra', read, anterior: modo === 'anterior' });
+    }
   }
   if (!planos.length) return { aplicadas: 0, desfeitas: 0 };
   await lockSizes(tx, lot.toStoreId, planos.map((x) => (x.tipo === 'sai' ? x.ja.productSizeId : x.read.productSizeId)));
@@ -131,11 +226,15 @@ async function aplicarLote(tx, lotId) {
       desfeitas++; tocados.add(x.ja.productSizeId);
     } else {
       await applyStoreStockDelta(tx, { storeId: lot.toStoreId, productSizeId: x.read.productSizeId, quantity: 1, type: 'receipt', source: SOURCE,
-        reason: 'Recebimento bipado (entra automático no estoque da loja)', metadata: { lotId, clientScanId: x.read.clientScanId, scannedAt: new Date(x.read.scannedAt).toISOString(), roundId: round.id } });
+        reason: x.anterior ? 'Recebimento anterior à contagem nova, ainda não contado (validado; dono 18/11)' : 'Recebimento bipado (entra automático no estoque da loja)',
+        metadata: { lotId, clientScanId: x.read.clientScanId, scannedAt: new Date(x.read.scannedAt).toISOString(), roundId: round.id, ...(x.anterior ? { anteriorAContagem: true } : {}) } });
       aplicadas++; tocados.add(x.read.productSizeId);
     }
   }
-  if (round && round.open) for (const ps of [...tocados].sort()) await parear(tx, lot.toStoreId, ps, round);
+  if (round && round.open) {
+    for (const ps of [...tocados].sort()) await baixarVendasArquivadas(tx, lot.toStoreId, ps, round);
+    for (const ps of [...tocados].sort()) await parear(tx, lot.toStoreId, ps, round);
+  }
   return { aplicadas, desfeitas };
 }
 
@@ -144,8 +243,9 @@ async function recebimentosAtivos(tx, storeId, productSizeId, round) {
   const rows = await tx.$queryRawUnsafe(
     'SELECT metadata->>\'clientScanId\' AS cs, MIN(metadata->>\'scannedAt\') AS em, SUM(quantity)::int AS net FROM "StoreStockMovement" ' +
     'WHERE source IN ' + SRC_SQL + ' AND "storeId" = $1 AND "productSizeId" = $2 GROUP BY 1 HAVING MAX(metadata->>\'roundId\') = $3', storeId, productSizeId, round.id);
-  const inicio = new Date(round.startedAt).getTime();
-  return rows.filter((r) => r.net > 0 && r.em && new Date(r.em).getTime() >= inicio)
+  // todas as entradas desta contagem (o HAVING já prende ao roundId), inclusive recebimento ANTERIOR
+  // validado: se a contagem bipar a peça depois, ela pareia com ele e não soma em dobro.
+  return rows.filter((r) => r.net > 0 && r.em)
     .map((r) => ({ cs: r.cs, em: new Date(r.em).getTime() }))
     .sort((a, b) => a.em - b.em || String(a.cs).localeCompare(String(b.cs)));
 }
@@ -265,4 +365,4 @@ function iniciarRecebimentoAutomatico(db) {
 }
 function estadoRecebimentoAutomatico() { return JSON.parse(JSON.stringify(state)); }
 
-module.exports = { desde, deveSair, SOURCE, SOURCE_REVERSE, SOURCE_PAIR, SOURCE_UNPAIR, aplicarLote, parear, antesDeExcluirBipe, jaEntrouPorTamanho, jaEntrouPorLeituras, aplicarTodos, iniciarRecebimentoAutomatico, estadoRecebimentoAutomatico, deveEntrar, replacementRound };
+module.exports = { desde, anteriorDesde, familiaDaCategoria, podeEntrarAnterior, baixarVendasArquivadas, SOURCE_VENDAS, deveSair, SOURCE, SOURCE_REVERSE, SOURCE_PAIR, SOURCE_UNPAIR, aplicarLote, parear, antesDeExcluirBipe, jaEntrouPorTamanho, jaEntrouPorLeituras, aplicarTodos, iniciarRecebimentoAutomatico, estadoRecebimentoAutomatico, deveEntrar, replacementRound };
