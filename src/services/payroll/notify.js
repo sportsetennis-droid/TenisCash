@@ -15,7 +15,9 @@ function defaultSender() {
   const wa = require('../../whatsapp');
   return { text: (phone, msg) => wa.sendCustomMessage(phone, msg), document: (phone, url, name, caption) => wa.sendEvolutionMedia(phone, url, name, caption) };
 }
-function enabled() { return String(process.env.PAYROLL_WHATSAPP || 'on').toLowerCase() !== 'off'; }
+// Com o "Meu pagamento" desativado (dono, 19/11/2026) nada de pagamento vai para o vendedor.
+function selfService() { return ['1', 'on', 'true'].includes(String(process.env.MEU_PAGAMENTO || '').toLowerCase()); }
+function enabled() { return selfService() && String(process.env.PAYROLL_WHATSAPP || 'on').toLowerCase() !== 'off'; }
 function firstName(name) { return String(name || '').trim().split(/\s+/)[0] || ''; }
 
 async function notifyClosed(prisma, payslipId, { sender = defaultSender(), nowMs = Date.now() } = {}) {

@@ -23,6 +23,8 @@ const MARK_KINDS = ['FOLGA', 'FOLGA_COMPENSATORIA', 'ATESTADO', 'ABONO', 'FALTA_
 const PUNCH_TYPES = ['entry', 'break_start', 'break_end', 'exit'];
 const ADMIN_ROLES = ['admin', 'superadmin', 'manager'];
 
+function selfServiceEnabled() { return ['1', 'on', 'true'].includes(String(process.env.MEU_PAGAMENTO || '').toLowerCase()); }
+
 function createPayrollRouter({ prisma = defaultPrisma, isOwner = (req) => isFinOwner(prisma, req), sender, now = () => Date.now() } = {}) {
   const router = express.Router();
   const ensure = createPayrollSchemaReadiness(prisma);
@@ -42,7 +44,13 @@ function createPayrollRouter({ prisma = defaultPrisma, isOwner = (req) => isFinO
     } catch (err) { return fail(res, err, 'file'); }
   });
 
+  // "Meu pagamento" do vendedor: DESATIVADO por ordem do dono (19/11/2026).
+  // Religar só com ordem dele: MEU_PAGAMENTO=1 no Railway (sem deploy).
+  router.get('/self-service', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json({ enabled: selfServiceEnabled() }); });
+
   router.use(authMiddleware, ensure.middleware);
+  router.use('/me', (_req, res, next) => (selfServiceEnabled() ? next()
+    : res.status(403).json({ error: 'Meu pagamento está desativado.', disabled: true })));
 
   const ownerOnly = async (req, res, next) => {
     try { if (await isOwner(req)) return next(); return res.status(403).json({ error: 'Somente o dono pode fazer esta operação' }); }
