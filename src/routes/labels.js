@@ -707,7 +707,8 @@ const LABEL_COLOR_WORDS = new Set([
 ]);
 
 const LABEL_COLOR_NAME_ALIASES = new Map(Object.entries({
-  preto: 'PRETO', preta: 'PRETO', pre: 'PRETO', pt: 'PRETO', pto: 'PRETO', pta: 'PRETO', ptr: 'PRETO', blk: 'PRETO', black: 'PRETO',
+  preto: 'PRETO', preta: 'PRETO', pre: 'PRETO', pt: 'PRETO', pto: 'PRETO', ptr: 'PRETO', blk: 'PRETO', black: 'PRETO',
+  pta: 'PRATA', // Umbro e FILA (únicas marcas com PTA): PTO/PTA/VRM = Preto/Prata/Vermelho no umbro.com.br (18/11/2026)
   branco: 'BRANCO', branca: 'BRANCO', bc: 'BRANCO', bco: 'BRANCO', bca: 'BRANCO', br: 'BRANCO', blanc: 'BRANCO', white: 'BRANCO', whit: 'BRANCO',
   azul: 'AZUL', az: 'AZUL', azl: 'AZUL', azlc: 'AZUL CLARO', blue: 'AZUL', mar: 'MARINHO', marinho: 'MARINHO', mr: 'MARINHO', mrn: 'MARINHO', navy: 'MARINHO', nvy: 'MARINHO', royal: 'ROYAL',
   verde: 'VERDE', ve: 'VERDE', verd: 'VERDE', vd: 'VERDE', vdc: 'VERDE', vrd: 'VERDE', vrdl: 'VERDE LIMA', green: 'VERDE', lima: 'LIMA', lime: 'LIMA',

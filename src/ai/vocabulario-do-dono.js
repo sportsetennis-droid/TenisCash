@@ -24,8 +24,15 @@ const LUGAR_CERTO = 'Cada agente confere se TODO produto sob sua responsabilidad
 
 const GERENTE_RESPONSAVEL = "Cada gerente de marca é RESPONSÁVEL pelos produtos da sua marca: cuidar do estoque, preencher o cadastro e colocar na Nuvemshop. Ele preenche SOZINHO só o que tem prova escrita (categoria pelo tipo do nome, público MASCULINO/FEMININO/JR do nome, modalidade FUTSAL/SOCIETY/CAMPO da chuteira), nunca sobrescreve o que já está preenchido e registra a prova no card; aciona os agentes de foto oficial e de descrição para todo card com estoque nas lojas do site e fora dele; o que exige julgamento (especialidade, cor sem prova, foto, descrição) vira pendência/proposta para o dono. Publicar continua pela trava oficial e pela subida automática; preço nunca é tocado (dono, 18/11/2026).";
 
-const REGRAS_DO_DONO = [BIPADO, CINCO_FOTOS, NUVEMSHOP_AUTOMATICA, TESTE_E_AUDITORIA, LUGAR_CERTO, GERENTE_RESPONSAVEL];
+const SITE_DA_MARCA = 'Se a NF-e (ou a caixa) NÃO traz o dado — cor por extenso, foto, o significado de uma sigla de cor — o agente PESQUISA NO SITE OFICIAL DA MARCA pelo CÓDIGO EXATO do card ' +
+  '(código de barras; senão a referência/cProd) antes de dizer que não tem. Lojas oficiais VTEX respondem em /api/catalog_system/pub/products/search?fq=alternateIds_Ean:<EAN13> ' +
+  '(FILA e Umbro também por fq=productId:<cProd>; Puma/Asics pela Drastosa, a fornecedora; Adidas pela página da REF). Só vale o item com o MESMO código; a cor do item vence a do produto; ' +
+  '"cor predominante" é filtro e não vale; tamanhos com cores diferentes = conflito; nome comercial sem cor em português ("Frosted Dew") só vira cor se uma página disser a cor. ' +
+  'Produto fora de linha: versão arquivada da página oficial (web.archive.org). Grava com a fonte no card (colorEvidencia) e a cor antiga em colorRaw; sigla confirmada entra no dicionário da marca (colorName.js). ' +
+  'Sem página do código exato: fica pendente para a loja conferir na caixa — nunca chutar (dono, 18/11/2026). Ferramenta: src/services/corOficialMarca.js; o gerente de cada marca já usa de hora em hora.';
+
+const REGRAS_DO_DONO = [BIPADO, CINCO_FOTOS, NUVEMSHOP_AUTOMATICA, TESTE_E_AUDITORIA, LUGAR_CERTO, GERENTE_RESPONSAVEL, SITE_DA_MARCA];
 
 const VOCABULARIO_DO_DONO = ['VOCABULÁRIO E REGRAS DO DONO:', ...REGRAS_DO_DONO.map((r) => '- ' + r)].join('\n');
 
-module.exports = { BIPADO, CINCO_FOTOS, NUVEMSHOP_AUTOMATICA, TESTE_E_AUDITORIA, LUGAR_CERTO, GERENTE_RESPONSAVEL, REGRAS_DO_DONO, VOCABULARIO_DO_DONO };
+module.exports = { BIPADO, CINCO_FOTOS, NUVEMSHOP_AUTOMATICA, TESTE_E_AUDITORIA, LUGAR_CERTO, GERENTE_RESPONSAVEL, SITE_DA_MARCA, REGRAS_DO_DONO, VOCABULARIO_DO_DONO };
