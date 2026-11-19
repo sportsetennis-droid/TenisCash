@@ -15,7 +15,7 @@ module.exports = {
   id: 'conteudo.foto-oficial',
   camada: 'analista',
   missao: 'Montar a busca exata da foto oficial de um card sem foto (marca, referência exata e cor).',
-  escuta: ['nuvem.incompleto'],
+  escuta: ['nuvem.incompleto', 'marca.cadastro-incompleto'],
   emite: ['proposta.foto'],
   limiar: 0,
   custo: { tipo: 'ia-barata' },
@@ -49,7 +49,7 @@ module.exports = {
       dados: {
         chave: 'foto:' + p.id,
         titulo: 'Buscar foto oficial: ' + marca + ' ' + ref + ' (' + cor + ')',
-        descricao: 'Card publicado sem foto. Buscar a foto OFICIAL pelo código exato e conferir a cor olhando a imagem antes de gravar. '
+        descricao: (sinal.tipo === 'marca.cadastro-incompleto' ? 'Card com estoque nas lojas do site, fora da Nuvemshop por falta de foto (pedido do gerente da marca).' : 'Card publicado sem foto.') + ' Buscar a foto OFICIAL pelo código exato e conferir a cor olhando a imagem antes de gravar. '
           + 'Não usar foto de revendedor que mostre outra cor; sem foto certa, melhor ficar sem foto.',
         risco: 'baixo',
         acao: { nome: 'rna.registrar', args: {} },

@@ -58,7 +58,7 @@ module.exports = {
   id: 'conteudo.descricao',
   camada: 'analista',
   missao: 'Redigir a descrição de um card sem descrição usando só os dados reais do card.',
-  escuta: ['nuvem.incompleto'],
+  escuta: ['nuvem.incompleto', 'marca.cadastro-incompleto'],
   emite: ['proposta.descricao'],
   limiar: 0,
   custo: { tipo: 'ia-barata' },
@@ -79,6 +79,16 @@ module.exports = {
       return [{ tipo: 'dado-faltante', dados: { chave: 'descricao:' + p.id, productId: p.id, campos: ['nome', 'marca'].filter((k) => !dados[k]), motivo: 'sem nome/marca no card não há descrição sem inventar' } }];
     }
 
+    // não gasta IA se já existe proposta pendente (ou recusada há pouco) para este card (auditoria 18/11)
+    const diasRecusa = Number(process.env.RNA_ESPERA_REJEITADA_DIAS || 14);
+    const jaTem = await ler.aIApproval.findFirst({ where: { type: 'rna_descricao', payload: { path: ['rna', 'chave'], equals: 'descricao:' + p.id },
+      OR: [{ status: 'pending' }, { status: 'rejected', decidedAt: { gte: new Date(Date.now() - diasRecusa * 86400000) } }] }, select: { id: true } }).catch(() => null);
+    if (jaTem) return [];
+    // cota do dia deste agente cheia: a proposta não seria criada — não gasta IA à toa
+    const inicioDia = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Fortaleza' })); inicioDia.setHours(0, 0, 0, 0);
+    const desdeHoje = new Date(Date.now() - (new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Fortaleza' })) - inicioDia));
+    const feitasHoje = await ler.aIApproval.count({ where: { type: { startsWith: 'rna_' }, createdAt: { gte: desdeHoje }, payload: { path: ['rna', 'neuronio'], equals: 'conteudo.descricao' } } }).catch(() => 0);
+    if (feitasHoje >= Number(process.env.RNA_PROPOSTAS_DIA_NEURONIO || 20)) return [];
     let textoFinal = null; let origem = 'modelo-fixo'; let recusado = null;
     if (pensar) {
       const r = await pensar({
@@ -102,7 +112,7 @@ module.exports = {
       dados: {
         chave: 'descricao:' + p.id,
         titulo: 'Descrição para ' + [dados.marca, dados.nome].join(' ').slice(0, 150),
-        descricao: 'Card publicado sem descrição. Texto montado só com os dados do card' + (recusado ? ' (texto da IA recusado pela trava anti-chute: ' + recusado.join('; ') + ')' : '') + '. Ao aprovar, grava só se o card continuar sem descrição.',
+        descricao: (sinal.tipo === 'marca.cadastro-incompleto' ? 'Card com estoque nas lojas do site, fora da Nuvemshop por falta de descrição (pedido do gerente da marca).' : 'Card publicado sem descrição.') + ' Texto montado só com os dados do card' + (recusado ? ' (texto da IA recusado pela trava anti-chute: ' + recusado.join('; ') + ')' : '') + '. Ao aprovar, grava só se o card continuar sem descrição.',
         risco: 'baixo',
         acao: { nome: 'nuvem.aplicar-descricao', args: { productId: p.id, texto: textoFinal } },
         previa: { productId: p.id, sku: p.sku, campo: 'longDescription', de: null, para: textoFinal, origem },

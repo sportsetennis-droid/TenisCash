@@ -1,0 +1,163 @@
+'use strict';
+// =====================================================================
+// CUIDADOR DE CADASTRO DA MARCA — regra 31 (dono, 18/11/2026)
+// "Cada agente por marca precisa saber preencher e cuidar do seu estoque e
+//  inclusive ser responsável de colocar na Nuvemshop."
+//
+// O gerente de cada marca PREENCHE SOZINHO o que tem prova escrita no próprio
+// card (nunca chuta, nunca sobrescreve o que já está preenchido):
+//   - categoria  ← o TIPO escrito no nome (régua da regra 30)
+//   - público    ← MASCULINO/FEMININO/JR escrito no nome (JR só vira Menino em
+//                  Chuteiras, único nó infantil dessa árvore; Tênis precisa do gênero escrito)
+//   - modalidade ← FUTSAL/SOCIETY/CAMPO escrito no nome da chuteira
+// O que exige julgamento (especialidade, cor sem prova, foto, descrição) vira
+// pendência/proposta para o dono. Publicar continua automático pela trava oficial
+// (subida automática de hora em hora); preço nunca é tocado.
+// Só cuida de card ATIVO com estoque físico nas lojas do site e ainda fora dele.
+// =====================================================================
+const { tipoDoNome, modalidadeChuteira, publicoDoNome } = require('../ai/rede/regras/local-certo');
+const { mergeAiContext } = require('./aiContextMerge');
+
+const norm = (s) => String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
+// MESMA definição de "vazio" no plano e na gravação (auditoria 18/11)
+const VAZIOS = new Set(['', 'A CLASSIFICAR', 'A DEFINIR', 'NAO DEFINIDO', 'SEM MARCA']);
+const vazio = (v) => VAZIOS.has(norm(v));
+
+// Só valores que existem na ÁRVORE OFICIAL (scripts/seed-category-tree.js), por categoria.
+// Sandálias (categoria) e Unissex não estão na árvore: o gerente não preenche — vai para o dono.
+const CATEGORIA_DO_TIPO = { 'tênis': 'Tênis', chuteira: 'Chuteiras', 'acessório': 'Acessórios', roupa: 'Vestuário' };
+const PUBLICO_DA_ARVORE = {
+  TENIS: { masculino: 'Homem', feminino: 'Feminino', infantil_masculino: 'Menino', infantil_feminino: 'Menina' },
+  CHUTEIRAS: { masculino: 'Homem', infantil_masculino: 'Menino', infantil_sem_genero: 'Menino' }, // árvore: só Homem/Menino
+  VESTUARIO: { masculino: 'Homem', feminino: 'Mulher', infantil_masculino: 'Menino', infantil_feminino: 'Menina' },
+  ACESSORIOS: { masculino: 'Homem', feminino: 'Mulher', infantil_masculino: 'Menino', infantil_feminino: 'Menina' },
+};
+const MODALIDADE = { FUTSAL: 'Futsal', SOCIETY: 'Society', CAMPO: 'Campo' };
+
+// numeração infantil escrita no nome ("28/33") ou na grade do card (calçado < 34): nunca vira adulto
+// Numeração infantil: calçado 15–33; roupa/acessório 1–16 ou idade ("10A"). Vale no nome e na grade.
+function temNumeracaoInfantil(p, cat = norm(p.category)) {
+  const nome = norm(p.name);
+  // meia/meião usa a numeração do PÉ (19/22, 23/26…): mesma régua do calçado
+  const calcado = cat === 'TENIS' || cat === 'CHUTEIRAS' || /\b(MEIAS?|MEIAO|MEIOES)\b/.test(nome);
+  const infantilNum = (n) => (calcado ? n >= 15 && n <= 33 : n >= 1 && n <= 16);
+  if (/(?<![A-Z0-9])\d{1,2}\s?A(?![A-Z0-9])/.test(nome)) return true; // "10A", "7A/14A"
+  const nums = [...nome.matchAll(/(?<![\d.,])(\d{1,2})(?:\s*[/-]\s*(\d{1,2}))?(?![\d.,])/g)].flatMap((m) => [m[1], m[2]]).filter(Boolean).map(Number);
+  // no nome, só faixa "a/b" conta como grade (número solto pode ser modelo: "PEGASUS 41", "GEL 27")
+  const faixas = [...nome.matchAll(/(?<![\d.,])(\d{1,2})\s*[/-]\s*(\d{1,2})(?![\d.,])/g)].flatMap((m) => [Number(m[1]), Number(m[2])]);
+  if (faixas.some(infantilNum)) return true;
+  if (calcado && nums.some((n) => n >= 15 && n <= 33)) return true;
+  // grade: cada número de uma faixa ("27/28", "19-22") é conferido
+  return (p.tamanhos || []).some((t) => {
+    const s = String(t).trim().toUpperCase();
+    if (/^\d{1,2}\s?A$/.test(s)) return true;
+    return s.split(/\s*[/-]\s*/).some((x) => { const n = Number(x.replace(',', '.')); return x !== '' && Number.isFinite(n) && infantilNum(n); });
+  });
+}
+// Prova de ADULTO pela grade: pelo menos um tamanho real legível (não placeholder T-/Único-) e nenhum infantil.
+function gradeProvaAdulto(p, cat = norm(p.category)) {
+  const reais = (p.tamanhos || []).map((t) => String(t || '').trim()).filter((t) => t && !/^T-/i.test(t) && !/^(U|UN|UNICO|ÚNICO|UNICA)$/i.test(t) && !/^[uú]nico-/i.test(t));
+  if (!(p.tamanhos || []).length) return !(cat === 'TENIS' || cat === 'CHUTEIRAS' || cat === 'VESTUARIO') && !temNumeracaoInfantil(p, cat); // acessório sem grade: só se o nome não tiver numeração infantil
+  return reais.length > 0 && !temNumeracaoInfantil(p, cat);
+}
+
+// O que dá para preencher deste card, só com prova escrita. Devolve { mudancas, provas }.
+function planejar(p) {
+  const ctx = (p.aiContext && typeof p.aiContext === 'object' && !Array.isArray(p.aiContext)) ? p.aiContext : {};
+  const cls = ctx.classification || {};
+  const mudancas = {}; const provas = [];
+  let categoria = p.category;
+  if (vazio(categoria)) {
+    const t = tipoDoNome(p.name);
+    if (t && CATEGORIA_DO_TIPO[t.tipo]) { categoria = CATEGORIA_DO_TIPO[t.tipo]; mudancas.category = categoria; provas.push(`categoria ${categoria}: nome diz "${t.palavra}"`); }
+  }
+  const cat = norm(categoria);
+  const arvore = PUBLICO_DA_ARVORE[cat];
+  if (vazio(p.subcategory) && arvore) {
+    const pub = publicoDoNome(p.name);
+    let chaveArv = null;
+    if (pub.infantil) chaveArv = pub.genero ? 'infantil_' + pub.genero : 'infantil_sem_genero';
+    else if (pub.genero && gradeProvaAdulto(p, cat)) chaveArv = pub.genero; // adulto só com grade real e sem numeração infantil
+    const sub = chaveArv ? arvore[chaveArv] : null; // sem nó na árvore (ex.: chuteira feminina) = não preenche
+    if (sub) { mudancas.subcategory = sub; provas.push(`público ${sub}: nome diz ${pub.infantil ? 'infantil' + (pub.genero ? ' ' + pub.genero : '') : pub.genero}`); }
+  }
+  if (cat === 'CHUTEIRAS' && vazio(cls.modality)) {
+    const mod = modalidadeChuteira(p.name);
+    if (mod) { mudancas.modality = MODALIDADE[mod]; provas.push(`modalidade ${MODALIDADE[mod]}: nome diz ${mod}`); }
+  }
+  return { mudancas, provas };
+}
+
+// O que ainda falta e só o dono/loja resolve (para o gerente mostrar).
+function pendencias(p, mudancas = {}) {
+  const ctx = (p.aiContext && typeof p.aiContext === 'object') ? p.aiContext : {};
+  const cls = ctx.classification || {};
+  const f = [];
+  if (vazio(mudancas.category || p.category)) f.push('categoria');
+  if (vazio(mudancas.subcategory || p.subcategory)) f.push('público (subcategoria)');
+  if (vazio(mudancas.modality || cls.modality)) f.push('modalidade');
+  if (vazio(cls.tier)) f.push('especialidade');
+  if (!String(ctx.color || '').trim()) f.push('cor');
+  return f;
+}
+
+// Cards de uma marca (ou todas) com estoque físico nas lojas do site e fora da Nuvemshop.
+async function candidatos(db, { marca = null, storeIds = [] } = {}) {
+  if (!storeIds.length) return [];
+  return db.$queryRawUnsafe(
+    'SELECT p.id, p.name, p.brand, p.category, p.subcategory, p."aiContext", ARRAY(SELECT ps.size FROM "ProductSize" ps WHERE ps."productId" = p.id) AS tamanhos FROM "Product" p ' +
+    'WHERE p.active = true AND ($1::text IS NULL OR upper(p.brand) = upper($1)) ' +
+    ' AND EXISTS (SELECT 1 FROM "StoreStock" ss JOIN "ProductSize" ps ON ps.id = ss."productSizeId" WHERE ps."productId" = p.id AND ss.stock > 0 AND ss."storeId" = ANY($2::text[])) ' +
+    ' AND NOT EXISTS (SELECT 1 FROM "NuvemshopProductMapping" m WHERE m."localProductId" = p.id AND m."syncStatus" <> \'hidden-invalid\')',
+    marca, storeIds);
+}
+
+// Grava UM campo só se ele continuar exatamente como foi lido (vazio). Devolve true se gravou.
+async function gravarSeIgual(db, id, campo, lido, novo) {
+  const r = await db.product.updateMany({ where: { id, [campo]: lido == null ? null : lido }, data: { [campo]: novo } });
+  return r.count === 1;
+}
+
+async function cuidar(db, { marca = null, aplicar = true, agora = new Date() } = {}) {
+  const { nuvemshopStockStoreIds } = require('./nuvemshopEligibility');
+  const lista = await candidatos(db, { marca, storeIds: nuvemshopStockStoreIds() });
+  const res = { cards: lista.length, preenchidos: 0, campos: 0, itens: [] };
+  for (const p of lista) {
+    const { mudancas, provas } = planejar(p);
+    if (!Object.keys(mudancas).length) continue;
+    if (!aplicar) { res.preenchidos++; res.campos += Object.keys(mudancas).length; if (res.itens.length < 50) res.itens.push({ productId: p.id, nome: p.name, marca: p.brand, mudancas, provas }); continue; }
+    // grava campo a campo, cada um só se continuar como foi lido; registra SÓ o que foi gravado
+    const feito = {}; const provasFeitas = [];
+    const prova = (k) => provas.find((x) => x.startsWith({ category: 'categoria', subcategory: 'público', modality: 'modalidade' }[k])) || null;
+    let categoriaOk = true;
+    if (mudancas.category) { categoriaOk = await gravarSeIgual(db, p.id, 'category', p.category, mudancas.category); if (categoriaOk) { feito.category = mudancas.category; provasFeitas.push(prova('category')); } }
+    // público e modalidade dependem da categoria: só seguem se ela ficou como planejado
+    if (categoriaOk && mudancas.subcategory && await gravarSeIgual(db, p.id, 'subcategory', p.subcategory, mudancas.subcategory)) { feito.subcategory = mudancas.subcategory; provasFeitas.push(prova('subcategory')); }
+    if (categoriaOk && mudancas.modality) {
+      // atômico: só a chave modality dentro de classification, e só se continuar vazia (não apaga edição do meio)
+      const n = await db.$executeRawUnsafe(
+        'UPDATE "Product" SET "aiContext" = COALESCE("aiContext", \'{}\'::jsonb) || jsonb_build_object(\'classification\', COALESCE("aiContext"->\'classification\', \'{}\'::jsonb) || jsonb_build_object(\'modality\', $2::text)) ' +
+        'WHERE id = $1 AND (jsonb_typeof("aiContext") = \'object\' OR "aiContext" IS NULL) AND upper(btrim(COALESCE("aiContext"->\'classification\'->>\'modality\', \'\'))) IN (\'\', \'A CLASSIFICAR\', \'A DEFINIR\', \'NAO DEFINIDO\', \'NÃO DEFINIDO\')',
+        p.id, mudancas.modality);
+      if (n === 1) { feito.modality = mudancas.modality; provasFeitas.push(prova('modality')); }
+    }
+    if (!Object.keys(feito).length) continue;
+    res.preenchidos++; res.campos += Object.keys(feito).length;
+    if (res.itens.length < 50) res.itens.push({ productId: p.id, nome: p.name, marca: p.brand, mudancas: feito, provas: provasFeitas });
+    await mergeAiContext(db, p.id, { preenchidoPeloGerente: { em: agora.toISOString(), campos: feito, provas: provasFeitas.filter(Boolean) } });
+  }
+  return res;
+}
+
+const state = { lastRunAt: null, lastResult: null, lastError: null };
+function iniciarCuidadorDeMarca(db) {
+  if (process.env.CUIDADOR_DE_MARCA === '0') { console.log('[cuidador de marca] desligado (CUIDADOR_DE_MARCA=0)'); return; }
+  const rodar = () => cuidar(db).then((r) => { state.lastRunAt = new Date().toISOString(); state.lastResult = { cards: r.cards, preenchidos: r.preenchidos, campos: r.campos }; state.lastError = null; if (r.preenchidos) console.log('[cuidador de marca]', JSON.stringify(state.lastResult)); })
+    .catch((e) => { state.lastError = e.message; console.warn('[cuidador de marca] falhou:', e.message); });
+  setTimeout(rodar, 4 * 60 * 1000);
+  setInterval(rodar, 60 * 60 * 1000);
+  console.log('[cuidador de marca] ligado: cada marca preenche sozinha o que tem prova escrita (de hora em hora)');
+}
+function estadoCuidadorDeMarca() { return JSON.parse(JSON.stringify(state)); }
+
+module.exports = { temNumeracaoInfantil, gradeProvaAdulto, planejar, pendencias, candidatos, cuidar, iniciarCuidadorDeMarca, estadoCuidadorDeMarca };

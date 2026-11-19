@@ -719,6 +719,8 @@ app.get('/api/health', (req, res) => {
   try { whatsappWebhookAuth = require('./routes/whatsapp').webhookAuthStats || null; } catch (_) {}
   let nuvemshopCardMirror = null;
   try { nuvemshopCardMirror = require('./services/nuvemshopCardMirror').getNuvemshopCardMirrorState(); } catch (_) {}
+  let cuidadorDeMarca = null;
+  try { cuidadorDeMarca = require('./services/cuidadorDeMarca').estadoCuidadorDeMarca(); } catch (_) {}
   let recebimentoAutomatico = null;
   try { recebimentoAutomatico = require('./services/receiptAutoApply').estadoRecebimentoAutomatico(); } catch (_) {}
   let qrOffers = null;
@@ -735,6 +737,7 @@ app.get('/api/health', (req, res) => {
     version: '1.0.0',
     nuvemshopCatalog,
     recebimentoAutomatico,
+    cuidadorDeMarca,
     nuvemshopAutoUpload,
     nuvemshopCardMirror,
     whatsappWebhookAuth,
@@ -2376,6 +2379,8 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   try { require('./services/nuvemshopAutoUpload').startNuvemshopAutoUpload(); } catch (e) { console.error('[nsAutoUpload] falha ao iniciar:', e.message); }
   // Toda mudança do card publicado vai sozinha pra Nuvemshop (dono 2026-11-18)
   try { require('./services/nuvemshopCardMirror').startNuvemshopCardMirror(); } catch (e) { console.error('[nsCardMirror] falha ao iniciar:', e.message); }
+  // Cada gerente de marca preenche sozinho o cadastro que tem prova escrita (regra 31, dono 2026-11-18)
+  try { require('./services/cuidadorDeMarca').iniciarCuidadorDeMarca(require('./middleware').prisma); } catch (e) { console.error('[cuidador de marca] falha ao iniciar:', e.message); }
   // NF-e de compra baixando sozinha da SEFAZ (dono 18/11/2026). NFE_DIST=0 desliga.
   try { require('./services/nfeDistribuicao').start(require('./middleware').prisma); } catch (e) { console.error('[nfe-dist] falha ao iniciar:', e.message); }
   // Recebimento bipado entra sozinho no estoque da loja (dono 2026-11-18)

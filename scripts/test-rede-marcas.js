@@ -33,7 +33,7 @@ async function partA() {
     assert.ok(n, 'faltou marca.gerente');
     assert.strictEqual(n.custo.tipo, 'regra');
     assert.strictEqual(n.permissao, 'ler');
-    assert.deepStrictEqual(n.emite, ['marca.relatorio']);
+    assert.deepStrictEqual(n.emite, ['marca.relatorio', 'marca.cadastro-incompleto']);
     assert.ok(n.escuta.includes('relogio.diario') && n.escuta.includes('marca.pedir'));
   });
   await t('regra 30 — lugar certo: tipo escrito no nome × categoria, modalidade da chuteira, público; sem chute', () => {
@@ -108,7 +108,7 @@ async function partB() {
   const atras = (d) => new Date(agora - d * DIA);
 
   async function limpar() {
-    await prisma.stocktakeBipe.deleteMany({}); await prisma.stocktakeRound.deleteMany({});
+    await prisma.aIApproval.deleteMany({ where: { type: 'rna_descricao' } }).catch(() => {}); await prisma.stocktakeBipe.deleteMany({}); await prisma.stocktakeRound.deleteMany({});
     await prisma.nuvemshopProductMapping.deleteMany({});
     await prisma.storeStockMovement.deleteMany({}); await prisma.saleItem.deleteMany({}); await prisma.sale.deleteMany({});
     await prisma.storeStock.deleteMany({}); await prisma.productSize.deleteMany({}); await prisma.product.deleteMany({}); await prisma.store.deleteMany({});
@@ -183,11 +183,12 @@ async function partB() {
 
   const ler = ferramentas.soLeitura(prisma);
   const sinais = await gerente.disparar({ sinal: { tipo: 'relogio.diario', dados: {} }, ler, agora: new Date(agora) });
-  const R = Object.fromEntries(sinais.map((s) => [s.dados.marca, s.dados]));
+  const relatorios = sinais.filter((s) => s.tipo === 'marca.relatorio'); // os pedidos de cadastro (regra 31) têm teste próprio
+  const R = Object.fromEntries(relatorios.map((s) => [s.dados.marca, s.dados]));
 
   await t('1 relatório por marca: HOKA (3 grafias juntas, 5 cards) e PENALTY; sem marca e inativo ficam fora', () => {
     assert.deepStrictEqual(Object.keys(R).sort(), ['HOKA', 'PENALTY']);
-    assert.ok(sinais.every((s) => s.tipo === 'marca.relatorio' && s.dados.chave.startsWith('marca|')));
+    assert.ok(relatorios.length === 2 && relatorios.every((s) => s.dados.chave.startsWith('marca|')));
     assert.strictEqual(R.HOKA.cards, 5);
     assert.deepStrictEqual(R.HOKA.nomes.sort(), ['HOKA', 'Hoka', 'hoka']);
   });
@@ -281,8 +282,10 @@ async function partB() {
   });
   await t('pedido sob demanda (marca.pedir "hoka") gera só a HOKA; marca indefinida não inventa relatório', async () => {
     const s = await gerente.disparar({ sinal: { tipo: 'marca.pedir', dados: { marca: 'hoka' } }, ler, agora: new Date(agora) });
-    assert.deepStrictEqual(s.map((x) => x.dados.marca), ['HOKA']);
-    assert.ok(s[0].dados.sobDemanda);
+    const rel = s.filter((x) => x.tipo === 'marca.relatorio');
+    assert.deepStrictEqual(rel.map((x) => x.dados.marca), ['HOKA']);
+    assert.ok(rel[0].dados.sobDemanda);
+    assert.ok(s.filter((x) => x.tipo === 'marca.cadastro-incompleto').every((x) => x.dados.marca === 'HOKA'), 'pedido sob demanda só aciona a marca pedida');
     const v = await gerente.disparar({ sinal: { tipo: 'marca.pedir', dados: { marca: 'A DEFINIR' } }, ler, agora: new Date(agora) });
     assert.strictEqual(v.length, 1); assert.ok(v[0].dados.erro);
   });
@@ -291,6 +294,120 @@ async function partB() {
     await gerente.disparar({ sinal: { tipo: 'relogio.diario', dados: {} }, ler, agora: new Date(agora) });
     const depois = await Promise.all([prisma.product.count(), prisma.storeStock.count(), prisma.sale.count(), prisma.productSize.aggregate({ _sum: { stock: true } })]);
     assert.deepStrictEqual(depois, antes);
+  });
+  await t('regra 31: gerente aciona foto/descrição para card da marca com estoque no site e fora dele (sem descrição)', async () => {
+    const s = await gerente.disparar({ sinal: { tipo: 'relogio.diario', dados: {} }, ler, agora: new Date(agora) });
+    const pedidos = s.filter((x) => x.tipo === 'marca.cadastro-incompleto');
+    const f = pedidos.find((x) => x.dados.productId === F.id);
+    assert.ok(f && f.dados.falta.includes('descricao') && f.dados.marca === 'HOKA', JSON.stringify(pedidos.map((x) => x.dados)));
+    assert.ok(!pedidos.some((x) => x.dados.productId === A.id), 'o que já está no site não entra');
+    assert.ok(!pedidos.some((x) => x.dados.productId === H.id), 'estoque só em loja que não vende no site não entra');
+    // o agente de descrição escuta o pedido do gerente e propõe (com o texto de pedido do gerente)
+    const desc = require('../src/ai/rede/neuronios/conteudo/descricao');
+    assert.ok(desc.escuta.includes('marca.cadastro-incompleto'));
+    const props = await desc.disparar({ sinal: f, ler });
+    assert.ok(props[0] && props[0].tipo === 'proposta.descricao' && /pedido do gerente da marca/.test(props[0].dados.descricao), JSON.stringify(props));
+  });
+  await t('regra 31: o gerente PREENCHE sozinho só o que tem prova escrita, nunca sobrescreve, e registra a prova', async () => {
+    const cuidador = require('../src/services/cuidadorDeMarca');
+    const J = await prod({ sku: 'J1', name: 'CHUTEIRA FUTSAL JOMA TESTE JR (BRANCO/AZUL)', brand: 'JOMA', category: 'Chuteiras', subcategory: null, price: 300, costPrice: 150 }, [{ size: '33', barcode: '8424309000033', stock: 2 }]);
+    await loc(L.LOJA04, J.S['33'], 2);
+    const K2 = await prod({ sku: 'J2', name: 'CHUTEIRA FUTSAL JOMA TOP FLEX PITO', brand: 'JOMA', category: 'Chuteiras', subcategory: 'Homem', price: 300, costPrice: 150, aiContext: { classification: { modality: 'Society' } } }, [{ size: '40', barcode: '8424309000040', stock: 2 }]);
+    await loc(L.LOJA04, K2.S['40'], 1);
+    const B = await prod({ sku: 'J3', name: 'BOLA JOMA FUTSAL HYBRID', brand: 'JOMA', category: 'A CLASSIFICAR', price: 100, costPrice: 50 }, [{ size: 'U', barcode: '8424309000099', stock: 3 }]);
+    await loc(L.LOJA04, B.S.U, 1);
+    const seco = await cuidador.cuidar(prisma, { marca: 'JOMA', aplicar: false });
+    assert.strictEqual((await prisma.product.findUnique({ where: { id: J.id } })).subcategory, null, 'ensaio não grava');
+    assert.ok(seco.preenchidos >= 2);
+    await cuidador.cuidar(prisma, { marca: 'JOMA' });
+    const j = await prisma.product.findUnique({ where: { id: J.id } });
+    assert.strictEqual(j.subcategory, 'Menino', 'JR em Chuteiras → Menino (único nó infantil)');
+    assert.strictEqual(j.aiContext.classification.modality, 'Futsal');
+    assert.ok(j.aiContext.preenchidoPeloGerente && j.aiContext.preenchidoPeloGerente.provas.some((x) => /nome diz infantil/.test(x)), 'registra a prova');
+    const k = await prisma.product.findUnique({ where: { id: K2.id } });
+    assert.strictEqual(k.subcategory, 'Homem'); assert.strictEqual(k.aiContext.classification.modality, 'Society', 'nunca sobrescreve o que já está preenchido');
+    assert.ok(!k.aiContext.preenchidoPeloGerente, 'sem prova escrita nada muda (PITO não diz público)');
+    assert.strictEqual((await prisma.product.findUnique({ where: { id: B.id } })).category, 'Acessórios', 'BOLA → Acessórios');
+    // não mexe em preço, comprado nem estoque
+    assert.strictEqual(Number(j.price), 300); assert.strictEqual((await prisma.productSize.findUnique({ where: { id: J.S['33'].id } })).stock, 2);
+    // planejar: tênis infantil sem gênero escrito não é chutado
+    assert.deepStrictEqual(cuidador.planejar({ name: 'TENIS ADIDAS ADVANTAGE BASE JR', category: 'Tênis', subcategory: null, aiContext: {} }).mudancas, {});
+    assert.deepStrictEqual(cuidador.planejar({ name: 'TENIS FILA COMET FEMININO', category: 'Tênis', subcategory: '', aiContext: {}, tamanhos: ['35'] }).mudancas, { subcategory: 'Feminino' });
+  });
+  await t('regra 31 / auditoria: só valores da árvore oficial, criança nunca vira adulto, chuteira feminina vai para o dono', () => {
+    const { planejar } = require('../src/services/cuidadorDeMarca');
+    const pl = (name, category, subcategory = null, extra = {}) => planejar({ name, category, subcategory, aiContext: {}, ...extra }).mudancas;
+    assert.deepStrictEqual(pl('CHUTEIRA FUTSAL PENALTY JR FEMININA', 'Chuteiras'), { modality: 'Futsal' }, 'chuteira infantil feminina: árvore não tem Menina → não preenche público');
+    assert.deepStrictEqual(pl('CHUTEIRA SOCIETY NIKE FEMININA', 'Chuteiras'), { modality: 'Society' }, 'chuteira feminina adulta: árvore não tem → dono');
+    assert.deepStrictEqual(pl('CHUTEIRA CAMPO UNISSEX', 'Chuteiras'), { modality: 'Campo' }, 'Unissex não está na árvore');
+    assert.deepStrictEqual(pl('TENIS NIKE UNISSEX', 'Tênis'), {});
+    assert.deepStrictEqual(pl('CHINELO RIDER MASCULINO', 'A CLASSIFICAR'), {}, 'Sandálias não é categoria na árvore');
+    assert.deepStrictEqual(pl('TENIS MASCULINO 28/33', 'Tênis'), {}, 'numeração infantil no nome: não vira Homem');
+    assert.deepStrictEqual(pl('TENIS NIKE MASCULINO', 'Tênis', null, { tamanhos: ['28', '29', '30'] }), {}, 'grade infantil no card: não vira Homem');
+    assert.deepStrictEqual(pl('TENIS FILA COMET FEMININO', 'Tênis', null, { tamanhos: ['36', '37'] }), { subcategory: 'Feminino' }, 'Tênis feminino = Feminino na árvore');
+    assert.deepStrictEqual(pl('CHUTEIRA FUTSAL JOMA SALA MAX JR', 'Chuteiras'), { subcategory: 'Menino', modality: 'Futsal' });
+    assert.deepStrictEqual(pl('CAMISETA DRY FIT MASCULINA', 'A CLASSIFICAR', null, { tamanhos: ['P', 'M', 'G'] }), { category: 'Vestuário', subcategory: 'Homem' });
+    assert.deepStrictEqual(pl('CAMISETA DRY FIT MASCULINA', 'Vestuário'), {}, 'roupa sem grade: sem prova de adulto');
+    assert.deepStrictEqual(pl('CALCAO KAPPA MASCULINO', 'Vestuário', null, { tamanhos: ['10', '12', '14'] }), {}, 'grade infantil de roupa (10/12/14) não vira Homem');
+    assert.deepStrictEqual(pl('CAMISETA BOTAFOGO MASCULINA 10/12', 'A CLASSIFICAR', null, { tamanhos: ['10', '12'] }), { category: 'Vestuário' });
+    assert.deepStrictEqual(pl('TENIS NIKE MASCULINO', 'Tênis', null, { tamanhos: ['T-7891234567890'] }), {}, 'grade só com placeholder não prova adulto');
+    assert.deepStrictEqual(pl('TENIS NIKE PEGASUS 41 MASCULINO', 'Tênis', null, { tamanhos: ['39', '40'] }), { subcategory: 'Homem' }, 'número de modelo no nome não é grade');
+    assert.deepStrictEqual(pl('CAMISETA INFANTIL 8A MASCULINA', 'Vestuário', null, { tamanhos: ['8A'] }), { subcategory: 'Menino' });
+    assert.deepStrictEqual(pl('TENIS CROCS MASCULINO', 'Tênis', null, { tamanhos: ['27/28', '29/30'] }), {}, 'faixa infantil na grade não prova adulto');
+    assert.deepStrictEqual(pl('MEIA LUPO CANO CURTO MASCULINA', 'Acessórios', null, { tamanhos: ['19/22', '23/26'] }), {}, 'meia usa a numeração do pé');
+    assert.deepStrictEqual(pl('MEIA LUPO MASCULINA 23/26', 'Acessórios', null, { tamanhos: ['U'] }), {});
+    assert.deepStrictEqual(pl('MEIA LUPO MASCULINA', 'Acessórios', null, { tamanhos: ['39/43'] }), { subcategory: 'Homem' }, 'meia adulta 39/43 preenche');
+    // o que preenche não é acusado pela régua do lugar certo (regra 30)
+    const { conferirLocal } = require('../src/ai/rede/regras/local-certo');
+    for (const [n, c] of [['CHUTEIRA FUTSAL JOMA SALA MAX JR', 'Chuteiras'], ['TENIS FILA COMET FEMININO', 'Tênis'], ['CAMISETA DRY FIT MASCULINA', 'A CLASSIFICAR']]) {
+      const m = pl(n, c, null, { tamanhos: c === 'Tênis' ? ['37', '38'] : ['P', 'M'] });
+      const card = { name: n, category: m.category || c, subcategory: m.subcategory, aiContext: { classification: { modality: m.modality || 'X', tier: 'Y' } } };
+      assert.deepStrictEqual(conferirLocal(card).filter((x) => !/incompleta/.test(x)), [], n);
+    }
+  });
+  await t('regra 31 / auditoria: grava campo a campo só se continuar vazio; a prova registra SÓ o que foi gravado; modalidade atômica', async () => {
+    const cuidador = require('../src/services/cuidadorDeMarca');
+    const N = await prod({ sku: 'J9', name: 'TENIS JOMA TESTE MASCULINO', brand: 'JOMA', category: 'Não definido', subcategory: null, price: 300, costPrice: 150 }, [{ size: '41', barcode: '8424309000941', stock: 1 }]);
+    await loc(L.LOJA04, N.S['41'], 1);
+    await cuidador.cuidar(prisma, { marca: 'JOMA' });
+    const n = await prisma.product.findUnique({ where: { id: N.id } });
+    assert.strictEqual(n.category, 'Tênis'); assert.strictEqual(n.subcategory, 'Homem');
+    assert.deepStrictEqual(n.aiContext.preenchidoPeloGerente.campos, { category: 'Tênis', subcategory: 'Homem' });
+    // modalidade: não apaga a especialidade gravada por outra edição
+    const M = await prod({ sku: 'J8', name: 'CHUTEIRA CAMPO JOMA TESTE MASCULINA', brand: 'JOMA', category: 'Chuteiras', subcategory: 'Homem', price: 300, costPrice: 150, aiContext: { classification: { tier: 'Profissional' } } }, [{ size: '42', barcode: '8424309000942', stock: 1 }]);
+    await loc(L.LOJA04, M.S['42'], 1);
+    await cuidador.cuidar(prisma, { marca: 'JOMA' });
+    const m = await prisma.product.findUnique({ where: { id: M.id } });
+    assert.deepStrictEqual(m.aiContext.classification, { tier: 'Profissional', modality: 'Campo' });
+    // segunda rodada: nada a fazer, nada registrado de novo
+    const r2 = await cuidador.cuidar(prisma, { marca: 'JOMA' });
+    assert.ok(!r2.itens.some((x) => x.productId === N.id || x.productId === M.id), JSON.stringify(r2.itens));
+  });
+  await t('regra 31 / auditoria: descrição não gasta IA se já existe proposta pendente para o card', async () => {
+    const desc = require('../src/ai/rede/neuronios/conteudo/descricao');
+    await prisma.aIApproval.create({ data: { type: 'rna_descricao', status: 'pending', title: 'teste', payload: { rna: { chave: 'descricao:' + F.id } } } });
+    let chamou = 0;
+    const r = await desc.disparar({ sinal: { tipo: 'marca.cadastro-incompleto', dados: { productId: F.id, falta: ['descricao'] } }, ler, pensar: async () => { chamou++; return { ok: true, json: { texto: 'x' } }; } });
+    assert.deepStrictEqual(r, []); assert.strictEqual(chamou, 0);
+    await prisma.aIApproval.deleteMany({ where: { type: 'rna_descricao' } });
+  });
+  await t('regra 31 / auditoria 3: descrição só com espaço conta como vazia; recusa antiga (>14 dias) volta; cota cheia não gasta IA', async () => {
+    const desc = require('../src/ai/rede/neuronios/conteudo/descricao');
+    await prisma.product.update({ where: { id: F.id }, data: { longDescription: '  \n\t ' } });
+    const s = await gerente.disparar({ sinal: { tipo: 'marca.pedir', dados: { marca: 'hoka' } }, ler, agora: new Date(agora) });
+    const f = s.find((x) => x.tipo === 'marca.cadastro-incompleto' && x.dados.productId === F.id);
+    assert.ok(f && f.dados.falta.includes('descricao'), 'só espaço/quebra de linha = sem descrição (igual ao portão)');
+    await prisma.product.update({ where: { id: F.id }, data: { longDescription: null } });
+    let chamou = 0; const pensar = async () => { chamou++; return { ok: true, json: { texto: 'Tênis HOKA Bondi 9 na cor Preto.' } }; };
+    await prisma.aIApproval.create({ data: { type: 'rna_descricao', status: 'rejected', title: 'antiga', decidedAt: new Date(Date.now() - 60 * 86400000), payload: { rna: { chave: 'descricao:' + F.id } } } });
+    await desc.disparar({ sinal: f, ler, pensar });
+    assert.strictEqual(chamou, 1, 'recusada há 60 dias não bloqueia para sempre');
+    await prisma.aIApproval.deleteMany({ where: { type: 'rna_descricao' } });
+    for (let i = 0; i < 20; i++) await prisma.aIApproval.create({ data: { type: 'rna_descricao', status: 'pending', title: 'cota ' + i, payload: { rna: { chave: 'outra:' + i, neuronio: 'conteudo.descricao' } } } });
+    chamou = 0;
+    const r = await desc.disparar({ sinal: f, ler, pensar });
+    assert.deepStrictEqual(r, []); assert.strictEqual(chamou, 0, 'cota do dia cheia: não chama IA');
+    await prisma.aIApproval.deleteMany({ where: { type: 'rna_descricao' } });
   });
   await limpar();
   await prisma.$disconnect();
