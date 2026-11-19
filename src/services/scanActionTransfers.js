@@ -55,7 +55,7 @@ function scansInput(input, allowEmpty = false) {
     const barcode = String(scan.barcode || '').trim();
     const confirmedSize = String(scan.confirmedSize || '').trim();
     const resolvedSize = String(scan.resolvedSize || '').trim();
-    if (!barcodePolicy.isScanCode(barcode) || !barcodeKey(barcode)) fail('Leia o código de barras numérico da própria peça.', 400);
+    if (!barcodePolicy.isScanCode(barcode) || !barcodeKey(barcode)) fail('Leia o código de barras da própria peça.', 400);
     if (confirmedSize.length > 40 || resolvedSize.length > 40) fail('Tamanho informado inválido.', 400);
     // Keep legacy request hashes unchanged when no catalog snapshot is supplied.
     // resolvedSize records lookup data, never a claimed physical confirmation.
@@ -110,7 +110,7 @@ async function resolveCodes(db, scans, inactiveExpected = []) {
 async function lookup(db, actor, input = {}) {
   const actual = await actorFor(db, actor, input.transferId ? input.storeId : undefined);
   const barcode = String(input.barcode || '').trim();
-  if (!barcodePolicy.isScanCode(barcode) || !barcodeKey(barcode)) fail('Leia o código de barras numérico da própria peça.', 400);
+  if (!barcodePolicy.isScanCode(barcode) || !barcodeKey(barcode)) fail('Leia o código de barras da própria peça.', 400);
   let transfer = null, expectedSizes = [];
   if (input.transferId) {
     transfer = await loadTransfer(db, input.transferId, actual, input.storeId);
