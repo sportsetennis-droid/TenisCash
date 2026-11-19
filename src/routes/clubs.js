@@ -16,7 +16,7 @@ function ctx(req) { return { userId: req.userId, userRole: req.userRole }; }
 function send(res, err) {
   const status = err && err.status ? err.status : 500;
   if (status >= 500) console.error('[clubs]', err);
-  res.status(status).json({ error: (err && err.message) || 'erro' });
+  res.status(status).json({ ...((err && err.extra) || {}), error: (err && err.message) || 'erro' });
 }
 const wrap = (fn, code = 200) => async (req, res) => {
   try { res.status(code).json(await fn(req, res)); } catch (e) { send(res, e); }

@@ -461,7 +461,7 @@ async function seasonScorers(t, season) {
     ? await prisma.matchEvent.findMany({ where: { matchId: { in: inSeason.map((m) => m.id) }, type: 'GOAL', playerId: { not: null } }, select: { playerId: true } })
     : [];
   ev.forEach((e) => { const pid = rpToPlayer[e.playerId]; if (pid) row(pid).goals += 1; });
-  const rows = Object.values(agg).sort((a, b) => b.goals - a.goals || a.games - b.games || a.name.localeCompare(b.name));
+  const rows = Object.values(agg).sort((a, b) => b.goals - a.goals || a.games - b.games || a.name.localeCompare(b.name) || String(a.playerId).localeCompare(String(b.playerId)));
   return { season: year, games: inSeason.length, scorers: rows.filter((r) => r.goals > 0), players: rows };
 }
 

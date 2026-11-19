@@ -222,8 +222,9 @@ async function myGames(userId, { scope = 'all', limit = 50 } = {}) {
 
 // Artilharia/assistências de um ESPORTE somando todos os torneios dele (súmula).
 // Agrupa por conta ligada (userId) ou, sem conta, por nome+time. Só jogos encerrados.
-async function sportScorers(sport, { limit = 50 } = {}) {
-  const lim = Math.max(1, Math.min(Number(limit) || 50, 200));
+async function sportScorers(sport, { limit = 50, all = false } = {}) {
+  // Liga F5: all=true devolve a lista inteira (a rota pagina por cursor); sem all, máx. 201 (200 + "tem mais")
+  const lim = all ? Infinity : Math.max(1, Math.min(Number(limit) || 50, 201));
   const ts = await prisma.tournament.findMany({ where: { sport: String(sport), visibility: 'public', archivedAt: null }, select: { id: true } });
   const tids = ts.map((t) => t.id);
   if (!tids.length) return { sport, scorers: [] };
@@ -253,7 +254,7 @@ async function sportScorers(sport, { limit = 50 } = {}) {
   const uName = Object.fromEntries(users.map((u) => [u.id, u.username]));
   const scorers = Object.values(agg)
     .map((a) => ({ ...a, username: a.userId ? (uName[a.userId] || null) : null }))
-    .sort((x, y) => y.goals - x.goals || y.assists - x.assists || x.name.localeCompare(y.name))
+    .sort((x, y) => y.goals - x.goals || y.assists - x.assists || x.name.localeCompare(y.name) || String(x.userId || '').localeCompare(String(y.userId || '')) || String(x.team).localeCompare(String(y.team)))
     .slice(0, lim);
   return { sport, scorers };
 }

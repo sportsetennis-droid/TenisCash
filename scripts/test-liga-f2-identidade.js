@@ -88,7 +88,8 @@ async function main() {
     assert.ok(!/ownerId !== req\.userId/.test(src), 'checagem de dono inline');
     const sch = fs.readFileSync(path.join(__dirname, '../src/services/ensureApexSchema.js'), 'utf8');
     const first = sch.indexOf('STATEMENTS = [');
-    assert.ok(sch.indexOf('"clubId"', first) < sch.indexOf('"archivedAt"', first), 'clubId tem que vir no início do ensureApexSchema');
+    // (F5 pôs um índice com "archivedAt" no início; a referência é o ALTER da F1)
+    assert.ok(sch.indexOf('"clubId"', first) < sch.indexOf('ADD COLUMN IF NOT EXISTS "archivedAt"', first), 'clubId tem que vir no início do ensureApexSchema');
   });
 
   console.log('2. Banco descartável');
@@ -425,7 +426,7 @@ async function dbSuite() {
     assert.strictEqual(r.status, 200, r.text);
     assert.strictEqual(r.json.savedOn, 'club');
     const club = await prisma.club.findUnique({ where: { id: cbClubId } });
-    assert.ok(club.crestUrl && club.crestUrl.startsWith('data:image/'));
+    assert.ok(club.crestUrl && /^\/media\/[a-f0-9]{64}\.png$/.test(club.crestUrl), club.crestUrl); // Liga F5: escudo no mediaStore
     assert.strictEqual((await ent(eCB1)).logoUrl, null);
     const bad = await call('POST', `/api/tournaments/entries/${eCB1.id}/logo`, { token: tok(U.teamAdmin), body: { logo: 'data:image/png;base64,' + Buffer.from('<svg onload=alert(1)>').toString('base64') } });
     assert.strictEqual(bad.status, 400, bad.text);

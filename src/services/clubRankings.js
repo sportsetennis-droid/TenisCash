@@ -114,7 +114,7 @@ function normGender(g) { const x = String(g || '').toUpperCase(); return ['M', '
 async function ratingRanking({ sport, format, gender, limit = 100, provisional = true, now = new Date() } = {}) {
   format = rating.FORMATS.includes(format) ? format : defaultFormat(sport);
   const g = normGender(gender);
-  const rows = await prisma.glickoRating.findMany({ where: { sport, format }, orderBy: [{ rating: 'desc' }, { matches: 'desc' }] });
+  const rows = await prisma.glickoRating.findMany({ where: { sport, format }, orderBy: [{ rating: 'desc' }, { matches: 'desc' }, { id: 'asc' }] });
   const info = await userInfo(rows.filter((r) => r.subjectType === 'USER').map((r) => r.subjectKey));
   const list = [];
   for (const r of rows) {
@@ -127,7 +127,7 @@ async function ratingRanking({ sport, format, gender, limit = 100, provisional =
     }
     list.push({ ...subjectView(r, info), ...p });
   }
-  const cap = Math.min(Math.max(Number(limit) || 100, 1), 500);
+  const cap = limit === Infinity ? Infinity : Math.min(Math.max(Number(limit) || 100, 1), 500); // Liga F5: Infinity = lista inteira (a rota pagina)
   return {
     sport, format, gender: g, kind: 'rating',
     ranking: list.slice(0, cap).map((x, i) => ({ rank: i + 1, ...x })),
@@ -196,8 +196,8 @@ async function seasonRanking({ sport, format, year, month, gender, category, lim
       level: p ? p.level : null, reliability: p ? p.reliability : null, provisional: p ? p.provisional : true,
     };
   });
-  list.sort((a, b) => b.points - a.points || b.wins - a.wins || b.winRate - a.winRate || (b.level || 0) - (a.level || 0) || String(a.name).localeCompare(String(b.name)));
-  const cap = Math.min(Math.max(Number(limit) || 100, 1), 500);
+  list.sort((a, b) => b.points - a.points || b.wins - a.wins || b.winRate - a.winRate || (b.level || 0) - (a.level || 0) || String(a.name).localeCompare(String(b.name)) || String(a.key).localeCompare(String(b.key)));
+  const cap = limit === Infinity ? Infinity : Math.min(Math.max(Number(limit) || 100, 1), 500); // Liga F5: Infinity = lista inteira (a rota pagina)
   return {
     sport, format, kind: m ? 'month' : 'season', year: y, month: m,
     category: category || null, gender: normGender(gender),
@@ -322,8 +322,8 @@ async function circuitRanking({ sport, category, gender, best, weeks, asOf, limi
       results: s.results.map((r, i) => ({ tournament: r.tournament, slug: r.slug, category: r.category, placement: r.placement, label: r.label, points: r.points, date: r.date, counted: i < N })),
     };
   });
-  list.sort((a, b) => b.points - a.points || b.titles - a.titles || b.counted - a.counted || String(a.name).localeCompare(String(b.name)));
-  const cap = Math.min(Math.max(Number(limit) || 200, 1), 500);
+  list.sort((a, b) => b.points - a.points || b.titles - a.titles || b.counted - a.counted || String(a.name).localeCompare(String(b.name)) || String(a.key).localeCompare(String(b.key)));
+  const cap = limit === Infinity ? Infinity : Math.min(Math.max(Number(limit) || 200, 1), 500); // Liga F5: Infinity = lista inteira (a rota pagina)
   return {
     sport, kind: 'circuit', category: category || null, gender: normGender(gender),
     best: N, weeks: W, from: start, to: end, points: cfg.points,

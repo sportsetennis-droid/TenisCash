@@ -1560,7 +1560,7 @@ function rkFmt(sp){return isTeamSport(sp)?'TEAM':(S.rkFmt==='DOUBLES'?'DOUBLES':
 function rkKey(sp){return [sp,rkMode(),rkFmt(sp),S.rkGender||'',rkMode()==='nivel'?'':(S.rkCat||'')].join('|');}
 function fzNow(){var d=new Date(Date.now()-3*3600000);return {y:d.getUTCFullYear(),m:d.getUTCMonth()+1};}
 function rkUrl(sp){
-  var m=rkMode(),q=['format='+rkFmt(sp)],n=fzNow();
+  var m=rkMode(),q=['format='+rkFmt(sp),'limit='+(m==='circuito'?200:100)],n=fzNow(); // Liga F5: mesma 1ª página de antes (100/200, acha "Sua posição") + "Ver mais"
   if(S.rkGender)q.push('gender='+S.rkGender);
   if(m!=='nivel'&&S.rkCat)q.push('category='+encodeURIComponent(S.rkCat));
   if(m==='temporada')q.push('year='+n.y);
@@ -1570,6 +1570,11 @@ function rkUrl(sp){
 function loadRank(sp){
   var k=rkKey(sp);if(S.rank[k])return;S.rank[k]='loading';
   api(rkUrl(sp)).then(function(r){S.rank[k]=r||{ranking:[]};}).catch(function(){S.rank[k]='error';}).then(redraw);
+}
+// Liga F5: próxima página do ranking (cursor) — junta na lista já carregada
+function loadRankMore(sp){
+  var k=rkKey(sp),d=S.rank[k];if(!d||!d.nextCursor||d._more)return;d._more=true;redraw();
+  api(rkUrl(sp)+'&cursor='+encodeURIComponent(d.nextCursor)).then(function(r){d.ranking=(d.ranking||[]).concat((r&&r.ranking)||[]);d.nextCursor=(r&&r.nextCursor)||null;}).catch(function(){}).then(function(){d._more=false;redraw();});
 }
 function loadRkCats(sp){
   S.rkCats=S.rkCats||{};if(S.rkCats[sp])return;S.rkCats[sp]='loading';
@@ -1633,6 +1638,7 @@ function rankHtml(){
     var hr=href(r),tag=hr?'a':'div';
     return '<'+tag+' class="rk'+(r===me?' me':'')+'"'+(hr?' href="'+esc(hr)+'"':'')+'><span class="pos num">'+esc(r.rank)+'</span>'+avatar(r.name||'Atleta',r.avatarUrl||null,40)+'<div class="tx"><b>'+esc(r.name||'Atleta')+(r===me?' (você)':'')+'</b><span>'+esc(rkSub(r))+'</span></div><b class="v num">'+rkVal(r)+'</b></'+tag+'>';
   }).join('')+'</div>';
+  if(d.nextCursor)h+='<button class="btn lt" type="button" data-act="rkmore" data-testid="club-rk-more" style="width:100%;min-height:44px;margin-top:10px"'+(d._more?' disabled':'')+'>'+(d._more?'Carregando…':'Ver mais')+'</button>';
   return h+'<p class="fine">'+rkFine(d)+'</p></div></div>';
 }
 /* esportes de time: rating individual não se aplica — o ranking é a súmula (gols/assistências, só torneios públicos) */
@@ -2559,6 +2565,7 @@ document.addEventListener('click',function(e){
   else if(a==='cseg'){e.preventDefault();var hr=el.getAttribute('href');if(location.hash!==hr){segNav=true;location.replace(hr);}}
   else if(a==='rksport'){S.rkSport=d.s;redraw(true);}
   else if(a==='rkretry'){delete S.rank[rkKey(S.rkSport)];redraw();}
+  else if(a==='rkmore'){loadRankMore(S.rkSport);}
   else if(a==='rkmode'){S.rkMode=d.v;redraw(true);}
   else if(a==='rkfmt'){S.rkFmt=d.v;redraw(true);}
   else if(a==='rkgender'){S.rkGender=d.v;redraw(true);}

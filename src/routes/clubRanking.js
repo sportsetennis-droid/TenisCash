@@ -9,6 +9,25 @@ const { authMiddleware, adminMiddleware } = require('../middleware');
 const rating = require('../services/clubRating');
 const rankings = require('../services/clubRankings');
 const engine = require('../services/tournamentEngine');
+const pag = require('../services/pagination');
+
+// Liga F5: ?limit/&cursor → página por cursor (chave do atleta/time) com nextCursor;
+// sem cursor → resposta antiga (até ?limit, máx. 500). O rank segue a posição na lista inteira.
+async function paged(req, compute) {
+  if (!req.query.cursor) return compute(req.query.limit);
+  const page = pag.parsePage(req.query, { defaultLimit: 50, maxLimit: 200 });
+  const out = await compute(Infinity);
+  const pg = pag.pageArray(out.ranking, page, (x) => (x.type || 'USER') + ':' + (x.key || x.userId || x.name));
+  return { ...out, ranking: pg.items, nextCursor: pg.nextCursor };
+}
+function withNext(out, limit) {
+  // 1ª página: diz se há mais (o front mostra "Ver mais")
+  if (out && Array.isArray(out.ranking) && limit && out.total > out.ranking.length) {
+    const last = out.ranking[out.ranking.length - 1];
+    out.nextCursor = pag.encodeCursor({ a: (last.type || 'USER') + ':' + (last.key || last.userId || last.name), i: out.ranking.length - 1 });
+  } else if (out) out.nextCursor = null;
+  return out;
+}
 
 const router = express.Router();
 const SPORT_RE = /^[A-Z_]{2,30}$/;
@@ -25,7 +44,7 @@ function pub(fn) {
       const out = await fn(req, res);
       if (out !== undefined && !res.headersSent) res.json(out);
     } catch (e) {
-      const bad = /inválid|deve ser|desconhecida/.test((e && e.message) || '');
+      const bad = (e && e.status === 400) || /inválid|deve ser|desconhecida/.test((e && e.message) || '');
       if (!bad) console.error('[club-ranking]', e);
       res.status(bad ? 400 : 500).json({ error: e.message });
     }
@@ -57,17 +76,20 @@ router.get('/:sport/categories', pub(async (req, res) => {
 router.get('/:sport/rating', pub(async (req, res) => {
   const sp = sportOf(req, res); if (!sp) return undefined;
   const q = req.query;
-  return rankings.ratingRanking({ sport: sp, format: q.format, gender: q.gender, limit: q.limit, provisional: q.provisional !== '0' });
+  if (q.cursor) return paged(req, (lim) => rankings.ratingRanking({ sport: sp, format: q.format, gender: q.gender, limit: lim, provisional: q.provisional !== '0' }));
+  return withNext(await rankings.ratingRanking({ sport: sp, format: q.format, gender: q.gender, limit: q.limit, provisional: q.provisional !== '0' }), q.limit);
 }));
 router.get('/:sport/season', pub(async (req, res) => {
   const sp = sportOf(req, res); if (!sp) return undefined;
   const q = req.query;
-  return rankings.seasonRanking({ sport: sp, format: q.format, year: q.year, month: q.month, gender: q.gender, category: q.category, limit: q.limit });
+  if (q.cursor) return paged(req, (lim) => rankings.seasonRanking({ sport: sp, format: q.format, year: q.year, month: q.month, gender: q.gender, category: q.category, limit: lim }));
+  return withNext(await rankings.seasonRanking({ sport: sp, format: q.format, year: q.year, month: q.month, gender: q.gender, category: q.category, limit: q.limit }), q.limit);
 }));
 router.get('/:sport/circuit', pub(async (req, res) => {
   const sp = sportOf(req, res); if (!sp) return undefined;
   const q = req.query;
-  return rankings.circuitRanking({ sport: sp, category: q.category, gender: q.gender, best: q.best, weeks: q.weeks, asOf: q.asOf, limit: q.limit });
+  if (q.cursor) return paged(req, (lim) => rankings.circuitRanking({ sport: sp, category: q.category, gender: q.gender, best: q.best, weeks: q.weeks, asOf: q.asOf, limit: lim }));
+  return withNext(await rankings.circuitRanking({ sport: sp, category: q.category, gender: q.gender, best: q.best, weeks: q.weeks, asOf: q.asOf, limit: q.limit }), q.limit);
 }));
 
 module.exports = router;

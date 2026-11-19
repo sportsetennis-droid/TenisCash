@@ -40,6 +40,9 @@ const pickup = require('../services/pickup');
 const matchNotices = require('../services/matchNotices');
 const teamInvite = require('../services/teamInvite');
 const { duplicateTournament } = require('../services/tournamentDuplicate');
+const mediaStore = require('../services/mediaStore');
+const pag = require('../services/pagination');
+const plans = require('../services/organizerPlan');
 
 // Erros de serviço da Liga F3 (QuickError, PickupError, TeamInviteError): status + mensagem em PT.
 function svcErr(res, e) {
@@ -743,8 +746,25 @@ const { resolveUserId } = engine;
 
 // Erro de validação de imagem (imageGuard) → status + mensagem em português.
 function imageError(res, err) {
-  if (err instanceof ImageGuardError) { res.status(err.status).json({ error: err.message }); return true; }
+  if (err instanceof ImageGuardError || err instanceof mediaStore.MediaError) { res.status(err.status).json({ error: err.message }); return true; }
   return false;
+}
+// Liga F5: imagem enviada → imageGuard → mediaStore ("/media/<sha>.<ext>"), com a cota de
+// imagens do plano conferida ANTES de gravar. Torneio da lista de exclusão (Master Cup)
+// continua gravando o data URI como antes. Retorna { ok, value } ou responde o erro.
+async function storeImage(req, res, raw, guardOpts, { tournament = null } = {}) {
+  try {
+    const keep = !!(tournament && clubIdentity.isExcludedSlug(tournament.slug));
+    if (!keep && mediaStore.isUpload(raw) && !(await plans.guard(res, 'image', { actorId: req.userId, actorRole: req.userRole }))) return { ok: false };
+    return { ok: true, value: await mediaStore.guardAndStore(raw, guardOpts, { ownerUserId: req.userId, keepDataUri: keep }) };
+  } catch (e) {
+    if (imageError(res, e)) return { ok: false };
+    throw e;
+  }
+}
+// Liga F5: ?limit/?cursor inválido = 400
+function pageOf(req, res, opts) {
+  try { return pag.parsePage(req.query || {}, opts); } catch (e) { if (pag.sendPageError(res, e)) return null; throw e; }
 }
 const hasBody = (field) => (req) => !!(req.body && Object.prototype.hasOwnProperty.call(req.body, field));
 
@@ -783,9 +803,13 @@ router.post('/', authMiddleware, limits.createTournament, async (req, res) => {
   try {
     const b = req.body || {};
     if (!b.name) return res.status(400).json({ error: 'name obrigatório' });
-    // Banner: só https:// ou caminho do próprio site / imagem PNG/JPEG/WEBP real (Liga F0).
-    let bannerUrl = null;
-    try { bannerUrl = await guardImageField(b.bannerUrl, { maxChars: 800000 }); } catch (e) { if (imageError(res, e)) return; throw e; }
+    // Liga F5: limite de torneios ativos do plano (só nova criação; admin/equipe sem limite)
+    if (!(await plans.guard(res, 'tournament', { actorId: req.userId, actorRole: req.userRole }))) return;
+    // Banner: só https:// ou caminho do próprio site / imagem PNG/JPEG/WEBP real (Liga F0);
+    // imagem enviada vai pro mediaStore (Liga F5) e o campo guarda "/media/<sha>.<ext>".
+    const bn = await storeImage(req, res, b.bannerUrl, { maxChars: 800000 });
+    if (!bn.ok) return;
+    const bannerUrl = bn.value;
     const sport = SPORTS.has(b.sport) ? b.sport : 'TENNIS';
     const format = FORMATS.has(b.format) ? b.format : 'KNOCKOUT';
 
@@ -844,6 +868,16 @@ router.get('/presets', (req, res) => {
 // Qualquer usuário logado; limitador de criação de torneio da F0 (20/h).
 router.post('/quick', authMiddleware, limits.createTournament, async (req, res) => {
   try {
+    // Liga F5: limite do plano (torneios ativos + times por categoria) antes de gravar
+    if (!(await plans.guard(res, 'tournament', { actorId: req.userId, actorRole: req.userRole }))) return;
+    const teamsIn = (req.body || {}).teams;
+    const nTeams = Array.isArray(teamsIn) ? teamsIn.length : typeof teamsIn === 'string' ? teamsIn.split(/\r?\n/).map((x) => x.trim()).filter(Boolean).length : 0;
+    // acima do máximo do assistente quem responde é a validação do /quick (400), não o plano
+    if (nTeams > 1 && nTeams <= quick.MAX_TEAMS && !plans.isStaffRole(req.userRole)) {
+      const plan = await plans.planFor(req.userId);
+      const lim = plan.limits.teamsPerCategory;
+      if (lim != null && nTeams > lim) return res.status(402).json({ error: `${plan.key === 'free' ? 'Limite do plano grátis' : 'Limite do seu plano'}: até ${lim} times por categoria.`, code: 'PLAN_LIMIT', kind: 'teamsPerCategory', limit: lim, used: 0, plan: plan.key });
+    }
     res.status(201).json(await quick.createQuick({ userId: req.userId, userRole: req.userRole, body: req.body || {} }));
   } catch (e) {
     if (svcErr(res, e)) return;
@@ -885,6 +919,17 @@ router.get('/mine', authMiddleware, async (req, res) => {
   }
 });
 
+// Liga F5 — MEU PLANO: uso × limite (torneios ativos, categorias, times, avisos e imagens
+// do mês). Sem preço (decisão do dono). Admin/equipe: unlimited:true.
+router.get('/me/plan', authMiddleware, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json(await plans.summary(req.userId, req.userRole));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Histórico de campeões de uma SÉRIE (todas as edições) — público.
 // Campeão = vencedor da FINAL encerrada (dupla eliminação: o reset, se houve);
 // em pontos corridos/americano/suíço, o 1º da tabela final.
@@ -906,14 +951,14 @@ router.get('/', async (req, res) => {
     if (req.query.sport) where.sport = req.query.sport;
     if (req.query.status) where.status = req.query.status;
     if (req.query.storeId) where.storeId = req.query.storeId;
-    const list = await prisma.tournament.findMany({
-      where,
-      orderBy: [{ status: 'asc' }, { startDate: 'desc' }],
-      take: Math.min(Number(req.query.limit) || 50, 100),
-      include: { _count: { select: { entries: true } } },
-    });
-    res.json({ tournaments: list });
+    // Liga F5: com ?cursor (ou ?paged=1) → página por cursor estável { tournaments, nextCursor }.
+    // Sem cursor: resposta antiga (até ?limit, máx. 100), agora com nextCursor quando há mais.
+    const page = pageOf(req, res, { defaultLimit: 50, maxLimit: 100 });
+    if (!page) return;
+    const r = await pag.findPage(prisma.tournament, { where, include: { _count: { select: { entries: true } } } }, pag.VITRINE_SPEC, page);
+    res.json({ tournaments: r.items, nextCursor: r.nextCursor });
   } catch (err) {
+    if (pag.sendPageError(res, err)) return; // Liga F5: cursor inválido = 400
     res.status(500).json({ error: err.message });
   }
 });
@@ -945,7 +990,9 @@ router.patch('/:id', authMiddleware, onlyWhen(hasBody('bannerUrl'), limits.uploa
       if (b[f] !== undefined) data[f] = b[f];
     }
     if (b.bannerUrl !== undefined) {
-      try { data.bannerUrl = await guardImageField(b.bannerUrl, { maxChars: 800000 }); } catch (e) { if (imageError(res, e)) return; throw e; }
+      const bn = await storeImage(req, res, b.bannerUrl, { maxChars: 800000 }, { tournament: t });
+      if (!bn.ok) return;
+      data.bannerUrl = bn.value;
     }
     if (b.sport && SPORTS.has(b.sport)) data.sport = b.sport;
     if (b.format && FORMATS.has(b.format)) data.format = b.format;
@@ -1042,6 +1089,8 @@ router.post('/:id/categories', authMiddleware, async (req, res) => {
     if (!t) return;
     const b = req.body || {};
     if (!b.name) return res.status(400).json({ error: 'name obrigatório' });
+    // Liga F5: categorias por torneio (plano do dono do torneio; torneio antigo não é limitado)
+    if (!(await plans.guard(res, 'category', { actorId: req.userId, actorRole: req.userRole, tournament: t }))) return;
     const rules = categoryRulesData({ tiebreakers: b.tiebreakers, doubleRound: b.doubleRound, suspensionRule: b.suspensionRule, formatConfig: b.formatConfig });
     if (rules.error) return res.status(400).json({ error: rules.error });
     // Liga F3: categoria NOVA grava a regra do jogo (padrão do esporte + o que veio).
@@ -1164,6 +1213,8 @@ router.post('/:id/entries', authMiddleware, entryLimitUnlessManager, async (req,
       where: { id: b.categoryId, tournamentId: t.id },
     });
     if (!cat) return res.status(400).json({ error: 'categoria não pertence a este torneio' });
+    // Liga F5: times por categoria (plano do dono do torneio; torneio antigo não é limitado)
+    if (!(await plans.guard(res, 'team', { actorId: req.userId, actorRole: req.userRole, tournament: t, categoryId: cat.id }))) return;
 
     const manager = await roles.can(req.userId, req.userRole, t.id, 'MANAGE_TOURNAMENT');
     if (!manager) {
@@ -1653,15 +1704,25 @@ router.get('/:id/categories/:catId/matches', async (req, res) => {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
     const vc = await visibleCategory(req, res);
     if (!vc) return;
-    const matches = await prisma.tournamentMatch.findMany({
-      where: { categoryId: vc.id },
-      orderBy: [{ round: 'asc' }, { ordering: 'asc' }],
-      include: {
-        homeEntry: { select: { id: true, name: true, seed: true, logoUrl: true } },
-        awayEntry: { select: { id: true, name: true, seed: true, logoUrl: true } },
-        games: { orderBy: { setNumber: 'asc' } },
-      },
-    });
+    // Liga F5: sem ?limit/?cursor e até o teto seguro → lista inteira, igual a antes (Master Cup
+    // e telas atuais). Acima do teto, ou pedindo página → por cursor (rodada, ordem, id) + nextCursor.
+    const page = pageOf(req, res, { defaultLimit: 200, maxLimit: 500 });
+    if (!page) return;
+    const include = {
+      homeEntry: { select: { id: true, name: true, seed: true, logoUrl: true } },
+      awayEntry: { select: { id: true, name: true, seed: true, logoUrl: true } },
+      games: { orderBy: { setNumber: 'asc' } },
+    };
+    const SAFE = Math.max(50, Number(process.env.LIGA_MATCHES_SAFE_CAP) || 400);
+    let matches;
+    let nextCursor = null;
+    if (!page.paged && (await prisma.tournamentMatch.count({ where: { categoryId: vc.id } })) <= SAFE) {
+      matches = await prisma.tournamentMatch.findMany({ where: { categoryId: vc.id }, orderBy: [{ round: 'asc' }, { ordering: 'asc' }], include });
+    } else {
+      const r = await pag.findPage(prisma.tournamentMatch, { where: { categoryId: vc.id }, include }, pag.MATCH_SPEC, page);
+      matches = r.items;
+      nextCursor = r.nextCursor;
+    }
     // Americano: cada lado é uma DUPLA rotativa — junta o parceiro no nome exibido.
     const partnerIds = [...new Set(matches.flatMap((m) => [m.homeEntry2Id, m.awayEntry2Id]).filter(Boolean))];
     if (partnerIds.length) {
@@ -1681,8 +1742,9 @@ router.get('/:id/categories/:catId/matches', async (req, res) => {
     // placar AO VIVO (gols da súmula) + lance a lance (gol/cartão com jogador e minuto)
     try { await live.attachLive(matches); } catch (e) { console.error('[tournaments] attachLive', e.message); }
     await clubIdentity.brandNested(matches); // Liga F2: nome/escudo/cores do clube
-    res.json({ matches });
+    res.json(nextCursor || page.paged ? { matches, nextCursor } : { matches });
   } catch (err) {
+    if (pag.sendPageError(res, err)) return; // Liga F5: cursor inválido = 400
     res.status(500).json({ error: err.message });
   }
 });
@@ -1997,11 +2059,14 @@ router.post('/entries/:entryId/logo', authMiddleware, limits.upload, async (req,
       return res.status(403).json({ error: 'sem permissão (coordenador ou admin do time)' });
     }
     const raw = (req.body || {}).logo;
-    let logoUrl = null;
     if (raw != null && typeof raw !== 'string') return res.status(400).json({ error: 'logo inválida (envie uma imagem)' });
     // Liga F0: imagem PNG/JPEG/WEBP real (magic bytes + sharp, máx 4096 px,
     // reencodada até caber em ~800 KB) ou link https:// / caminho do próprio site.
-    try { logoUrl = await guardImageField(raw, { maxChars: 800000 }); } catch (e) { if (imageError(res, e)) return; throw e; }
+    // Liga F5: enviada → mediaStore ("/media/<sha>.<ext>", 1 objeto mesmo copiado em N inscrições).
+    const tOfEntry = await prisma.tournament.findUnique({ where: { id: entry.tournamentId }, select: { id: true, slug: true } });
+    const st = await storeImage(req, res, raw, { maxChars: 800000 }, { tournament: tOfEntry });
+    if (!st.ok) return;
+    const logoUrl = st.value;
     // Liga F2: time com clube → o escudo é do CLUBE (Club.crestUrl), vale em todas as
     // categorias e torneios desse clube. Limpar = limpa o clube e o escudo antigo das inscrições.
     if (entry.clubId) {
@@ -2050,7 +2115,9 @@ router.patch('/entries/:entryId/club', authMiddleware, onlyWhen(hasBody('crestUr
     }
     if (b.crestUrl !== undefined) {
       if (b.crestUrl != null && typeof b.crestUrl !== 'string') return res.status(400).json({ error: 'escudo inválido (envie uma imagem)' });
-      try { data.crestUrl = await guardImageField(b.crestUrl, { maxChars: 800000 }); } catch (e) { if (imageError(res, e)) return; throw e; }
+      const st = await storeImage(req, res, b.crestUrl, { maxChars: 800000 }); // Liga F5: → mediaStore
+      if (!st.ok) return;
+      data.crestUrl = st.value;
     }
     if (!Object.keys(data).length) return res.status(400).json({ error: 'nada para alterar' });
     const before = await prisma.club.findUnique({ where: { id: entry.clubId }, select: { name: true, primaryColor: true, secondaryColor: true } });
@@ -2396,8 +2463,14 @@ router.get('/:id/stats/:kind', async (req, res) => {
     // Liga F2: nome do time = nome do clube
     const clubs = await clubIdentity.clubsForEntryIds(rows.map((r) => r.entryId));
     if (clubs.size) rows.forEach((r) => { const c = clubs.get(String(r.entryId)); if (c) { r.team = c.name; r.clubSlug = c.slug; } });
-    res.json({ kind, scope, ranking: rows });
+    // Liga F5: ?limit/&cursor → página (chave = jogador + time) com nextCursor; sem → tudo (igual a antes)
+    const page = pageOf(req, res, { defaultLimit: 30, maxLimit: 200 });
+    if (!page) return;
+    if (!page.paged) return res.json({ kind, scope, ranking: rows });
+    const pg = pag.pageArray(rows, page, (r) => (r.playerId || r.name) + '|' + r.entryId);
+    res.json({ kind, scope, ranking: pg.items, total: rows.length, nextCursor: pg.nextCursor });
   } catch (err) {
+    if (pag.sendPageError(res, err)) return; // Liga F5: cursor inválido = 400
     res.status(500).json({ error: err.message });
   }
 });
@@ -2521,7 +2594,14 @@ router.post('/athletes/register', limits.signupIp, async (req, res) => {
     let igName = null;
     if (!avatar && igHandle) {
       const ig = await instagramAvatar(igHandle);
-      if (ig && ig.avatar) { avatar = ig.avatar; igName = ig.name; photoSource = 'instagram'; }
+      if (ig && ig.avatar) {
+        // Liga F5: foto do Instagram também passa pelo imageGuard (antes ia crua pro banco)
+        try { avatar = (await guardImageDataUri(String(ig.avatar), { maxChars: 800000 })).dataUri; igName = ig.name; photoSource = 'instagram'; } catch (_) { avatar = null; }
+      }
+    }
+    // Liga F5: a foto vai pro mediaStore — o perfil guarda "/media/<sha>.<ext>", não o base64.
+    if (avatar) {
+      try { avatar = (await mediaStore.put(avatar, { source: 'upload' })).url; } catch (e) { if (imageError(res, e)) return; throw e; }
     }
 
     // @username: único em User E em AthleteProfile. Ocupado → a conta nasce sem @
@@ -2613,8 +2693,17 @@ router.get('/athletes/:handle/history', async (req, res) => {
     res.set('Cache-Control', 'no-store');
     const userId = await resolveUserId(req.params.handle);
     if (!userId) return res.status(404).json({ error: 'atleta não encontrado' });
-    res.json(await athleteHistory.history(userId, { viewer: await access.viewer(req) }));
+    const page = pageOf(req, res, { defaultLimit: 20, maxLimit: 100 });
+    if (!page) return;
+    const h = await athleteHistory.history(userId, { viewer: await access.viewer(req) });
+    // Liga F5: ?limit/&cursor pagina a lista de CAMPEONATOS (totais/por esporte/temporada inteiros)
+    if (page.paged) {
+      const pg = pag.pageArray(h.tournaments || [], page, (x) => x.tournamentId);
+      return res.json({ ...h, tournaments: pg.items, tournamentsNextCursor: pg.nextCursor });
+    }
+    res.json(h);
   } catch (err) {
+    if (pag.sendPageError(res, err)) return; // Liga F5: cursor inválido = 400
     console.error('[tournaments] history', err);
     res.status(500).json({ error: err.message });
   }
@@ -2646,22 +2735,43 @@ router.post('/athletes/merge/confirm', authMiddleware, limits.mergeConfirm, asyn
 router.get('/rankings/:sport/scorers', async (req, res) => {
   try {
     res.set('Cache-Control', 'no-store');
-    res.json(await require('../services/athleteDashboard').sportScorers(req.params.sport, { limit: req.query.limit }));
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    // Liga F5: com ?cursor → página (keyset na lista ordenada) + nextCursor; sem → como antes
+    if (req.query.cursor) {
+      const page = pageOf(req, res, { defaultLimit: 50, maxLimit: 200 });
+      if (!page) return;
+      const all = await require('../services/athleteDashboard').sportScorers(req.params.sport, { all: true });
+      const pg = pag.pageArray(all.scorers, page, (x) => (x.userId ? 'u:' + x.userId : 'n:' + x.name + '|' + x.team));
+      return res.json({ sport: all.sport, scorers: pg.items, startRank: pg.start + 1, nextCursor: pg.nextCursor });
+    }
+    const lim = Math.max(1, Math.min(Number(req.query.limit) || 50, 200));
+    const out = await require('../services/athleteDashboard').sportScorers(req.params.sport, { limit: lim + 1 });
+    // diz se há mais (o front mostra "Ver mais")
+    const more = out.scorers.length > lim;
+    out.scorers = out.scorers.slice(0, lim);
+    const last = out.scorers[out.scorers.length - 1];
+    out.nextCursor = more && last ? pag.encodeCursor({ a: last.userId ? 'u:' + last.userId : 'n:' + last.name + '|' + last.team, i: out.scorers.length - 1 }) : null;
+    res.json(out);
+  } catch (err) { if (pag.sendPageError(res, err)) return; res.status(500).json({ error: err.message }); }
 });
 
 router.get('/rankings/:sport', async (req, res) => {
   try {
-    const ratings = await prisma.athleteRating.findMany({
+    // Liga F5: ?cursor → keyset (rating desc, userId) com nextCursor; sem cursor → como antes (até ?limit, máx. 200)
+    const page = pageOf(req, res, { defaultLimit: 50, maxLimit: 200 });
+    if (!page) return;
+    const spec = [{ field: 'rating', dir: 'desc', type: 'number' }, { field: 'id', dir: 'asc', type: 'string' }];
+    const r = await pag.findPage(prisma.athleteRating, {
       where: { sport: req.params.sport, matchesCount: { gt: 0 } },
-      orderBy: { rating: 'desc' },
-      take: Math.min(Number(req.query.limit) || 50, 200),
       include: { user: { select: { id: true, name: true, username: true, city: true, state: true } } },
-    });
+    }, spec, page);
+    const ratings = r.items;
+    const startRank = page.cursor && Number.isFinite(Number(page.cursor.r)) ? Math.max(0, Math.min(1e6, Math.floor(Number(page.cursor.r)))) : 0;
+    const nextCursor = r.nextCursor ? pag.encodeCursor({ ...pag.decodeCursor(r.nextCursor), r: startRank + ratings.length }) : null;
     res.json({
       sport: req.params.sport,
+      nextCursor,
       ranking: ratings.map((r, i) => ({
-        rank: i + 1,
+        rank: startRank + i + 1,
         userId: r.userId,
         name: r.user.name,
         username: r.user.username,
@@ -2673,6 +2783,7 @@ router.get('/rankings/:sport', async (req, res) => {
       })),
     });
   } catch (err) {
+    if (pag.sendPageError(res, err)) return; // Liga F5: cursor inválido = 400
     res.status(500).json({ error: err.message });
   }
 });
@@ -2811,13 +2922,13 @@ router.get('/:idOrSlug/posts', async (req, res) => {
   try {
     const t = await access.loadVisibleTournament(req, req.params.idOrSlug, { select: { id: true } });
     if (!t) return access.sendNotFound(res);
-    const posts = await prisma.tournamentPost.findMany({
-      where: { tournamentId: t.id },
-      orderBy: [{ pinned: 'desc' }, { createdAt: 'desc' }],
-      take: 50,
-    });
-    res.json({ posts });
+    // Liga F5: cursor estável (fixado, data, id). Sem ?limit/?cursor → 50, como antes, + nextCursor.
+    const page = pageOf(req, res, { defaultLimit: 50, maxLimit: 100 });
+    if (!page) return;
+    const r = await pag.findPage(prisma.tournamentPost, { where: { tournamentId: t.id } }, pag.POST_SPEC, page);
+    res.json({ posts: r.items, nextCursor: r.nextCursor });
   } catch (err) {
+    if (pag.sendPageError(res, err)) return; // Liga F5: cursor inválido = 400
     res.status(500).json({ error: err.message });
   }
 });
@@ -2830,6 +2941,15 @@ router.post('/:id/posts', authMiddleware, limits.post, async (req, res) => {
     const b = req.body || {};
     const body = String(b.body || '').trim();
     if (!body) return res.status(400).json({ error: 'escreva o aviso' });
+    // Liga F5: avisos por mês do plano do dono do torneio (só nova criação)
+    if (!(await plans.guard(res, 'post', { actorId: req.userId, actorRole: req.userRole, tournament: t }))) return;
+    // Liga F5: imagem do aviso (opcional) — imageGuard + mediaStore ("/media/<sha>.<ext>")
+    let imageUrl = null;
+    if (b.image != null && b.image !== '') {
+      const st = await storeImage(req, res, b.image, { maxChars: 800000, allowRelative: false }, { tournament: t });
+      if (!st.ok) return;
+      imageUrl = st.value;
+    }
     const post = await prisma.tournamentPost.create({
       data: {
         tournamentId: t.id,
@@ -2837,6 +2957,7 @@ router.post('/:id/posts', authMiddleware, limits.post, async (req, res) => {
         title: b.title ? String(b.title).trim().slice(0, 120) : null,
         body: body.slice(0, 4000),
         pinned: !!b.pinned,
+        ...(imageUrl ? { imageUrl } : {}),
       },
     });
     res.status(201).json(post);
@@ -2891,6 +3012,11 @@ router.post('/:id/duplicate', authMiddleware, limits.createTournament, async (re
   try {
     const t = await loadForAction(req, res, req.params.id, 'MANAGE_TOURNAMENT', {}, 'só a organização (fundador/coordenador) duplica o torneio');
     if (!t) return;
+    // Liga F5: a cópia nasce com o MESMO dono → conta nos torneios ativos do plano dele
+    if (!plans.isStaffRole(req.userRole) && !clubIdentity.isExcludedSlug(t.slug)) {
+      const ownerRole = (await prisma.user.findUnique({ where: { id: t.ownerId }, select: { role: true } }) || {}).role;
+      if (!(await plans.guard(res, 'tournament', { actorId: t.ownerId, actorRole: ownerRole }))) return;
+    }
     const r = await duplicateTournament(t.id, { userId: req.userId, body: req.body || {} });
     if (!r) return access.sendNotFound(res);
     res.status(201).json(r);
@@ -2958,8 +3084,16 @@ router.get('/:idOrSlug/pickup/scorers', async (req, res) => {
     res.set('Cache-Control', 'no-store');
     const t = await access.loadVisibleTournament(req, req.params.idOrSlug);
     if (!t) return access.sendNotFound(res);
-    res.json(await pickup.seasonScorers(t, req.query.season));
-  } catch (e) { if (svcErr(res, e)) return; res.status(500).json({ error: e.message }); }
+    const page = pageOf(req, res, { defaultLimit: 30, maxLimit: 200 });
+    if (!page) return;
+    const out = await pickup.seasonScorers(t, req.query.season);
+    // Liga F5: ?limit/&cursor pagina a ARTILHARIA (scorers); "players" fica inteiro (presença/sorteio)
+    if (page.paged) {
+      const pg = pag.pageArray(out.scorers, page, (r) => r.playerId);
+      return res.json({ ...out, scorers: pg.items, startRank: pg.start + 1, nextCursor: pg.nextCursor });
+    }
+    res.json(out);
+  } catch (e) { if (pag.sendPageError(res, e)) return; if (svcErr(res, e)) return; res.status(500).json({ error: e.message }); }
 });
 
 router.post('/:id/archive', authMiddleware, archiveHandler);

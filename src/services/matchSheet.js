@@ -321,7 +321,8 @@ async function playerStats(tournamentId, opts = {}) {
     if (scope === 'live') r.partial = !!r.partial;
   }
   const key = opts.kind === 'assists' ? 'assists' : opts.kind === 'cards' ? 'total' : 'goals';
-  rows.sort((a, b) => b[key] - a[key] || String(a.name).localeCompare(String(b.name)));
+  // desempate final pelo id do jogador: ordem estável entre chamadas (paginação por cursor — Liga F5)
+  rows.sort((a, b) => b[key] - a[key] || String(a.name).localeCompare(String(b.name)) || String(a.playerId).localeCompare(String(b.playerId)));
   return rows;
 }
 
