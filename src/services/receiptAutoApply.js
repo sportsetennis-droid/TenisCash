@@ -363,6 +363,6 @@ function iniciarRecebimentoAutomatico(db) {
   setInterval(rodar, 10 * 60 * 1000);
   console.log('[recebimento automático] ligado: cada recebimento bipado entra no estoque da loja (varredura a cada 10 min + na hora do bipe)');
 }
-function estadoRecebimentoAutomatico() { return JSON.parse(JSON.stringify(state)); }
+function estadoRecebimentoAutomatico() { return { ...JSON.parse(JSON.stringify(state)), desde: new Date(desde()).toISOString(), anteriorDesde: new Date(anteriorDesde()).toISOString(), familiaContadaMin: FAMILIA_CONTADA_MIN }; }
 
 module.exports = { desde, anteriorDesde, familiaDaCategoria, podeEntrarAnterior, baixarVendasArquivadas, SOURCE_VENDAS, deveSair, SOURCE, SOURCE_REVERSE, SOURCE_PAIR, SOURCE_UNPAIR, aplicarLote, parear, antesDeExcluirBipe, jaEntrouPorTamanho, jaEntrouPorLeituras, aplicarTodos, iniciarRecebimentoAutomatico, estadoRecebimentoAutomatico, deveEntrar, replacementRound };
