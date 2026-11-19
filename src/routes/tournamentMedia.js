@@ -26,7 +26,7 @@ const live = require('../services/tournamentLive');
 const art = require('../services/tournamentArt');
 const sheet = require('../services/matchSheet');
 const { publicBaseUrl } = require('../config/publicUrl');
-const { limits } = require('../services/ligaRateLimit');
+const { limits, onlyWhen } = require('../services/ligaRateLimit');
 const { guardImageField, ImageGuardError } = require('../services/imageGuard');
 
 const apiRouter = express.Router();
@@ -200,7 +200,7 @@ apiRouter.post('/:id/sponsors', authMiddleware, limits.upload, async (req, res) 
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-apiRouter.patch('/:id/sponsors/:sid', authMiddleware, limits.upload, async (req, res) => {
+apiRouter.patch('/:id/sponsors/:sid', authMiddleware, onlyWhen((req) => !!(req.body && Object.prototype.hasOwnProperty.call(req.body, 'logoUrl')), limits.upload), async (req, res) => {
   try {
     const t = await findTournament(req.params.id);
     if (!t) return res.status(404).json({ error: 'torneio não encontrado' });
@@ -328,11 +328,18 @@ publicRouter.get('/tournaments/:slug', async (req, res) => {
   }
 });
 
+// Liga F0: só serve tipo de imagem rasterizada. SVG antigo (aceito antes da F0)
+// ou qualquer outro tipo → 404. nosniff + CSP sandbox impedem o navegador de
+// executar o conteúdo mesmo que algo estranho esteja gravado.
+const SERVABLE_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 function sendDataUri(res, uri) {
   const m = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i.exec(uri || '');
-  if (!m) return res.status(404).json({ error: 'sem imagem' });
+  const type = m ? m[1].toLowerCase().replace('image/jpg', 'image/jpeg') : '';
+  if (!m || !SERVABLE_IMAGE_TYPES.has(type)) return res.status(404).json({ error: 'sem imagem' });
   res.set('Cache-Control', 'public, max-age=3600');
-  res.type(m[1]).send(Buffer.from(m[2], 'base64'));
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.set('Content-Security-Policy', "default-src 'none'; sandbox");
+  res.type(type).send(Buffer.from(m[2], 'base64'));
 }
 publicRouter.get('/entries/:id/logo', async (req, res) => {
   try {

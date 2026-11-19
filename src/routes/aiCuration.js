@@ -25,8 +25,9 @@ function validatedMinScore(raw) {
 // Deriva a cor pelo REF (busca web), grava aiContext.color, limpa imageUrl e
 // re-puxa a imagem COM cor + Vision exigindo score>=8 (rejeita cor errada).
 // Fora de /api/admin (auth blanket); protegido por ?g=. Registrado em index.js.
-// Liga Aberta F0: só o sha256 do segredo fica no código (rotação: env ROUTE_GUARD_PX2026COL).
-const PX2026COL_GUARD_SHA256 = 'ca5dbc3282688211cd5770d75c1bd178944a099b58bd29c5de9264258f36b468';
+// Liga Aberta F0: só o sha256 do segredo (novo, forte; texto fora do git) fica no código.
+// Rotação: env ROUTE_GUARD_PX2026COL no Railway vale no lugar deste hash.
+const PX2026COL_GUARD_SHA256 = '9e2c74b63e8ccc15ac500eec849e83ceefd55f0d2098af9a98506ff42a3f2996';
 const COLOR_DICT = [
   [/\b(pret[oa]|negr[oa]|black)\b/i, 'Preto'],
   [/\b(branc[oa]|blanc[oa]|white)\b/i, 'Branco'],

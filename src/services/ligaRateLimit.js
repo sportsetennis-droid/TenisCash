@@ -8,20 +8,49 @@
 // Memória do processo (1 instância no Railway). Reiniciar zera a contagem.
 // =====================================================================
 
+const net = require('net');
 const rateLimit = require('express-rate-limit');
+const { formatPhoneBR } = require('./phoneBR');
 
 const HOUR = 60 * 60 * 1000;
 
-function clientIp(req) {
-  return req.ip || (req.socket && req.socket.remoteAddress) || 'sem-ip';
+// IP REAL do cliente. Produção fica atrás de Cloudflare → Railway (trust proxy 1
+// só enxerga o IP do edge da Cloudflare). Usa cf-connecting-ip quando é um IP
+// válido; senão req.ip. IPv6 é agrupado por /64 (um cliente controla o /64 inteiro).
+// ⚠️ cf-connecting-ip só é confiável se o tráfego passa pela Cloudflare.
+function normalizeIp(raw) {
+  let s = String(raw || '').trim().replace(/%.*$/, '');
+  if (/^::ffff:/i.test(s) && net.isIPv4(s.slice(7))) s = s.slice(7);
+  return s;
 }
+function expandIPv6(ip) {
+  let s = ip.toLowerCase();
+  const m = s.match(/^(.*:)(\d+\.\d+\.\d+\.\d+)$/);
+  if (m) {
+    const o = m[2].split('.').map(Number);
+    s = m[1] + ((o[0] << 8) | o[1]).toString(16) + ':' + ((o[2] << 8) | o[3]).toString(16);
+  }
+  const [head, tail] = s.split('::');
+  const h = head ? head.split(':') : [];
+  const t = tail !== undefined ? (tail ? tail.split(':') : []) : [];
+  const fill = tail !== undefined ? new Array(8 - h.length - t.length).fill('0') : [];
+  return [...h, ...fill, ...t].map((x) => (x || '0').replace(/^0+(?=.)/, ''));
+}
+function ipKey(req) {
+  const headers = (req && req.headers) || {};
+  const cf = normalizeIp(headers['cf-connecting-ip']);
+  const ip = net.isIP(cf) ? cf : normalizeIp(req.ip || (req.socket && req.socket.remoteAddress));
+  if (net.isIPv6(ip)) return expandIPv6(ip).slice(0, 4).join(':') + '::/64';
+  return ip || 'sem-ip';
+}
+function clientIp(req) { return ipKey(req); }
 function userOrIp(req) {
-  return req.userId ? 'u:' + req.userId : 'ip:' + clientIp(req);
+  return req.userId ? 'u:' + req.userId : 'ip:' + ipKey(req);
 }
+// Mesmo formato do envio (formatPhoneBR): com e sem 55 = mesma chave.
 function phoneFromBody(req) {
   const b = req.body || {};
-  const p = String(b.whatsapp || b.phone || '').replace(/\D/g, '');
-  return p || null;
+  return formatPhoneBR(b.whatsapp || b.phone);
 }
 
 function make({ windowMs = HOUR, max, message, keyGenerator = userOrIp, skip }) {
@@ -60,4 +89,4 @@ const limits = {
   signupIp: make({ max: 30, keyGenerator: (req) => 'ip:' + clientIp(req), message: 'Muitas tentativas de cadastro deste aparelho. Tente de novo em 1 hora.' }),
 };
 
-module.exports = { limits, make, onlyWhen, userOrIp };
+module.exports = { limits, make, onlyWhen, userOrIp, ipKey, phoneFromBody };

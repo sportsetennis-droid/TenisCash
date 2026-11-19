@@ -639,6 +639,15 @@ function imageError(res, err) {
 }
 const hasBody = (field) => (req) => !!(req.body && Object.prototype.hasOwnProperty.call(req.body, field));
 
+// Limitador de inscrição: NÃO se aplica a quem gerencia o torneio (organizador
+// inscrevendo os times em massa). Para os demais, limits.entry.
+async function entryLimitUnlessManager(req, res, next) {
+  try {
+    if (req.userId && (await roles.can(req.userId, req.userRole, req.params.id, 'MANAGE_TOURNAMENT'))) return next();
+  } catch (_) { /* na dúvida, limita */ }
+  return limits.entry(req, res, next);
+}
+
 // Carrega torneio garantindo que req.userId é dono (ou admin)
 async function loadOwned(req, res, tournamentId) {
   const t = await prisma.tournament.findUnique({ where: { id: tournamentId } });
@@ -975,7 +984,7 @@ router.patch('/:id/categories/:catId', authMiddleware, async (req, res) => {
 //    registrationCloseAt), só a SI MESMO ou o PRÓPRIO time (vira admin do time),
 //    nunca terceiros. Entra como PENDING (o organizador aprova; a cobrança em
 //    TenisCash, se houver, acontece na aprovação). Dupla: usar /entries/request.
-router.post('/:id/entries', authMiddleware, limits.entry, async (req, res) => {
+router.post('/:id/entries', authMiddleware, entryLimitUnlessManager, async (req, res) => {
   try {
     const t = await prisma.tournament.findUnique({ where: { id: req.params.id } });
     if (!t) return res.status(404).json({ error: 'torneio não encontrado' });
@@ -1010,31 +1019,44 @@ router.post('/:id/entries', authMiddleware, limits.entry, async (req, res) => {
       if (dupName) return res.status(409).json({ error: 'já existe um time com esse nome nesta categoria' });
       if (!manager) {
         // Time = clube único entre categorias: quem não organiza não pode "entrar"
-        // num clube que já existe no torneio só repetindo o nome.
-        const sameClub = await prisma.tournamentEntry.findFirst({
+        // num clube que já existe no torneio só repetindo o nome — a não ser que
+        // já seja ADMIN desse clube (aí está inscrevendo o próprio time em outra categoria).
+        const sameClub = await prisma.tournamentEntry.findMany({
           where: { tournamentId: t.id, name: { equals: teamName, mode: 'insensitive' } },
           select: { id: true },
         });
-        if (sameClub) return res.status(409).json({ error: 'já existe um time com esse nome neste torneio — peça ao administrador do time para inscrever a categoria' });
+        if (sameClub.length) {
+          const isClubAdmin = await prisma.tournamentRole.findFirst({
+            where: { tournamentId: t.id, userId: req.userId, role: 'TEAM_ADMIN', entryId: { in: sameClub.map((e) => e.id) } },
+            select: { id: true },
+          });
+          if (!isClubAdmin) return res.status(409).json({ error: 'já existe um time com esse nome neste torneio — peça ao administrador do time para inscrever a categoria' });
+        }
       }
       if (t.maxEntries) {
         const count = await prisma.tournamentEntry.count({ where: { tournamentId: t.id } });
         if (count >= t.maxEntries) return res.status(409).json({ error: 'torneio lotado' });
       }
-      const teamEntry = await prisma.tournamentEntry.create({
-        data: {
-          tournamentId: t.id,
-          categoryId: cat.id,
-          name: teamName,
-          seed,
-          groupName,
-          status,
-        },
-        include: { members: true },
+      // Inscrição + papel de admin do time na MESMA transação: sem papel, sem inscrição.
+      const teamEntry = await prisma.$transaction(async (tx) => {
+        const created = await tx.tournamentEntry.create({
+          data: {
+            tournamentId: t.id,
+            categoryId: cat.id,
+            name: teamName,
+            seed,
+            groupName,
+            status,
+          },
+          include: { members: true },
+        });
+        if (!manager) {
+          // Quem criou o próprio time vira administrador DESTE time (só desta inscrição).
+          await tx.tournamentRole.create({ data: { tournamentId: t.id, userId: req.userId, role: 'TEAM_ADMIN', entryId: created.id } });
+        }
+        return created;
       });
       if (!manager) {
-        // Quem criou o próprio time vira administrador DESTE time (só desta inscrição).
-        await prisma.tournamentRole.create({ data: { tournamentId: t.id, userId: req.userId, role: 'TEAM_ADMIN', entryId: teamEntry.id } }).catch(() => {});
         try {
           await notify(t.ownerId, { type: 'entry', title: 'Novo pedido de inscrição', body: `${teamName} pediu vaga em "${t.name}". Aprove na categoria.`, link: '#/t/' + t.id });
         } catch (_) {}
@@ -1166,7 +1188,11 @@ router.delete('/entries/:entryId', authMiddleware, async (req, res) => {
       }
     }
 
-    await prisma.tournamentEntry.delete({ where: { id: entry.id } });
+    // Papéis presos a esta inscrição (admin/treinador/jogador do time) saem junto.
+    await prisma.$transaction([
+      prisma.tournamentRole.deleteMany({ where: { tournamentId: entry.tournamentId, entryId: entry.id } }),
+      prisma.tournamentEntry.delete({ where: { id: entry.id } }),
+    ]);
     res.json({ ok: true, refunded });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1175,7 +1201,7 @@ router.delete('/entries/:entryId', authMiddleware, async (req, res) => {
 
 // Inscrição PÚBLICA (estilo formulário do CopaFácil): o atleta logado pede
 // vaga e a inscrição entra como PENDING até o organizador aprovar.
-router.post('/:id/entries/request', authMiddleware, limits.entry, async (req, res) => {
+router.post('/:id/entries/request', authMiddleware, entryLimitUnlessManager, async (req, res) => {
   try {
     const t = await prisma.tournament.findUnique({ where: { id: req.params.id } });
     if (!t) return res.status(404).json({ error: 'torneio não encontrado' });
@@ -1246,7 +1272,7 @@ router.post('/entries/:entryId/approve', authMiddleware, async (req, res) => {
   try {
     const entry = await prisma.tournamentEntry.findUnique({
       where: { id: req.params.entryId },
-      include: { tournament: { select: { ownerId: true, cashEnabled: true, entryFeeCash: true } } },
+      include: { tournament: { select: { ownerId: true, cashEnabled: true, entryFeeCash: true } }, _count: { select: { members: true } } },
     });
     if (!entry) return res.status(404).json({ error: 'inscrição não encontrada' });
     const isAdmin = ['admin', 'superadmin', 'manager'].includes(req.userRole);
@@ -1255,8 +1281,10 @@ router.post('/entries/:entryId/approve', authMiddleware, async (req, res) => {
     }
 
     // Torneio com TenisCash real → cobra ANTES de confirmar. Saldo insuficiente
-    // = não confirma (fica PENDING), nada pela metade.
-    if (entry.tournament.cashEnabled && entry.tournament.entryFeeCash > 0 && !entry.entryPaid) {
+    // = não confirma (fica PENDING), nada pela metade. Inscrição de TIME (sem
+    // membros com conta) não é cobrada — como era antes da Liga F0.
+    const hasMembers = !!(entry._count && entry._count.members > 0);
+    if (hasMembers && entry.tournament.cashEnabled && entry.tournament.entryFeeCash > 0 && !entry.entryPaid) {
       const c = await cash.chargeEntry(entry.id);
       if (!c.ok) return res.status(402).json({ error: c.error });
     }
@@ -1922,11 +1950,14 @@ router.post('/athletes/register/start', limits.signupCodeIp, limits.signupCodePh
     const b = req.body || {};
     const whatsapp = signupCode.normalizePhone(b.whatsapp || b.phone);
     if (!whatsapp) return res.status(400).json({ error: 'WhatsApp com DDD obrigatório' });
-    const existing = await prisma.user.findUnique({ where: { phone: whatsapp }, select: { id: true } });
-    if (existing) return res.status(409).json({ error: 'este WhatsApp já tem conta — entre com sua senha' });
-    const r = await signupCode.startSignup(whatsapp);
-    if (!r.ok) return res.status(r.status || 503).json({ error: r.error, whatsappDown: !!r.whatsappDown });
-    res.json({ ok: true, expiresInSeconds: r.expiresInSeconds });
+    // Resposta IGUAL com ou sem conta (não revela quem já é cadastrado). Quem já
+    // tem conta não recebe código; o conflito só aparece no passo final.
+    const existing = await prisma.user.findFirst({ where: { phone: { in: signupCode.phoneVariants(whatsapp) } }, select: { id: true } });
+    if (!existing) {
+      const r = await signupCode.startSignup(whatsapp);
+      if (!r.ok) return res.status(r.status || 503).json({ error: r.error, whatsappDown: !!r.whatsappDown });
+    }
+    res.json({ ok: true, expiresInSeconds: signupCode.CODE_TTL_MS / 1000, message: 'Se este número puder receber, o código chega no WhatsApp em instantes.' });
   } catch (err) {
     console.error('[tournaments] register start', err);
     res.status(500).json({ error: 'erro ao enviar o código' });
@@ -1934,6 +1965,8 @@ router.post('/athletes/register/start', limits.signupCodeIp, limits.signupCodePh
 });
 
 // Passo 2: cadastra atleta. body: { name, whatsapp, password, code, instagram?, photo?(dataURI) }
+// Conta + perfil + consumo do código numa TRANSAÇÃO: ou nasce tudo e volta o token,
+// ou não nasce nada e o código continua valendo.
 router.post('/athletes/register', limits.signupIp, async (req, res) => {
   try {
     const b = req.body || {};
@@ -1947,8 +1980,8 @@ router.post('/athletes/register', limits.signupIp, async (req, res) => {
       return res.status(400).json({ error: 'informe o código de 6 dígitos enviado no seu WhatsApp', needsCode: true });
     }
 
-    const existing = await prisma.user.findUnique({ where: { phone: whatsapp }, select: { id: true } });
-    if (existing) return res.status(409).json({ error: 'este WhatsApp já tem conta' });
+    const existing = await prisma.user.findFirst({ where: { phone: { in: signupCode.phoneVariants(whatsapp) } }, select: { id: true } });
+    if (existing) return res.status(409).json({ error: 'este WhatsApp já tem conta — entre com sua senha' });
 
     // Foto enviada: valida ANTES de gastar o código (imagem real, máx 4096 px, ~800 KB).
     let avatar = null;
@@ -1956,7 +1989,7 @@ router.post('/athletes/register', limits.signupIp, async (req, res) => {
       try { avatar = (await guardImageDataUri(String(b.photo), { maxChars: 800000 })).dataUri; } catch (e) { if (imageError(res, e)) return; throw e; }
     }
 
-    const v = await signupCode.consumeSignupCode(whatsapp, b.code);
+    const v = await signupCode.checkSignupCode(whatsapp, b.code);
     if (!v.ok) return res.status(v.status || 400).json({ error: v.error, needsCode: true });
 
     const igHandle = b.instagram ? String(b.instagram).replace(/^@/, '').trim().slice(0, 30) : null;
@@ -1969,27 +2002,46 @@ router.post('/athletes/register', limits.signupIp, async (req, res) => {
       if (ig && ig.avatar) { avatar = ig.avatar; igName = ig.name; photoSource = 'instagram'; }
     }
 
-    // @username único (User e AthleteProfile). Se o handle já existe, não grava username.
+    // @username: único em User E em AthleteProfile. Ocupado → a conta nasce sem @
+    // (não é erro do cadastro; o atleta escolhe outro depois).
     let username = null;
+    let usernameTaken = false;
     if (igHandle) {
-      const taken = await prisma.user.findUnique({ where: { username: igHandle }, select: { id: true } });
-      if (!taken) username = igHandle;
+      const [u1, p1] = await Promise.all([
+        prisma.user.findFirst({ where: { username: { equals: igHandle, mode: 'insensitive' } }, select: { id: true } }),
+        prisma.athleteProfile.findFirst({ where: { username: { equals: igHandle, mode: 'insensitive' } }, select: { userId: true } }),
+      ]);
+      if (u1 || p1) usernameTaken = true; else username = igHandle;
     }
 
     const hashed = await bcrypt.hash(password, 10);
-    const user = await prisma.user.create({
-      data: {
-        name, phone: whatsapp, pin: hashed, balance: 0,
-        lgpdAccepted: true, lgpdDate: new Date(),
-        username: username || undefined,
-      },
+    // Conta guardada no formato nacional (DDD+número), como o cadastro do app.
+    const phoneStored = whatsapp.slice(2);
+    const createAll = (handle) => prisma.$transaction(async (tx) => {
+      if (!(await signupCode.markSignupCodeUsed(tx, v.rowId))) {
+        const e = new Error('código já usado — peça um novo'); e.status = 400; throw e;
+      }
+      const user = await tx.user.create({
+        data: { name, phone: phoneStored, pin: hashed, balance: 0, lgpdAccepted: true, lgpdDate: new Date(), username: handle || undefined },
+      });
+      await tx.athleteProfile.create({ data: { userId: user.id, username: handle || null, avatarUrl: avatar || null } });
+      return user;
     });
-
-    await prisma.athleteProfile.upsert({
-      where: { userId: user.id },
-      create: { userId: user.id, username: username || null, avatarUrl: avatar || null },
-      update: { avatarUrl: avatar || undefined, username: username || undefined },
-    });
+    const targetOf = (e) => String((e && e.meta && e.meta.target) || '');
+    let user;
+    try {
+      user = await createAll(username);
+    } catch (e) {
+      if (e && e.status === 400) return res.status(400).json({ error: e.message, needsCode: true });
+      if (e && e.code === 'P2002' && /phone/.test(targetOf(e))) return res.status(409).json({ error: 'este WhatsApp já tem conta — entre com sua senha' });
+      if (e && e.code === 'P2002' && /username/.test(targetOf(e)) && username) {
+        // corrida no @: cria sem o @ (mesma transação, código ainda não consumido)
+        usernameTaken = true; username = null;
+        user = await createAll(null);
+      } else {
+        throw e;
+      }
+    }
 
     // Opcional: já pedir pra entrar num time na criação da conta (o time aceita depois).
     let joinedTeam = null;
@@ -2002,7 +2054,7 @@ router.post('/athletes/register', limits.signupIp, async (req, res) => {
     res.status(201).json({
       token,
       user: { id: user.id, name: user.name, phone: user.phone, username, role: user.role },
-      instagram: igHandle, instagramName: igName,
+      instagram: igHandle, instagramName: igName, usernameTaken,
       photoSource, hasPhoto: !!avatar, joinedTeam,
     });
   } catch (err) {

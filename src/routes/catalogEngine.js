@@ -8,9 +8,10 @@ const engine = require('../services/catalogEngine');
 const router = express.Router();
 
 // --- Disparo GUARDADO (fora de /api/admin) — só pra testar/rodar por curl/cron externo.
-// Liga Aberta F0: só o sha256 do segredo fica no código (rotação: env ROUTE_GUARD_CATENGINE).
+// Liga Aberta F0: só o sha256 do segredo (novo, forte; texto fora do git) fica no código.
+// Rotação: env ROUTE_GUARD_CATENGINE no Railway vale no lugar deste hash.
 const { matchesSecretHash } = require('../services/secretGuard');
-const CATENGINE_GUARD_SHA256 = '59d0a72e89cae415ac7686759da95cc29bdd56c5398e986bb23c1161fa431f6e';
+const CATENGINE_GUARD_SHA256 = 'c0cd2431ff0b0c03e921daefc5dcafcc2fbcd390dd974e157d590444cab7db89';
 async function catEngineRunHandler(req, res) {
   if (!matchesSecretHash(req.query.g, CATENGINE_GUARD_SHA256, 'ROUTE_GUARD_CATENGINE')) return res.status(404).json({ error: 'not found' });
   try {

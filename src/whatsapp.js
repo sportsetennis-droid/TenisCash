@@ -1,3 +1,4 @@
+const { formatPhoneBR } = require('./services/phoneBR');
 const META_WA_API_VERSION = process.env.META_WHATSAPP_API_VERSION || process.env.META_GRAPH_VERSION || 'v22.0';
 // Token: prioriza dedicado de WhatsApp, depois System User token (META_USER_TOKEN), depois Page Token
 const { loadMetaWhatsAppCredentials } = require('./services/whatsappCredentials');
@@ -376,13 +377,7 @@ setInterval(() => {
 // CAMPANHA - envio em lote via Meta WhatsApp Cloud API com throttling e log
 // =====================================================================
 
-function formatPhoneBR(raw) {
-  let p = String(raw || '').replace(/\D/g, '');
-  if (!p) return null;
-  if (!p.startsWith('55')) p = '55' + p;
-  if (p.length < 12 || p.length > 13) return null;
-  return p;
-}
+// formatPhoneBR vive em src/services/phoneBR.js (mesma regra usada pelo limitador e pelo código do cadastro).
 
 async function sendCustomMessage(phone, message, opts = {}) {
   await loadConnectedMetaCredentials();

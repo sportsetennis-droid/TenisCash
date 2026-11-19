@@ -242,10 +242,11 @@ app.get('/api/_waqr', async (req, res) => {
 });
 // TEMPORÁRIO (remover após uso): diagnóstico "por que o cupom não sai" — READ-ONLY,
 // roda NO SERVIDOR (tem banco + enxerga os agentes das lojas). O dono abre no navegador.
-// Liga Aberta F0: guarda = sha256 do segredo (rotação: env ROUTE_GUARD_FISCALDIAG).
+// Liga Aberta F0: guarda = sha256 de segredos NOVOS e fortes (texto fora do git, em
+// C:/Users/dougl/.teniscash/route-guards.env). Rotação: env ROUTE_GUARD_* no Railway.
 const _guardHash = require('./services/secretGuard').matchesSecretHash;
-const _FISCALDIAG_SHA256 = '9c358aac1c62e30fadb2a2381548da3ef1b67232e90e3270aa31f895e6fcbaff';
-const _REINADO_SHA256 = '0993d4b3f72b41c9e4aee8484b5599659fc9144d339d7390d9b1fd85510b0ce7';
+const _FISCALDIAG_SHA256 = '28eb28fc7d72bb8bcae5805d8d7d4e173e082c6ca50bcc0b79b77842de3436df';
+const _REINADO_SHA256 = '6cd67e29c025dcee59ff06ae4966bc5b601e13d212bb60a8d46ffc7268b7600f';
 app.get('/api/_fiscaldiag', async (req, res) => {
   if (!_guardHash(req.query.g, _FISCALDIAG_SHA256, 'ROUTE_GUARD_FISCALDIAG')) return res.status(403).json({ error: 'forbidden' });
   try {

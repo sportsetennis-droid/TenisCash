@@ -187,6 +187,25 @@ async function main() {
     assert.strictEqual(matchesSecretHash('novo-segredo', h, 'ROUTE_GUARD_TESTE_F0'), true);
     delete process.env.ROUTE_GUARD_TESTE_F0;
   });
+  await ok('I4: segredos antigos (vazados) não valem mais — só os hashes novos ficam no código', () => {
+    const src = ['src/index.js', 'src/routes/aiCuration.js', 'src/routes/catalogEngine.js', '.github/workflows/fiscal-diag.yml'].map(read).join(' ');
+    for (const oldHash of ['ca5dbc3282688211', '59d0a72e89cae415', '9c358aac1c62e30f', '0993d4b3f72b41c9']) assert.ok(!src.includes(oldHash), 'hash antigo ainda no código: ' + oldHash);
+    for (const newHash of ['9e2c74b63e8ccc15', 'c0cd2431ff0b0c03', '28eb28fc7d72bb8b', '6cd67e29c025dcee']) assert.ok(src.includes(newHash), 'hash novo ausente: ' + newHash);
+    assert.ok(!/[?&]g=[a-z0-9_]{6,}/i.test(read('.github/workflows/fiscal-diag.yml')), 'workflow não carrega segredo em texto');
+  });
+  await ok('I4: rota guardada aceita o segredo da env ROUTE_GUARD_* e recusa outro (404)', async () => {
+    const { pull2026ColHandler } = require('../src/routes/aiCuration');
+    const run = (g) => new Promise((resolve) => {
+      const res = { statusCode: 200, status(c) { this.statusCode = c; return this; }, json(b) { resolve({ status: this.statusCode, body: b }); return this; } };
+      Promise.resolve(pull2026ColHandler({ query: { g }, body: {} }, res)).catch((e) => resolve({ status: 'erro', body: e.message }));
+    });
+    process.env.ROUTE_GUARD_PX2026COL = 'valor-de-teste-f0';
+    try {
+      assert.strictEqual((await run('outro')).status, 404);
+      assert.strictEqual((await run('')).status, 404);
+      assert.notStrictEqual((await run('valor-de-teste-f0')).status, 404);
+    } finally { delete process.env.ROUTE_GUARD_PX2026COL; }
+  });
   await ok('nenhuma comparação ?g= com texto fixo e loop.html sem segredo', () => {
     const idx = read('src/index.js');
     assert.ok(!/req\.query\.g\s*!==\s*'/.test(idx), 'index.js ainda compara ?g= com texto');
@@ -219,6 +238,30 @@ async function main() {
     await new Promise((r) => server.close(r));
   });
 
+  await ok('I1: chave de IP usa cf-connecting-ip válido; inválido cai no req.ip; IPv6 agrupa por /64', () => {
+    const { ipKey } = require('../src/services/ligaRateLimit');
+    const k = (h, ip) => ipKey({ headers: h, ip });
+    assert.strictEqual(k({ 'cf-connecting-ip': '200.10.20.30' }, '172.70.1.1'), '200.10.20.30');
+    assert.strictEqual(k({ 'cf-connecting-ip': '1.2.3.4, 5.6.7.8' }, '172.70.1.1'), '172.70.1.1', 'valor inválido é ignorado');
+    assert.strictEqual(k({ 'cf-connecting-ip': '<script>' }, '172.70.1.1'), '172.70.1.1');
+    assert.strictEqual(k({}, '::ffff:10.0.0.9'), '10.0.0.9');
+    const a = k({ 'cf-connecting-ip': '2804:14c:5b8:8e00:aaaa:bbbb:cccc:dddd' }, 'x');
+    const b = k({ 'cf-connecting-ip': '2804:14c:5b8:8e00::1' }, 'x');
+    const c = k({ 'cf-connecting-ip': '2804:14c:5b8:8e01::1' }, 'x');
+    assert.strictEqual(a, '2804:14c:5b8:8e00::/64');
+    assert.strictEqual(a, b, 'mesmo /64 = mesma chave');
+    assert.notStrictEqual(a, c, '/64 vizinho = outra chave');
+  });
+  await ok('I2: telefone com e sem 55 = mesma chave do limitador (formato do envio)', () => {
+    const { phoneFromBody } = require('../src/services/ligaRateLimit');
+    const { formatPhoneBR } = require('../src/services/phoneBR');
+    const k = (v) => phoneFromBody({ body: { whatsapp: v } });
+    assert.strictEqual(k('83999990000'), '5583999990000');
+    assert.strictEqual(k('+55 (83) 99999-0000'), '5583999990000');
+    assert.strictEqual(k('5583999990000'), formatPhoneBR('83 99999-0000'));
+    assert.strictEqual(require('../src/whatsapp').formatPhoneBR, formatPhoneBR, 'o envio usa a mesma função');
+  });
+
   // ------------------------------------------------------------------
   console.log('5. Rotas com banco descartável');
   const URL_DB = process.env.DATABASE_URL || '';
@@ -242,44 +285,65 @@ async function dbSuite(PNG, JPG, WEBP, SVG, FAKE_PREFIX) {
   const app = express();
   app.use(express.json({ limit: '15mb' }));
   app.use('/api/tournaments', require('../src/routes/tournamentMedia').apiRouter);
+  app.use('/api/public', require('../src/routes/tournamentMedia').publicRouter);
   app.use('/api/tournaments', require('../src/routes/tournaments'));
   app.use(require('../src/routes/tournamentRegistration'));
   app.use('/api/clubs', require('../src/routes/clubs'));
   app.get('/api/_loopview', ...require('../src/routes/loopView').loopViewChain);
   const server = await new Promise((r) => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
   const base = `http://127.0.0.1:${server.address().port}`;
-  function call(method, url, { token, body } = {}) {
-    const headers = {};
+  // Cada chamada sai de um "IP" diferente (cf-connecting-ip) para os limitadores
+  // por IP não se misturarem entre os testes; quem quer testar IP passa `ip`.
+  let ipSeq = 0;
+  function call(method, url, { token, body, ip } = {}) {
+    const headers = { 'cf-connecting-ip': ip || `198.51.${Math.floor(++ipSeq / 250) % 250}.${ipSeq % 250}` };
     if (token) headers.Authorization = 'Bearer ' + token;
     return httpCall(method, base + url, headers, body);
   }
   const RUN = Date.now().toString(36);
   let seq = 0;
-  const phone = () => '8398' + String(Date.now() % 10000000).padStart(7, '0').slice(-5) + String(++seq).padStart(2, '0');
-  const mkUser = (role) => prisma.user.create({ data: { name: `F0 ${role || 'user'} ${RUN}-${++seq}`, phone: phone(), pin: 'x', ...(role ? { role } : {}) } });
+  const phoneBase = String(Date.now() % 100000).padStart(5, '0');
+  let phoneSeq = 0;
+  const phone = () => '839' + phoneBase + String(++phoneSeq % 1000).padStart(3, '0');
+  const mkUser = (role, extra = {}) => prisma.user.create({ data: { name: `F0 ${role || 'user'} ${RUN}-${++seq}`, phone: phone(), pin: 'x', ...(role ? { role } : {}), ...extra } });
   const tok = (u) => jwt.sign({ userId: u.id }, JWT_SECRET, { expiresIn: '1h' });
+  const N = (p) => signupCode.normalizePhone(p); // formato do envio (55+DDD+número)
 
   // ---------------- cadastro com código ----------------
   const sent = [];
-  signupCode.setSenderForTests((ph, code) => { sent.push({ phone: ph, code }); return { success: true, provider: 'teste' }; });
-  const lastCode = (ph) => [...sent].reverse().find((s) => s.phone === ph).code;
-  const reg = (body) => call('POST', '/api/tournaments/athletes/register', { body });
-  const start = (whatsapp) => call('POST', '/api/tournaments/athletes/register/start', { body: { whatsapp } });
+  const okSender = (ph, code) => { sent.push({ phone: ph, code }); return { success: true, provider: 'teste' }; };
+  signupCode.setSenderForTests(okSender);
+  const lastCode = (ph) => { const x = [...sent].reverse().find((s) => s.phone === N(ph)); return x && x.code; };
+  const reg = (body, opts = {}) => call('POST', '/api/tournaments/athletes/register', { body, ...opts });
+  const start = (whatsapp, opts = {}) => call('POST', '/api/tournaments/athletes/register/start', { body: { whatsapp }, ...opts });
 
   console.log('  — cadastro de atleta com código no WhatsApp');
-  await ok('start sem telefone → 400; telefone que já tem conta → 409', async () => {
+  await ok('start sem telefone → 400', async () => {
     assert.strictEqual((await start('')).status, 400);
+  });
+  await ok('I2: telefone que JÁ tem conta → mesma resposta 200 genérica, sem código; o 409 só no passo final', async () => {
     const u = await mkUser();
-    assert.strictEqual((await start(u.phone)).status, 409);
+    const novo = phone();
+    const a = await start(u.phone);
+    const b = await start(novo);
+    assert.strictEqual(a.status, 200);
+    assert.strictEqual(b.status, 200);
+    assert.deepStrictEqual(Object.keys(a.json).sort(), Object.keys(b.json).sort());
+    assert.strictEqual(a.json.message, b.json.message);
+    assert.strictEqual(lastCode(u.phone), undefined, 'conta existente não recebe código');
+    assert.strictEqual((await start('55' + u.phone)).status, 200, 'com 55 também não revela');
+    const r = await reg({ name: 'Já Tem', whatsapp: u.phone, password: '1234', code: '123456' });
+    assert.strictEqual(r.status, 409);
   });
   const P1 = phone();
-  await ok('start manda código de 6 dígitos; banco guarda só o hash', async () => {
+  await ok('start manda código de 6 dígitos; banco guarda só o hash, no formato 55+DDD+número', async () => {
     const r = await start(P1);
     assert.strictEqual(r.status, 200, r.text);
     const code = lastCode(P1);
     assert.ok(/^\d{6}$/.test(code));
-    const row = await prisma.athleteSignupCode.findFirst({ where: { phone: P1 }, orderBy: { createdAt: 'desc' } });
+    const row = await prisma.athleteSignupCode.findFirst({ where: { phone: N(P1) }, orderBy: { createdAt: 'desc' } });
     assert.ok(row && /^[0-9a-f]{64}$/.test(row.codeHash) && !row.codeHash.includes(code));
+    assert.strictEqual(row.phone, '55' + P1);
     assert.ok(row.expiresAt.getTime() - Date.now() <= 10 * 60 * 1000 + 1000);
   });
   await ok('cadastro SEM código → recusado (nenhuma conta criada)', async () => {
@@ -300,22 +364,33 @@ async function dbSuite(PNG, JPG, WEBP, SVG, FAKE_PREFIX) {
     assert.strictEqual(r.status, 400);
     assert.strictEqual(await prisma.user.count({ where: { phone: P1 } }), 0);
   });
-  await ok('cadastro com código CERTO → conta + token válido (foto real reencodada)', async () => {
-    const r = await reg({ name: 'Ana F0', whatsapp: P1, password: '1234', code: lastCode(P1), photo: PNG });
+  await ok('I2: código pedido SEM 55 vale no cadastro COM 55 → conta + token (foto real reencodada)', async () => {
+    const r = await reg({ name: 'Ana F0', whatsapp: '+55 ' + P1, password: '1234', code: lastCode(P1), photo: PNG });
     assert.strictEqual(r.status, 201, r.text);
     const d = jwt.verify(r.json.token, JWT_SECRET);
     const u = await prisma.user.findUnique({ where: { phone: P1 } });
-    assert.ok(u && d.userId === u.id);
+    assert.ok(u && d.userId === u.id, 'conta gravada no formato nacional');
     assert.strictEqual(r.json.photoSource, 'upload');
     const prof = await prisma.athleteProfile.findUnique({ where: { userId: u.id } });
     assert.ok(prof.avatarUrl.startsWith('data:image/png;base64,'));
+  });
+  await ok('M6: @ do Instagram já usado → conta nasce sem @ (usernameTaken), com token', async () => {
+    const handle = 'f0handle' + RUN;
+    await mkUser(null, { username: handle });
+    const P = phone();
+    await start(P);
+    const r = await reg({ name: 'Igor F0', whatsapp: P, password: '1234', code: lastCode(P), instagram: '@' + handle });
+    assert.strictEqual(r.status, 201, r.text);
+    assert.strictEqual(r.json.usernameTaken, true);
+    assert.strictEqual(r.json.user.username, null);
+    assert.ok(r.json.token);
   });
   await ok('código é de uso único', async () => {
     const P = phone();
     await start(P);
     const c = lastCode(P);
-    assert.strictEqual((await signupCode.consumeSignupCode(P, c)).ok, true);
-    assert.strictEqual((await signupCode.consumeSignupCode(P, c)).ok, false);
+    assert.strictEqual((await signupCode.consumeSignupCode(N(P), c)).ok, true);
+    assert.strictEqual((await signupCode.consumeSignupCode(N(P), c)).ok, false);
   });
   await ok('5 tentativas erradas esgotam o código (o certo depois não vale)', async () => {
     const P = phone();
@@ -330,12 +405,12 @@ async function dbSuite(PNG, JPG, WEBP, SVG, FAKE_PREFIX) {
   await ok('código expirado → recusado', async () => {
     const P = phone();
     await start(P);
-    await prisma.athleteSignupCode.updateMany({ where: { phone: P }, data: { expiresAt: new Date(Date.now() - 1000) } });
+    await prisma.athleteSignupCode.updateMany({ where: { phone: N(P) }, data: { expiresAt: new Date(Date.now() - 1000) } });
     const r = await reg({ name: 'Caio F0', whatsapp: P, password: '1234', code: lastCode(P) });
     assert.strictEqual(r.status, 400);
     assert.match(r.json.error, /expirado/);
   });
-  await ok('pedir código novo invalida o anterior', async () => {
+  await ok('pedir código novo invalida o anterior (depois de enviado)', async () => {
     const P = phone();
     await start(P);
     const old = lastCode(P);
@@ -344,12 +419,46 @@ async function dbSuite(PNG, JPG, WEBP, SVG, FAKE_PREFIX) {
     if (old !== cur) assert.strictEqual((await reg({ name: 'Duda F0', whatsapp: P, password: '1234', code: old })).status, 400);
     assert.strictEqual((await reg({ name: 'Duda F0', whatsapp: P, password: '1234', code: cur })).status, 201);
   });
-  await ok('limitador por telefone: 6º código na hora → 429 JSON', async () => {
+  await ok('M7: se o envio do código NOVO falha, o anterior continua valendo', async () => {
     const P = phone();
-    for (let i = 0; i < 5; i++) assert.strictEqual((await start(P)).status, 200);
-    const r = await start(P);
+    assert.strictEqual((await start(P)).status, 200);
+    const old = lastCode(P);
+    signupCode.setSenderForTests(() => ({ success: false, message: 'falhou' }));
+    assert.strictEqual((await start(P)).status, 503);
+    signupCode.setSenderForTests(okSender);
+    assert.strictEqual((await reg({ name: 'Eli F0', whatsapp: P, password: '1234', code: old })).status, 201);
+  });
+  await ok('I2: limitador por telefone — com e sem 55 contam juntos; 6º código na hora → 429 JSON', async () => {
+    const P = phone();
+    for (let i = 0; i < 5; i++) assert.strictEqual((await start(i % 2 ? '55' + P : P)).status, 200);
+    const r = await start('+55 ' + P);
     assert.strictEqual(r.status, 429);
     assert.match(r.json.error, /Muitos códigos/);
+  });
+  await ok('I1: limitador por IP usa cf-connecting-ip — 21º pedido do mesmo IP → 429; outro IP segue', async () => {
+    const ip = '203.0.113.77';
+    for (let i = 0; i < 20; i++) assert.strictEqual((await start(phone(), { ip })).status, 200, `#${i}`);
+    const r = await start(phone(), { ip });
+    assert.strictEqual(r.status, 429);
+    assert.match(r.json.error, /deste aparelho/);
+    assert.strictEqual((await start(phone(), { ip: '203.0.113.78' })).status, 200);
+  });
+  await ok('I1: IPv6 do mesmo /64 conta como um cliente só', async () => {
+    const prefix = '2001:db8:aaaa:' + (Date.now() % 9000 + 1000).toString(16);
+    for (let i = 0; i < 20; i++) assert.strictEqual((await start(phone(), { ip: `${prefix}::${(i + 1).toString(16)}` })).status, 200, `#${i}`);
+    assert.strictEqual((await start(phone(), { ip: `${prefix}:ffff:1:2:3` })).status, 429);
+  });
+  await ok('I2: teto global diário estourado → 429 sem enviar', async () => {
+    const used = await prisma.athleteSignupCode.count({ where: { createdAt: { gte: new Date(Date.now() - 24 * 3600 * 1000) } } });
+    process.env.ATHLETE_SIGNUP_DAILY_MAX = String(used);
+    const P = phone();
+    const before = sent.length;
+    const r = await start(P);
+    delete process.env.ATHLETE_SIGNUP_DAILY_MAX;
+    assert.strictEqual(r.status, 429, r.text);
+    assert.match(r.json.error, /Limite diário/);
+    assert.strictEqual(sent.length, before, 'nada enviado');
+    assert.strictEqual(await prisma.athleteSignupCode.count({ where: { phone: N(P) } }), 0);
   });
   await ok('sem canal de envio → 503 e nada fica gravado', async () => {
     signupCode.setSenderForTests(() => ({ success: false, message: 'WhatsApp nao configurado' }));
@@ -357,8 +466,8 @@ async function dbSuite(PNG, JPG, WEBP, SVG, FAKE_PREFIX) {
     const r = await start(P);
     assert.strictEqual(r.status, 503);
     assert.strictEqual(r.json.whatsappDown, true);
-    assert.strictEqual(await prisma.athleteSignupCode.count({ where: { phone: P } }), 0);
-    signupCode.setSenderForTests((ph, code) => { sent.push({ phone: ph, code }); return { success: true }; });
+    assert.strictEqual(await prisma.athleteSignupCode.count({ where: { phone: N(P) } }), 0);
+    signupCode.setSenderForTests(okSender);
   });
 
   // ---------------- inscrição ----------------
@@ -417,6 +526,61 @@ async function dbSuite(PNG, JPG, WEBP, SVG, FAKE_PREFIX) {
     const r = await entry(third, { categoryId: cat2.id, team: true, teamName: 'time do coordenador' });
     assert.strictEqual(r.status, 409);
     assert.strictEqual(await prisma.tournamentRole.count({ where: { tournamentId: t.id, userId: third.id } }), 0);
+  });
+  await ok('M2: admin do clube inscreve o MESMO clube em outra categoria (a trava de nome não vale pra ele)', async () => {
+    const r = await entry(userB, { categoryId: cat.id, team: true, teamName: 'time da b' });
+    assert.strictEqual(r.status, 201, r.text);
+    assert.strictEqual(r.json.status, 'PENDING');
+    const roles2 = await prisma.tournamentRole.count({ where: { tournamentId: t.id, userId: userB.id, role: 'TEAM_ADMIN' } });
+    assert.strictEqual(roles2, 2);
+  });
+  await ok('M5: remover/rejeitar a inscrição tira o papel de admin do time junto', async () => {
+    const e = await prisma.tournamentEntry.findFirst({ where: { tournamentId: t.id, categoryId: cat.id, name: 'time da b' } });
+    const del = await call('DELETE', `/api/tournaments/entries/${e.id}`, { token: tok(owner) });
+    assert.strictEqual(del.status, 200, del.text);
+    assert.strictEqual(await prisma.tournamentRole.count({ where: { entryId: e.id } }), 0);
+    assert.strictEqual(await prisma.tournamentRole.count({ where: { tournamentId: t.id, userId: userB.id, role: 'TEAM_ADMIN' } }), 1);
+  });
+  await ok('I6: organizador inscreve em massa sem esbarrar no limitador (125 times)', async () => {
+    const cm = await prisma.tournamentCategory.create({ data: { tournamentId: t.id, name: 'Massa ' + RUN } });
+    for (let i = 0; i < 125; i++) {
+      const r = await entry(owner, { categoryId: cm.id, team: true, teamName: `Massa ${i}` });
+      assert.strictEqual(r.status, 201, `#${i} ${r.text.slice(0, 120)}`);
+    }
+  });
+  await ok('I3: aprovar inscrição de TIME (sem membros) em torneio com TenisCash não trava em 402', async () => {
+    const tc = await prisma.tournament.create({ data: { slug: 'f0c-' + RUN, name: 'F0 Cash ' + RUN, sport: 'FUTSAL', format: 'KNOCKOUT', ownerId: owner.id, status: 'OPEN', cashEnabled: true, entryFeeCash: 10 } });
+    const cc = await prisma.tournamentCategory.create({ data: { tournamentId: tc.id, name: 'Livre' } });
+    const r = await call('POST', `/api/tournaments/${tc.id}/entries`, { token: tok(userB), body: { categoryId: cc.id, team: true, teamName: 'Time Pagante F0' } });
+    assert.strictEqual(r.status, 201, r.text);
+    assert.strictEqual(r.json.status, 'PENDING');
+    const ap = await call('POST', `/api/tournaments/entries/${r.json.id}/approve`, { token: tok(owner) });
+    assert.strictEqual(ap.status, 200, ap.text);
+    assert.strictEqual(ap.json.status, 'CONFIRMED');
+    assert.strictEqual(ap.json.entryPaid, false);
+  });
+  await ok('I5: logo pública só serve png/jpeg/webp/gif (SVG antigo → 404) com nosniff + CSP sandbox', async () => {
+    const svgSp = await prisma.tournamentSponsor.create({ data: { tournamentId: t.id, name: 'SVG antigo', logoUrl: SVG } });
+    const pngSp = await prisma.tournamentSponsor.create({ data: { tournamentId: t.id, name: 'PNG ok', logoUrl: PNG } });
+    const htmlSp = await prisma.tournamentSponsor.create({ data: { tournamentId: t.id, name: 'HTML', logoUrl: 'data:image/x-html;base64,PHNjcmlwdD4=' } });
+    assert.strictEqual((await httpCall('GET', `${base}/api/public/sponsors/${svgSp.id}/logo`)).status, 404);
+    assert.strictEqual((await httpCall('GET', `${base}/api/public/sponsors/${htmlSp.id}/logo`)).status, 404);
+    const r = await new Promise((resolve, reject) => {
+      http.get(`${base}/api/public/sponsors/${pngSp.id}/logo`, { agent: false }, (res) => { res.resume(); res.on('end', () => resolve(res)); }).on('error', reject);
+    });
+    assert.strictEqual(r.statusCode, 200);
+    assert.strictEqual(r.headers['content-type'], 'image/png');
+    assert.strictEqual(r.headers['x-content-type-options'], 'nosniff');
+    assert.strictEqual(r.headers['content-security-policy'], "default-src 'none'; sandbox");
+    const e = await prisma.tournamentEntry.create({ data: { tournamentId: t.id, categoryId: cat.id, name: 'Escudo SVG antigo ' + RUN, logoUrl: SVG } });
+    assert.strictEqual((await httpCall('GET', `${base}/api/public/entries/${e.id}/logo`)).status, 404);
+  });
+  await ok('I7: PATCH de patrocinador sem logoUrl não consome o limitador de imagem', async () => {
+    const sp = await prisma.tournamentSponsor.create({ data: { tournamentId: t.id, name: 'Ordem F0' } });
+    for (let i = 0; i < 70; i++) {
+      const r = await call('PATCH', `/api/tournaments/${t.id}/sponsors/${sp.id}`, { token: tok(coord), body: { ordering: i } });
+      assert.strictEqual(r.status, 200, `#${i} ${r.text.slice(0, 120)}`);
+    }
   });
   await ok('prazo de inscrição vencido → comum recusado; organizador ainda inscreve', async () => {
     await prisma.tournament.update({ where: { id: t.id }, data: { registrationCloseAt: new Date(Date.now() - 60000) } });
