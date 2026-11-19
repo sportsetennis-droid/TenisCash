@@ -33,6 +33,21 @@ const clubIdentity = require('../services/clubIdentity');
 const rosterInvite = require('../services/rosterInvite');
 const athleteHistory = require('../services/athleteHistory');
 const profileMerge = require('../services/profileMerge');
+const gameRules = require('../services/tournamentRules');
+const presets = require('../services/tournamentPresets');
+const quick = require('../services/quickTournament');
+const pickup = require('../services/pickup');
+const teamInvite = require('../services/teamInvite');
+const { duplicateTournament } = require('../services/tournamentDuplicate');
+
+// Erros de serviço da Liga F3 (QuickError, PickupError, TeamInviteError): status + mensagem em PT.
+function svcErr(res, e) {
+  if (e && Number.isInteger(e.status) && e.status >= 400 && e.status < 500 && e.message) {
+    res.status(e.status).json({ error: e.message, ...(e.extra || {}) });
+    return true;
+  }
+  return false;
+}
 
 const router = express.Router();
 
@@ -75,6 +90,10 @@ const PARAM_GUARDS = {
   postId: {
     tid: async (v) => (await prisma.tournamentPost.findUnique({ where: { id: String(v) }, select: { tournamentId: true } }))?.tournamentId,
     gone: (req, res) => res.status(404).json({ error: 'aviso não encontrado' }),
+  },
+  pickupPlayerId: {
+    tid: async (v) => (await prisma.pickupPlayer.findUnique({ where: { id: String(v) }, select: { tournamentId: true } }))?.tournamentId,
+    gone: (req, res) => res.status(404).json({ error: 'jogador não encontrado' }),
   },
   sid: {
     tid: async (v) => (await prisma.trainingSession.findUnique({ where: { id: String(v) }, select: { tournamentId: true } }))?.tournamentId,
@@ -647,6 +666,7 @@ const FORMATS = new Set([
   'DOUBLE_ELIM', // dupla eliminação (vencedores + perdedores + grande final c/ reset opcional)
   'SWISS', // sistema suíço (N rodadas, pareamento por pontuação)
   'AMERICANO', // Americano / Super 8 / Super 12 (parceiros rotativos, ranking por games)
+  'PICKUP', // Liga F3: racha (presença do dia + sorteio equilibrado + placar rápido)
 ]);
 
 // Regras do motor por categoria (desempate, ida/volta, suspensão, config de formato).
@@ -808,6 +828,26 @@ router.post('/', authMiddleware, limits.createTournament, async (req, res) => {
   } catch (err) {
     console.error('[tournaments] create', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// =====================================================================
+// Liga Aberta F3 — CRIAÇÃO EM 2 MINUTOS
+// =====================================================================
+// Modelos prontos (racha semanal, pontos corridos, copa, torneio de um dia, ranking de duplas).
+router.get('/presets', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ presets: presets.publicList(), formats: presets.QUICK_FORMATS.map((f) => ({ id: f, label: presets.FORMAT_LABEL[f] })), sports: presets.SPORT_LABEL, eventTypes: gameRules.EVENT_CATALOG, sportRules: gameRules.SPORT_DEFAULTS, maxTeams: quick.MAX_TEAMS });
+});
+// Publica: torneio + categoria + inscrições (cada time com o seu clube) + tabela, numa transação.
+// Qualquer usuário logado; limitador de criação de torneio da F0 (20/h).
+router.post('/quick', authMiddleware, limits.createTournament, async (req, res) => {
+  try {
+    res.status(201).json(await quick.createQuick({ userId: req.userId, userRole: req.userRole, body: req.body || {} }));
+  } catch (e) {
+    if (svcErr(res, e)) return;
+    console.error('[tournaments] quick', e);
+    res.status(500).json({ error: 'não foi possível publicar agora — nada foi gravado. Tente de novo.' });
   }
 });
 
@@ -1003,6 +1043,10 @@ router.post('/:id/categories', authMiddleware, async (req, res) => {
     if (!b.name) return res.status(400).json({ error: 'name obrigatório' });
     const rules = categoryRulesData({ tiebreakers: b.tiebreakers, doubleRound: b.doubleRound, suspensionRule: b.suspensionRule, formatConfig: b.formatConfig });
     if (rules.error) return res.status(400).json({ error: rules.error });
+    // Liga F3: categoria NOVA grava a regra do jogo (padrão do esporte + o que veio).
+    const gr = b.gameRules !== undefined && b.gameRules !== null ? gameRules.normalizeGameRules(b.gameRules) : { data: {} };
+    if (gr.error) return res.status(400).json({ error: gr.error });
+    rules.data.gameRules = gameRules.defaultsFor(t.sport, gr.data);
     const cat = await prisma.tournamentCategory.create({
       data: {
         tournamentId: t.id,
@@ -1025,12 +1069,13 @@ router.post('/:id/categories', authMiddleware, async (req, res) => {
 // Lista categorias (público)
 router.get('/:id/categories', async (req, res) => {
   try {
-    const t = await access.loadVisibleTournament(req, req.params.id, { select: { id: true } });
+    const t = await access.loadVisibleTournament(req, req.params.id, { select: { id: true, sport: true } });
     if (!t) return access.sendNotFound(res);
     const list = await prisma.tournamentCategory.findMany({
       where: { tournamentId: t.id },
       include: { _count: { select: { entries: true, matches: true } } },
     });
+    list.forEach((c) => { c.rules = gameRules.resolveRules(c, t.sport); }); // Liga F3: regra efetiva do jogo
     res.json({ categories: list });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1050,6 +1095,18 @@ router.patch('/:id/categories/:catId', authMiddleware, async (req, res) => {
     const rules = categoryRulesData(b);
     if (rules.error) return res.status(400).json({ error: rules.error });
     const data = { ...rules.data };
+    // Liga F3: regras do jogo. null = volta ao comportamento antigo (legado). Objeto = mescla
+    // com a regra atual (categoria antiga sem regra parte do LEGADO, não do padrão do esporte).
+    if (b.gameRules !== undefined) {
+      if (b.gameRules === null) data.gameRules = null;
+      else {
+        const gr = gameRules.normalizeGameRules(b.gameRules);
+        if (gr.error) return res.status(400).json({ error: gr.error });
+        const cur = gameRules.resolveRules(cat, t.sport);
+        const base = { periods: cur.periods, minutesPerPeriod: cur.minutesPerPeriod, playersOnField: cur.playersOnField, maxRoster: cur.maxRoster, foulLimit: cur.foulLimit, foulText: cur.foulText, foulWarnText: cur.foulWarnText, events: cur.events };
+        data.gameRules = { ...base, ...gr.data };
+      }
+    }
     if (b.name !== undefined && String(b.name).trim()) data.name = String(b.name).trim().slice(0, 80);
     if (b.levelLabel !== undefined) data.levelLabel = b.levelLabel || null;
     if (b.gender !== undefined && ['M', 'F', 'MIXED', 'OPEN'].includes(b.gender)) data.gender = b.gender;
@@ -1069,6 +1126,10 @@ router.patch('/:id/categories/:catId', authMiddleware, async (req, res) => {
       return res.status(409).json({ error: 'a tabela já foi gerada — ida e volta vale ao gerar de novo' });
     }
     const updated = await prisma.tournamentCategory.update({ where: { id: cat.id }, data });
+    updated.rules = gameRules.resolveRules(updated, t.sport);
+    if (data.gameRules !== undefined) {
+      await audit.record({ tournamentId: t.id, userId: req.userId, action: 'category.rules', entity: 'TournamentCategory', entityId: cat.id, before: { gameRules: cat.gameRules ?? null }, after: { gameRules: data.gameRules } });
+    }
     if (generated && (data.tiebreakers !== undefined || data.pointsWin !== undefined || data.pointsDraw !== undefined || data.pointsLoss !== undefined)) {
       await engine.recomputeStandings(cat.id).catch((e) => console.error('[tournaments] recompute', e.message));
     }
@@ -1888,15 +1949,28 @@ router.post('/entries/:entryId/players', authMiddleware, async (req, res) => {
       const dupLink = await prisma.rosterPlayer.findFirst({ where: { entryId: entry.id, userId: String(b.userId) }, select: { name: true } });
       if (dupLink) return res.status(409).json({ error: 'essa conta já está ligada a "' + dupLink.name + '" neste time' });
     }
-    const player = await prisma.rosterPlayer.create({
-      data: {
-        entryId: entry.id, name: name.slice(0, 80),
-        number: b.number != null && b.number !== '' ? Number(b.number) : null,
-        isGoalkeeper: !!b.isGoalkeeper, isCaptain: !!b.isCaptain,
-        role, started: !!b.started,
-        userId: b.userId || null,
-      },
-    });
+    const data = {
+      entryId: entry.id, name: name.slice(0, 80),
+      number: b.number != null && b.number !== '' ? Number(b.number) : null,
+      isGoalkeeper: !!b.isGoalkeeper, isCaptain: !!b.isCaptain,
+      role, started: !!b.started,
+      userId: b.userId || null,
+    };
+    // Liga F3: limite do elenco da categoria (gameRules.maxRoster) vale também na inclusão manual
+    // (comissão técnica não conta). Sem limite configurado = como antes.
+    const ent = await prisma.tournamentEntry.findUnique({ where: { id: entry.id }, select: { category: { select: { gameRules: true } }, tournament: { select: { sport: true } } } });
+    const maxRoster = role === 'PLAYER' ? gameRules.resolveRules(ent && ent.category, ent && ent.tournament && ent.tournament.sport).maxRoster : null;
+    let player;
+    try {
+      player = maxRoster
+        ? await prisma.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT "id" FROM "TournamentEntry" WHERE "id" = ${entry.id} FOR UPDATE`;
+          const n = await tx.rosterPlayer.count({ where: { entryId: entry.id, role: 'PLAYER' } });
+          if (n >= maxRoster) { const e = new Error(`elenco completo (máximo de ${maxRoster} jogadores nesta categoria)`); e.status = 409; throw e; }
+          return tx.rosterPlayer.create({ data });
+        })
+        : await prisma.rosterPlayer.create({ data });
+    } catch (e) { if (e.status === 409) return res.status(409).json({ error: e.message, status: 'full' }); throw e; }
     res.status(201).json(player);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2018,6 +2092,37 @@ router.post('/players/:playerId/unlink', authMiddleware, async (req, res) => {
   try {
     res.json(await rosterInvite.unlink({ playerId: req.params.playerId, userId: req.userId, userRole: req.userRole, reason: (req.body || {}).reason }));
   } catch (e) { if (inviteErr(res, e)) return; res.status(500).json({ error: e.message }); }
+});
+
+// ---------------------------------------------------------------------
+// Liga Aberta F3 — LINK DO TIME (o time preenche o próprio elenco)
+// ---------------------------------------------------------------------
+// Gera (e revoga o anterior) — coordenação ou admin do PRÓPRIO time (can MANAGE_TEAM).
+router.post('/entries/:entryId/team-invite', authMiddleware, limits.rosterInvite, async (req, res) => {
+  try {
+    res.status(201).json(await teamInvite.createInvite({ entryId: req.params.entryId, userId: req.userId, userRole: req.userRole, days: (req.body || {}).days }));
+  } catch (e) { if (svcErr(res, e)) return; res.status(500).json({ error: e.message }); }
+});
+// Revoga o link ativo do time.
+router.delete('/entries/:entryId/team-invite', authMiddleware, async (req, res) => {
+  try {
+    res.json(await teamInvite.revokeInvite({ entryId: req.params.entryId, userId: req.userId, userRole: req.userRole }));
+  } catch (e) { if (svcErr(res, e)) return; res.status(500).json({ error: e.message }); }
+});
+// O que a pessoa vê ao abrir o link (público): valid | expired | revoked | full.
+router.get('/team-invites/:token', async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const info = await teamInvite.inviteInfo(req.params.token);
+    if (info.status === 'invalid') return res.status(404).json({ status: 'invalid', error: 'link inválido' });
+    res.json(info);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Entra no elenco do time (logado). Respeita o limite do elenco da categoria.
+router.post('/team-invites/:token/join', authMiddleware, limits.rosterClaim, async (req, res) => {
+  try {
+    res.status(201).json(await teamInvite.join(req.params.token, { userId: req.userId }));
+  } catch (e) { if (svcErr(res, e)) return; res.status(500).json({ error: e.message }); }
 });
 
 // Liga (ou desliga) um nome do elenco à CONTA do atleta, pra produção dos jogos
@@ -2713,6 +2818,84 @@ async function archiveHandler(req, res) {
     res.status(500).json({ error: err.message });
   }
 }
+// =====================================================================
+// Liga Aberta F3 — DUPLICAR para a próxima temporada (can MANAGE_TOURNAMENT)
+// =====================================================================
+router.post('/:id/duplicate', authMiddleware, limits.createTournament, async (req, res) => {
+  try {
+    const t = await loadForAction(req, res, req.params.id, 'MANAGE_TOURNAMENT', {}, 'só a organização (fundador/coordenador) duplica o torneio');
+    if (!t) return;
+    const r = await duplicateTournament(t.id, { userId: req.userId, body: req.body || {} });
+    if (!r) return access.sendNotFound(res);
+    res.status(201).json(r);
+  } catch (e) {
+    if (svcErr(res, e)) return;
+    console.error('[tournaments] duplicate', e);
+    res.status(500).json({ error: 'não foi possível duplicar agora — nada foi gravado' });
+  }
+});
+
+// =====================================================================
+// Liga Aberta F3 — MODO RACHA (formato PICKUP)
+// =====================================================================
+// Estado do dia (presença, níveis, times sorteados, jogos). Login opcional. ?day=AAAA-MM-DD
+router.get('/:idOrSlug/pickup', async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const t = await access.loadVisibleTournament(req, req.params.idOrSlug);
+    if (!t) return access.sendNotFound(res);
+    res.json(await pickup.view(t, await access.viewer(req), req.query.day));
+  } catch (e) { if (svcErr(res, e)) return; res.status(500).json({ error: e.message }); }
+});
+const pickupActor = (req) => ({ userId: req.userId, userRole: req.userRole });
+async function pickupT(req, res) {
+  const t = await access.loadVisibleTournament(req, req.params.id);
+  if (!t || t.id !== req.params.id) { access.sendNotFound(res); return null; }
+  return t;
+}
+// Jogadores do racha (organização): { names:[...] | "um por linha", level? (0–7) }
+router.post('/:id/pickup/players', authMiddleware, async (req, res) => {
+  try { const t = await pickupT(req, res); if (!t) return; res.status(201).json(await pickup.addPlayers(t, pickupActor(req), req.body || {})); }
+  catch (e) { if (svcErr(res, e)) return; res.status(500).json({ error: e.message }); }
+});
+router.patch('/pickup/players/:pickupPlayerId', authMiddleware, async (req, res) => {
+  try { res.json(await pickup.updatePlayer(pickupActor(req), req.params.pickupPlayerId, req.body || {})); }
+  catch (e) { if (svcErr(res, e)) return; res.status(500).json({ error: e.message }); }
+});
+// Presença: { confirm, playerId? } — sem playerId = eu mesmo (pelo link); outro = organização.
+router.post('/:id/pickup/attendance', authMiddleware, async (req, res) => {
+  try { const t = await pickupT(req, res); if (!t) return; res.json(await pickup.setAttendance(t, pickupActor(req), req.body || {}, req.query.day)); }
+  catch (e) { if (svcErr(res, e)) return; res.status(500).json({ error: e.message }); }
+});
+// Sorteio equilibrado: { teamCount=2, seed? } (semente registrada; mesma semente = mesmos times).
+router.post('/:id/pickup/draw', authMiddleware, async (req, res) => {
+  try { const t = await pickupT(req, res); if (!t) return; res.json(await pickup.draw(t, pickupActor(req), req.body || {}, req.query.day)); }
+  catch (e) { if (svcErr(res, e)) return; res.status(500).json({ error: e.message }); }
+});
+// Novo jogo entre dois times sorteados: { home, away } (índice do time).
+router.post('/:id/pickup/games', authMiddleware, async (req, res) => {
+  try { const t = await pickupT(req, res); if (!t) return; res.status(201).json(await pickup.createGame(t, pickupActor(req), req.body || {}, req.query.day)); }
+  catch (e) { if (svcErr(res, e)) return; res.status(500).json({ error: e.message }); }
+});
+// Placar rápido: { side:'home'|'away', delta:1|-1, playerId? }
+router.post('/pickup/games/:matchId/score', authMiddleware, async (req, res) => {
+  try { res.json(await pickup.score(pickupActor(req), req.params.matchId, req.body || {})); }
+  catch (e) { if (svcErr(res, e)) return; res.status(500).json({ error: e.message }); }
+});
+router.post('/pickup/games/:matchId/finish', authMiddleware, async (req, res) => {
+  try { res.json(await pickup.finishGame(pickupActor(req), req.params.matchId)); }
+  catch (e) { if (svcErr(res, e)) return; res.status(500).json({ error: e.message }); }
+});
+// Artilharia acumulada da temporada (ano em America/Fortaleza). ?season=2026
+router.get('/:idOrSlug/pickup/scorers', async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const t = await access.loadVisibleTournament(req, req.params.idOrSlug);
+    if (!t) return access.sendNotFound(res);
+    res.json(await pickup.seasonScorers(t, req.query.season));
+  } catch (e) { if (svcErr(res, e)) return; res.status(500).json({ error: e.message }); }
+});
+
 router.post('/:id/archive', authMiddleware, archiveHandler);
 router.delete('/:id', authMiddleware, archiveHandler);
 

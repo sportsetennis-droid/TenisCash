@@ -3899,6 +3899,10 @@ model TournamentCategory {
   doubleRound    Boolean @default(false) // ida e volta (pontos corridos / grupos)
   suspensionRule Json? // { enabled, yellowLimit, yellowBan, redBan, doubleYellowIsRed }
   formatConfig   Json? // { rounds (suíço), reset (dupla eliminação), variant (americano) }
+  // Liga Aberta F3 — regras do jogo por categoria (null = comportamento antigo: eventos de futsal,
+  // alerta na 6ª falta). { periods, minutesPerPeriod, playersOnField, maxRoster, foulLimit,
+  // foulText, foulWarnText, events:[GOAL|ASSIST|YELLOW|RED|FOUL|TIMEOUT|POINT|SET|PT1|PT2|PT3] }
+  gameRules      Json?
 
   entries   TournamentEntry[]
   matches   TournamentMatch[]
@@ -4193,6 +4197,67 @@ model RosterInvite {
 
   @@index([rosterPlayerId])
   @@index([tournamentId])
+}
+
+// Liga Aberta F3 — LINK DO TIME: quem abre entra/cria conta e se adiciona ao elenco (RosterPlayer
+// com userId, PLAYER). Vários usos até vencer ou ser revogado; no banco só o hash do token.
+model TeamInvite {
+  id              String    @id @default(cuid())
+  tokenHash       String    @unique
+  entryId         String
+  tournamentId    String
+  createdByUserId String
+  expiresAt       DateTime
+  revokedAt       DateTime?
+  uses            Int       @default(0)
+  lastUsedAt      DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([entryId])
+  @@index([tournamentId])
+}
+
+// Liga Aberta F3 — MODO RACHA (torneio com formato PICKUP): jogadores do racha, dia do racha
+// (lista de presença + sorteio equilibrado com semente registrada) e presença de cada jogador.
+model PickupPlayer {
+  id           String   @id @default(cuid())
+  tournamentId String
+  userId       String?
+  name         String
+  level        Float? // nível informado pelo organizador (escala 0–7, a mesma do Glicko do Club)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@unique([tournamentId, userId])
+  @@index([tournamentId])
+}
+
+model PickupSession {
+  id           String    @id @default(cuid())
+  tournamentId String
+  categoryId   String
+  dayKey       String // AAAA-MM-DD em America/Fortaleza
+  status       String    @default("OPEN") // OPEN | DRAWN | CLOSED
+  seed         String? // semente do sorteio (registrada: mesmo sorteio = mesmos times)
+  teamCount    Int       @default(2)
+  teams        Json? // [{ index, name, entryId, levelSum, players:[{ playerId, rosterPlayerId, name, level, levelSource }] }]
+  drawnAt      DateTime?
+  drawnBy      String?
+  createdAt    DateTime  @default(now())
+
+  @@unique([tournamentId, dayKey])
+}
+
+model PickupAttendance {
+  id        String   @id @default(cuid())
+  sessionId String
+  playerId  String
+  status    String   @default("IN") // IN (vou) | OUT (não vou)
+  byUserId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([sessionId, playerId])
 }
 
 // Liga Aberta F2 — fusão de perfis duplicados do MESMO atleta (só com confirmação dele).

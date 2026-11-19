@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0b0b0d">
+<meta name="robots" content="noindex">
+<title>Criar liga — Club Sports &amp; Tennis</title>
+<link rel="manifest" href="/manifest.json">
+<style>
+  :root{--bg:#0b0b0d;--card:#16161b;--line:rgba(255,255,255,.12);--mut:#a3a3ad;--or:#E5571E;--ok:#16a34a}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
+  html,body{background:var(--bg)}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#fff;line-height:1.45;min-height:100vh;
+    padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+  .phone{max-width:480px;margin:0 auto;min-height:100vh;position:relative;background:var(--bg);display:flex;flex-direction:column}
+  header{padding:14px 16px 6px;display:flex;align-items:center;gap:10px}
+  header a{color:var(--mut);text-decoration:none;font-size:14px;min-height:44px;display:flex;align-items:center}
+  .brand{font-weight:900;letter-spacing:.3px;font-size:15px;flex:1}
+  .brand em{color:var(--or);font-style:normal}
+  .steps{display:flex;gap:6px;padding:4px 16px 0}
+  .steps i{flex:1;height:5px;border-radius:9px;background:rgba(255,255,255,.12)}
+  .steps i.on{background:var(--or)}
+  main{flex:1;padding:14px 16px calc(110px + env(safe-area-inset-bottom))}
+  .eyebrow{font-size:11px;font-weight:800;letter-spacing:1.4px;color:var(--or);text-transform:uppercase}
+  h1{font-size:25px;font-weight:900;line-height:1.15;margin:6px 0 4px}
+  p.lead{color:var(--mut);font-size:14px;margin-bottom:14px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .opt{min-height:64px;border-radius:16px;border:1.5px solid var(--line);background:var(--card);color:#fff;font-size:16px;font-weight:800;text-align:left;padding:12px 14px;cursor:pointer;-webkit-tap-highlight-color:transparent;width:100%}
+  .opt small{display:block;font-size:12.5px;color:var(--mut);font-weight:500;margin-top:4px;line-height:1.35}
+  .opt.on{border-color:var(--or);background:rgba(229,87,30,.14)}
+  .opt .ic{font-size:22px;display:block;margin-bottom:4px}
+  .list{display:flex;flex-direction:column;gap:10px}
+  .grp{font-size:12px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:1px;margin:18px 0 8px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{min-height:44px;padding:0 14px;border-radius:12px;border:1.5px solid var(--line);background:var(--card);color:#fff;font-weight:700;font-size:14px;cursor:pointer}
+  .chip.on{border-color:var(--or);background:rgba(229,87,30,.14)}
+  label{display:block;font-size:13px;font-weight:700;margin:14px 0 6px;color:#e6e6ea}
+  input,textarea,select{width:100%;min-height:48px;border-radius:12px;border:1px solid rgba(255,255,255,.18);background:#15151a;color:#fff;font-size:16px;padding:10px 14px;font-family:inherit}
+  textarea{min-height:150px;resize:vertical;line-height:1.5}
+  .addrow{display:flex;gap:8px}
+  .addrow input{flex:1}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;border:none;border-radius:13px;font-size:16px;font-weight:800;padding:0 18px;cursor:pointer;-webkit-tap-highlight-color:transparent;text-decoration:none;color:#fff}
+  .btn-p{background:var(--or)}
+  .btn-s{background:rgba(255,255,255,.1)}
+  .btn-ok{background:var(--ok)}
+  .btn:disabled{opacity:.45}
+  .full{width:100%}
+  .team{display:flex;align-items:center;gap:10px;min-height:48px;padding:6px 6px 6px 12px;border-radius:12px;background:var(--card);border:1px solid var(--line)}
+  .team b{flex:1;font-size:15px;font-weight:700;word-break:break-word}
+  .team .n{color:var(--mut);font-size:12px;width:22px}
+  .team button{min-width:44px;min-height:44px;border-radius:10px;border:none;background:transparent;color:var(--mut);font-size:20px;cursor:pointer}
+  .count{font-size:14px;color:var(--mut);margin-top:10px}
+  .count b{color:#fff}
+  .msg{margin-top:12px;font-size:14px;border-radius:12px;padding:12px 14px;display:none}
+  .msg.err{display:block;background:rgba(220,38,38,.15);border:1px solid rgba(220,38,38,.45);color:#fecaca}
+  .msg.ok{display:block;background:rgba(22,163,74,.15);border:1px solid rgba(22,163,74,.45);color:#bbf7d0}
+  .sum{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin-top:14px;font-size:14px;color:#ddd}
+  .sum div{display:flex;justify-content:space-between;gap:12px;padding:5px 0}
+  .sum span{color:var(--mut)}
+  .tabs{display:flex;gap:8px;margin-top:14px}
+  .tab{flex:1;min-height:44px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:#fff;font-weight:800;font-size:14px;cursor:pointer}
+  .tab.on{background:var(--or);border-color:var(--or)}
+  .muted{color:var(--mut);font-size:12.5px;margin-top:8px}
+  .hidden{display:none}
+  .done{text-align:center;padding-top:10px}
+  .done .big{font-size:54px}
+  .link{word-break:break-all;background:#15151a;border:1px dashed rgba(255,255,255,.25);border-radius:12px;padding:12px;font-size:14px;margin:14px 0}
+  .stack{display:flex;flex-direction:column;gap:10px}
+  /* navegação inferior fixa (polegar) */
+  nav.bottom{position:fixed;left:0;right:0;bottom:0;z-index:20;background:rgba(11,11,13,.96);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:10px 16px calc(10px + env(safe-area-inset-bottom))}
+  nav.bottom .in{max-width:480px;margin:0 auto;display:flex;gap:10px}
+  nav.bottom .btn{flex:1}
+  nav.bottom .btn-s{flex:0 0 34%}
+  /* desktop: frame de celular centralizado */
+  @media (min-width:900px){
+    body{background:#050507;padding:28px 0}
+    .phone{min-height:calc(100vh - 56px);border-radius:34px;box-shadow:0 30px 80px rgba(0,0,0,.6),0 0 0 10px #111,0 0 0 11px #2a2a2e;overflow:hidden}
+    nav.bottom{position:sticky;bottom:0;border-radius:0 0 34px 34px}
+    main{padding-bottom:24px}
+  }
+</style>
+</head>
+<body>
+<div class="phone">
+  <header><span class="brand">Club <em>Sports &amp; Tennis</em></span><a href="/torneios.html" aria-label="Voltar para torneios">Meus torneios</a></header>
+  <div class="steps" id="steps" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  <main id="app"></main>
+  <nav class="bottom" id="nav"><div class="in"><button class="btn btn-s" id="back" type="button">Voltar</button><button class="btn btn-p" id="next" type="button" data-testid="next">Próximo</button></div></nav>
+</div>
+<script>
+(function(){
+  'use strict';
+  var KEY='tc_liga_rascunho_v1';
+  var SPORTS=[['FUTSAL','Futsal','⚽'],['SOCCER','Society','⚽'],['VOLLEY','Vôlei','🏐'],['BASKETBALL','Basquete','🏀'],['HANDBALL','Handebol','🤾'],['BEACH_TENNIS','Beach Tennis','🎾'],['TENNIS','Tênis','🎾'],['PADEL','Padel','🎾'],['TABLE_TENNIS','Tênis de Mesa','🏓'],['OTHER','Outro esporte','🏆']];
+  var SPORT_LABEL={};SPORTS.forEach(function(s){SPORT_LABEL[s[0]]=s[1];});
+  var RACKET=['BEACH_TENNIS','TENNIS','PADEL','TABLE_TENNIS'];
+  var FORMATS=[['ROUND_ROBIN','Pontos corridos','Todos contra todos'],['GROUPS_KNOCKOUT','Grupos + mata-mata','Copa'],['KNOCKOUT','Mata-mata','Eliminação direta'],['PICKUP','Racha','Presença + sorteio de times']];
+  // reserva caso a lista do servidor não carregue (mesmos ids do servidor)
+  var PRESETS=[
+    {id:'racha-semanal',label:'Racha semanal',description:'Presença do dia, sorteio equilibrado, placar rápido e artilharia.',format:'PICKUP',unit:'players',sports:['FUTSAL','SOCCER','VOLLEY','BASKETBALL','HANDBALL','OTHER']},
+    {id:'liga-pontos-corridos',label:'Liga de pontos corridos',description:'Todos contra todos; campeão é quem soma mais pontos.',format:'ROUND_ROBIN',unit:'teams',sports:['FUTSAL','SOCCER','VOLLEY','BASKETBALL','HANDBALL','OTHER']},
+    {id:'copa-grupos-mata-mata',label:'Copa com grupos e mata-mata',description:'Grupos de ~4; os 2 melhores vão pro mata-mata.',format:'GROUPS_KNOCKOUT',unit:'teams',sports:['FUTSAL','SOCCER','VOLLEY','BASKETBALL','HANDBALL','OTHER']},
+    {id:'torneio-um-dia',label:'Torneio de um dia',description:'Mata-mata direto com jogos curtos.',format:'KNOCKOUT',unit:'teams',sports:['FUTSAL','SOCCER','VOLLEY','BASKETBALL','HANDBALL','OTHER','BEACH_TENNIS','TENNIS','PADEL','TABLE_TENNIS']},
+    {id:'ranking-duplas',label:'Ranking de duplas (beach tennis/tênis)',description:'Duplas fixas, todos contra todos.',format:'ROUND_ROBIN',unit:'pairs',sports:['BEACH_TENNIS','TENNIS','PADEL','TABLE_TENNIS']}
+  ];
+  var MAX=64;
+  var app=document.getElementById('app'),nextB=document.getElementById('next'),backB=document.getElementById('back');
+  var TK='';try{TK=localStorage.getItem('tc_token')||'';}catch(_){}
+  var D={step:1,sport:'',preset:'',format:'',teams:[],name:'',nameEdited:false,visibility:'public'};
+  try{var saved=JSON.parse(localStorage.getItem(KEY)||'null');if(saved&&typeof saved==='object')Object.assign(D,saved);}catch(_){}
+  var AUTH={mode:'login',codeSent:false},BUSY=false,DONE=null;
+  function save(){try{localStorage.setItem(KEY,JSON.stringify(D));}catch(_){}}
+  function clearDraft(){try{localStorage.removeItem(KEY);}catch(_){}}
+  function e(x){x=(x==null?'':''+x);return x.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+  function norm(s){return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/\s+/g,' ').trim();}
+  function api(method,url,body,auth){
+    var h={'Content-Type':'application/json'};if(auth&&TK)h.Authorization='Bearer '+TK;
+    return fetch(url,{method:method,headers:h,body:body?JSON.stringify(body):undefined,cache:'no-store'})
+      .then(function(r){return r.json().catch(function(){return {};}).then(function(j){return {status:r.status,ok:r.ok,json:j};});});
+  }
+  function msg(t,k){var m=document.getElementById('msg');if(!m)return;m.className='msg '+(k||'err');m.textContent=t;}
+  function preset(){for(var i=0;i<PRESETS.length;i++)if(PRESETS[i].id===D.preset)return PRESETS[i];return null;}
+  function fmt(){var p=preset();return p?p.format:D.format;}
+  function unit(){var p=preset();if(p)return p.unit;return D.format==='PICKUP'?'players':'teams';}
+  function unitWord(n){var u=unit();if(u==='players')return n===1?'jogador':'jogadores';if(u==='pairs')return n===1?'dupla':'duplas';return n===1?'time':'times';}
+  var MONTHS=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  function suggest(){
+    var l=new Date(Date.now()-3*3600*1000);var when=MONTHS[l.getUTCMonth()]+'/'+l.getUTCFullYear();
+    var p=preset(),f=fmt(),k;
+    if(p&&p.id==='racha-semanal')k='Racha';else if(p&&p.id==='copa-grupos-mata-mata')k='Copa';else if(p&&p.id==='torneio-um-dia')k='Torneio';else if(p&&p.id==='ranking-duplas')k='Ranking de duplas';
+    else k=f==='PICKUP'?'Racha':(f==='KNOCKOUT'?'Torneio':(f==='GROUPS_KNOCKOUT'?'Copa':'Liga'));
+    return k+' de '+(SPORT_LABEL[D.sport]||'Esporte')+' · '+when;
+  }
+  function steps(){var is=document.querySelectorAll('#steps i');for(var i=0;i<is.length;i++)is[i].className=i<D.step?'on':'';}
+  function canNext(){
+    if(D.step===1)return !!D.sport;
+    if(D.step===2)return !!(D.preset||D.format);
+    if(D.step===3)return unit()==='players'?D.teams.length<=MAX:(D.teams.length>=2&&D.teams.length<=MAX);
+    return true;
+  }
+  function navState(){
+    document.getElementById('nav').classList.toggle('hidden',!!DONE);
+    backB.style.visibility=D.step>1?'visible':'hidden';
+    nextB.disabled=!canNext()||BUSY;
+    nextB.textContent=D.step<4?'Próximo':(TK?(BUSY?'Publicando…':'Publicar'):'Entrar e publicar');
+  }
+  function go(n){D.step=Math.max(1,Math.min(4,n));save();render();window.scrollTo(0,0);}
+
+  // ---------- passos ----------
+  function s1(){
+    var h='<div class="eyebrow">Passo 1 de 4</div><h1>Qual esporte?</h1><p class="lead">Em 4 passos a tabela está no ar. Datas, locais e regras você ajusta depois.</p><div class="grid">';
+    SPORTS.forEach(function(s){h+='<button class="opt'+(D.sport===s[0]?' on':'')+'" data-sport="'+s[0]+'" data-testid="sport-'+s[0]+'" type="button"><span class="ic" aria-hidden="true">'+s[2]+'</span>'+e(s[1])+'</button>';});
+    app.innerHTML=h+'</div>';
+    [].forEach.call(app.querySelectorAll('[data-sport]'),function(b){b.onclick=function(){
+      if(D.sport!==b.getAttribute('data-sport')){D.preset='';D.format='';}
+      D.sport=b.getAttribute('data-sport');if(!D.nameEdited)D.name='';go(2);};});
+  }
+  function s2(){
+    var ps=PRESETS.filter(function(p){return !p.sports||p.sports.indexOf(D.sport)>=0;});
+    var h='<div class="eyebrow">Passo 2 de 4 · '+e(SPORT_LABEL[D.sport]||'')+'</div><h1>Como vai ser?</h1><p class="lead">Escolha um modelo pronto (já vem com pontos, desempate e duração) ou só o formato.</p><div class="list">';
+    ps.forEach(function(p){h+='<button class="opt'+(D.preset===p.id?' on':'')+'" data-preset="'+e(p.id)+'" data-testid="preset-'+e(p.id)+'" type="button">'+e(p.label)+'<small>'+e(p.description||'')+'</small></button>';});
+    h+='</div><div class="grp">Ou só o formato</div><div class="chips">';
+    FORMATS.filter(function(f){return !(f[0]==='PICKUP'&&RACKET.indexOf(D.sport)>=0);}).forEach(function(f){h+='<button class="chip'+(!D.preset&&D.format===f[0]?' on':'')+'" data-format="'+f[0]+'" type="button" title="'+e(f[2])+'">'+e(f[1])+'</button>';});
+    app.innerHTML=h+'</div>';
+    [].forEach.call(app.querySelectorAll('[data-preset]'),function(b){b.onclick=function(){D.preset=b.getAttribute('data-preset');D.format='';if(!D.nameEdited)D.name='';go(3);};});
+    [].forEach.call(app.querySelectorAll('[data-format]'),function(b){b.onclick=function(){D.format=b.getAttribute('data-format');D.preset='';if(!D.nameEdited)D.name='';go(3);};});
+  }
+  function addNames(list){
+    var have={};D.teams.forEach(function(t){have[norm(t)]=1;});
+    var added=0,dup=0,over=0;
+    list.forEach(function(raw){
+      var n=String(raw||'').replace(/^\s*(\d+[.)-]|[-*•])\s*/,'').replace(/\s+/g,' ').trim().slice(0,80);
+      if(!n)return;var k=norm(n);if(have[k]){dup++;return;}
+      if(D.teams.length>=MAX){over++;return;}
+      have[k]=1;D.teams.push(n);added++;
+    });
+    save();
+    return {added:added,dup:dup,over:over};
+  }
+  function s3(){
+    var w=unit()==='players'?'jogadores':(unit()==='pairs'?'duplas':'times');
+    var h='<div class="eyebrow">Passo 3 de 4</div><h1>Quais '+w+'?</h1><p class="lead">'+(unit()==='players'?'Liste os jogadores do racha (dá pra completar depois — cada um também confirma presença pelo link).':'Cole a lista, um por linha, ou digite um de cada vez. Até '+MAX+'.')+'</p>'+
+      '<label for="paste">Colar lista (um por linha)</label><textarea id="paste" data-testid="paste" placeholder="'+(unit()==='pairs'?'Ana &amp; Bia\nCaio &amp; Duda':'Leões\nTubarões\nÁguias')+'"></textarea>'+
+      '<button class="btn btn-s full" id="addpaste" type="button" data-testid="add-paste" style="margin-top:8px">Adicionar a lista</button>'+
+      '<label for="one">Ou um de cada vez</label><div class="addrow"><input id="one" maxlength="80" placeholder="Nome" enterkeyhint="done"><button class="btn btn-s" id="addone" type="button">Adicionar</button></div>'+
+      '<div id="msg" class="msg"></div>'+
+      '<div class="count" data-testid="count"><b>'+D.teams.length+'</b> '+unitWord(D.teams.length)+(D.teams.length>=MAX?' (máximo)':'')+'</div><div class="list" style="margin-top:10px">';
+    D.teams.forEach(function(t,i){h+='<div class="team"><span class="n">'+(i+1)+'</span><b>'+e(t)+'</b><button type="button" aria-label="Remover '+e(t)+'" data-rm="'+i+'">×</button></div>';});
+    app.innerHTML=h+'</div>';
+    function after(r){
+      var parts=[];if(r.dup)parts.push(r.dup+' repetido(s) ignorado(s)');if(r.over)parts.push(r.over+' acima do limite de '+MAX);
+      render();if(parts.length)msg(parts.join(' · '));
+    }
+    document.getElementById('addpaste').onclick=function(){var v=document.getElementById('paste').value;after(addNames(v.split(/\r?\n/)));};
+    var one=document.getElementById('one');
+    function addOne(){var v=one.value;if(!v.trim())return;var r=addNames([v]);render();var o=document.getElementById('one');if(o)o.focus();if(r.dup)msg('Esse nome já está na lista.');}
+    document.getElementById('addone').onclick=addOne;
+    one.onkeydown=function(ev){if(ev.key==='Enter'){ev.preventDefault();addOne();}};
+    [].forEach.call(app.querySelectorAll('[data-rm]'),function(b){b.onclick=function(){D.teams.splice(Number(b.getAttribute('data-rm')),1);save();render();};});
+  }
+  function s4(){
+    if(!D.nameEdited||!D.name)D.name=suggest();
+    var p=preset(),fl=null;FORMATS.forEach(function(f){if(f[0]===fmt())fl=f[1];});
+    var h='<div class="eyebrow">Passo 4 de 4</div><h1>Publicar</h1><p class="lead">Confira o nome. O resto (datas, locais, regras) você edita depois no painel.</p>'+
+      '<label for="nm">Nome</label><input id="nm" data-testid="name" maxlength="120" value="'+e(D.name)+'">'+
+      '<label for="vis">Quem pode ver</label><select id="vis"><option value="public"'+(D.visibility==='public'?' selected':'')+'>Público — aparece na vitrine</option><option value="unlisted"'+(D.visibility==='unlisted'?' selected':'')+'>Não listado — só quem tem o link</option><option value="private"'+(D.visibility==='private'?' selected':'')+'>Privado — só membros</option></select>'+
+      '<div class="sum"><div><span>Esporte</span><b>'+e(SPORT_LABEL[D.sport]||'')+'</b></div><div><span>Formato</span><b>'+e(p?p.label:(fl||''))+'</b></div><div><span>'+(unit()==='players'?'Jogadores':(unit()==='pairs'?'Duplas':'Times'))+'</span><b>'+D.teams.length+'</b></div></div>';
+    if(!TK){
+      h+='<div class="grp">Entre para publicar</div><p class="muted" style="margin-top:0">O que você montou fica guardado neste aparelho enquanto entra.</p>'+
+        '<div class="tabs"><button class="tab'+(AUTH.mode==='login'?' on':'')+'" data-m="login" type="button">Já tenho conta</button><button class="tab'+(AUTH.mode==='signup'?' on':'')+'" data-m="signup" type="button">Criar conta</button></div>';
+      if(AUTH.mode==='login')h+='<label for="ph">WhatsApp ou e-mail</label><input id="ph" data-testid="login-user" inputmode="email" autocomplete="username" placeholder="(83) 9…"><label for="pw">Senha</label><input id="pw" data-testid="login-pass" type="password" autocomplete="current-password">';
+      else h+='<label for="sn">Seu nome</label><input id="sn" autocomplete="name"><label for="ph">WhatsApp com DDD</label><input id="ph" inputmode="tel" autocomplete="tel" placeholder="(83) 9…">'+
+        '<div class="'+(AUTH.codeSent?'':'hidden')+'"><label for="cd">Código de 6 dígitos (chegou no WhatsApp)</label><input id="cd" inputmode="numeric" maxlength="6" autocomplete="one-time-code"><label for="pw">Crie uma senha (4 a 20)</label><input id="pw" type="password" autocomplete="new-password"></div>'+
+        '<p class="muted">'+(AUTH.codeSent?'Depois de criar a conta, a liga é publicada na hora.':'Toque em "Entrar e publicar" para receber o código no WhatsApp.')+'</p>';
+    }
+    h+='<div id="msg" class="msg"></div>';
+    app.innerHTML=h;
+    var nm=document.getElementById('nm');nm.oninput=function(){D.name=nm.value;D.nameEdited=true;save();};
+    document.getElementById('vis').onchange=function(){D.visibility=this.value;save();};
+    [].forEach.call(app.querySelectorAll('.tab'),function(b){b.onclick=function(){AUTH.mode=b.getAttribute('data-m');AUTH.codeSent=false;render();};});
+  }
+  function doneView(){
+    var r=DONE;var abs=r.url;
+    app.innerHTML='<div class="done"><div class="big" aria-hidden="true">🏆</div><div class="eyebrow">Publicado</div><h1 data-testid="published">'+e(r.tournament.name)+'</h1>'+
+      '<p class="lead">'+(r.tournament.format==='PICKUP'?r.players+' jogador(es). Mande o link para cada um confirmar presença.':r.entries+' times · '+r.matchesCreated+' jogos gerados. A tabela já está no ar.')+'</p>'+
+      '<div class="link" data-testid="link">'+e(abs)+'</div><div class="stack">'+
+      '<button class="btn btn-p full" id="share" type="button">Compartilhar</button>'+
+      '<a class="btn btn-ok full" href="'+e(r.whatsappUrl)+'" target="_blank" rel="noopener">Mandar no meu WhatsApp</a>'+
+      '<button class="btn btn-s full" id="copy" type="button">Copiar link</button>'+
+      '<a class="btn btn-s full" href="'+e(r.path)+'">Ver a página</a>'+
+      '<a class="btn btn-s full" href="'+e(r.manageUrl)+'">Painel: datas, locais e regras</a></div><div id="msg" class="msg"></div></div>';
+    document.getElementById('copy').onclick=function(){
+      var ok=function(){msg('Link copiado!','ok');};
+      if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(abs).then(ok,function(){msg('Copie o link acima.');});else msg('Copie o link acima.');
+    };
+    document.getElementById('share').onclick=function(){
+      if(navigator.share)navigator.share({title:r.tournament.name,text:r.shareText,url:abs}).catch(function(){});
+      else document.getElementById('copy').click();
+    };
+  }
+  function render(){
+    steps();
+    if(DONE){doneView();navState();return;}
+    if(D.step===1)s1();else if(D.step===2)s2();else if(D.step===3)s3();else s4();
+    navState();
+  }
+
+  // ---------- publicar (com entrada/cadastro quando não tem conta) ----------
+  function publish(){
+    if(BUSY)return;BUSY=true;navState();
+    var body={sport:D.sport,teams:D.teams,name:(D.name||suggest()).trim(),visibility:D.visibility};
+    if(D.preset)body.preset=D.preset;else body.format=D.format;
+    api('POST','/api/tournaments/quick',body,true).then(function(r){
+      BUSY=false;
+      if(r.status===401){TK='';try{localStorage.removeItem('tc_token');}catch(_){}render();return msg('Entre na sua conta para publicar.');}
+      if(!r.ok){navState();return msg((r.json&&r.json.error)||'Não deu certo. Tente de novo.');}
+      DONE=r.json;clearDraft();render();window.scrollTo(0,0);
+    }).catch(function(){BUSY=false;navState();msg('Sem conexão. O rascunho está guardado — tente de novo.');});
+  }
+  function loginThenPublish(){
+    var u=(document.getElementById('ph').value||'').trim(),p=document.getElementById('pw').value||'';
+    if(!u||!p)return msg('Preencha login e senha.');
+    var body=u.indexOf('@')>=0?{email:u,password:p}:{phone:u.replace(/\D/g,''),password:p};
+    BUSY=true;navState();
+    api('POST','/api/auth/login',body).then(function(r){
+      BUSY=false;
+      if(!r.ok||!r.json.token){navState();return msg((r.json&&r.json.error)||'Login não confere.');}
+      TK=r.json.token;try{localStorage.setItem('tc_token',TK);}catch(_){}
+      publish();
+    }).catch(function(){BUSY=false;navState();msg('Sem conexão. Tente de novo.');});
+  }
+  function signupThenPublish(){
+    var ph=(document.getElementById('ph').value||'').replace(/\D/g,'');
+    if(ph.length<10)return msg('Informe o WhatsApp com DDD.');
+    var nameEl=document.getElementById('sn');var keepName=nameEl?nameEl.value:'';
+    if(!AUTH.codeSent){
+      BUSY=true;navState();
+      api('POST','/api/tournaments/athletes/register/start',{whatsapp:ph}).then(function(r){
+        BUSY=false;
+        if(!r.ok){navState();return msg((r.json&&r.json.error)||'Não foi possível enviar o código.');}
+        AUTH.codeSent=true;render();document.getElementById('sn').value=keepName;document.getElementById('ph').value=ph;
+        msg('Se este número puder receber, o código chega no WhatsApp em instantes.','ok');
+      }).catch(function(){BUSY=false;navState();msg('Sem conexão. Tente de novo.');});
+      return;
+    }
+    var code=(document.getElementById('cd').value||'').replace(/\D/g,''),pw=document.getElementById('pw').value||'';
+    if(!keepName.trim())return msg('Informe seu nome.');
+    if(code.length!==6)return msg('Informe o código de 6 dígitos.');
+    if(pw.length<4||pw.length>20)return msg('A senha precisa ter de 4 a 20 caracteres.');
+    BUSY=true;navState();
+    api('POST','/api/tournaments/athletes/register',{name:keepName.trim(),whatsapp:ph,code:code,password:pw}).then(function(r){
+      BUSY=false;
+      if(!r.ok||!r.json.token){navState();return msg((r.json&&r.json.error)||'Não foi possível criar a conta.');}
+      TK=r.json.token;try{localStorage.setItem('tc_token',TK);}catch(_){}
+      publish();
+    }).catch(function(){BUSY=false;navState();msg('Sem conexão. Tente de novo.');});
+  }
+  nextB.onclick=function(){
+    if(!canNext())return;
+    if(D.step<4)return go(D.step+1);
+    if(TK)return publish();
+    if(AUTH.mode==='login')return loginThenPublish();
+    return signupThenPublish();
+  };
+  backB.onclick=function(){go(D.step-1);};
+
+  // modelos do servidor (se carregar) — mesmos ids da reserva
+  api('GET','/api/tournaments/presets').then(function(r){
+    if(r.ok&&r.json&&Array.isArray(r.json.presets)&&r.json.presets.length){PRESETS=r.json.presets;if(r.json.maxTeams)MAX=r.json.maxTeams;if(D.step===2&&!DONE)render();}
+  }).catch(function(){});
+  if(!D.sport)D.step=1;else if(D.step>2&&!(D.preset||D.format))D.step=2;
+  render();
+})();
+</script>
+</body>
+</html>

@@ -12,7 +12,10 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const engine = require('./tournamentEngine');
 const discipline = require('./tournamentDiscipline');
+const gameRules = require('./tournamentRules');
 
+// Antes da F3 estes eram FIXOS de futsal pra todo esporte. Agora os tipos aceitos vêm da
+// regra da categoria (tournamentRules.resolveRules) — categoria sem regra salva = estes mesmos.
 const PLAYER_EVENTS = ['GOAL', 'ASSIST', 'YELLOW', 'RED'];
 const ALL_EVENTS = ['GOAL', 'ASSIST', 'YELLOW', 'RED', 'FOUL', 'TIMEOUT'];
 
@@ -37,6 +40,7 @@ async function buildSheet(matchId) {
   };
   const [home, away] = await Promise.all([sideData(match.homeEntry), sideData(match.awayEntry)]);
   const events = await prisma.matchEvent.findMany({ where: { matchId }, orderBy: { createdAt: 'asc' } });
+  const rules = await gameRules.rulesForMatch(prisma, matchId);
 
   const count = (entryId, type) => events.filter((e) => e.entryId === entryId && e.type === type).length;
   const hid = match.homeEntryId;
@@ -69,7 +73,9 @@ async function buildSheet(matchId) {
     },
     home, away, events,
     suspensions, overrides,
-    liveScore: { home: hid ? count(hid, 'GOAL') : 0, away: aid ? count(aid, 'GOAL') : 0 },
+    rules,
+    // placar = soma do valor de cada evento que marca ponto na regra (futsal: 1 por gol)
+    liveScore: gameRules.scoreFromEvents(events, rules, hid, aid),
     fouls: { home: hid ? count(hid, 'FOUL') : 0, away: aid ? count(aid, 'FOUL') : 0 },
   };
 }
@@ -82,13 +88,14 @@ async function addEvent(matchId, body = {}, ctx = {}) {
   });
   if (!match) return { ok: false, error: 'partida não encontrada' };
   const type = String(body.type || '').toUpperCase();
-  if (!ALL_EVENTS.includes(type)) return { ok: false, error: 'tipo de evento inválido' };
+  const rules = await gameRules.rulesForMatch(prisma, matchId);
+  if (!rules.events.includes(type)) return { ok: false, error: 'tipo de evento inválido para a regra desta categoria' };
   const entryId = String(body.entryId || '');
   if (![match.homeEntryId, match.awayEntryId].includes(entryId)) {
     return { ok: false, error: 'time não é desta partida' };
   }
   let playerId = null;
-  if (PLAYER_EVENTS.includes(type)) {
+  if (rules.playerEvents.includes(type)) {
     if (!body.playerId) return { ok: false, error: 'informe o jogador' };
     const p = await prisma.rosterPlayer.findFirst({ where: { id: String(body.playerId), entryId }, select: { id: true } });
     if (!p) return { ok: false, error: 'jogador não é deste time' };
@@ -198,9 +205,14 @@ async function finalizeMatch(matchId, opts = {}) {
   // Arbitragem opcional junto do fechamento
   await setOfficials(matchId, opts).catch(() => {});
 
-  const goals = await prisma.matchEvent.findMany({ where: { matchId, type: 'GOAL' }, select: { entryId: true } });
-  const hs = goals.filter((g) => g.entryId === match.homeEntryId).length;
-  const as = goals.filter((g) => g.entryId === match.awayEntryId).length;
+  // Placar = soma dos eventos que marcam ponto na regra da categoria (futsal/legado: 1 por GOAL;
+  // basquete: cestas de 1/2/3; vôlei: sets).
+  const rules = await gameRules.rulesForMatch(prisma, matchId);
+  const scoringTypes = Object.keys(rules.scoring);
+  const goals = await prisma.matchEvent.findMany({ where: { matchId, type: { in: scoringTypes.length ? scoringTypes : ['GOAL'] } }, select: { entryId: true, type: true } });
+  const sc = gameRules.scoreFromEvents(goals, rules, match.homeEntryId, match.awayEntryId);
+  const hs = sc.home;
+  const as = sc.away;
 
   // Pênaltis (desempate) — só valem quando o tempo normal empatou.
   const hasPk = opts.homePenalties != null && opts.homePenalties !== '' && opts.awayPenalties != null && opts.awayPenalties !== '';
@@ -261,7 +273,7 @@ async function playerStats(tournamentId, opts = {}) {
   let types;
   if (opts.kind === 'assists') types = ['ASSIST'];
   else if (opts.kind === 'cards') types = ['YELLOW', 'RED'];
-  else types = ['GOAL'];
+  else types = ['GOAL', 'PT1', 'PT2', 'PT3']; // artilharia: gol; no basquete, pontos das cestas
 
   const events = await prisma.matchEvent.findMany({
     where: { matchId: { in: matchIds }, type: { in: types }, playerId: { not: null } },
@@ -289,13 +301,14 @@ async function playerStats(tournamentId, opts = {}) {
       playerId: k, name: p.name, number: p.number, entryId: p.entryId, team: teamById[p.entryId] || '',
       games: gamesByEntry[p.entryId] || 0, goals: 0, assists: 0, yellow: 0, red: 0, total: 0,
     };
-    const f = FIELD[ev.type];
-    if (f) agg[k][f] += 1;
-    agg[k].total += 1;
+    const f = FIELD[ev.type] || (gameRules.SCORE_VALUES[ev.type] ? 'goals' : null);
+    const inc = FIELD[ev.type] ? 1 : (gameRules.SCORE_VALUES[ev.type] || 1);
+    if (f) agg[k][f] += inc;
+    agg[k].total += inc;
     if (scope === 'live' && !doneIds.has(ev.matchId)) {
       agg[k].live = agg[k].live || { goals: 0, assists: 0, yellow: 0, red: 0, total: 0 };
-      if (f) agg[k].live[f] += 1;
-      agg[k].live.total += 1;
+      if (f) agg[k].live[f] += inc;
+      agg[k].live.total += inc;
       agg[k].partial = true;
     }
   }
@@ -312,4 +325,4 @@ async function playerStats(tournamentId, opts = {}) {
   return rows;
 }
 
-module.exports = { buildSheet, addEvent, deleteEvent, finalizeMatch, setOfficials, setLineup, playerStats, isClosedStatus };
+module.exports = { PLAYER_EVENTS, ALL_EVENTS, buildSheet, addEvent, deleteEvent, finalizeMatch, setOfficials, setLineup, playerStats, isClosedStatus };

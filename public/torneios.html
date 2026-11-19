@@ -1089,7 +1089,7 @@ async function renderHome(){
   const D=DASH?dashHtml(DASH):{top:'',main:'',side:''};
   html+='<div class="g2"><div class="col">';
   html+=D.top;
-  html+='<div class="card wh">'+cardH(I.trophy,'Meus torneios','<button class="btn sm" data-act="nav" data-h="novo">'+I.plus+'Criar</button>');
+  html+='<div class="card wh">'+cardH(I.trophy,'Meus torneios','<a class="btn sm plain" href="/criar-liga">'+I.bolt+'Criar em 2 min</a><button class="btn sm gho" data-act="nav" data-h="novo">'+I.plus+'Completo</button>');
   if(!mine.length){html+=emptyB(I.trophy,'Você ainda não organiza torneios.<br>Crie o primeiro.');}
   else{mine.forEach(t=>{const st=ST_LABEL[t.status]||['',''];
     if(t.archivedAt){ // Liga F1: excluído = arquivado; restaura em até 30 dias
@@ -1353,6 +1353,12 @@ async function renderTournament(id){
   if(CURCAPS.viewAudit)side+='<div class="card">'+cardH(I.list,'Auditoria')+'<p class="muted" style="margin:-4px 0 12px">Quem mudou resultado, súmula, chave, papéis, privacidade e dono — com o antes e o depois.</p>'+
     '<button class="btn sm gho full" data-act="audit" data-tid="'+t.id+'">'+I.list+'Ver auditoria</button></div>';
   if(CURCAPS.transfer||CURCAPS.archive)side+=founderCard(t);
+  // Liga F3: racha tem tela própria (presença, sorteio, placar rápido, artilharia)
+  if(t.format==='PICKUP')side='<div class="card wh">'+cardH(I.ball,'Racha')+'<p class="muted" style="margin:-4px 0 12px">Lista de presença do dia, sorteio de times equilibrado, placar rápido e artilharia da temporada.</p>'+
+    '<a class="btn full plain" href="/racha/'+esc(t.slug)+'">'+I.ball+'Abrir o racha</a></div>'+side;
+  // Liga F3: duplicar para a próxima temporada (mesmas categorias, regras, clubes e elencos; sem jogos)
+  side+='<div class="card">'+cardH(I.copy||I.list,'Próxima temporada')+'<p class="muted" style="margin:-4px 0 12px">Cria a próxima edição com as mesmas categorias, regras, clubes e elencos — sem jogos e sem resultados, em rascunho.</p>'+
+    '<button class="btn sm gho full" data-act="dup-sheet" data-id="'+t.id+'" data-name="'+esc(t.name)+'">'+I.plus+'Duplicar para a próxima temporada</button></div>';
   side+=seriesCard(t);
   html+='<div class="g2"><div class="col">'+main+'</div><div class="col">'+side;
   if(canAssign)html+=rolesCard(t.id);
@@ -1667,6 +1673,7 @@ async function renderRoster(eid,cat){
     (p.role==='PLAYER'?'<button class="btn sm '+(p.userId?'ok':'gho')+'" data-act="team-linkplayer" data-eid="'+eid+'" data-cat="'+esc(cat||'')+'" data-pid="'+p.id+'" data-pname="'+esc(p.name)+'" data-linked="'+(p.userId?esc(p.userId):'')+'" title="ligar à conta do atleta">'+I.link+(p.userId?'Conta':'Ligar')+'</button>':'')+
     '<button class="btn icon gho" aria-label="Remover do elenco" data-act="team-delplayer" data-eid="'+eid+'" data-cat="'+esc(cat||'')+'" data-pid="'+p.id+'">'+I.x+'</button></div>';});
   h+='<button class="btn sm sec full" data-act="team-addplayer" data-eid="'+eid+'" data-cat="'+esc(cat||'')+'">'+I.plus+'Jogador / comissão</button>';
+  if(TEAM_CTX&&TEAM_CTX.canLogo)h+='<div class="sp8"></div><button class="btn sm gho full" data-act="team-link" data-eid="'+eid+'" data-name="'+esc(cat||'')+'">'+I.link+'Link do time — o elenco se cadastra</button>';
   box.innerHTML=h;
 }
 function teamAddPlayerSheet(eid,cat){
@@ -2149,6 +2156,7 @@ async function renderCatPanel(tab){
       const av=e.logoUrl?'<img class="av" src="'+esc(e.logoUrl)+'" alt="">':'<div class="av">'+(i+1)+'</div>';
       body+='<div class="listitem">'+av+'<div class="grow"><div class="nm">'+esc(e.name)+'</div><div class="sub">'+(e.groupName?'Grupo '+esc(e.groupName)+(who?' · ':''):'')+esc(who)+'</div></div>'+
         '<button class="btn icon gho" data-act="team-logo" data-eid="'+e.id+'" title="escudo" aria-label="Escudo">'+I.img+'</button>'+
+        (!(e.members||[]).length?'<button class="btn icon gho" data-act="team-link" data-eid="'+e.id+'" data-name="'+esc(e.name)+'" title="link do time" aria-label="Link do time para o elenco">'+I.link+'</button>':'')+
         '<button class="btn icon gho" aria-label="Remover inscrição" data-act="del-entry" data-eid="'+e.id+'">'+I.x+'</button></div>';});
     body+='<div class="sp16"></div>';
     if(isGroups)body+='<button class="btn" data-act="gen-groups" data-tid="'+tid+'" data-cid="'+cid+'">'+I.bolt+'Sortear grupos + gerar jogos</button>'+
@@ -2259,6 +2267,8 @@ function sheetCatRules(){
     '<label class="chk"><input type="checkbox" id="cr-reset"'+(fc.reset===false?'':' checked')+'> Dupla eliminação: jogo extra (reset) se o finalista dos perdedores vencer</label></div>'+
     '<div class="row"><div><label for="cr-rounds">Rodadas do suíço</label><input id="cr-rounds" type="number" inputmode="numeric" min="1" max="30" value="'+esc(fc.rounds||'')+'" placeholder="auto"></div>'+
     '<div><label for="cr-pw">Pontos por vitória</label><input id="cr-pw" type="number" inputmode="numeric" value="'+esc(c.pointsWin!=null?c.pointsWin:3)+'"></div></div>'+
+    '<div class="row"><div><label for="cr-pd">Pontos por empate</label><input id="cr-pd" type="number" inputmode="numeric" value="'+esc(c.pointsDraw!=null?c.pointsDraw:1)+'"></div>'+
+    '<div><label for="cr-pl">Pontos por derrota</label><input id="cr-pl" type="number" inputmode="numeric" value="'+esc(c.pointsLoss!=null?c.pointsLoss:0)+'"></div></div>'+
     '<div class="grp">Desempate (de cima pra baixo)</div><div id="cr-tb"></div>'+
     '<div class="grp">Suspensão automática</div>'+
     '<div class="checks"><label class="chk"><input type="checkbox" id="cr-s-on"'+(sr.enabled?' checked':'')+'> Ligada</label>'+
@@ -2266,8 +2276,10 @@ function sheetCatRules(){
     '<div class="row"><div><label for="cr-s-yl">Amarelos p/ suspender</label><input id="cr-s-yl" type="number" inputmode="numeric" min="1" value="'+sr.yellowLimit+'"></div>'+
     '<div><label for="cr-s-yb">Jogos (amarelos)</label><input id="cr-s-yb" type="number" inputmode="numeric" min="0" value="'+sr.yellowBan+'"></div>'+
     '<div><label for="cr-s-rb">Jogos (vermelho)</label><input id="cr-s-rb" type="number" inputmode="numeric" min="0" value="'+sr.redBan+'"></div></div>'+
+    gameRulesForm(c)+
     '<div class="sp16"></div><button class="btn big" data-act="cat-rules-save">'+I.check+'Salvar regras</button>';
   openSheet(h);drawTb();
+  RULES.gInit=JSON.stringify(readGameRules()); // só manda a regra do jogo se o organizador mudou algo
 }
 function drawTb(){
   const box=document.getElementById('cr-tb');if(!box||!RULES)return;
@@ -2283,15 +2295,60 @@ async function saveCatRules(){
   const tiebreakers=RULES.order.filter(k=>RULES.on.has(k));
   if(!tiebreakers.length)return toast('Escolha pelo menos 1 critério');
   const rounds=v('cr-rounds').value;
+  const gRules=readGameRules();if(gRules&&gRules.error)return toast(gRules.error);
   const body={format:v('cr-fmt').value,doubleRound:v('cr-dbl').checked,tiebreakers,pointsWin:Number(v('cr-pw').value||3),
+    pointsDraw:(v('cr-pd')&&v('cr-pd').value!=='')?Number(v('cr-pd').value):1,pointsLoss:(v('cr-pl')&&v('cr-pl').value!=='')?Number(v('cr-pl').value):0,
     formatConfig:{reset:v('cr-reset').checked,rounds:rounds?Number(rounds):undefined},
     suspensionRule:{enabled:v('cr-s-on').checked,doubleYellowIsRed:v('cr-s-2y').checked,yellowLimit:Number(v('cr-s-yl').value||3),yellowBan:Number(v('cr-s-yb').value||0),redBan:Number(v('cr-s-rb').value||0)}};
+  if(gRules&&JSON.stringify(gRules)!==RULES.gInit)body.gameRules=gRules;
   try{
     const c=await api('/'+CURCAT.tid+'/categories/'+CURCAT.cid,{method:'PATCH',body});
     CATS_CACHE[CURCAT.cid]=Object.assign({},CATS_CACHE[CURCAT.cid]||{},c);
     CURCAT.fmt=c.format||CUR_TFMT||CURCAT.fmt;
     closeSheet();toast('Regras salvas');renderCatPanel(CURCAT.tab||'tabela');
   }catch(e){toast(e.message);}
+}
+// ---------- Liga F3: regras do jogo da categoria (duração, jogadores, elenco, faltas, eventos da súmula) ----------
+const EV_TYPES=[['GOAL','Gol'],['ASSIST','Assistência'],['YELLOW','Cartão amarelo'],['RED','Cartão vermelho'],['FOUL','Falta'],['TIMEOUT','Pedido de tempo'],['POINT','Ponto'],['SET','Set vencido'],['PT1','Lance livre (1)'],['PT2','Cesta de 2'],['PT3','Cesta de 3']];
+function gameRulesForm(c){
+  const r=c.rules||{};const ev=new Set(r.events||['GOAL','ASSIST','YELLOW','RED','FOUL','TIMEOUT']);
+  const num=(id,lbl,val,ph)=>'<div><label for="'+id+'">'+lbl+'</label><input id="'+id+'" type="number" inputmode="numeric" min="1" value="'+esc(val!=null?val:'')+'" placeholder="'+(ph||'—')+'"></div>';
+  return '<div class="grp">Regras do jogo</div>'+
+    (r.source==='legacy'?'<p class="muted" style="font-size:12.5px">Esta categoria usa a regra antiga (eventos de futsal, alerta na 6ª falta). Salvar aqui grava a regra só desta categoria.</p>':'')+
+    '<div class="row">'+num('gr-per','Períodos',r.periods)+num('gr-min','Minutos por período',r.minutesPerPeriod)+'</div>'+
+    '<div class="row">'+num('gr-pl','Jogadores em campo',r.playersOnField)+num('gr-max','Elenco máximo',r.maxRoster,'sem limite')+'</div>'+
+    '<div class="row">'+num('gr-fl','Limite de faltas por período',r.foulLimit,'sem alerta')+'</div>'+
+    '<label for="gr-ft">O que acontece ao atingir o limite</label><input id="gr-ft" maxlength="120" value="'+esc(r.foulText||'')+'" placeholder="ex: tiro livre direto sem barreira">'+
+    '<label for="gr-fw">Aviso uma falta antes</label><input id="gr-fw" maxlength="120" value="'+esc(r.foulWarnText||'')+'" placeholder="ex: a próxima é tiro livre direto">'+
+    '<div class="grp">Eventos da súmula</div><div class="checks">'+EV_TYPES.map(x=>'<label class="chk"><input type="checkbox" class="gr-ev" value="'+x[0]+'"'+(ev.has(x[0])?' checked':'')+'> '+esc(x[1])+'</label>').join('')+'</div>';
+}
+function readGameRules(){
+  const v=id=>document.getElementById(id);if(!v('gr-per'))return null;
+  const n=id=>{const x=v(id).value;return x===''?null:Number(x);};
+  const events=[].map.call(document.querySelectorAll('.gr-ev:checked'),x=>x.value);
+  if(!events.length)return {error:'Escolha ao menos um evento da súmula'};
+  return {periods:n('gr-per'),minutesPerPeriod:n('gr-min'),playersOnField:n('gr-pl'),maxRoster:n('gr-max'),foulLimit:n('gr-fl'),foulText:v('gr-ft').value.trim()||null,foulWarnText:v('gr-fw').value.trim()||null,events:events};
+}
+// ---------- Liga F3: link do time (o próprio time preenche o elenco) ----------
+async function teamLinkSheet(eid,name){
+  let r;try{r=await api('/entries/'+eid+'/team-invite',{method:'POST',body:{}});}catch(e){return toast(e.message);}
+  const exp=new Date(r.expiresAt).toLocaleDateString('pt-BR',{timeZone:'America/Fortaleza'});
+  openSheet('<h3>Link do time'+(r.team&&r.team.name?' · '+esc(r.team.name):'')+'</h3><p class="muted">Quem abrir entra com a conta e se adiciona ao elenco. Vale até '+esc(exp)+' para várias pessoas. Gerar outro desativa este.</p><div class="sp8"></div>'+
+    '<input id="inv-url" readonly value="'+esc(r.url)+'">'+
+    '<div class="sp12"></div><button class="btn" data-act="team-invite-copy">'+I.link+'Copiar link</button>'+
+    '<div class="sp8"></div><a class="btn sec full" style="text-align:center" href="'+esc(r.whatsappUrl)+'" target="_blank" rel="noopener">Abrir no meu WhatsApp para enviar</a>'+
+    '<div class="sp8"></div><button class="btn gho full" data-act="team-link-revoke" data-eid="'+eid+'">'+I.x+'Desativar o link</button>');
+}
+async function teamLinkRevoke(eid){try{await api('/entries/'+eid+'/team-invite',{method:'DELETE'});closeSheet();toast('Link desativado');}catch(e){toast(e.message);}}
+// ---------- Liga F3: duplicar para a próxima temporada ----------
+function dupSheet(id,name){
+  openSheet('<h3>Duplicar para a próxima temporada</h3><p class="muted">Copia categorias, regras, clubes, elencos e papéis de <b>'+esc(name)+'</b>. Não copia jogos, resultados nem datas. A nova edição nasce em rascunho.</p>'+
+    '<label for="dup-name">Nome da nova edição (opcional)</label><input id="dup-name" maxlength="120" placeholder="automático: próxima edição">'+
+    '<div class="sp16"></div><button class="btn big" data-act="dup-do" data-id="'+id+'">'+I.check+'Duplicar</button>');
+}
+async function dupDo(id){
+  const nm=(document.getElementById('dup-name')||{value:''}).value.trim();
+  try{const r=await api('/'+id+'/duplicate',{method:'POST',body:nm?{name:nm}:{}});closeSheet();toast('Nova edição criada: '+r.tournament.name);go('t/'+r.tournament.id);}catch(e){toast(e.message);}
 }
 // renderiza partidas agrupadas por rodada (com súmula set-a-set quando concluída)
 function renderMatchRounds(arr){
@@ -2653,6 +2710,10 @@ function drawSumula(){
   const live=s.match.status==='LIVE';
   const ev=s.events||[];
   const anyP=ev.some(e=>e.period!=null);
+  // Liga F3: regra do jogo vem da categoria (sem regra salva = legado: futsal, alerta na 6ª falta)
+  const RU=Object.assign({foulLimit:6,foulText:'tiro livre direto sem barreira',foulWarnText:'a próxima é tiro livre direto',periods:2,events:['GOAL','ASSIST','YELLOW','RED','FOUL','TIMEOUT'],playerEvents:['GOAL','ASSIST','YELLOW','RED'],teamEvents:['FOUL','TIMEOUT'],labels:{}},s.rules||{});
+  const FLIM=RU.foulLimit;const hasFoul=RU.events.indexOf('FOUL')>=0;
+  SUMULA.rules=RU;
   const inPer=e=>!anyP||e.period===SUM_PERIOD;
   const cnt=(id,t,per)=>ev.filter(e=>e.entryId===id&&e.type===t&&(!per||inPer(e))).length;
   const hid=h.entry&&h.entry.id,aid=a.entry&&a.entry.id;
@@ -2662,8 +2723,9 @@ function drawSumula(){
   const offSc=done&&mt.homeScore!=null&&mt.awayScore!=null;
   const SH=offSc?mt.homeScore:s.liveScore.home,SA=offSc?mt.awayScore:s.liveScore.away;
   const stg=mt.groupName?('Grupo '+mt.groupName):(STAGE_LBL[mt.stage]||mt.stage||'');
-  const pips=n=>{let x='';for(let i=0;i<6;i++)x+='<i'+(i<n?' class="on"':'')+'></i>';return x;};
-  const fl=(n,tot)=>'<div class="fl'+(n>=6?' max':(n>=5?' hot':''))+'"><span class="pips">'+pips(Math.min(n,6))+'</span><span class="ft"><b class="num">'+n+'</b>faltas'+(anyP?' no '+PER_SH[SUM_PERIOD]:'')+'</span>'+(anyP&&tot!==n?'<span class="ftt">total no jogo: '+tot+'</span>':'')+'</div>';
+  const PIPN=FLIM||6;
+  const pips=n=>{let x='';for(let i=0;i<PIPN;i++)x+='<i'+(i<n?' class="on"':'')+'></i>';return x;};
+  const fl=(n,tot)=>'<div class="fl'+(FLIM&&n>=FLIM?' max':(FLIM&&n>=FLIM-1?' hot':''))+'"><span class="pips">'+pips(Math.min(n,PIPN))+'</span><span class="ft"><b class="num">'+n+'</b>faltas'+(anyP?' no '+perSh(SUM_PERIOD):'')+'</span>'+(anyP&&tot!==n?'<span class="ftt">total no jogo: '+tot+'</span>':'')+'</div>';
   // placar compacto na barra fixa do topo (celular): sempre visível ao rolar o elenco
   const mini='<span class="tsc" aria-hidden="true"><span>'+esc(h.entry?h.entry.name:'')+'</span><b>'+SH+'<i>:</i>'+SA+'</b><span>'+esc(a.entry?a.entry.name:'')+'</span></span>';
   let html=topbar('Súmula',true).replace('<div class="tacts">',mini+'<div class="tacts" style="display:none">')+'<div class="wrap enter">';
@@ -2675,12 +2737,16 @@ function drawSumula(){
       '<div class="sc-tm"><b>'+esc(h.entry?h.entry.name:'—')+'</b></div>'+
       '<div class="sc-n num" aria-label="placar">'+SH+'<i>:</i>'+SA+'</div>'+
       '<div class="sc-tm"><b>'+esc(a.entry?a.entry.name:'—')+'</b></div></div>'+
-    '<div class="sc-f">'+fl(hf,s.fouls.home)+fl(af,s.fouls.away)+'</div>';
+    (hasFoul?'<div class="sc-f">'+fl(hf,s.fouls.home)+fl(af,s.fouls.away)+'</div>':'');
   const al=[];
-  [[h,hf],[a,af]].forEach(function(x){if(!x[0].entry)return;
-    if(x[1]>=6)al.push('<div class="alert bad">'+I.warn+'<span><b>'+esc(x[0].entry.name)+':</b> 6ª falta — tiro livre direto sem barreira</span></div>');
-    else if(x[1]===5&&!done)al.push('<div class="alert warn">'+I.warn+'<span><b>'+esc(x[0].entry.name)+':</b> 5 faltas — a próxima é tiro livre direto</span></div>');});
-  if(!al.length&&(s.fouls.home>=6||s.fouls.away>=6)&&!anyP)al.push('<div class="alert bad">'+I.warn+'6ª falta — tiro livre direto sem barreira</div>');
+  // limite de faltas acumuladas por período: vem da regra (futsal/legado = 6ª falta)
+  if(FLIM&&hasFoul){
+    const fTxt=esc(RU.foulText||'atenção'),wTxt=esc(RU.foulWarnText||('a próxima: '+(RU.foulText||'atenção')));
+    [[h,hf],[a,af]].forEach(function(x){if(!x[0].entry)return;
+      if(x[1]>=FLIM)al.push('<div class="alert bad">'+I.warn+'<span><b>'+esc(x[0].entry.name)+':</b> '+FLIM+'ª falta — '+fTxt+'</span></div>');
+      else if(x[1]===FLIM-1&&!done)al.push('<div class="alert warn">'+I.warn+'<span><b>'+esc(x[0].entry.name)+':</b> '+(FLIM-1)+' faltas — '+wTxt+'</span></div>');});
+    if(!al.length&&(s.fouls.home>=FLIM||s.fouls.away>=FLIM)&&!anyP)al.push('<div class="alert bad">'+I.warn+FLIM+'ª falta — '+fTxt+'</div>');
+  }
   const SUSP={};(s.suspensions||[]).forEach(x=>{SUSP[x.playerId]=x;});
   if((s.suspensions||[]).length&&!done)al.push('<div class="alert bad">'+I.warn+'<span><b>Suspenso'+(s.suspensions.length>1?'s':'')+' neste jogo:</b> '+s.suspensions.map(x=>esc(x.name)+' ('+esc(x.reasonText)+')').join(', ')+'</span></div>');
   if(mt.decidedByPenalties)al.push('<div class="alert info">'+I.target+'Pênaltis '+(mt.homePenalties!=null?mt.homePenalties:'-')+'×'+(mt.awayPenalties!=null?mt.awayPenalties:'-')+'</div>');
@@ -2689,15 +2755,19 @@ function drawSumula(){
   // tempo de jogo (período) + ações rápidas por time
   let ctrl='';
   if(!done){
-    ctrl+='<div class="seg per" role="tablist" aria-label="Tempo de jogo">'+[1,2,3].map(p=>'<button type="button" data-act="sum-period" data-p="'+p+'" class="'+(SUM_PERIOD===p?'on':'')+'">'+PER_LBL[p]+'</button>').join('')+'</div>';
+    const nP=Math.max(1,Math.min(8,Number(RU.periods)||2));const perList=[];for(let p=1;p<=nP+1;p++)perList.push(p);
+    if(RU.periods!==null||RU.foulLimit)ctrl+='<div class="seg per" role="tablist" aria-label="Tempo de jogo">'+perList.map(p=>'<button type="button" data-act="sum-period" data-p="'+p+'" class="'+(SUM_PERIOD===p?'on':'')+'" aria-label="'+esc(perLbl(p,nP))+'">'+(nP>=4?(p>nP?'Prorr.':p+(nP===4?'ºQ':'ºP')):perLbl(p,nP))+'</button>').join('')+'</div>';
   }
   ctrl+='<div class="qa">'+[h,a].map(function(sd,ix){if(!sd.entry)return '<div class="qa-t"></div>';
     const to=cnt(sd.entry.id,'TIMEOUT',true);
+    // botões do TIME conforme a regra (futsal: falta e pedido de tempo; vôlei: ponto e set...)
+    const extra=RU.teamEvents.filter(k=>k!=='FOUL'&&k!=='TIMEOUT').map(k=>'<button class="btn sec" data-act="sum-team-ev" data-t="'+esc(k)+'" data-eid="'+sd.entry.id+'">'+I.plus+esc(evLbl(k,RU))+' <small>('+cnt(sd.entry.id,k,false)+')</small></button>').join('');
     return '<div class="qa-t"><div class="qa-n">'+(ix?'Visitante':'Casa')+' · '+esc(sd.entry.name)+'</div>'+
-      '<button class="btn" data-act="sum-foul" data-eid="'+sd.entry.id+'">'+I.plus+'Falta</button>'+
-      '<button class="btn gho" data-act="sum-timeout" data-eid="'+sd.entry.id+'">'+I.timer+'Tempo <small>('+to+')</small></button></div>';}).join('')+'</div>';
+      (RU.events.indexOf('FOUL')>=0?'<button class="btn" data-act="sum-foul" data-eid="'+sd.entry.id+'">'+I.plus+'Falta</button>':'')+
+      (RU.events.indexOf('TIMEOUT')>=0?'<button class="btn gho" data-act="sum-timeout" data-eid="'+sd.entry.id+'">'+I.timer+'Tempo <small>('+to+')</small></button>':'')+extra+'</div>';}).join('')+'</div>';
   // elencos
-  const pstat={};ev.forEach(function(e){if(!e.playerId)return;const o=pstat[e.playerId]=pstat[e.playerId]||{g:0,a:0,y:0,r:0};if(e.type==='GOAL')o.g++;if(e.type==='ASSIST')o.a++;if(e.type==='YELLOW')o.y++;if(e.type==='RED')o.r++;});
+  const PTV={PT1:1,PT2:2,PT3:3};
+  const pstat={};ev.forEach(function(e){if(!e.playerId)return;const o=pstat[e.playerId]=pstat[e.playerId]||{g:0,a:0,y:0,r:0};if(e.type==='GOAL')o.g++;if(PTV[e.type])o.g+=PTV[e.type];if(e.type==='ASSIST')o.a++;if(e.type==='YELLOW')o.y++;if(e.type==='RED')o.r++;});
   const LU=(mt.lineup&&typeof mt.lineup==='object')?mt.lineup:{};
   let ros='<div class="rosgrid">';
   [['home',h],['away',a]].forEach(function(pair,ix){
@@ -2721,13 +2791,13 @@ function drawSumula(){
   let evh='<div class="card">'+cardH(I.list,'Eventos','<span class="pill g">'+ev.length+'</span>');
   if(!ev.length)evh+=emptyB('', 'Nenhum evento ainda. Toque num atleta para registrar.','sm');
   else{
-    var ICON={GOAL:I.ball,ASSIST:I.target,YELLOW:'<i class="cardk"></i>',RED:'<i class="cardk r"></i>',FOUL:I.whistle,TIMEOUT:I.timer},LBL={GOAL:'Gol',ASSIST:'Assistência',YELLOW:'Amarelo',RED:'Vermelho',FOUL:'Falta',TIMEOUT:'Pedido de tempo'};
+    var ICON={GOAL:I.ball,ASSIST:I.target,YELLOW:'<i class="cardk"></i>',RED:'<i class="cardk r"></i>',FOUL:I.whistle,TIMEOUT:I.timer,PT1:I.ball,PT2:I.ball,PT3:I.ball,SET:I.flag,POINT:I.plus},LBL={GOAL:'Gol',ASSIST:'Assistência',YELLOW:'Amarelo',RED:'Vermelho',FOUL:'Falta',TIMEOUT:'Pedido de tempo',PT1:'Lance livre (+1)',PT2:'Cesta de 2',PT3:'Cesta de 3',SET:'Set vencido',POINT:'Ponto'};
     var names={};[h,a].forEach(function(sd){sd.roster.forEach(function(p){names[p.id]=p.name;});});
     var team={};if(h.entry)team[h.entry.id]=h.entry.name;if(a.entry)team[a.entry.id]=a.entry.name;
     ev.slice().reverse().forEach(function(e){
       evh+='<div class="evrow"><span class="evic '+esc(e.type)+'">'+(ICON[e.type]||I.flag)+'</span><div class="grow"><div class="nm">'+(LBL[e.type]||esc(e.type))+(e.playerId&&names[e.playerId]?' — '+esc(names[e.playerId]):'')+'</div>'+
         '<div class="sub">'+esc(team[e.entryId]||'')+'</div></div>'+
-        '<span class="tm">'+(e.period!=null&&PER_SH[e.period]?PER_SH[e.period]+' ':'')+(e.minute!=null?e.minute+"'":'')+'</span>'+
+        '<span class="tm">'+(e.period!=null?perSh(e.period)+' ':'')+(e.minute!=null?e.minute+"'":'')+'</span>'+
         '<button class="btn icon gho" aria-label="Apagar evento" data-act="sum-delevent" data-id="'+e.id+'">'+I.x+'</button></div>';
     });
   }
@@ -2760,12 +2830,12 @@ function sumPlayerSheet(pid,eid,pn){
   const lu=s&&s.match&&s.match.lineup&&s.match.lineup[eid]||[];const inLu=lu.indexOf(pid)>=0;
   openSheet('<h3>'+esc(pn)+'</h3>'+(sp?'<div class="alert bad" style="margin-bottom:8px">'+I.warn+'<span><b>SUSPENSO neste jogo</b> — '+esc(sp.reasonText)+'. Lançar evento exige liberação do árbitro/coordenador com motivo.</span></div>':'')+
     '<button class="btn sm '+(inLu?'gho':'sec')+' full" data-act="sum-lineup" data-pid="'+pid+'" data-eid="'+eid+'" data-on="'+(inLu?0:1)+'">'+(inLu?I.x+'Tirar da escalação':I.check+'Escalar neste jogo')+'</button>'+
-    '<p class="muted">Registrar evento · '+esc(PER_LBL[SUM_PERIOD]||'')+'</p>'+
+    '<p class="muted">Registrar evento · '+esc(perLbl(SUM_PERIOD,(SUMULA.rules&&SUMULA.rules.periods)||2))+'</p>'+
     '<label for="sum-min">Minuto (opcional)</label><input id="sum-min" type="number" inputmode="numeric" placeholder="ex: 12">'+
-    '<div class="evgrid"><button class="evb goal" data-act="sum-ev" data-t="GOAL" data-pid="'+pid+'" data-eid="'+eid+'">'+I.ball+'Gol</button>'+
-    '<button class="evb" data-act="sum-ev" data-t="ASSIST" data-pid="'+pid+'" data-eid="'+eid+'">'+I.target+'Assistência</button>'+
-    '<button class="evb" data-act="sum-ev" data-t="YELLOW" data-pid="'+pid+'" data-eid="'+eid+'"><i class="cardk"></i>Amarelo</button>'+
-    '<button class="evb" data-act="sum-ev" data-t="RED" data-pid="'+pid+'" data-eid="'+eid+'"><i class="cardk r"></i>Vermelho</button></div>');
+    '<div class="evgrid">'+((SUMULA.rules&&SUMULA.rules.playerEvents)||['GOAL','ASSIST','YELLOW','RED']).map(function(k){
+      const ic={GOAL:I.ball,ASSIST:I.target,YELLOW:'<i class="cardk"></i>',RED:'<i class="cardk r"></i>',PT1:I.ball,PT2:I.ball,PT3:I.ball}[k]||I.plus;
+      const lb={GOAL:'Gol',ASSIST:'Assistência',YELLOW:'Amarelo',RED:'Vermelho',PT1:'+1 (lance livre)',PT2:'+2 (cesta)',PT3:'+3 (cesta)'}[k]||evLbl(k,SUMULA.rules||{});
+      return '<button class="evb'+(k==='GOAL'||/^PT/.test(k)?' goal':'')+'" data-act="sum-ev" data-t="'+esc(k)+'" data-pid="'+pid+'" data-eid="'+eid+'">'+ic+esc(lb)+'</button>';}).join('')+'</div>');
 }
 // Pede ao árbitro/coordenador a confirmação + motivo pra liberar um atleta SUSPENSO.
 function askOverride(e){
@@ -2801,6 +2871,11 @@ async function sumLineup(pid,eid,on){
     catch(e2){toast(e2.message);}
   }
 }
+// Liga F3: nomes de período e de evento conforme a regra da categoria
+function perLbl(p,n){n=n||2;if(p>n)return 'Prorrogação';if(n===2)return PER_LBL[p]||(p+'º tempo');if(n===4)return p+'º quarto';return p+'º período';}
+function perSh(p){const n=(SUMULA&&SUMULA.rules&&SUMULA.rules.periods)||2;if(p>n)return 'Prorr.';if(n===2)return PER_SH[p]||(p+'ºT');if(n===4)return p+'ºQ';return p+'ºP';}
+function evLbl(k,R){return (R&&R.labels&&R.labels[k])||({SET:'Set',POINT:'Ponto'}[k])||k;}
+async function sumTeamEvent(type,eid){try{await api('/matches/'+SUMULA.mid+'/events',{method:'POST',body:{entryId:eid,type:type,period:SUM_PERIOD}});toast(evLbl(type,SUMULA.rules));sumReload();}catch(e){toast(e.message);}}
 async function sumFoul(eid){try{await api('/matches/'+SUMULA.mid+'/events',{method:'POST',body:{entryId:eid,type:'FOUL',period:SUM_PERIOD}});toast('Falta');sumReload();}catch(e){toast(e.message);}}
 async function sumTimeout(eid){try{await api('/matches/'+SUMULA.mid+'/events',{method:'POST',body:{entryId:eid,type:'TIMEOUT',period:SUM_PERIOD}});toast('Pedido de tempo');sumReload();}catch(e){toast(e.message);}}
 async function sumDelEvent(id){if(!confirm('Apagar este evento da súmula?'))return;try{await api('/events/'+id,{method:'DELETE'});toast('Removido');sumReload();}catch(e){toast(e.message);}}
@@ -2942,6 +3017,11 @@ document.addEventListener('click',async(ev)=>{
   if(a==='sum-ev'){sumEvent(el.dataset.t,el.dataset.eid,el.dataset.pid);return;}
   if(a==='sum-foul'){sumFoul(el.dataset.eid);return;}
   if(a==='sum-timeout'){sumTimeout(el.dataset.eid);return;}
+  if(a==='sum-team-ev'){sumTeamEvent(el.dataset.t,el.dataset.eid);return;}
+  if(a==='team-link'){teamLinkSheet(el.dataset.eid,el.dataset.name);return;}
+  if(a==='team-link-revoke'){teamLinkRevoke(el.dataset.eid);return;}
+  if(a==='dup-sheet'){dupSheet(el.dataset.id,el.dataset.name||'');return;}
+  if(a==='dup-do'){dupDo(el.dataset.id);return;}
   if(a==='sum-period'){sumSetPeriod(el.dataset.p);return;}
   if(a==='sum-delevent'){sumDelEvent(el.dataset.id);return;}
   if(a==='sum-addplayer'){sumAddPlayerSheet(el.dataset.eid);return;}

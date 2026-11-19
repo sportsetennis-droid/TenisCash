@@ -22,7 +22,10 @@ const MAX_PER_TOURNAMENT = 3000; // teto de conexões abertas por torneio
 const HEARTBEAT_MS = 20000;
 const clients = new Map(); // tournamentId -> Set<res>
 
-const TIMELINE_TYPES = ['GOAL', 'YELLOW', 'RED'];
+const { SCORE_VALUES, resolveRules } = require('./tournamentRules');
+// Lance a lance: gol e cartões (como antes) + os tipos que marcam ponto em outros esportes
+// (Liga F3: basquete PT1/PT2/PT3, vôlei/raquete SET). Futsal só tem GOAL → nada muda.
+const TIMELINE_TYPES = [...new Set(['GOAL', 'YELLOW', 'RED', ...Object.keys(SCORE_VALUES)])];
 
 function flush(res) {
   try { if (typeof res.flush === 'function') res.flush(); } catch (_) { /* ignore */ }
@@ -107,6 +110,15 @@ async function liveDataFor(matches) {
     ? await prisma.rosterPlayer.findMany({ where: { id: { in: pids } }, select: { id: true, name: true, number: true } })
     : [];
   const pById = Object.fromEntries(players.map((p) => [p.id, p]));
+  // Placar ao vivo pela MESMA regra do fechamento da súmula (regra da categoria; sem regra
+  // salva = legado: 1 por GOAL). Uma consulta leve, só quando há lance.
+  const catIds = [...new Set(matches.map((m) => m.categoryId).filter(Boolean))];
+  const scoringByCat = {};
+  if (catIds.length && events.length) {
+    const cats = await prisma.tournamentCategory.findMany({ where: { id: { in: catIds } }, select: { id: true, gameRules: true, tournament: { select: { sport: true } } } }).catch(() => []);
+    cats.forEach((c) => { scoringByCat[c.id] = resolveRules(c, c.tournament && c.tournament.sport).scoring; });
+  }
+  const scoringOf = (m) => scoringByCat[m.categoryId] || { GOAL: 1 };
   const byMatch = {};
   for (const m of matches) {
     byMatch[m.id] = {
@@ -122,7 +134,8 @@ async function liveDataFor(matches) {
     if (!m || !d) continue;
     const side = e.entryId === m.homeEntryId ? 'home' : e.entryId === m.awayEntryId ? 'away' : null;
     if (!side) continue;
-    if (e.type === 'GOAL') d.liveScore[side] += 1;
+    const sv = scoringOf(m)[e.type];
+    if (sv) d.liveScore[side] += sv;
     else if (e.type === 'YELLOW') d.cards[side].yellow += 1;
     else if (e.type === 'RED') d.cards[side].red += 1;
     const p = e.playerId ? pById[e.playerId] : null;

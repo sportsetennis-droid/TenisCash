@@ -9,6 +9,63 @@
 // =====================================================================
 
 const STATEMENTS = [
+  // Liga Aberta F3 — criação em 2 minutos (regras por categoria, racha, link do time).
+  // PRIMEIRO da lista (as rotas novas leem essas colunas/tabelas). Aditivo, nunca apaga.
+  `ALTER TABLE "TournamentCategory" ADD COLUMN IF NOT EXISTS "gameRules" JSONB`,
+  `CREATE TABLE IF NOT EXISTS "TeamInvite" (
+     "id" TEXT NOT NULL,
+     "tokenHash" TEXT NOT NULL,
+     "entryId" TEXT NOT NULL,
+     "tournamentId" TEXT NOT NULL,
+     "createdByUserId" TEXT NOT NULL,
+     "expiresAt" TIMESTAMP(3) NOT NULL,
+     "revokedAt" TIMESTAMP(3),
+     "uses" INTEGER NOT NULL DEFAULT 0,
+     "lastUsedAt" TIMESTAMP(3),
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "TeamInvite_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "TeamInvite_tokenHash_key" ON "TeamInvite"("tokenHash")`,
+  `CREATE INDEX IF NOT EXISTS "TeamInvite_entryId_idx" ON "TeamInvite"("entryId")`,
+  `CREATE INDEX IF NOT EXISTS "TeamInvite_tournamentId_idx" ON "TeamInvite"("tournamentId")`,
+  `CREATE TABLE IF NOT EXISTS "PickupPlayer" (
+     "id" TEXT NOT NULL,
+     "tournamentId" TEXT NOT NULL,
+     "userId" TEXT,
+     "name" TEXT NOT NULL,
+     "level" DOUBLE PRECISION,
+     "active" BOOLEAN NOT NULL DEFAULT true,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "PickupPlayer_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE INDEX IF NOT EXISTS "PickupPlayer_tournamentId_idx" ON "PickupPlayer"("tournamentId")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "PickupPlayer_tournamentId_userId_key" ON "PickupPlayer"("tournamentId", "userId")`,
+  `CREATE TABLE IF NOT EXISTS "PickupSession" (
+     "id" TEXT NOT NULL,
+     "tournamentId" TEXT NOT NULL,
+     "categoryId" TEXT NOT NULL,
+     "dayKey" TEXT NOT NULL,
+     "status" TEXT NOT NULL DEFAULT 'OPEN',
+     "seed" TEXT,
+     "teamCount" INTEGER NOT NULL DEFAULT 2,
+     "teams" JSONB,
+     "drawnAt" TIMESTAMP(3),
+     "drawnBy" TEXT,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "PickupSession_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "PickupSession_tournamentId_dayKey_key" ON "PickupSession"("tournamentId", "dayKey")`,
+  `CREATE TABLE IF NOT EXISTS "PickupAttendance" (
+     "id" TEXT NOT NULL,
+     "sessionId" TEXT NOT NULL,
+     "playerId" TEXT NOT NULL,
+     "status" TEXT NOT NULL DEFAULT 'IN',
+     "byUserId" TEXT,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "PickupAttendance_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "PickupAttendance_sessionId_playerId_key" ON "PickupAttendance"("sessionId", "playerId")`,
   // Liga Aberta F2 — clube e atleta como identidade. PRIMEIRO da lista (as rotas de torneio
   // passam a ler TournamentEntry.clubId). Aditivo, nunca apaga.
   `ALTER TABLE "TournamentEntry" ADD COLUMN IF NOT EXISTS "clubId" TEXT`,

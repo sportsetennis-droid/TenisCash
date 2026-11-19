@@ -20,6 +20,8 @@
     "test:liga-f0": "node scripts/test-liga-f0-seguranca.js",
     "test:liga-f1": "node scripts/test-liga-f1-permissao.js",
     "test:liga-f2": "node scripts/test-liga-f2-identidade.js",
+    "test:liga-f3": "node scripts/test-liga-f3-criacao.js",
+    "test:liga-f3-ui": "node scripts/test-liga-f3-ui.js",
     "test:fin": "node scripts/test-fin-core.js && node scripts/test-stone-connect.js && node scripts/test-fin-payables.js",
     "test:payroll": "node scripts/test-payroll-engine.js",
     "test:payroll-http": "node scripts/test-payroll-http.cjs",

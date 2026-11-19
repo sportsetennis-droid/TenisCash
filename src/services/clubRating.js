@@ -114,6 +114,9 @@ async function collectEvents({ sport } = {}) {
     },
   });
   for (const m of matches) {
+    // Liga F3: jogo de RACHA (times sorteados no dia) não entra no rating — os "times"
+    // mudam a cada dia e virariam clubes-fantasma no ranking de equipes.
+    if (m.stage === 'PICKUP') continue;
     const sp = m.tournament.sport;
     let format;
     let a;
