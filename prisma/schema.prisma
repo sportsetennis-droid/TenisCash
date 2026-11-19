@@ -3081,6 +3081,8 @@ model Club {
   @@index([city])
   @@index([sportScope])
   @@index([storeId])
+  @@index([ownerId]) // Liga F5
+  @@index([originTournamentId]) // Liga F5
 }
 
 model ClubMembership {
@@ -3095,6 +3097,7 @@ model ClubMembership {
   invitedByUserId String?
 
   @@unique([clubId, userId])
+  @@index([userId]) // Liga F5
 }
 
 // Vínculo EXPLÍCITO (feito pelo dono do clube) entre o clube permanente e a
@@ -3881,6 +3884,8 @@ model Tournament {
   @@index([sport])
   @@index([storeId])
   @@index([seriesSlug])
+  @@index([ownerId]) // Liga F5
+  @@index([visibility, archivedAt, status]) // Liga F5 (vitrine)
 }
 
 model TournamentCategory {
@@ -4017,6 +4022,11 @@ model TournamentMatch {
   @@index([tournamentId])
   @@index([categoryId, round])
   @@index([status])
+  @@index([homeEntryId]) // Liga F5
+  @@index([awayEntryId]) // Liga F5
+  @@index([winnerEntryId]) // Liga F5
+  @@index([scheduledAt]) // Liga F5
+  @@index([categoryId, round, ordering]) // Liga F5 (jogos por cursor)
 }
 
 model MatchGame {
@@ -4056,6 +4066,7 @@ model TournamentStanding {
   updatedAt DateTime @updatedAt
 
   @@index([categoryId, points])
+  @@index([tournamentId]) // Liga F5
 }
 
 model AthleteRating {
@@ -4110,10 +4121,12 @@ model TournamentPost {
   title        String?
   body         String     @db.Text
   pinned       Boolean    @default(false)
+  imageUrl     String? // Liga F5: imagem do aviso ("/media/<sha>.<ext>" ou https://)
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
   @@index([tournamentId, createdAt])
+  @@index([tournamentId, pinned, createdAt]) // Liga F5 (mural por cursor)
 }
 
 // Liga Aberta F0 — código de verificação do cadastro de atleta (WhatsApp).
@@ -4264,6 +4277,7 @@ model PickupAttendance {
   updatedAt DateTime @default(now()) @updatedAt
 
   @@unique([sessionId, playerId])
+  @@index([playerId]) // Liga F5
 }
 
 // Liga Aberta F2 — fusão de perfis duplicados do MESMO atleta (só com confirmação dele).
@@ -7183,4 +7197,46 @@ model TournamentCheckin {
 
   @@unique([registrationId, scopeKey])
   @@index([tournamentId, scopeKey])
+}
+
+// =====================================================================
+// Liga Aberta F5 — arquivos e desempenho
+// =====================================================================
+// Imagem enviada (escudo, logo, banner, foto, aviso): 1 linha por CONTEÚDO (sha256 único).
+// Campo do torneio/clube/atleta guarda só "/media/<sha256>.<ext>" (rota pública com cache).
+model MediaObject {
+  id          String   @id @default(cuid())
+  sha256      String   @unique
+  mime        String // image/png | image/jpeg | image/webp | image/gif
+  bytes       Bytes? // adaptador "db" (padrão); nulo quando está no S3/R2
+  size        Int
+  width       Int?
+  height      Int?
+  storage     String   @default("db") // db | s3
+  url         String? // endereço público quando storage = s3
+  source      String   @default("upload") // upload (conta na cota) | legacy | migration
+  ownerUserId String? // quem enviou primeiro (cota de imagens por mês do plano)
+  createdAt   DateTime @default(now())
+
+  @@index([ownerUserId, createdAt])
+}
+
+// Planos do organizador. SEM PREÇO aqui (decisão do dono): priceCents fica nulo.
+// Sem linha no banco, o plano "free" usa os limites da configuração (env) / padrão do código.
+model OrganizerPlan {
+  key        String   @id // free | (planos pagos futuros)
+  name       String
+  priceCents Int? // nunca definido pelo sistema
+  limits     Json? // { activeTournaments, categoriesPerTournament, teamsPerCategory, postsPerMonth, imagesPerMonth }
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+// Plano de cada organizador (sem linha = free).
+model OrganizerSubscription {
+  userId    String   @id
+  planKey   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

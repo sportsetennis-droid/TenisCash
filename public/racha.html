@@ -246,15 +246,28 @@
       api('POST',BASE+'pickup/games/'+gid+'/score',pid?{side:side,delta:1,playerId:pid}:{side:side,delta:1}).then(function(r){if(!r.ok)return alert(r.json.error||'Erro');load();});};});
   }
   // ---------------- ARTILHARIA
+  // Liga F5: artilharia por página (30) + "Ver mais" pelo cursor
+  function scRows(list,start){var h='';list.forEach(function(s,i){h+='<tr><td>'+(start+i)+'</td><td>'+e(s.name)+'</td><td class="n"><b>'+s.goals+'</b></td><td class="n">'+s.games+'</td></tr>';});return h;}
   function artilharia(){
     app.innerHTML='<div class="card"><p class="muted">Carregando…</p></div>';
-    api('GET',BASE+encodeURIComponent(SLUG)+'/pickup/scorers').then(function(r){
+    api('GET',BASE+encodeURIComponent(SLUG)+'/pickup/scorers?limit=30').then(function(r){
       if(!r.ok){app.innerHTML='<div class="card"><p class="muted">Não deu para carregar.</p></div>';return;}
       SC=r.json;var h='<div class="card"><h2><span>Artilharia '+SC.season+'</span><span class="pill">'+SC.games+' jogos</span></h2>';
       if(!SC.scorers.length)h+='<p class="muted">Ninguém marcou ainda nesta temporada (só conta jogo encerrado com o autor do gol).</p>';
-      else{h+='<table><thead><tr><th>#</th><th>Jogador</th><th class="n">Gols</th><th class="n">Jogos</th></tr></thead><tbody>';
-        SC.scorers.forEach(function(s,i){h+='<tr><td>'+(i+1)+'</td><td>'+e(s.name)+'</td><td class="n"><b>'+s.goals+'</b></td><td class="n">'+s.games+'</td></tr>';});h+='</tbody></table>';}
+      else{h+='<table><thead><tr><th>#</th><th>Jogador</th><th class="n">Gols</th><th class="n">Jogos</th></tr></thead><tbody id="scBody">';
+        h+=scRows(SC.scorers,1)+'</tbody></table>';
+        if(SC.nextCursor)h+='<button class="btn btn-s full" type="button" id="scMore" data-testid="sc-more" style="margin-top:10px">Ver mais</button>';}
       app.innerHTML=h+'<p class="muted" style="margin-top:8px">Temporada = ano no horário de João Pessoa.</p></div>';
+      var shown=SC.scorers.length,cur=SC.nextCursor,mb=document.getElementById('scMore');
+      if(mb)mb.onclick=function(){
+        mb.disabled=true;mb.textContent='Carregando…';
+        api('GET',BASE+encodeURIComponent(SLUG)+'/pickup/scorers?limit=30&season='+encodeURIComponent(SC.season)+'&cursor='+encodeURIComponent(cur)).then(function(r2){
+          if(!r2.ok){mb.disabled=false;mb.textContent='Ver mais';return;}
+          document.getElementById('scBody').insertAdjacentHTML('beforeend',scRows(r2.json.scorers,shown+1));
+          shown+=r2.json.scorers.length;cur=r2.json.nextCursor;
+          if(cur){mb.disabled=false;mb.textContent='Ver mais';}else mb.remove();
+        });
+      };
     });
   }
   function render(){

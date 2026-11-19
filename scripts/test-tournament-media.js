@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+process.env.LIGA_MEDIA_JSON_START = process.env.LIGA_MEDIA_JSON_START || '2020-01-01T00:00:00Z';
 // =====================================================================
 // Teste F2 — AO VIVO, MÍDIA E COMPARTILHAMENTO (torneios)
 // ---------------------------------------------------------------------
@@ -341,7 +342,7 @@ async function main() {
       assert.strictEqual(r.status, 201, r.text);
       spId = r.json.id;
       assert.strictEqual(r.json.link, 'https://instagram.com/sportsetennis');
-      assert.match(r.json.logoUrl, /\/api\/public\/sponsors\/.+\/logo$/);
+      assert.match(r.json.logoUrl, /(\/api\/public\/sponsors\/.+\/logo|\/media\/[a-f0-9]{64}\.png)$/); // Liga F5: logo nova vai pro /media
       const r2 = await req('POST', `/api/tournaments/${t.id}/sponsors`, { token: tokOwner, body: { name: 'Academia Força Total', link: 'https://example.com' } });
       assert.strictEqual(r2.status, 201);
       const p = await req('PATCH', `/api/tournaments/${t.id}/sponsors/${r2.json.id}`, { token: tokOwner, body: { ordering: -1 } });

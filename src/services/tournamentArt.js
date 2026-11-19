@@ -113,6 +113,7 @@ async function loadImage(src, box = 256, cover = false) {
     let buf = null;
     const m = /^data:image\/[a-z0-9.+-]+;base64,(.+)$/i.exec(src);
     if (m) buf = Buffer.from(m[1], 'base64');
+    else if (/^\/media\//.test(src)) buf = await require('./mediaStore').bytesOf(src); // Liga F5: imagem guardada por conteúdo
     else if (/^https?:\/\//i.test(src)) {
       const u = new URL(src);
       if (!isPrivateHost(u.hostname)) {
@@ -483,7 +484,10 @@ function tplAtleta(fmt, d) {
   const cell = (v, l) => div({ flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: isOg ? 190 : px(290, fmt), height: isOg ? 130 : px(190, fmt), backgroundColor: PANEL, borderRadius: px(22, fmt), borderBottom: `${px(8, fmt)}px solid ${ORANGE}` },
     text({ ...H, fontSize: isOg ? 64 : px(90, fmt), color: WHITE, lineHeight: 1 }, v),
     text({ ...B, fontSize: isOg ? 24 : px(30, fmt), color: MUTED, letterSpacing: 1 }, up(l)));
-  const cells = [cell(a.matches, 'Jogos'), cell(a.wins, 'Vitórias'), cell(a.goals, 'Gols'), cell(a.assists || 0, 'Assist.'), cell(a.titles || 0, 'Títulos'), cell(a.tournaments, 'Torneios')];
+  // Liga F5: números pelo esporte principal (raquete: aproveitamento, sem "GOLS")
+  const cells = Array.isArray(a.cells) && a.cells.length
+    ? a.cells.map((c) => cell(c.value, c.label))
+    : [cell(a.matches, 'Jogos'), cell(a.wins, 'Vitórias'), cell(a.goals, 'Gols'), cell(a.assists || 0, 'Assist.'), cell(a.titles || 0, 'Títulos'), cell(a.tournaments, 'Torneios')];
   const idBlock = div({ flexDirection: 'column', alignItems: isOg ? 'flex-start' : 'center' },
     text({ ...H, fontSize: isOg ? 74 : px(100, fmt), color: WHITE, lineHeight: 1, textAlign: 'center' }, up(cut(a.name, 26))),
     a.username ? text({ ...B, fontSize: isOg ? 38 : px(44, fmt), color: ORANGE, marginTop: px(8, fmt) }, '@' + a.username) : null,
@@ -715,6 +719,7 @@ async function buildData(t, tipo, q) {
         tournaments: card.stats.tournaments, trainings: card.stats.trainings, goals,
         assists: card.stats.assists || 0, titles: card.stats.titles || 0, draws: card.stats.draws || 0,
         rating: r0 ? r0.rating.toFixed(1) : null, ratingSport: r0 ? SPORT_LABEL[r0.sport] || r0.sport : null,
+        cells: (card.statCells || []).map((c) => ({ value: String(c.value), label: c.label })),
       },
       url: card.user.username ? `${publicDomain()}/atleta/${card.user.username}` : base.url,
     };

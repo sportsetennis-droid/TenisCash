@@ -30,6 +30,8 @@ const { limits, onlyWhen } = require('../services/ligaRateLimit');
 const { guardImageField, ImageGuardError } = require('../services/imageGuard');
 const access = require('../services/tournamentAccess');
 const clubIdentity = require('../services/clubIdentity');
+const mediaStore = require('../services/mediaStore');
+const plans = require('../services/organizerPlan');
 
 const apiRouter = express.Router();
 const publicRouter = express.Router();
@@ -141,7 +143,7 @@ apiRouter.get('/:id/qr.png', async (req, res) => {
 // Liga Aberta F0: logo do patrocinador = imagem PNG/JPEG/WEBP REAL (SVG não),
 // conferida por magic bytes + sharp (máx 4096 px), reencodada até ~600 KB;
 // ou link https://. Antes aceitava svg+xml e qualquer texto com o prefixo.
-async function cleanSponsor(b, partial) {
+async function cleanSponsor(b, partial, ctx = {}) {
   const out = {};
   if (!partial || 'name' in b) {
     const name = String(b.name || '').trim().slice(0, 80);
@@ -149,10 +151,17 @@ async function cleanSponsor(b, partial) {
     out.name = name;
   }
   if ('logoUrl' in b) {
+    // Liga F5: logo enviada → mediaStore ("/media/<sha>.<ext>") com a cota de imagens do plano;
+    // torneio da lista de exclusão (Master Cup) continua gravando o data URI como antes.
+    const keep = !!(ctx.tournament && clubIdentity.isExcludedSlug(ctx.tournament.slug));
+    if (!keep && mediaStore.isUpload(b.logoUrl)) {
+      const blocked = await plans.check('image', { actorId: ctx.userId, actorRole: ctx.userRole });
+      if (blocked) return { error: blocked.body.error, status: blocked.status, extra: blocked.body };
+    }
     try {
-      out.logoUrl = await guardImageField(b.logoUrl, { maxChars: 600000, allowRelative: false });
+      out.logoUrl = await mediaStore.guardAndStore(b.logoUrl, { maxChars: 600000, allowRelative: false }, { ownerUserId: ctx.userId || null, keepDataUri: keep });
     } catch (e) {
-      if (e instanceof ImageGuardError) return { error: e.message, status: e.status };
+      if (e instanceof ImageGuardError || e instanceof mediaStore.MediaError) return { error: e.message, status: e.status };
       throw e;
     }
   }
@@ -167,10 +176,12 @@ async function cleanSponsor(b, partial) {
   if ('active' in b) out.active = !!b.active;
   return { data: out };
 }
+// Liga F5: "/media/..." sai ABSOLUTO (a API pública é usada em embed de outro site)
+const absMedia = (origin, u) => (u && /^\/media\//.test(u) ? `${origin}${u}` : u);
 function sponsorOut(s, origin) {
   return {
     id: s.id, name: s.name, link: s.link, ordering: s.ordering, active: s.active,
-    logoUrl: s.logoUrl ? (s.logoUrl.startsWith('data:') ? `${origin}/api/public/sponsors/${s.id}/logo` : s.logoUrl) : null,
+    logoUrl: s.logoUrl ? (s.logoUrl.startsWith('data:') ? `${origin}/api/public/sponsors/${s.id}/logo` : absMedia(origin, s.logoUrl)) : null,
   };
 }
 async function listSponsors(tournamentId, origin, all) {
@@ -208,8 +219,8 @@ apiRouter.post('/:id/sponsors', authMiddleware, limits.upload, async (req, res) 
     const t = await findTournament(req.params.id);
     if (!t || t.archivedAt) return access.sendNotFound(res);
     if (!(await canManage(req, res, t))) return;
-    const c = await cleanSponsor(req.body || {}, false);
-    if (c.error) return res.status(c.status || 400).json({ error: c.error });
+    const c = await cleanSponsor(req.body || {}, false, { userId: req.userId, userRole: req.userRole, tournament: t });
+    if (c.error) return res.status(c.status || 400).json({ ...(c.extra || {}), error: c.error });
     const count = await prisma.tournamentSponsor.count({ where: { tournamentId: t.id } });
     if (count >= 40) return res.status(400).json({ error: 'limite de 40 patrocinadores por torneio' });
     if (c.data.ordering == null) c.data.ordering = count;
@@ -225,8 +236,8 @@ apiRouter.patch('/:id/sponsors/:sid', authMiddleware, onlyWhen((req) => !!(req.b
     if (!(await canManage(req, res, t))) return;
     const cur = await prisma.tournamentSponsor.findFirst({ where: { id: req.params.sid, tournamentId: t.id } });
     if (!cur) return res.status(404).json({ error: 'patrocinador não encontrado' });
-    const c = await cleanSponsor(req.body || {}, true);
-    if (c.error) return res.status(c.status || 400).json({ error: c.error });
+    const c = await cleanSponsor(req.body || {}, true, { userId: req.userId, userRole: req.userRole, tournament: t });
+    if (c.error) return res.status(c.status || 400).json({ ...(c.extra || {}), error: c.error });
     const s = await prisma.tournamentSponsor.update({ where: { id: cur.id }, data: c.data });
     res.json(sponsorOut(s, originOf(req)));
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -256,7 +267,7 @@ publicRouter.use((req, res, next) => {
 
 function entryOut(e, origin) {
   if (!e) return null;
-  const logo = e.logoUrl ? (e.logoUrl.startsWith('data:') ? `${origin}/api/public/entries/${e.id}/logo` : e.logoUrl) : null;
+  const logo = e.logoUrl ? (e.logoUrl.startsWith('data:') ? `${origin}/api/public/entries/${e.id}/logo` : absMedia(origin, e.logoUrl)) : null;
   const out = { id: e.id, name: e.name, logoUrl: logo, groupName: e.groupName || undefined };
   // Liga F2: cores e página do clube (só quando o time tem clube)
   if (e.clubId) Object.assign(out, { clubId: e.clubId, clubSlug: e.clubSlug || null, primaryColor: e.primaryColor || null, secondaryColor: e.secondaryColor || null });
@@ -333,7 +344,7 @@ async function publicSnapshot(t, origin) {
     tournament: {
       id: t.id, slug: t.slug, name: t.name, sport: t.sport, status: t.status, format: t.format,
       city: t.city, state: t.state, startDate: t.startDate, endDate: t.endDate, prizeDescription: t.prizeDescription,
-      logoUrl: t.bannerUrl || null, url: `${publicBaseUrl()}/t/${t.slug}`,
+      logoUrl: absMedia(origin, await mediaStore.publicUrlFor(t.bannerUrl)) || null, url: `${publicBaseUrl()}/t/${t.slug}`,
     },
     categories: cats,
     sponsors: await listSponsors(t.id, origin, false),

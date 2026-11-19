@@ -577,6 +577,13 @@ app.use('/api/beacon', require('./routes/beaconPublic')); // APEX Beacon: posiç
 app.use('/api/coach', coachRoutes);
 // F2 — ao vivo (SSE), artes PNG, QR, patrocinadores (antes do router principal de torneios)
 const tournamentMedia = require('./routes/tournamentMedia');
+// Liga Aberta F5 — nenhuma imagem em base64 sai no JSON do torneio/clube/atleta:
+// data URI antigo vira "/media/<sha>.<ext>" (LIGA_MEDIA_JSON=0 desliga em emergência).
+const mediaStore = require('./services/mediaStore');
+app.use(['/api/tournaments', '/api/public', '/api/tournament-registration', '/api/club-ranking', '/api/clubs', '/api/medals', '/api/club-push'], mediaStore.jsonMiddleware);
+// Imagem por conteúdo (sha256): cache de 1 ano (immutable), só PNG/JPEG/WEBP/GIF.
+app.get('/media/:file', mediaStore.serveMedia);
+app.head('/media/:file', mediaStore.serveMedia);
 app.use('/api/tournaments', tournamentMedia.apiRouter);
 app.use('/api/public', tournamentMedia.publicRouter); // API pública JSON (CORS aberto, só leitura)
 app.use('/t', tournamentMedia.pageRouter); // /t/:slug/telao · /t/:slug/calendario.ics · /t/:slug/embed
@@ -1425,24 +1432,27 @@ app.get('/t/:slug', async (req, res) => {
     }));
     const catJson = JSON.stringify(catData).replace(/</g, '\\u003c');
 
-    // Mural de avisos (texto, sem foto) — renderizado no servidor
-    const posts = await prisma.tournamentPost.findMany({
-      where: { tournamentId: t.id },
-      orderBy: [{ pinned: 'desc' }, { createdAt: 'desc' }],
-      take: 50,
-    });
+    // Mural de avisos — renderizado no servidor. Liga F5: 1ª página (20) + "Ver mais"
+    // por cursor (GET /api/tournaments/:id/posts?limit=&cursor=); imagem do aviso por /media.
+    const pag = require('./services/pagination');
+    const postPage = await pag.findPage(prisma.tournamentPost, { where: { tournamentId: t.id } }, pag.POST_SPEC, { limit: 20, cursor: null });
+    const posts = postPage.items;
+    for (const p of posts) p.imageUrl = await mediaStore.publicUrlFor(p.imageUrl);
     const fmtDateTime = (d) =>
       new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Fortaleza' });
     const muralHtml = posts.length
-      ? '<div class="sec-h">📢 Mural de avisos</div>' + posts.map((p) =>
+      ? '<div class="sec-h">📢 Mural de avisos</div><div id="mural">' + posts.map((p) =>
           '<div class="post">' +
           (p.pinned ? '<span class="pin">📌 fixado</span>' : '') +
           (p.title ? '<div class="post-t">' + apexEsc(p.title) + '</div>' : '') +
           '<div class="post-b">' + apexEsc(p.body) + '</div>' +
+          (p.imageUrl ? '<img class="post-img" src="' + apexEsc(p.imageUrl) + '" alt="" loading="lazy">' : '') +
           '<div class="post-d">' + apexEsc(fmtDateTime(p.createdAt)) + '</div>' +
           '</div>'
-        ).join('')
+        ).join('') + '</div>' +
+        (postPage.nextCursor ? '<button class="more-btn" type="button" id="muralMore" data-testid="mural-more" data-cursor="' + apexEsc(postPage.nextCursor) + '">Ver mais avisos</button>' : '')
       : '';
+    const bannerSrc = await mediaStore.publicUrlFor(t.bannerUrl);
 
     // F2 — preview bonito no WhatsApp/Instagram (og:image = arte do torneio), patrocínio e deep link ?jogo=
     const origin = req.protocol + '://' + req.get('host');
@@ -1583,6 +1593,8 @@ app.get('/t/:slug', async (req, res) => {
   .post-t{font-weight:800;font-size:15px;margin-bottom:3px;color:#fff}
   .post-b{font-size:14px;white-space:pre-wrap;color:#c9d0dc}
   .post-d{font-size:11px;color:var(--mut);margin-top:7px}
+  .post-img{display:block;max-width:100%;max-height:420px;border-radius:10px;margin-top:9px;object-fit:contain}
+  .more-btn{display:block;width:100%;min-height:44px;margin:4px 0 12px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:#fff;font-weight:800;font-size:14px;cursor:pointer}
   .footer{text-align:center;padding:26px 16px;color:var(--mut);font-size:11px;letter-spacing:.3px}
   .regcta{display:inline-flex;align-items:center;justify-content:center;min-height:46px;margin-top:16px;padding:0 26px;border-radius:999px;background:#E5571E;color:#fff;font-weight:800;text-decoration:none;letter-spacing:.2px}
   /* F2 — barra de mídia, ao vivo lance a lance, patrocínio */
@@ -1624,7 +1636,7 @@ app.get('/t/:slug', async (req, res) => {
 <body>
   <div class="container">
     <div class="hero">
-      ${t.bannerUrl ? '<img class="logo" src="' + apexEsc(t.bannerUrl) + '" alt="' + apexEsc(t.name) + '">' : ''}
+      ${bannerSrc ? '<img class="logo" src="' + apexEsc(bannerSrc) + '" alt="' + apexEsc(t.name) + '">' : ''}
       <div style="margin-top:14px"><span class="badge"><span class="bdot"></span>${apexEsc(st[0])}</span></div>
       <h1>${apexEsc(t.name)}</h1>
       <div class="chips">
@@ -1905,6 +1917,20 @@ app.get('/t/:slug', async (req, res) => {
   // cache-buster: URL única a cada chamada + fetch no-store → nunca pega resposta cacheada (iPhone/Safari)
   var cb=function(u){return u+(u.indexOf('?')<0?'?':'&')+'_='+Date.now();};
   var FO={cache:'no-store'};
+  // Liga F5: categoria muito grande vem paginada (nextCursor) — a tela precisa de todos os jogos
+  // (rodadas/mata-mata), então segue o cursor até o fim. Categoria normal = 1 chamada, como antes.
+  function fetchMatches(catId){
+    var all=[],guard=0;
+    function step(cur){
+      var u='/api/tournaments/'+TID+'/categories/'+catId+'/matches'+(cur?'?limit=200&cursor='+encodeURIComponent(cur):'');
+      return fetch(cb(u),FO).then(function(r){return r.json();}).then(function(j){
+        all=all.concat((j&&j.matches)||[]);
+        if(j&&j.nextCursor&&++guard<50) return step(j.nextCursor);
+        return {matches:all};
+      });
+    }
+    return step(null);
+  }
   function load(catId, silent){
     if(POLL){clearTimeout(POLL);POLL=null;}
     CURID=catId;
@@ -1913,7 +1939,7 @@ app.get('/t/:slug', async (req, res) => {
     var cq='?categoryId='+catId;
     var J=function(u){return fetch(cb(u),FO).then(function(r){return r.json();}).catch(function(){return {};});};
     Promise.all([
-      fetch(cb('/api/tournaments/'+TID+'/categories/'+catId+'/matches'),FO).then(function(r){return r.json();}),
+      fetchMatches(catId),
       fetch(cb('/api/tournaments/'+TID+'/categories/'+catId+'/standings'),FO).then(function(r){return r.json();}),
       J(S+'scorers'+cq), J(S+'assists'+cq), J(S+'cards'+cq)
     ]).then(function(res){
@@ -1964,6 +1990,25 @@ app.get('/t/:slug', async (req, res) => {
       else if(!POLL&&DATA&&DATA.matches.some(function(m){return m.status==='LIVE';})){ POLL=setTimeout(function(){load(CURID,true);},20000); }
     });
   }
+  // ---------- Liga F5: mural "Ver mais" (cursor) ----------
+  (function(){
+    var btn=document.getElementById('muralMore'),box=document.getElementById('mural');
+    if(!btn||!box) return;
+    function fd(d){try{return new Date(d).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'America/Fortaleza'});}catch(_){return '';}}
+    btn.addEventListener('click',function(){
+      var cur=btn.getAttribute('data-cursor');if(!cur)return;
+      btn.disabled=true;btn.textContent='Carregando…';
+      fetch(cb('/api/tournaments/'+encodeURIComponent(TID)+'/posts?limit=20&cursor='+encodeURIComponent(cur)),FO).then(function(r){return r.json();}).then(function(j){
+        (j.posts||[]).forEach(function(p){
+          var d=document.createElement('div');d.className='post';
+          d.innerHTML=(p.pinned?'<span class="pin">📌 fixado</span>':'')+(p.title?'<div class="post-t">'+esc(p.title)+'</div>':'')+'<div class="post-b">'+esc(p.body)+'</div>'+(p.imageUrl?'<img class="post-img" src="'+esc(p.imageUrl)+'" alt="" loading="lazy">':'')+'<div class="post-d">'+esc(fd(p.createdAt))+'</div>';
+          box.appendChild(d);
+        });
+        if(j.nextCursor){btn.setAttribute('data-cursor',j.nextCursor);btn.disabled=false;btn.textContent='Ver mais avisos';}
+        else btn.remove();
+      }).catch(function(){btn.disabled=false;btn.textContent='Ver mais avisos';});
+    });
+  })();
   // ---------- mídia: artes, QR, calendário, embed ----------
   function curCat(){ for(var i=0;i<CATS.length;i++) if(CATS[i].id===CURID) return CATS[i]; return CATS[0]||{}; }
   function teamsOf(){ var seen={},out=[]; ((DATA&&DATA.stand)||[]).forEach(function(s){ var n=s.entry&&s.entry.name; if(n&&!seen[n]){seen[n]=1;out.push({id:s.entry.id,name:n});} }); out.sort(function(a,b){return a.name.localeCompare(b.name);}); return out; }
@@ -2112,7 +2157,16 @@ app.get('/atleta/:username', async (req, res) => {
       .join('');
 
     const statCell = (val, label) =>
-      '<div class="sc"><div class="sc-v">' + val + '</div><div class="sc-l">' + label + '</div></div>';
+      '<div class="sc"><div class="sc-v">' + apexEsc(val) + '</div><div class="sc-l">' + apexEsc(label) + '</div></div>';
+    // Liga F5: foto por /media (data URI antigo não vai inteiro no HTML) + 1ª página dos campeonatos
+    u.avatarUrl = await mediaStore.publicUrlFor(u.avatarUrl);
+    const HIST_PAGE = 20;
+    const histFirst = card.history ? { ...card.history } : {};
+    if (Array.isArray(histFirst.tournaments) && histFirst.tournaments.length > HIST_PAGE) {
+      const pg = require('./services/pagination').pageArray(histFirst.tournaments, { limit: HIST_PAGE, cursor: null }, (x) => x.id || x.tournamentId);
+      histFirst.tournaments = pg.items;
+      histFirst.tournamentsNextCursor = pg.nextCursor;
+    }
     // F2 — preview no WhatsApp: og:image = arte do card do atleta (PNG gerado no servidor)
     const athOrigin = req.protocol + '://' + req.get('host');
     const athOgImg = athOrigin + '/api/tournaments/club/arte/atleta.png?formato=og&handle=' + encodeURIComponent(u.username || userId);
@@ -2203,20 +2257,14 @@ app.get('/atleta/:username', async (req, res) => {
           <div class="ovr-l">${overallLabel}</div>
           ${bestSport ? '<div class="ovr-s">' + apexEsc(bestSport) + '</div>' : ''}
         </div>
-        ${u.avatarUrl ? '<img class="avatar" src="' + apexEsc(u.avatarUrl) + '" alt="">' : '<div class="avatar">' + apexEsc(initials) + '</div>'}
-      </div>
+        ${u.avatarUrl ? '<img class="avatar" src="' + apexEsc(u.avatarUrl) + '" alt="">' : '<div class="avatar">' + apexEsc(initials) + '</div>'}      </div>
       <div class="who">
         <h1>${apexEsc(u.name)}</h1>
         ${u.username ? '<div class="at">@' + apexEsc(u.username) + '</div>' : ''}
         ${place ? '<div class="loc">📍 ' + apexEsc(place) + '</div>' : ''}
       </div>
       <div class="grid">
-        ${statCell(s.matchesPlayed, 'Jogos')}
-        ${statCell(s.wins, 'Vitórias')}
-        ${statCell(s.goals || 0, 'Gols')}
-        ${statCell(s.assists || 0, 'Assist.')}
-        ${statCell(s.titles || 0, 'Títulos')}
-        ${statCell(s.tournaments, 'Torneios')}
+        ${(card.statCells || []).map((c) => statCell(c.value, c.label)).join('')}
       </div>
       <div id="hist"></div>
       <noscript><div class="hs"><h2>Histórico</h2><div class="hrow"><b>${s.matchesPlayed} jogos · ${s.wins}V ${s.draws || 0}E ${s.losses}D</b></div></div></noscript>
@@ -2240,7 +2288,8 @@ app.get('/atleta/:username', async (req, res) => {
   var HANDLE=${JSON.stringify(u.username || userId).replace(/</g, '\\u003c')};
   // Liga F2 — histórico entre ligas (público). Logado como o próprio atleta/membro, o JS
   // busca de novo com o login e mostra também os campeonatos privados dele.
-  var HIST=${JSON.stringify(card.history || {}).replace(/</g, '\\u003c')};
+  var HIST=${JSON.stringify(histFirst).replace(/</g, '\\u003c')};
+  var HAUTH=null; // Liga F5: "Ver mais" dos campeonatos segue com o mesmo login (se houver)
   var SPORT=${JSON.stringify(APEX_SPORT_LABEL).replace(/</g, '\\u003c')};
   var HVIEW='sport';
   function e(x){x=(x==null?'':''+x);return x.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -2255,16 +2304,25 @@ app.get('/atleta/:username', async (req, res) => {
       '<button class="htab'+(HVIEW==='camp'?' on':'')+'" data-v="camp">Campeonatos</button></div>';
     if(HVIEW==='sport'){(h.bySport||[]).forEach(function(r){var l=line(r);out+='<div class="hrow"><div><b>'+e(SPORT[r.sport]||r.sport)+'</b><br><span>'+e(l.g||'—')+'</span></div><div class="n">'+e(l.t)+'</div></div>';});}
     else if(HVIEW==='season'){(h.bySeason||[]).forEach(function(r){var l=line(r);out+='<div class="hrow"><div><b>Temporada '+e(r.season)+'</b><br><span>'+e(l.g||'—')+'</span></div><div class="n">'+e(l.t)+'</div></div>';});}
-    else{(h.tournaments||[]).forEach(function(t){var l=line(t);var team=(t.teams||[]).map(function(x){return x.name;}).join(', ');var inner='<div><b>'+e(t.name)+'</b><br><span>'+e([SPORT[t.sport]||t.sport,t.season,team].filter(Boolean).join(' · '))+'</span>'+(t.visibility&&t.visibility!=='public'?'<div class="priv">🔒 visível só para você</div>':'')+'</div><div class="n">'+e(l.t)+(l.g?'<br><span>'+e(l.g)+'</span>':'')+'</div>';out+=t.slug&&t.visibility==='public'?'<a class="hrow" href="/t/'+encodeURIComponent(t.slug)+'">'+inner+'</a>':'<div class="hrow">'+inner+'</div>';});}
+    else{(h.tournaments||[]).forEach(function(t){var l=line(t);var team=(t.teams||[]).map(function(x){return x.name;}).join(', ');var inner='<div><b>'+e(t.name)+'</b><br><span>'+e([SPORT[t.sport]||t.sport,t.season,team].filter(Boolean).join(' · '))+'</span>'+(t.visibility&&t.visibility!=='public'?'<div class="priv">🔒 visível só para você</div>':'')+'</div><div class="n">'+e(l.t)+(l.g?'<br><span>'+e(l.g)+'</span>':'')+'</div>';out+=t.slug&&t.visibility==='public'?'<a class="hrow" href="/t/'+encodeURIComponent(t.slug)+'">'+inner+'</a>':'<div class="hrow">'+inner+'</div>';});
+      if(h.tournamentsNextCursor)out+='<button class="btn btn-s" type="button" id="histMore" data-testid="hist-more" style="width:100%">Ver mais campeonatos</button>';}
     out+='</div>';
     if(h.titles&&h.titles.length){out+='<div class="hs"><h2>Títulos</h2>';h.titles.forEach(function(x){out+='<div class="hrow tt"><i>🏆</i><div><b>'+e(x.tournament)+'</b><br><span>'+e([x.category,x.season,x.team].filter(Boolean).join(' · '))+'</span></div></div>';});out+='</div>';}
     el.innerHTML=out;
     Array.prototype.forEach.call(el.querySelectorAll('.htab'),function(b){b.addEventListener('click',function(){HVIEW=b.getAttribute('data-v');renderHist(HIST);});});
+    var mb=document.getElementById('histMore');
+    if(mb)mb.addEventListener('click',function(){
+      mb.disabled=true;mb.textContent='Carregando…';
+      fetch('/api/tournaments/athletes/'+encodeURIComponent(HANDLE)+'/history?limit=20&cursor='+encodeURIComponent(HIST.tournamentsNextCursor),{headers:HAUTH?{Authorization:HAUTH}:{},cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(j){
+        if(!j||!j.tournaments){mb.disabled=false;mb.textContent='Ver mais campeonatos';return;}
+        HIST.tournaments=(HIST.tournaments||[]).concat(j.tournaments);HIST.tournamentsNextCursor=j.tournamentsNextCursor||null;renderHist(HIST);
+      }).catch(function(){mb.disabled=false;mb.textContent='Ver mais campeonatos';});
+    });
   }
   renderHist(HIST);
   try{
     var TK=localStorage.getItem('tc_token');
-    if(TK){fetch('/api/tournaments/athletes/'+encodeURIComponent(HANDLE)+'/history',{headers:{Authorization:'Bearer '+TK},cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(h){if(h&&h.totals&&h.includesNonPublic){HIST=h;renderHist(HIST);}}).catch(function(){});}
+    if(TK){fetch('/api/tournaments/athletes/'+encodeURIComponent(HANDLE)+'/history?limit=20',{headers:{Authorization:'Bearer '+TK},cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(h){if(h&&h.totals&&h.includesNonPublic){HIST=h;HAUTH='Bearer '+TK;renderHist(HIST);}}).catch(function(){});}
   }catch(_){}
   document.getElementById('artBtn').addEventListener('click',function(){
     if(window.ClubMidia) ClubMidia.openArtSheet({tid:'club',slug:'atleta-'+HANDLE,title:'Arte do atleta',types:[['atleta','Card do atleta',{handle:HANDLE}]],shareTitle:NAME});

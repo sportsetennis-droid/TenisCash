@@ -120,7 +120,8 @@ var D=null,app=document.getElementById('app');
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function token(){try{return localStorage.getItem('tc_token')||'';}catch(e){return '';}}
 function ini(n){return String(n||'?').split(' ').filter(Boolean).slice(0,2).map(function(w){return w[0];}).join('').toUpperCase();}
-function safeImg(u){u=String(u||'');return /^https:\/\//i.test(u)||/^data:image\/(png|jpeg|webp);base64,/.test(u)?u:'';}
+// Liga F5: imagem guardada por conteúdo ("/media/<sha>.<ext>") também vale
+function safeImg(u){u=String(u||'');return /^https:\/\//i.test(u)||/^data:image\/(png|jpeg|webp);base64,/.test(u)||/^\/media\/[a-f0-9]{64}\.(png|jpg|jpeg|webp|gif)$/.test(u)?u:'';}
 function color(c,d){return /^#[0-9A-Fa-f]{6}$/.test(String(c||''))?c:d;}
 function when(d){if(!d)return 'Data a definir';try{return new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Fortaleza',weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(d));}catch(e){return '';}}
 function api(path,o){

@@ -1,4 +1,5 @@
 'use strict';
+process.env.LIGA_MEDIA_JSON_START = process.env.LIGA_MEDIA_JSON_START || '2020-01-01T00:00:00Z';
 // =====================================================================
 // Liga Aberta — FASE 0 (segurança). Roda com: npm run test:liga-f0
 //
@@ -372,7 +373,8 @@ async function dbSuite(PNG, JPG, WEBP, SVG, FAKE_PREFIX) {
     assert.ok(u && d.userId === u.id, 'conta gravada no formato nacional');
     assert.strictEqual(r.json.photoSource, 'upload');
     const prof = await prisma.athleteProfile.findUnique({ where: { userId: u.id } });
-    assert.ok(prof.avatarUrl.startsWith('data:image/png;base64,'));
+    // Liga F5: a foto (já reencodada pelo imageGuard) fica no mediaStore — o perfil guarda /media/<sha>.png
+    assert.ok(/^\/media\/[a-f0-9]{64}\.png$/.test(prof.avatarUrl), prof.avatarUrl);
   });
   await ok('M6: @ do Instagram já usado → conta nasce sem @ (usernameTaken), com token', async () => {
     const handle = 'f0handle' + RUN;
@@ -628,7 +630,7 @@ async function dbSuite(PNG, JPG, WEBP, SVG, FAKE_PREFIX) {
     assert.strictEqual((await logo({ logo: 'javascript:alert(1)' })).status, 400);
     const ok1 = await logo({ logo: PNG });
     assert.strictEqual(ok1.status, 200, ok1.text);
-    assert.ok(ok1.json.logoUrl.startsWith('data:image/png;base64,'));
+    assert.ok(/^\/media\/[a-f0-9]{64}\.png$/.test(ok1.json.logoUrl), ok1.json.logoUrl); // Liga F5: /media/<sha>.png
     assert.strictEqual((await logo({ logo: 'https://exemplo.com/escudo.png' })).status, 200);
     assert.strictEqual((await logo({ logo: '/img/futsal-master-cup.png' })).status, 200);
     assert.strictEqual((await logo({ logo: null })).status, 200);
@@ -644,7 +646,7 @@ async function dbSuite(PNG, JPG, WEBP, SVG, FAKE_PREFIX) {
     assert.strictEqual((await call('POST', '/api/clubs', { token: tok(userB), body: { name: 'Clube Falso F0', crestUrl: FAKE_PREFIX } })).status, 400);
     const r = await call('POST', '/api/clubs', { token: tok(userB), body: { name: 'Clube F0 ' + RUN, crestUrl: WEBP } });
     assert.strictEqual(r.status, 201, r.text);
-    assert.ok(r.json.crestUrl.startsWith('data:image/webp;base64,'));
+    assert.ok(/^\/media\/[a-f0-9]{64}\.webp$/.test(r.json.crestUrl), r.json.crestUrl); // Liga F5: /media/<sha>.webp
   });
   await ok('banner do torneio: javascript: recusado na criação e na edição', async () => {
     const r = await call('POST', '/api/tournaments', { token: tok(owner), body: { name: 'Banner ruim', bannerUrl: 'javascript:alert(1)' } });

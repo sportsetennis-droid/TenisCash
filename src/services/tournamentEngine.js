@@ -989,7 +989,7 @@ async function buildAthleteCard(userId, opts = {}) {
   const totalMatches = played + challenges.length;
   const totalWins = wins + challengeWins;
 
-  return {
+  const card = {
     user: {
       id: user.id,
       name: user.name,
@@ -1030,6 +1030,12 @@ async function buildAthleteCard(userId, opts = {}) {
     history,
     badges: badges.map((b) => ({ key: b.badgeKey, at: b.earnedAt })),
   };
+  // Liga F5: rótulos/números do card pelo esporte principal (raquete sem "GOLS")
+  const cs = require('./athleteCardStats').statCells(card);
+  card.mainSport = cs.sport;
+  card.statFamily = cs.family;
+  card.statCells = cs.cells;
+  return card;
 }
 
 module.exports = {

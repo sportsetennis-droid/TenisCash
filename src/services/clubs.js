@@ -56,11 +56,19 @@ function newCode(len = 8) {
 
 // Liga Aberta F0: escudo = imagem PNG/JPEG/WEBP REAL (magic bytes + sharp,
 // máx 4096 px, reencodada até ~400 KB) ou link https://.
-async function cleanCrest(v) {
+// Liga F5: imagem enviada vai pro mediaStore (o clube guarda "/media/<sha>.<ext>"), com a
+// cota de imagens do plano conferida antes; "/media/..." já gravado é aceito como está.
+async function cleanCrest(v, ctx = {}) {
   if (v === null || v === '') return null;
+  const mediaStore = require('./mediaStore');
+  if (mediaStore.isUpload(v)) {
+    const blocked = await require('./organizerPlan').check('image', { actorId: ctx.userId, actorRole: ctx.userRole });
+    if (blocked) { const err = new ClubError(blocked.status, blocked.body.error); err.extra = blocked.body; throw err; }
+  }
   try {
-    return await guardImageField(v, { maxChars: 400000, allowRelative: false, maxLen: 500 });
+    return await mediaStore.guardAndStore(v, { maxChars: 400000, allowRelative: false, maxLen: 500 }, { ownerUserId: ctx.userId || null });
   } catch (e) {
+    if (e instanceof mediaStore.MediaError) fail(e.status, 'escudo inválido: ' + e.message);
     if (e instanceof ImageGuardError) fail(e.status === 413 ? 400 : e.status, e.status === 413 ? 'escudo muito grande (máx. ~300 KB)' : 'escudo inválido: ' + e.message);
     throw e;
   }
@@ -137,7 +145,7 @@ async function createClub(ctx, b = {}) {
       privacyLevel,
       sportScope: sports.length === 1 ? sports[0].toLowerCase() : (sports.length ? 'multi' : null),
       sports,
-      crestUrl: b.crestUrl !== undefined ? await cleanCrest(b.crestUrl) : null,
+      crestUrl: b.crestUrl !== undefined ? await cleanCrest(b.crestUrl, ctx) : null,
       primaryColor: b.primaryColor !== undefined ? cleanColor(b.primaryColor) : '#EA5128',
       secondaryColor: b.secondaryColor !== undefined ? cleanColor(b.secondaryColor) : '#FFFFFF',
       slug: await uniqueSlug(slugify(b.slug || name)),
@@ -156,7 +164,7 @@ async function updateClub(ctx, idOrSlug, b = {}) {
   if (b.description !== undefined) data.description = cleanText(b.description, 2000);
   if (b.city !== undefined) data.city = cleanText(b.city, 80);
   if (b.state !== undefined) data.state = cleanText(b.state, 2);
-  if (b.crestUrl !== undefined) data.crestUrl = await cleanCrest(b.crestUrl);
+  if (b.crestUrl !== undefined) data.crestUrl = await cleanCrest(b.crestUrl, ctx);
   if (b.primaryColor !== undefined) data.primaryColor = cleanColor(b.primaryColor);
   if (b.secondaryColor !== undefined) data.secondaryColor = cleanColor(b.secondaryColor);
   if (b.sports !== undefined) {

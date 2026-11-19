@@ -768,9 +768,12 @@ on('GET',rx('\\/my-dashboard'),()=>({
 on('GET',rx('\\/notifications\\/mine(\\?.*)?'),()=>({notifications:NOTIFS,unread:unread}));
 on('POST',rx('\\/notifications\\/read-all'),()=>{unread=0;NOTIFS.forEach(n=>n.read=true);return {ok:true};});
 on('GET',rx('\\/?'),()=>({tournaments:[T.t1,T.t2,T.t4,T.t3]}));
+// Liga F5 (mock): vitrine por cursor (2 por página) e "meu plano"
+on('GET',rx('\\/\\?limit=\\d+(&cursor=([^&]*))?'),(b,m)=>{const all=[T.t1,T.t2,T.t4,T.t3];const i=m[2]?Number(atob(decodeURIComponent(m[2]))):0;const pg=all.slice(i,i+2);return {tournaments:pg,nextCursor:i+2<all.length?btoa(String(i+2)):null};});
+on('GET',rx('\\/me\\/plan'),()=>({plan:{key:'free',name:'Grátis',priceCents:null},unlimited:false,limits:{activeTournaments:20,categoriesPerTournament:20,teamsPerCategory:64,postsPerMonth:300,imagesPerMonth:300},usage:{activeTournaments:3,postsPerMonth:4,imagesPerMonth:2},tournaments:[{id:'t1',name:'II Futsal Master Cup 2026',categories:5,maxTeamsInCategory:8,grandfathered:true}]}));
 on('POST',rx('\\/?'),b=>{const id=nid('t');T[id]=Object.assign({id:id,slug:id,status:'DRAFT',_count:{entries:0},ownerId:'u1'},b);return T[id];});
 on('GET',rx('\\/challenges\\/mine'),()=>({challenges:CHAL}));
-on('GET',rx('\\/rankings\\/(\\w+)'),(b,m)=>({ranking:m[1]==='BEACH_TENNIS'?RANK:(m[1]==='PADEL'?RANK.slice(2,6):[])}));
+on('GET',rx('\\/rankings\\/(\\w+)(\\?.*)?'),(b,m)=>({ranking:m[1]==='BEACH_TENNIS'?RANK:(m[1]==='PADEL'?RANK.slice(2,6):[])}));
 on('POST',rx('\\/import\\/futsal-master-cup'),()=>({teams:40,matchesCreated:65,matchesTBD:8,tournamentId:'t1'}));
 on('GET',rx('\\/matches\\/(\\w+)\\/sheet'),(b,m)=>sheetOf(m[1]));
 on('POST',rx('\\/matches\\/(\\w+)\\/events'),(b,m)=>{const e=E(b.type,b.entryId,b.playerId,b.minute,b.period);(EV[m[1]]=EV[m[1]]||[]).push(e);return {ok:true,event:e};});
@@ -1026,6 +1029,7 @@ function route(){
   if(view==='t'&&arg)return renderTournament(arg);
   if(view==='desafios')return renderChallenges();
   if(view==='vitrine')return renderVitrine();
+  if(view==='plano')return renderPlan();
   if(view==='ranking')return renderRankings();
   if(view==='avisos')return renderNotifications();
   if(view==='sumula'&&arg)return renderSumula(arg);
@@ -1136,6 +1140,7 @@ async function renderHome(){
     linkRow('data-act="nav" data-h="desafios"',I.swords,'Desafios 1v1')+
     linkRow('data-act="nav" data-h="ranking"',I.trophy,'Ranking de atletas')+
     linkRow('data-act="nav" data-h="vitrine"',I.mega,'Vitrine pública')+
+    linkRow('data-act="nav" data-h="plano" data-testid="plan-link"',I.trophy,'Meu plano')+
     linkRow('href="/atleta/'+esc(handle)+'"',I.id,'Ver meu card de atleta')+
     linkRow('href="/club.html"',I.ext,'App do atleta')+
     linkRow('data-act="logout"',I.out,'Sair','','danger')+'</div>';
@@ -1189,18 +1194,50 @@ function dashHtml(d){
 }
 
 // ---------- vitrine (public) ----------
+// Liga F5: vitrine por páginas (20) + "Ver mais" pelo cursor
+function vitCard(t){const st=ST_LABEL[t.status]||['',''];
+  return '<div class="card vcard card-tap" data-act="open-t" data-id="'+esc(t.id)+'"><div class="listitem" style="border:0;padding:0">'+
+    '<div class="av">'+sportIc(t.sport)+'</div><div class="grow">'+
+    '<div class="nm">'+esc(t.name)+'</div><div class="sub">'+esc(SPORT_LABEL[t.sport]||t.sport)+(t.city?' · '+esc(t.city):'')+'</div></div>'+CHV+'</div>'+
+    '<div class="brow" style="margin-top:14px">'+stPill(st)+(t._count?'<span class="pill g">'+t._count.entries+' inscritos</span>':'')+'</div></div>';}
+let VIT_CURSOR=null;
 async function renderVitrine(){
   loading();
-  let list=[];try{list=(await api('/')).tournaments||[];}catch(e){}
+  let list=[];VIT_CURSOR=null;try{const r=await api('/?limit=20');list=r.tournaments||[];VIT_CURSOR=r.nextCursor||null;}catch(e){}
   let html=topbar('Vitrine',true)+'<div class="wrap enter"><p class="lead" style="margin:0 2px 16px">Torneios públicos abertos no Club Sports &amp; Tennis.</p>';
   if(!list.length)html+='<div class="card">'+emptyB(I.mega,'Nenhum torneio público no momento.')+'</div>';
-  else{html+='<div class="vgrid">';list.forEach(t=>{const st=ST_LABEL[t.status]||['',''];
-    html+='<div class="card vcard card-tap" data-act="open-t" data-id="'+t.id+'"><div class="listitem" style="border:0;padding:0">'+
-      '<div class="av">'+sportIc(t.sport)+'</div><div class="grow">'+
-      '<div class="nm">'+esc(t.name)+'</div><div class="sub">'+esc(SPORT_LABEL[t.sport]||t.sport)+(t.city?' · '+esc(t.city):'')+'</div></div>'+CHV+'</div>'+
-      '<div class="brow" style="margin-top:14px">'+stPill(st)+(t._count?'<span class="pill g">'+t._count.entries+' inscritos</span>':'')+'</div></div>';});
-    html+='</div>';}
+  else{html+='<div class="vgrid" id="vgrid">'+list.map(vitCard).join('')+'</div>';
+    if(VIT_CURSOR)html+='<button class="btn sec full" id="vitMore" data-act="vit-more" data-testid="vit-more" style="margin-top:12px">Ver mais torneios</button>';}
   html+='</div>';app.innerHTML=html;
+}
+async function vitrineMore(){
+  const b=document.getElementById('vitMore');if(!b||!VIT_CURSOR)return;
+  b.disabled=true;b.textContent='Carregando…';
+  try{const r=await api('/?limit=20&cursor='+encodeURIComponent(VIT_CURSOR));
+    document.getElementById('vgrid').insertAdjacentHTML('beforeend',(r.tournaments||[]).map(vitCard).join(''));
+    VIT_CURSOR=r.nextCursor||null;
+    if(VIT_CURSOR){b.disabled=false;b.textContent='Ver mais torneios';}else b.remove();
+  }catch(e){b.disabled=false;b.textContent='Ver mais torneios';toast(e.message);}
+}
+
+// ---------- Liga F5: meu plano (uso × limite; sem preço) ----------
+const PLAN_ROWS=[['activeTournaments','Torneios ativos'],['postsPerMonth','Avisos no mural este mês'],['imagesPerMonth','Imagens enviadas este mês']];
+async function renderPlan(){
+  loading();
+  let d=null;try{d=await api('/me/plan');}catch(e){app.innerHTML=topbar('Meu plano',true)+'<div class="wrap"><div class="card">'+emptyB('',esc(e.message))+'</div></div>';return;}
+  let html=topbar('Meu plano',true)+'<div class="wrap enter"><div class="narrow">';
+  html+='<div class="card" data-testid="plan-card">'+cardH(I.trophy,'Plano '+esc(d.plan&&d.plan.name||'Grátis'));
+  if(d.unlimited)html+='<p class="muted">Conta da equipe: sem limite.</p>';
+  PLAN_ROWS.forEach(([k,l])=>{const lim=d.limits?d.limits[k]:null,used=d.usage?d.usage[k]||0:0;const pct=lim?Math.min(100,Math.round(used/lim*100)):0;
+    html+='<div class="planrow" style="margin:12px 0"><div style="display:flex;justify-content:space-between;gap:8px"><b>'+esc(l)+'</b><span class="num" data-testid="plan-'+k+'">'+used+(d.unlimited||lim==null?'':' de '+lim)+'</span></div>'+
+      (d.unlimited||lim==null?'':'<div style="height:8px;border-radius:8px;background:var(--card3,rgba(255,255,255,.1));overflow:hidden;margin-top:6px"><i style="display:block;height:100%;width:'+pct+'%;background:'+(pct>=100?'#d70015':'#E5571E')+'"></i></div>')+'</div>';});
+  if(!d.unlimited&&d.limits)html+='<p class="muted" style="margin-top:10px">Também: até '+d.limits.categoriesPerTournament+' categorias por torneio e '+d.limits.teamsPerCategory+' times por categoria (torneios criados antes dos planos não têm esse limite).</p>';
+  html+='</div>';
+  const ts=d.tournaments||[];
+  if(ts.length){html+='<div class="card">'+cardH(I.grid,'Seus torneios ativos');
+    ts.forEach(t=>{html+='<div class="listitem" style="min-height:44px"><div class="grow"><div class="nm">'+esc(t.name)+'</div><div class="sub">'+t.categories+' categoria(s) · maior categoria com '+t.maxTeamsInCategory+' time(s)'+(t.grandfathered?' · sem limite por torneio':'')+'</div></div></div>';});
+    html+='</div>';}
+  html+='</div></div>';app.innerHTML=html;
 }
 
 // ---------- create ----------
@@ -1521,6 +1558,10 @@ function sheetSponsor(tid){
     '<label for="sp-link">Site ou @Instagram (opcional)</label><input id="sp-link" placeholder="https://... ou @perfil">'+
     '<label for="sp-logo">Logo (imagem)</label><input id="sp-logo" type="file" accept="image/*">'+
     '<div class="sp16"></div><button class="btn" data-act="sp-save" data-tid="'+tid+'">'+I.check+'Salvar</button>');
+}
+// Liga F5: foto do aviso — reduz no celular antes de enviar (JPEG, lado máx. `max`)
+function readImage(file,max){
+  return new Promise((ok,ko)=>{if(!file)return ok(null);const r=new FileReader();r.onload=()=>{const img=new Image();img.onload=()=>{const k=Math.min(1,max/Math.max(img.width,img.height));const cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(img.width*k));cv.height=Math.max(1,Math.round(img.height*k));cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);ok(cv.toDataURL('image/jpeg',0.85));};img.onerror=()=>ko(new Error('Imagem inválida'));img.src=r.result;};r.readAsDataURL(file);});
 }
 function readLogo(file){
   return new Promise((ok,ko)=>{if(!file)return ok(null);const r=new FileReader();r.onload=()=>{const img=new Image();img.onload=()=>{const max=400,k=Math.min(1,max/Math.max(img.width,img.height));const cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(img.width*k));cv.height=Math.max(1,Math.round(img.height*k));cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);ok(cv.toDataURL('image/png'));};img.onerror=()=>ko(new Error('Imagem inválida'));img.src=r.result;};r.readAsDataURL(file);});
@@ -2103,6 +2144,7 @@ function muralCard(tid,isOwner,posts){
   if(isOwner){
     h+='<label for="mp-title" class="sr">Título</label><input id="mp-title" placeholder="Título (opcional)" style="margin-bottom:8px">'+
        '<label for="mp-body" class="sr">Aviso</label><textarea id="mp-body" placeholder="Escreva um aviso pros atletas (texto)..."></textarea>'+
+       '<label class="sub" for="mp-img" style="display:block;margin-top:8px">Imagem (opcional)</label><input id="mp-img" type="file" accept="image/png,image/jpeg,image/webp" style="min-height:44px">'+
        '<div class="sp8"></div><button class="btn sm full" data-act="post-create" data-tid="'+tid+'">'+I.send+'Publicar aviso</button><div class="sp8"></div>';
   }
   if(!posts.length)h+=emptyB('', 'Nenhum aviso ainda.','sm');
@@ -2111,6 +2153,7 @@ function muralCard(tid,isOwner,posts){
       (p.pinned?'<span class="pill solid">'+I.flag+'fixado</span>':'')+
       (p.title?'<div class="pt">'+esc(p.title)+'</div>':'')+
       '<div class="pb2">'+esc(p.body)+'</div>'+
+      (p.imageUrl?'<img src="'+esc(p.imageUrl)+'" alt="" loading="lazy" style="display:block;max-width:100%;max-height:360px;border-radius:12px;margin-top:8px;object-fit:contain">':'')+
       '<div class="pf"><span class="sub">'+fmtDate(p.createdAt)+'</span>'+
       (isOwner?'<button class="btn sm dang" data-act="del-post" data-pid="'+p.id+'">'+I.trash+'Remover</button>':'')+'</div></div>';
   });
@@ -2165,7 +2208,8 @@ async function renderCatPanel(tab){
       '<p class="muted" style="margin-top:10px">'+(fmt==='AMERICANO'?'Americano: cada inscrito é um atleta; nº múltiplo de 4 (Super 8 = 8, Super 12 = 12). Parceiro muda a cada rodada e o ranking é por games.':(fmt==='DOUBLE_ELIM'?'Dupla eliminação: quem perde cai na chave dos perdedores; só sai com 2 derrotas.':'Atletas precisam ter conta no Club Sports &amp; Tennis (@username). Só inscritos confirmados entram na chave.'))+'</p>';
   }
   if(tab==='chave'){
-    let matches=[];try{matches=(await api('/'+tid+'/categories/'+cid+'/matches')).matches||[];}catch(e){}
+    // Liga F5: categoria muito grande vem paginada — segue o cursor até o fim
+    let matches=[];try{let r=await api('/'+tid+'/categories/'+cid+'/matches');matches=r.matches||[];for(let g=0;r.nextCursor&&g<50;g++){r=await api('/'+tid+'/categories/'+cid+'/matches?limit=200&cursor='+encodeURIComponent(r.nextCursor));matches=matches.concat(r.matches||[]);}}catch(e){}
     if(!matches.length)body+=emptyB(I.grid,'Chave não gerada ainda.<br>Volte em "Inscritos" e gere.','sm');
     else{
       const groupM=matches.filter(m=>m.stage==='GROUP');
@@ -2582,7 +2626,10 @@ async function savePost(tid){
   const title=(document.getElementById('mp-title')||{}).value||'';
   const body=(document.getElementById('mp-body')||{}).value||'';
   if(!body.trim())return toast('Escreva o aviso');
-  try{await api('/'+tid+'/posts',{method:'POST',body:{title:title.trim()||null,body:body.trim()}});
+  // Liga F5: imagem opcional (vai pro armazenamento de mídia; o aviso guarda só o endereço)
+  let image=null;const fi=document.getElementById('mp-img');
+  if(fi&&fi.files&&fi.files[0]){try{image=await readImage(fi.files[0],1280);}catch(e){return toast(e.message);}}
+  try{await api('/'+tid+'/posts',{method:'POST',body:{title:title.trim()||null,body:body.trim(),...(image?{image}:{})}});
     toast('Aviso publicado');if(CURT)renderTournament(CURT);}catch(e){toast(e.message);}
 }
 async function delPost(pid){
@@ -2673,27 +2720,38 @@ async function saveChallengeResult(id,who){
 }
 
 // ---------- ranking ----------
+// Liga F5: 50 por página + "Ver mais" (cursor); a posição (rank) vem do servidor
+let RK_CURSOR=null;
+function rkRow(r,i){
+  const handle=r.username||r.userId;
+  const pos=i<3?('<span class="pos m'+(i===0?' m1':'')+' num">'+(i+1)+'</span>'):('<span class="pos num">'+esc(r.rank)+'</span>');
+  return '<a class="rk plain'+(i===0?' top1':'')+'" href="/atleta/'+esc(handle)+'">'+
+    pos+
+    '<div class="av round">'+esc(initials(r.name))+'</div>'+
+    '<div class="grow"><div class="nm">'+esc(r.name||'Atleta')+'</div>'+
+    '<div class="sub ell">'+r.wins+'V '+r.losses+'D · '+r.matches+' jogos'+(r.city?' · '+esc(r.city):'')+'</div></div>'+
+    '<b class="v num">'+Number(r.rating).toFixed(2)+'</b></a>';
+}
+async function rankingsMore(){
+  const b=document.getElementById('rkMore');if(!b||!RK_CURSOR)return;
+  b.disabled=true;b.textContent='Carregando…';
+  try{const d=await api('/rankings/'+RK_SPORT+'?limit=50&cursor='+encodeURIComponent(RK_CURSOR));
+    const box=document.getElementById('rkList');const n=box.children.length;
+    box.insertAdjacentHTML('beforeend',(d.ranking||[]).map((r,i)=>rkRow(r,n+i)).join(''));
+    RK_CURSOR=d.nextCursor||null;if(RK_CURSOR){b.disabled=false;b.textContent='Ver mais';}else b.remove();
+  }catch(e){b.disabled=false;b.textContent='Ver mais';toast(e.message);}
+}
 async function renderRankings(){
   loading();
   let data={ranking:[]};
-  try{data=await api('/rankings/'+RK_SPORT);}catch(e){}
-  const list=data.ranking||[];
+  try{data=await api('/rankings/'+RK_SPORT+'?limit=50');}catch(e){}
+  const list=data.ranking||[];RK_CURSOR=data.nextCursor||null;
   let html=topbar('Ranking',true)+'<div class="wrap enter"><div class="narrow">';
   html+='<div class="chips">'+SPORTS.map(s=>'<button class="chip'+(s[0]===RK_SPORT?' on':'')+'" data-act="rk-sport" data-s="'+s[0]+'">'+esc(s[1])+'</button>').join('')+'</div>';
   if(!list.length){html+='<div class="card">'+emptyB(I.trophy,'Ninguém ranqueado em '+esc(SPORT_LABEL[RK_SPORT]||RK_SPORT)+' ainda.<br>Joguem partidas pra aparecer aqui.')+'</div>';}
   else{
-    html+='<div class="card list">';
-    list.forEach((r,i)=>{
-      const handle=r.username||r.userId;
-      const pos=i<3?('<span class="pos m'+(i===0?' m1':'')+' num">'+(i+1)+'</span>'):('<span class="pos num">'+r.rank+'</span>');
-      html+='<a class="rk plain'+(i===0?' top1':'')+'" href="/atleta/'+esc(handle)+'">'+
-        pos+
-        '<div class="av round">'+esc(initials(r.name))+'</div>'+
-        '<div class="grow"><div class="nm">'+esc(r.name||'Atleta')+'</div>'+
-        '<div class="sub ell">'+r.wins+'V '+r.losses+'D · '+r.matches+' jogos'+(r.city?' · '+esc(r.city):'')+'</div></div>'+
-        '<b class="v num">'+r.rating.toFixed(2)+'</b></a>';
-    });
-    html+='</div>';
+    html+='<div class="card list" id="rkList">'+list.map((r,i)=>rkRow(r,i)).join('')+'</div>';
+    if(RK_CURSOR)html+='<button class="btn sec full" id="rkMore" data-act="rk-more" data-testid="rk-more" style="margin-top:12px">Ver mais</button>';
     html+='<p class="muted" style="text-align:center;margin-top:12px">Rating estilo Playtomic (0–7). Vitórias sobem, derrotas descem.</p>';
   }
   html+='</div></div>';app.innerHTML=html;
@@ -3007,6 +3065,8 @@ document.addEventListener('click',async(ev)=>{
   if(a==='back'){history.length>1?history.back():go('');return;}
   if(a==='nav'){go(el.dataset.h);return;}
   if(a==='rk-sport'){RK_SPORT=el.dataset.s;renderRankings();return;}
+  if(a==='rk-more'){rankingsMore();return;}
+  if(a==='vit-more'){vitrineMore();return;}
   if(a==='login'){doLogin();return;}
   if(a==='create'){doCreate();return;}
   if(a==='open-t'){go('t/'+el.dataset.id);return;}

@@ -15,6 +15,57 @@ const STATEMENTS = [
   `DO $$ BEGIN IF to_regclass('"ClubNotifyPref"') IS NOT NULL THEN ALTER TABLE "ClubNotifyPref" ADD COLUMN IF NOT EXISTS "whatsapp" JSONB; END IF; END $$`,
   `DO $$ BEGIN IF to_regclass('"TeamInvite"') IS NOT NULL THEN ALTER TABLE "TeamInvite" ADD COLUMN IF NOT EXISTS "publicToken" TEXT; END IF; END $$`,
   `DO $$ BEGIN IF to_regclass('"RosterInvite"') IS NOT NULL THEN ALTER TABLE "RosterInvite" ADD COLUMN IF NOT EXISTS "recoverable" BOOLEAN NOT NULL DEFAULT false; END IF; END $$`,
+  // Liga Aberta F5 — arquivos e desempenho (mídia fora do JSON, índices, planos do
+  // organizador sem preço). NO INÍCIO da lista (logo depois das 3 da F4); as tabelas novas não dependem de nada e os
+  // índices/coluna só rodam se a tabela já existe (banco novo: repetidos no FIM). Aditivo, nunca apaga.
+  `CREATE TABLE IF NOT EXISTS "MediaObject" (
+     "id" TEXT NOT NULL,
+     "sha256" TEXT NOT NULL,
+     "mime" TEXT NOT NULL,
+     "bytes" BYTEA,
+     "size" INTEGER NOT NULL,
+     "width" INTEGER,
+     "height" INTEGER,
+     "storage" TEXT NOT NULL DEFAULT 'db',
+     "url" TEXT,
+     "source" TEXT NOT NULL DEFAULT 'upload',
+     "ownerUserId" TEXT,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "MediaObject_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "MediaObject_sha256_key" ON "MediaObject"("sha256")`,
+  `CREATE INDEX IF NOT EXISTS "MediaObject_ownerUserId_createdAt_idx" ON "MediaObject"("ownerUserId", "createdAt")`,
+  `CREATE TABLE IF NOT EXISTS "OrganizerPlan" (
+     "key" TEXT NOT NULL,
+     "name" TEXT NOT NULL,
+     "priceCents" INTEGER,
+     "limits" JSONB,
+     "active" BOOLEAN NOT NULL DEFAULT true,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "OrganizerPlan_pkey" PRIMARY KEY ("key")
+   )`,
+  `CREATE TABLE IF NOT EXISTS "OrganizerSubscription" (
+     "userId" TEXT NOT NULL,
+     "planKey" TEXT NOT NULL,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "OrganizerSubscription_pkey" PRIMARY KEY ("userId")
+   )`,
+  `DO $$ BEGIN IF to_regclass('"TournamentPost"') IS NOT NULL THEN ALTER TABLE "TournamentPost" ADD COLUMN IF NOT EXISTS "imageUrl" TEXT; END IF; END $$`,
+  `DO $$ BEGIN IF to_regclass('"Tournament"') IS NOT NULL THEN CREATE INDEX IF NOT EXISTS "Tournament_ownerId_idx" ON "Tournament"("ownerId"); END IF; END $$`,
+  `DO $$ BEGIN IF to_regclass('"Tournament"') IS NOT NULL THEN CREATE INDEX IF NOT EXISTS "Tournament_visibility_archivedAt_status_idx" ON "Tournament"("visibility", "archivedAt", "status"); END IF; END $$`,
+  `DO $$ BEGIN IF to_regclass('"TournamentMatch"') IS NOT NULL THEN CREATE INDEX IF NOT EXISTS "TournamentMatch_homeEntryId_idx" ON "TournamentMatch"("homeEntryId"); END IF; END $$`,
+  `DO $$ BEGIN IF to_regclass('"TournamentMatch"') IS NOT NULL THEN CREATE INDEX IF NOT EXISTS "TournamentMatch_awayEntryId_idx" ON "TournamentMatch"("awayEntryId"); END IF; END $$`,
+  `DO $$ BEGIN IF to_regclass('"TournamentMatch"') IS NOT NULL THEN CREATE INDEX IF NOT EXISTS "TournamentMatch_winnerEntryId_idx" ON "TournamentMatch"("winnerEntryId"); END IF; END $$`,
+  `DO $$ BEGIN IF to_regclass('"TournamentMatch"') IS NOT NULL THEN CREATE INDEX IF NOT EXISTS "TournamentMatch_scheduledAt_idx" ON "TournamentMatch"("scheduledAt"); END IF; END $$`,
+  `DO $$ BEGIN IF to_regclass('"TournamentMatch"') IS NOT NULL THEN CREATE INDEX IF NOT EXISTS "TournamentMatch_categoryId_round_ordering_idx" ON "TournamentMatch"("categoryId", "round", "ordering"); END IF; END $$`,
+  `DO $$ BEGIN IF to_regclass('"Club"') IS NOT NULL THEN CREATE INDEX IF NOT EXISTS "Club_ownerId_idx" ON "Club"("ownerId"); END IF; END $$`,
+  `DO $$ BEGIN IF to_regclass('"Club"') IS NOT NULL THEN CREATE INDEX IF NOT EXISTS "Club_originTournamentId_idx" ON "Club"("originTournamentId"); END IF; END $$`,
+  `DO $$ BEGIN IF to_regclass('"ClubMembership"') IS NOT NULL THEN CREATE INDEX IF NOT EXISTS "ClubMembership_userId_idx" ON "ClubMembership"("userId"); END IF; END $$`,
+  `DO $$ BEGIN IF to_regclass('"TournamentStanding"') IS NOT NULL THEN CREATE INDEX IF NOT EXISTS "TournamentStanding_tournamentId_idx" ON "TournamentStanding"("tournamentId"); END IF; END $$`,
+  `DO $$ BEGIN IF to_regclass('"TournamentPost"') IS NOT NULL THEN CREATE INDEX IF NOT EXISTS "TournamentPost_tournamentId_pinned_createdAt_idx" ON "TournamentPost"("tournamentId", "pinned", "createdAt"); END IF; END $$`,
+  `DO $$ BEGIN IF to_regclass('"PickupAttendance"') IS NOT NULL THEN CREATE INDEX IF NOT EXISTS "PickupAttendance_playerId_idx" ON "PickupAttendance"("playerId"); END IF; END $$`,
   // Liga Aberta F3 — criação em 2 minutos (regras por categoria, racha, link do time).
   // PRIMEIRO da lista (as rotas novas leem essas colunas/tabelas). Aditivo, nunca apaga.
   `ALTER TABLE "TournamentCategory" ADD COLUMN IF NOT EXISTS "gameRules" JSONB`,
@@ -1013,6 +1064,21 @@ const STATEMENTS = [
      CONSTRAINT "AthleteSignupCode_pkey" PRIMARY KEY ("id")
    )`,
   `CREATE INDEX IF NOT EXISTS "AthleteSignupCode_phone_createdAt_idx" ON "AthleteSignupCode"("phone", "createdAt")`,
+  // Liga Aberta F5 (repetido para banco novo: as tabelas acima já existem aqui)
+  `ALTER TABLE "TournamentPost" ADD COLUMN IF NOT EXISTS "imageUrl" TEXT`,
+  `CREATE INDEX IF NOT EXISTS "Tournament_ownerId_idx" ON "Tournament"("ownerId")`,
+  `CREATE INDEX IF NOT EXISTS "Tournament_visibility_archivedAt_status_idx" ON "Tournament"("visibility", "archivedAt", "status")`,
+  `CREATE INDEX IF NOT EXISTS "TournamentMatch_homeEntryId_idx" ON "TournamentMatch"("homeEntryId")`,
+  `CREATE INDEX IF NOT EXISTS "TournamentMatch_awayEntryId_idx" ON "TournamentMatch"("awayEntryId")`,
+  `CREATE INDEX IF NOT EXISTS "TournamentMatch_winnerEntryId_idx" ON "TournamentMatch"("winnerEntryId")`,
+  `CREATE INDEX IF NOT EXISTS "TournamentMatch_scheduledAt_idx" ON "TournamentMatch"("scheduledAt")`,
+  `CREATE INDEX IF NOT EXISTS "TournamentMatch_categoryId_round_ordering_idx" ON "TournamentMatch"("categoryId", "round", "ordering")`,
+  `CREATE INDEX IF NOT EXISTS "Club_ownerId_idx" ON "Club"("ownerId")`,
+  `CREATE INDEX IF NOT EXISTS "Club_originTournamentId_idx" ON "Club"("originTournamentId")`,
+  `CREATE INDEX IF NOT EXISTS "ClubMembership_userId_idx" ON "ClubMembership"("userId")`,
+  `CREATE INDEX IF NOT EXISTS "TournamentStanding_tournamentId_idx" ON "TournamentStanding"("tournamentId")`,
+  `CREATE INDEX IF NOT EXISTS "TournamentPost_tournamentId_pinned_createdAt_idx" ON "TournamentPost"("tournamentId", "pinned", "createdAt")`,
+  `CREATE INDEX IF NOT EXISTS "PickupAttendance_playerId_idx" ON "PickupAttendance"("playerId")`,
   // Liga Aberta F4 (repetido para banco novo: as tabelas acima já existem aqui)
   `ALTER TABLE "ClubNotifyPref" ADD COLUMN IF NOT EXISTS "whatsapp" JSONB`,
   `ALTER TABLE "TeamInvite" ADD COLUMN IF NOT EXISTS "publicToken" TEXT`,
