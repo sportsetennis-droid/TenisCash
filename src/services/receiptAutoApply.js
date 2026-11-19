@@ -9,9 +9,10 @@
 // histórico), sem esperar alguém ligar a remessa e confirmar.
 //
 // Regras:
-// - Só vale a partir de 18/11/2026 00:00 (horário de João Pessoa) — o dono pediu
-//   "hoje" — e nunca antes do início da contagem nova da loja. O que foi recebido
-//   antes fica como está.
+// - Vale desde o início da contagem nova de cada loja (09/11/2026). Dono, 18/11:
+//   "Valide todos… veja o que foi vendido nesse tempo e faça a diminuição" — a venda
+//   já baixa o estoque na hora; o recebimento anterior à contagem já está na recontagem
+//   física (somar daria em dobro), então fica como está. (Antes: só a partir de 18/11.)
 // - Só peça reconhecida, com variante e tamanho resolvidos (Adidas: tamanho
 //   confirmado na caixa). Leitura removida, trocada ou lote arquivado = desfaz.
 // - Uma leitura soma uma vez só (idempotente pelo clientScanId).
@@ -32,8 +33,8 @@ const ROUND_OPEN = ['counting', 'review'];
 
 // Ponto de partida pedido pelo dono ("eu falei de hoje", 18/11/2026). Ajustável sem deploy.
 function desde() {
-  const v = Date.parse(process.env.RECEBIMENTO_AUTOMATICO_DESDE || '2026-11-18T00:00:00-03:00');
-  return Number.isFinite(v) ? v : Date.parse('2026-11-18T00:00:00-03:00');
+  const v = Date.parse(process.env.RECEBIMENTO_AUTOMATICO_DESDE || '2026-11-09T00:00:00-03:00');
+  return Number.isFinite(v) ? v : Date.parse('2026-11-09T00:00:00-03:00');
 }
 
 function ctxOf(v) { return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; }
@@ -67,6 +68,124 @@ function deveSair(read, lot) {
   if (lot && lot.status === 'archived') return true;
   if (read.removed || !read.recognized || !read.productSizeId) return true;
   return !!(read.requiresSizeConfirmation && !String(read.confirmedSize || '').trim());
+}
+
+// ---------------------------------------------------------------------
+// RECEBIMENTO ANTERIOR À CONTAGEM NOVA (dono 18/11: "Valide todos… veja o que foi vendido
+// nesse tempo e faça a diminuição"). A contagem nova conta todas as mercadorias, mas as lojas
+// começaram pelo calçado: roupa e acessório recebidos antes dela nunca entraram no estoque e
+// ainda não foram contados (auditoria 18/11: ~1.800 peças, saldo negativo pelas vendas).
+// Entra quando: não é calçado nem insumo (calçado foi contado: tamanho sem bipe = peça que não
+// está na loja), aquele tamanho não foi bipado na contagem e a loja ainda não está contando a
+// família (menos de FAMILIA_CONTADA_MIN bipes). As vendas do tamanho entre o recebimento e o
+// início da contagem — baixa apagada quando o saldo antigo foi arquivado — são baixadas de novo,
+// uma vez (SOURCE_VENDAS). Se a contagem bipar a peça depois, o bipe pareia (não soma em dobro).
+// ---------------------------------------------------------------------
+const SOURCE_VENDAS = 'receipt-pre-round-sales';
+const FAMILIA_CONTADA_MIN = Number(process.env.RECEBIMENTO_FAMILIA_CONTADA_MIN || 20);
+const FAMILIAS_QUE_ENTRAM = new Set(['vestuario', 'acessorio']);
+function anteriorDesde() {
+  const v = Date.parse(process.env.RECEBIMENTO_ANTERIOR_DESDE || '2026-10-01T00:00:00-03:00');
+  return Number.isFinite(v) ? v : Date.parse('2026-10-01T00:00:00-03:00');
+}
+function familiaDaCategoria(cat) {
+  const c = String(cat || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim();
+  if (['TENIS', 'CHUTEIRAS', 'CHUTEIRA', 'SANDALIAS', 'SANDALIA', 'CALCADOS'].includes(c)) return 'calcado';
+  if (['VESTUARIO', 'ROUPAS', 'ROUPA'].includes(c)) return 'vestuario';
+  if (['ACESSORIOS', 'ACESSORIO'].includes(c)) return 'acessorio';
+  return 'outro'; // insumo, dropper, "a classificar"…: não entra sem conferência
+}
+const FAMILIA_SQL = {
+  calcado: "('TENIS','TÊNIS','CHUTEIRAS','CHUTEIRA','SANDALIAS','SANDÁLIAS','SANDALIA','SANDÁLIA','CALCADOS','CALÇADOS')",
+  vestuario: "('VESTUARIO','VESTUÁRIO','ROUPAS','ROUPA')",
+  acessorio: "('ACESSORIOS','ACESSÓRIOS','ACESSORIO','ACESSÓRIO')",
+};
+// cache por lote: { ps -> familia, 'fam:<f>' -> contada?, 'ps:<id>' -> bipado? }
+async function podeEntrarAnterior(tx, read, lot, round, cache) {
+  if (!lot || lot.mode !== 'receipt' || lot.status !== 'open' || !round || !round.open) return false;
+  if (deveSair(read, lot)) return false;
+  const t = new Date(read.scannedAt).getTime();
+  if (!(t < new Date(round.startedAt).getTime()) || t < anteriorDesde()) return false;
+  const ps = read.productSizeId;
+  if (!cache.has(ps)) {
+    const r = await tx.productSize.findUnique({ where: { id: ps }, select: { product: { select: { category: true } } } });
+    cache.set(ps, familiaDaCategoria(r && r.product && r.product.category));
+  }
+  const fam = cache.get(ps);
+  if (!FAMILIAS_QUE_ENTRAM.has(fam)) return false;
+  const kPs = 'ps:' + ps;
+  if (!cache.has(kPs)) {
+    const b = await tx.$queryRawUnsafe(
+      'SELECT 1 FROM "StockReplacementCheck" k JOIN "StocktakeBipe" b ON b.id = k."bipeId" WHERE k."roundId" = $1 AND k.status = \'applied\' AND k."reversedAt" IS NULL ' +
+      'AND k."appliedProductSizeId" = $2 AND b."storeId" = $3 AND b."excludedAt" IS NULL LIMIT 1', round.id, ps, lot.toStoreId);
+    cache.set(kPs, b.length > 0);
+  }
+  if (cache.get(kPs)) return false; // o tamanho foi contado: a contagem manda
+  const kFam = 'fam:' + fam;
+  if (!cache.has(kFam)) {
+    const [c] = await tx.$queryRawUnsafe(
+      'SELECT count(*)::int AS n FROM "StockReplacementCheck" k JOIN "StocktakeBipe" b ON b.id = k."bipeId" JOIN "ProductSize" s ON s.id = k."appliedProductSizeId" JOIN "Product" p ON p.id = s."productId" ' +
+      'WHERE k."roundId" = $1 AND k.status = \'applied\' AND k."reversedAt" IS NULL AND b."storeId" = $2 AND b."excludedAt" IS NULL AND upper(btrim(p.category)) IN ' + FAMILIA_SQL[fam], round.id, lot.toStoreId);
+    cache.set(kFam, (c && c.n) >= FAMILIA_CONTADA_MIN);
+  }
+  if (cache.get(kFam)) return false; // a loja já está contando essa família: a contagem manda
+  // sem NF-e de entrada do código lido: não entra (auditoria 18/11 — não chutar)
+  const kNf = 'nf:' + read.barcode;
+  if (!cache.has(kNf)) {
+    const n = await tx.$queryRawUnsafe('SELECT 1 FROM "XmlFiscalItem" i JOIN "XmlFiscalDocument" d ON d.id = i."fiscalDocumentId" WHERE i.ean = $1 AND d."docType" = \'entrada\' LIMIT 1', String(read.barcode || ''));
+    cache.set(kNf, n.length > 0);
+  }
+  if (!cache.get(kNf)) { conta(cache, 'semNfe'); return false; }
+  // teto = comprado (NF-e): recebido em todas as lojas acima do comprado vai para conferência
+  // (pega peça bipada no recebimento de duas lojas — transferência física sem registro)
+  // teto = o que a NF-e de entrada diz que foi comprado DESTE código (ou o comprado do card, o maior).
+  // Se o total recebido em TODAS as lojas passa do teto, não entra em nenhuma (escolher a loja seria
+  // chute de localização): vai para conferência na loja (auditoria 18/11).
+  const kCap = 'cap:' + read.barcode;
+  if (!cache.has(kCap)) {
+    const [c] = await tx.$queryRawUnsafe(
+      'SELECT GREATEST(COALESCE((SELECT SUM(i.quantity) FROM "XmlFiscalItem" i JOIN "XmlFiscalDocument" d ON d.id = i."fiscalDocumentId" WHERE i.ean = $1 AND d."docType" = \'entrada\'), 0), ' +
+      'COALESCE((SELECT stock FROM "ProductSize" WHERE id = $2), 0))::int AS teto, ' +
+      '(SELECT count(*) FROM "ScanActionRead" r JOIN "ScanActionLot" l ON l."sessionId" = r."lotId" WHERE l.mode = \'receipt\' AND l.status IN (\'open\', \'confirmed\') AND r.removed = false AND r.recognized AND r.barcode = $1)::int AS demanda',
+      String(read.barcode || ''), ps);
+    cache.set(kCap, !!c && c.demanda <= c.teto);
+  }
+  if (!cache.get(kCap)) { conta(cache, 'acimaDaNfe'); return false; }
+  return true;
+}
+function conta(cache, k) { const st = cache.get('#barrados') || {}; st[k] = (st[k] || 0) + 1; cache.set('#barrados', st); }
+
+// Baixa das vendas apagadas pelo arquivamento: só para tamanho com recebimento ANTERIOR ativo
+// nesta contagem; alvo = soma das vendas (e estornos) entre o 1º recebimento anterior e o início
+// da contagem. Idempotente: grava só a diferença para o que já foi baixado.
+async function baixarVendasArquivadas(tx, storeId, productSizeId, round) {
+  if (!round) return 0;
+  const [a] = await tx.$queryRawUnsafe(
+    'SELECT MIN(em) AS em FROM (SELECT metadata->>\'clientScanId\' AS cs, MIN(metadata->>\'scannedAt\') AS em, SUM(quantity) AS net, bool_or(metadata->>\'anteriorAContagem\' = \'true\') AS ant ' +
+    'FROM "StoreStockMovement" WHERE source IN ' + SRC_SQL + ' AND "storeId" = $1 AND "productSizeId" = $2 AND metadata->>\'roundId\' = $3 GROUP BY 1) x WHERE net > 0 AND ant',
+    storeId, productSizeId, round.id);
+  let alvo = 0;
+  if (a && a.em) {
+    const [v] = await tx.$queryRawUnsafe(
+      'SELECT COALESCE(SUM(quantity), 0)::int AS q FROM "StoreStockMovement" WHERE "storeId" = $1 AND "productSizeId" = $2 AND type ~ \'^(sale|exchange_|nuvemshop_order)\' AND "createdAt" >= $3::timestamp AND "createdAt" < $4::timestamp', // createdAt é UTC sem fuso: compara em UTC
+      storeId, productSizeId, new Date(a.em).toISOString(), new Date(round.startedAt).toISOString());
+    const vendas = -(v ? v.q : 0); // q é negativo (venda -1, estorno +1)
+    // a venda consome primeiro o estoque que já existia antes do 1º recebimento (auditoria 18/11)
+    const [s0] = await tx.$queryRawUnsafe(
+      'SELECT "stockAfter" AS s FROM "StoreStockMovement" WHERE "storeId" = $1 AND "productSizeId" = $2 AND "createdAt" < $3::timestamp ORDER BY "createdAt" DESC, id DESC LIMIT 1',
+      storeId, productSizeId, new Date(a.em).toISOString());
+    const antes = Math.max(0, s0 ? Number(s0.s) || 0 : 0);
+    alvo = -Math.max(0, vendas - antes);
+  }
+  const [j] = await tx.$queryRawUnsafe(
+    'SELECT COALESCE(SUM(quantity), 0)::int AS q FROM "StoreStockMovement" WHERE source = $1 AND "storeId" = $2 AND "productSizeId" = $3 AND metadata->>\'roundId\' = $4',
+    SOURCE_VENDAS, storeId, productSizeId, round.id);
+  const delta = alvo - (j ? j.q : 0);
+  if (!delta) return 0;
+  await applyStoreStockDelta(tx, { storeId, productSizeId, quantity: delta, type: 'inventory_adjustment', source: SOURCE_VENDAS,
+    reason: delta < 0 ? 'Vendas feitas antes da contagem nova (a baixa tinha sido arquivada) — recebimento anterior validado' : 'Recebimento anterior desfeito: devolve a baixa das vendas anteriores à contagem',
+    metadata: { roundId: round.id, desde: a && a.em ? a.em : null } });
+  return delta;
 }
 
 // Situação de cada leitura do lote: { clientScanId: { productSizeId, net, roundId } }
@@ -107,19 +226,36 @@ async function aplicarLote(tx, lotId) {
   const round = await replacementRound(tx, lot.toStoreId);
   const atual = await aplicadoPorLeitura(tx, lotId);
   // planeja primeiro; trava todos os tamanhos em ordem; só então escreve
+  // o CÓDIGO lido é a chave: se hoje ele pertence a UM outro tamanho (card dividido depois da leitura), vale esse
+  const codigos = [...new Set(lot.scans.map((r) => r.barcode).filter(Boolean))];
+  const donos = new Map();
+  if (codigos.length) for (const r of await tx.productSize.findMany({ where: { barcode: { in: codigos } }, select: { id: true, barcode: true } })) donos.set(r.barcode, [...(donos.get(r.barcode) || []), r.id]);
+  const efetiva = (read) => {
+    const d = donos.get(read.barcode) || [];
+    return d.length === 1 && read.productSizeId && d[0] !== read.productSizeId ? { ...read, productSizeId: d[0] } : read;
+  };
   const planos = [];
-  for (const read of lot.scans) {
+  const cache = new Map();
+  // 'novo' = depois do início da contagem; 'anterior' = recebido antes e ainda não contado; null = não entra
+  const comoEntra = async (read) => (deveEntrar(read, lot, round) ? 'novo' : (await podeEntrarAnterior(tx, read, lot, round, cache)) ? 'anterior' : null);
+  for (const lido of lot.scans) {
+    const read = efetiva(lido);
     const ja = atual.get(read.clientScanId);
     const temEntrada = !!(ja && ja.net > 0);
     const trocou = temEntrada && !!read.productSizeId && ja.productSizeId !== read.productSizeId;
     if (temEntrada && (deveSair(read, lot) || trocou)) {
       if (await podeDesfazer(tx, lot.toStoreId, ja, read.clientScanId)) {
         planos.push({ tipo: 'sai', read, ja });
-        if (trocou && deveEntrar(read, lot, round)) planos.push({ tipo: 'entra', read });
+        const modo = trocou ? await comoEntra(read) : null;
+        if (modo) planos.push({ tipo: 'entra', read, anterior: modo === 'anterior' });
       }
-    } else if (!temEntrada && deveEntrar(read, lot, round)) planos.push({ tipo: 'entra', read });
+    } else if (!temEntrada) {
+      const modo = await comoEntra(read);
+      if (modo) planos.push({ tipo: 'entra', read, anterior: modo === 'anterior' });
+    }
   }
-  if (!planos.length) return { aplicadas: 0, desfeitas: 0 };
+  const barrados = cache.get('#barrados') || {};
+  if (!planos.length) return { aplicadas: 0, desfeitas: 0, barrados };
   await lockSizes(tx, lot.toStoreId, planos.map((x) => (x.tipo === 'sai' ? x.ja.productSizeId : x.read.productSizeId)));
   let aplicadas = 0, desfeitas = 0;
   const tocados = new Set();
@@ -130,22 +266,25 @@ async function aplicarLote(tx, lotId) {
       desfeitas++; tocados.add(x.ja.productSizeId);
     } else {
       await applyStoreStockDelta(tx, { storeId: lot.toStoreId, productSizeId: x.read.productSizeId, quantity: 1, type: 'receipt', source: SOURCE,
-        reason: 'Recebimento bipado (entra automático no estoque da loja)', metadata: { lotId, clientScanId: x.read.clientScanId, scannedAt: new Date(x.read.scannedAt).toISOString(), roundId: round.id } });
+        reason: x.anterior ? 'Recebimento anterior à contagem nova, ainda não contado (validado; dono 18/11)' : 'Recebimento bipado (entra automático no estoque da loja)',
+        metadata: { lotId, clientScanId: x.read.clientScanId, scannedAt: new Date(x.read.scannedAt).toISOString(), roundId: round.id, ...(x.anterior ? { anteriorAContagem: true } : {}) } });
       aplicadas++; tocados.add(x.read.productSizeId);
     }
   }
+  if (round) for (const ps of [...tocados].sort()) await baixarVendasArquivadas(tx, lot.toStoreId, ps, round);
   if (round && round.open) for (const ps of [...tocados].sort()) await parear(tx, lot.toStoreId, ps, round);
-  return { aplicadas, desfeitas };
+  return { aplicadas, desfeitas, barrados };
 }
 
 // Leituras de recebimento ativas (net>0) da loja/tamanho, desde o início da rodada, em ordem de horário.
 async function recebimentosAtivos(tx, storeId, productSizeId, round) {
   const rows = await tx.$queryRawUnsafe(
-    'SELECT metadata->>\'clientScanId\' AS cs, MIN(metadata->>\'scannedAt\') AS em, SUM(quantity)::int AS net FROM "StoreStockMovement" ' +
+    'SELECT metadata->>\'clientScanId\' AS cs, MIN(metadata->>\'scannedAt\') AS em, SUM(quantity)::int AS net, bool_or(metadata->>\'anteriorAContagem\' = \'true\') AS ant, MAX(metadata->>\'lotId\') AS lot FROM "StoreStockMovement" ' +
     'WHERE source IN ' + SRC_SQL + ' AND "storeId" = $1 AND "productSizeId" = $2 GROUP BY 1 HAVING MAX(metadata->>\'roundId\') = $3', storeId, productSizeId, round.id);
-  const inicio = new Date(round.startedAt).getTime();
-  return rows.filter((r) => r.net > 0 && r.em && new Date(r.em).getTime() >= inicio)
-    .map((r) => ({ cs: r.cs, em: new Date(r.em).getTime() }))
+  // todas as entradas desta contagem (o HAVING já prende ao roundId), inclusive recebimento ANTERIOR
+  // validado: se a contagem bipar a peça depois, ela pareia com ele e não soma em dobro.
+  return rows.filter((r) => r.net > 0 && r.em)
+    .map((r) => ({ cs: r.cs, em: new Date(r.em).getTime(), anterior: !!r.ant, lotId: r.lot }))
     .sort((a, b) => a.em - b.em || String(a.cs).localeCompare(String(b.cs)));
 }
 
@@ -163,8 +302,18 @@ async function parear(tx, storeId, productSizeId, roundIn) {
   });
   const contagem = checks.filter((c) => c.bipe && c.bipe.storeId === storeId && !c.bipe.excludedAt)
     .sort((a, b) => new Date(a.bipe.bipedAt) - new Date(b.bipe.bipedAt) || a.bipeId.localeCompare(b.bipeId));
+  // recebimento ANTERIOR à contagem: quando a contagem bipa o tamanho, ela manda — o anterior sai e a baixa
+  // de vendas volta (auditoria 18/11: parear impediria a contagem de corrigir para baixo)
+  const anteriores = recebidos.filter((r) => r.anterior);
+  if (contagem.length && anteriores.length) {
+    for (const r of anteriores) {
+      await applyStoreStockDelta(tx, { storeId, productSizeId, quantity: -1, type: 'receipt_reverse', source: SOURCE_REVERSE,
+        reason: 'Contagem nova bipou este tamanho: vale a contagem, o recebimento anterior sai', metadata: { lotId: r.lotId, clientScanId: r.cs, roundId: round.id, motivo: 'contagem-manda' } });
+    }
+    await baixarVendasArquivadas(tx, storeId, productSizeId, round);
+  }
   // pareamento guloso: cada bipe da contagem pega o recebimento livre mais antigo feito ANTES dele
-  const livres = recebidos.slice();
+  const livres = recebidos.filter((r) => !r.anterior);
   const alvo = new Map(); // bipeId -> clientScanId
   for (const c of contagem) {
     const t = new Date(c.bipe.bipedAt).getTime();
@@ -233,16 +382,18 @@ async function aplicarTodos(db, { limite = 500 } = {}) {
   const lots = await db.scanActionLot.findMany({ where: { mode: 'receipt', OR: [{ status: 'open' }, { status: 'archived', updatedAt: { gte: new Date(Date.now() - 3 * 86400e3) } }] },
     select: { sessionId: true }, orderBy: { updatedAt: 'desc' }, take: limite });
   let aplicadas = 0, desfeitas = 0, erros = 0;
+  const barrados = { semNfe: 0, acimaDaNfe: 0 }; // recebimento anterior que ficou para conferência na loja
   for (const l of lots) {
     try {
       const r = await db.$transaction(async (tx) => {
         await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${'scan-action-lot:' + l.sessionId}))::text`;
         return aplicarLote(tx, l.sessionId);
-      }, { timeout: 60000 });
+      }, { timeout: 180000, maxWait: 30000 }); // lote grande (2.500 leituras) na 1ª varredura do recebimento anterior
       aplicadas += r.aplicadas; desfeitas += r.desfeitas;
+      for (const [k, v] of Object.entries(r.barrados || {})) barrados[k] = (barrados[k] || 0) + v;
     } catch (e) { erros++; console.warn('[recebimento automático] lote', l.sessionId, e.message); }
   }
-  return { lotes: lots.length, aplicadas, desfeitas, erros };
+  return { lotes: lots.length, aplicadas, desfeitas, erros, anterioresParaConferencia: barrados };
 }
 
 const state = { lastRunAt: null, lastResult: null, lastError: null };
@@ -262,6 +413,6 @@ function iniciarRecebimentoAutomatico(db) {
   setInterval(rodar, 10 * 60 * 1000);
   console.log('[recebimento automático] ligado: cada recebimento bipado entra no estoque da loja (varredura a cada 10 min + na hora do bipe)');
 }
-function estadoRecebimentoAutomatico() { return JSON.parse(JSON.stringify(state)); }
+function estadoRecebimentoAutomatico() { return { ...JSON.parse(JSON.stringify(state)), desde: new Date(desde()).toISOString(), anteriorDesde: new Date(anteriorDesde()).toISOString(), familiaContadaMin: FAMILIA_CONTADA_MIN }; }
 
-module.exports = { desde, deveSair, SOURCE, SOURCE_REVERSE, SOURCE_PAIR, SOURCE_UNPAIR, aplicarLote, parear, antesDeExcluirBipe, jaEntrouPorTamanho, jaEntrouPorLeituras, aplicarTodos, iniciarRecebimentoAutomatico, estadoRecebimentoAutomatico, deveEntrar, replacementRound };
+module.exports = { desde, anteriorDesde, familiaDaCategoria, podeEntrarAnterior, baixarVendasArquivadas, SOURCE_VENDAS, deveSair, SOURCE, SOURCE_REVERSE, SOURCE_PAIR, SOURCE_UNPAIR, aplicarLote, parear, antesDeExcluirBipe, jaEntrouPorTamanho, jaEntrouPorLeituras, aplicarTodos, iniciarRecebimentoAutomatico, estadoRecebimentoAutomatico, deveEntrar, replacementRound };

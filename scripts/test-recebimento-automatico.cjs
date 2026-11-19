@@ -56,7 +56,7 @@ async function main() {
     assert.equal(r2.aplicadas, 0, 'idempotente'); assert.equal(await estoque(ps39), 2);
     assert.equal(await somaMov(ps39), 2, 'estoque explicado pelo histórico de movimentos');
   });
-  await t('recebimento de ANTES da contagem nova não entra (só vale bipe novo)', async () => {
+  await t('recebimento de ANTES da contagem nova não entra quando é calçado (a contagem recontou calçado)', async () => {
     const l = await lote();
     await leitura(l, ps40, new Date(T0.getTime() - 60e3));
     await aplicar(l);
@@ -199,6 +199,112 @@ async function main() {
       await prisma.stocktakeRound.update({ where: { id: r2.id }, data: { status: 'cancelled', activeReplacementStoreId: null } });
       await prisma.stocktakeRound.update({ where: { id: round.id }, data: { status: 'counting', activeReplacementStoreId: loja.id } });
     }
+  });
+  await t('ANTERIOR (dono 18/11 "valide todos"): roupa/acessório recebido ANTES da contagem e não contado entra; venda apagada pelo arquivamento é baixada de novo, uma vez', async () => {
+    const { applyStoreStockDelta } = require('../src/services/storeStockLedger');
+    const roupa = await prisma.product.create({ data: { sku: P + 'R', name: 'Legging Teste', brand: 'LUPO', category: 'Vestuário', price: 100 } });
+    const rp = await prisma.productSize.create({ data: { productId: roupa.id, size: 'M', barcode: P + 'RM', stock: 4 } });
+    const docR = await prisma.xmlFiscalDocument.create({ data: { docType: 'entrada', issuerName: 'Lupo teste' } });
+    await prisma.xmlFiscalItem.create({ data: { fiscalDocumentId: docR.id, description: 'Legging M', ean: rp.barcode, quantity: 4 } });
+    // venda ANTES da contagem (baixa -1) e o arquivamento do saldo na abertura (+1 de volta a zero)
+    const vendaAntes = new Date(T0.getTime() - 30 * 60e3);
+    await prisma.$transaction((tx) => applyStoreStockDelta(tx, { storeId: loja.id, productSizeId: rp.id, quantity: -1, type: 'sale', source: 'teste-venda', reason: 'venda' }));
+    await prisma.storeStockMovement.updateMany({ where: { productSizeId: rp.id, type: 'sale' }, data: { createdAt: vendaAntes } });
+    await prisma.$transaction((tx) => applyStoreStockDelta(tx, { storeId: loja.id, productSizeId: rp.id, quantity: 1, type: 'inventory_adjustment', source: 'stock-replacement-start', reason: 'arquiva' }));
+    await prisma.storeStockMovement.updateMany({ where: { productSizeId: rp.id, source: 'stock-replacement-start' }, data: { createdAt: T0 } });
+    assert.equal(await estoque(rp), 0);
+    const l = await lote();
+    await leitura(l, rp, new Date(T0.getTime() - 60 * 60e3), { productName: 'Legging Teste', brand: 'LUPO', size: 'M' });
+    await leitura(l, rp, new Date(T0.getTime() - 59 * 60e3), { productName: 'Legging Teste', brand: 'LUPO', size: 'M' });
+    const r = await aplicar(l);
+    assert.equal(r.aplicadas, 2, 'as 2 peças recebidas antes entram');
+    assert.equal(await estoque(rp), 1, 'recebeu 2, vendeu 1 antes da contagem → 1');
+    await aplicar(l); await auto.aplicarTodos(prisma);
+    assert.equal(await estoque(rp), 1, 'idempotente: não soma nem baixa de novo');
+    // a contagem bipa a peça depois: pareia com o recebimento, não soma em dobro
+    const b = await prisma.stocktakeBipe.create({ data: { roundId: round.id, storeId: loja.id, barcode: rp.barcode, productId: roupa.id, productSizeId: rp.id, found: true, applied: true, bipedAt: min(200) } });
+    await prisma.$transaction(async (tx) => {
+      await applyStoreStockDelta(tx, { storeId: loja.id, productSizeId: rp.id, quantity: 1, type: 'inventory_adjustment', source: 'stock-replacement-scan', reason: 'teste', metadata: { roundId: round.id, bipeId: b.id } });
+      await tx.stockReplacementCheck.create({ data: { bipeId: b.id, roundId: round.id, status: 'applied', evidence: {}, appliedProductSizeId: rp.id, appliedAt: new Date() } });
+      await auto.parear(tx, loja.id, rp.id);
+    });
+    assert.equal(await estoque(rp), 1, 'bipe da contagem: vale a contagem (1) — o anterior sai e a venda volta');
+    // lote arquivado: desfaz recebimentos E devolve a baixa das vendas (volta ao que a contagem diz)
+    await prisma.scanActionLot.update({ where: { sessionId: l.sessionId }, data: { status: 'archived' } });
+    await prisma.$transaction(async (tx) => { await auto.aplicarLote(tx, l.sessionId); });
+    assert.equal(await estoque(rp), 1, 'sem recebimento: vale o bipe da contagem (1)');
+  });
+  await t('ANTERIOR: calçado recebido antes não entra (calçado foi contado); tamanho já bipado na contagem não entra', async () => {
+    const l = await lote();
+    await leitura(l, ps43, new Date(T0.getTime() - 60e3));
+    await aplicar(l); assert.equal(await estoque(ps43), 0, 'chuteira = calçado, não entra');
+    const ac = await prisma.product.create({ data: { sku: P + 'A', name: 'Meia Teste', brand: 'LUPO', category: 'Acessórios', price: 30 } });
+    const ap = await prisma.productSize.create({ data: { productId: ac.id, size: 'U', barcode: P + 'AU', stock: 3 } });
+    const b = await prisma.stocktakeBipe.create({ data: { roundId: round.id, storeId: loja.id, barcode: ap.barcode, productId: ac.id, productSizeId: ap.id, found: true, applied: true, bipedAt: min(210) } });
+    await prisma.stockReplacementCheck.create({ data: { bipeId: b.id, roundId: round.id, status: 'applied', evidence: {}, appliedProductSizeId: ap.id, appliedAt: new Date() } });
+    const l2 = await lote(); await leitura(l2, ap, new Date(T0.getTime() - 60e3), { productName: 'Meia Teste', brand: 'LUPO', size: 'U' });
+    await aplicar(l2); assert.equal(await estoque(ap), 0, 'tamanho contado: a contagem manda');
+  });
+  await t('ANTERIOR: loja que já está contando a família (≥ mínimo de bipes) não recebe o anterior', async () => {
+    const antes = process.env.RECEBIMENTO_FAMILIA_CONTADA_MIN;
+    const ac = await prisma.product.create({ data: { sku: P + 'B', name: 'Boné Teste', brand: 'LUPO', category: 'Acessórios', price: 30 } });
+    const ap = await prisma.productSize.create({ data: { productId: ac.id, size: 'U', barcode: P + 'BU', stock: 3 } });
+    // há 1 bipe de acessório na contagem (o da meia do teste anterior); com mínimo 1 a família conta como "em contagem"
+    delete require.cache[require.resolve('../src/services/receiptAutoApply')];
+    process.env.RECEBIMENTO_FAMILIA_CONTADA_MIN = '1';
+    try {
+      const auto2 = require('../src/services/receiptAutoApply');
+      const l = await lote(); await leitura(l, ap, new Date(T0.getTime() - 60e3), { productName: 'Boné Teste', brand: 'LUPO', size: 'U' });
+      await prisma.$transaction((tx) => auto2.aplicarLote(tx, l.sessionId));
+      assert.equal(await estoque(ap), 0);
+    } finally {
+      if (antes === undefined) delete process.env.RECEBIMENTO_FAMILIA_CONTADA_MIN; else process.env.RECEBIMENTO_FAMILIA_CONTADA_MIN = antes;
+      delete require.cache[require.resolve('../src/services/receiptAutoApply')];
+    }
+  });
+  await t('ANTERIOR: família da categoria', () => {
+    assert.equal(auto.familiaDaCategoria('Tênis'), 'calcado'); assert.equal(auto.familiaDaCategoria('Chuteiras'), 'calcado');
+    assert.equal(auto.familiaDaCategoria('Roupas'), 'vestuario'); assert.equal(auto.familiaDaCategoria('Vestuário'), 'vestuario');
+    assert.equal(auto.familiaDaCategoria('ACESSÓRIOS'), 'acessorio'); assert.equal(auto.familiaDaCategoria('INSUMO'), 'outro'); assert.equal(auto.familiaDaCategoria('A classificar'), 'outro');
+  });
+  await t('ANTERIOR / auditoria 2: a contagem MANDA — bipe posterior desfaz o anterior (corrige para baixo); código lido vale mais que a variante antiga; teto = comprado; sem NF-e não entra', async () => {
+    const { applyStoreStockDelta } = require('../src/services/storeStockLedger');
+    const doc = await prisma.xmlFiscalDocument.create({ data: { docType: 'entrada', issuerName: 'Fornecedor teste' } });
+    const nf = (ean, q = 5) => prisma.xmlFiscalItem.create({ data: { fiscalDocumentId: doc.id, description: 'item ' + ean, ean, quantity: q } });
+    const cardV = await prisma.product.create({ data: { sku: P + 'V', name: 'Regata Teste', brand: 'BODY FOR SURE', category: 'Roupas', price: 80 } });
+    const novoCard = async (n, bc, comprado = 5) => { const pr = await prisma.product.create({ data: { sku: P + n, name: 'Regata ' + n, brand: 'BODY FOR SURE', category: 'Roupas', price: 80 } }); return prisma.productSize.create({ data: { productId: pr.id, size: 'M', barcode: bc, stock: comprado } }); };
+    // (a) contagem corrige para baixo: recebeu 3 antes, contagem acha 1 → 1
+    const a = await novoCard('A1', P + 'A1'); await nf(a.barcode);
+    const la = await lote(); for (const k of [70, 69, 68]) await leitura(la, a, new Date(T0.getTime() - k * 60e3));
+    await aplicar(la); assert.equal(await estoque(a), 3);
+    const b = await prisma.stocktakeBipe.create({ data: { roundId: round.id, storeId: loja.id, barcode: a.barcode, productSizeId: a.id, found: true, applied: true, bipedAt: min(220) } });
+    await prisma.$transaction(async (tx) => {
+      await applyStoreStockDelta(tx, { storeId: loja.id, productSizeId: a.id, quantity: 1, type: 'inventory_adjustment', source: 'stock-replacement-scan', reason: 'teste', metadata: { roundId: round.id, bipeId: b.id } });
+      await tx.stockReplacementCheck.create({ data: { bipeId: b.id, roundId: round.id, status: 'applied', evidence: {}, appliedProductSizeId: a.id, appliedAt: new Date() } });
+      await auto.parear(tx, loja.id, a.id);
+    });
+    assert.equal(await estoque(a), 1, 'vale a contagem (1), não o recebido (3)');
+    await auto.aplicarTodos(prisma); assert.equal(await estoque(a), 1, 'a varredura não devolve o anterior de um tamanho contado');
+    // (b) leitura antiga aponta para a variante errada (card dividido depois): entra no dono do código lido
+    const certo = await novoCard('B1', P + 'B1'); const errado = await novoCard('B2', P + 'B2'); await nf(certo.barcode);
+    const lb = await lote(); await leitura(lb, errado, new Date(T0.getTime() - 50 * 60e3), { barcode: certo.barcode });
+    await aplicar(lb);
+    assert.equal(await estoque(certo), 1, 'entra no tamanho que é dono do código lido'); assert.equal(await estoque(errado), 0);
+    // (c) teto = NF-e: recebeu 3 com NF-e 2 → nenhuma entra (conferência)
+    const c = await novoCard('C1', P + 'C1', 2); await nf(c.barcode, 2);
+    const lc = await lote(); for (const k of [40, 39, 38]) await leitura(lc, c, new Date(T0.getTime() - k * 60e3));
+    const rc = await aplicar(lc); assert.equal(await estoque(c), 0, 'recebido acima da NF-e: nenhuma loja recebe (não chuta a localização), vai para conferência'); assert.ok(rc.barrados && rc.barrados.acimaDaNfe >= 1, 'barrado aparece contado');
+    // (d) sem NF-e de entrada do código: não entra
+    const d = await novoCard('D1', P + 'D1');
+    const ld = await lote(); await leitura(ld, d, new Date(T0.getTime() - 30 * 60e3));
+    await aplicar(ld); assert.equal(await estoque(d), 0);
+    // (e) venda consome primeiro o estoque antigo: tinha 2 antes do recebimento, vendeu 2, recebeu 1 → baixa 0 → 1
+    const e = await novoCard('E1', P + 'E1'); await nf(e.barcode);
+    const mov = async (q, type, quando) => { await prisma.$transaction((tx) => applyStoreStockDelta(tx, { storeId: loja.id, productSizeId: e.id, quantity: q, type, source: 'teste', reason: 'teste' })); const m = await prisma.storeStockMovement.findFirst({ where: { productSizeId: e.id }, orderBy: { createdAt: 'desc' } }); await prisma.storeStockMovement.update({ where: { id: m.id }, data: { createdAt: quando } }); };
+    await mov(2, 'inventory_adjustment', new Date(T0.getTime() - 120 * 60e3));
+    await mov(-2, 'sale', new Date(T0.getTime() - 20 * 60e3));
+    const le = await lote(); await leitura(le, e, new Date(T0.getTime() - 25 * 60e3));
+    await aplicar(le); assert.equal(await estoque(e), 1, 'as 2 vendas consumiram o estoque antigo; a peça recebida continua');
   });
   await t('o comprado (ProductSize.stock) nunca muda', async () => {
     for (const ps of [ps39, ps40, ps41, ps42, ps43]) assert.equal((await prisma.productSize.findUnique({ where: { id: ps.id } })).stock, 5);
