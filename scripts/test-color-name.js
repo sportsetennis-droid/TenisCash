@@ -18,6 +18,11 @@ const incerta = (raw, brand) => {
 ok('BC/AZ/PT', '', 'Branco/Azul/Preto');
 ok('AML/PTO', 'KEMPA', 'Amarelo/Preto');
 ok('Core Black/Cloud White', 'ADIDAS', 'Preto/Branco');
+ok('WHITE/BLACK', '', 'Branco/Preto'); // auditoria 18/11: black/blk sumiram por um comentário no meio da linha
+ok('BLK', '', 'Preto');
+ok('Black', '', 'Preto');
+// conferência ampla: todo alias global continua certo
+for (const w of ['preto','branco','azul','verde','vermelho','amarelo','laranja','rosa','roxo','cinza','marinho','bege','marrom','dourado','prata','black','white','blue','green','red','yellow','orange','pink','purple','grey','gray','navy','blk','wht','pt','pto','bc','bco','az','vd','vm','am','lj','cz','mar']) assert.ok(expandColorName(w).certain, 'alias global sumiu: ' + w);
 
 // ambíguas continuam sem expansão (PR, MR, RO fora da Poker)
 incerta('BC-AZ-PR', 'PENALTY');

@@ -44,7 +44,8 @@ const CONNECTORS = new Map(Object.entries({ e: 'e', com: 'com', de: 'de' }));
 // ⚠️ NÃO colocar aqui sigla ambígua: pr, ro, mr, ca, co, dr, vi, fl, cy, ve, pta.
 const GLOBAL_ALIASES = {
   // preto
-  preta: 'Preto', pt: 'Preto', pto: 'Preto', ptr: 'Preto', // pta NÃO: na Umbro/FILA PTA = Prata (ver BRAND_ALIASES) blk: 'Preto', black: 'Preto',
+  // pta NÃO entra aqui: na Umbro/FILA PTA = Prata (ver BRAND_ALIASES)
+  preta: 'Preto', pt: 'Preto', pto: 'Preto', ptr: 'Preto', blk: 'Preto', black: 'Preto',
   // branco
   branca: 'Branco', bc: 'Branco', bco: 'Branco', bca: 'Branco', br: 'Branco', white: 'Branco', wht: 'Branco', blanc: 'Branco',
   // azul
