@@ -463,32 +463,6 @@ app.post('/api/_falgen', async (req, res) => {
     return res.json({ ok: false, error: String(e.message).slice(0, 200), ...keys });
   }
 });
-// TEMPORÁRIO (dono 18/11/2026: "1.790,00 salário" — igual para todos): grava o salário no contrato
-// de cada vendedor ativo, com auditoria. Remover depois.
-app.post('/api/_salario-unico', async (req, res) => {
-  if (req.query.g !== 'cd19a0593fef17b49199a564') return res.status(404).json({ error: 'not found' });
-  const { prisma } = require('./middleware');
-  const svc = require('./services/payroll/service');
-  const CENTS = 179000;
-  try {
-    await require('./routes/payroll').ensureSchema();
-    const sellers = await prisma.user.findMany({ where: { role: 'seller', active: true }, select: { id: true, name: true } });
-    const out = [];
-    for (const u of sellers) {
-      await prisma.$transaction(async (tx) => {
-        const before = await tx.payrollEmployeeProfile.findUnique({ where: { userId: u.id } });
-        const row = before
-          ? await tx.payrollEmployeeProfile.update({ where: { userId: u.id }, data: { baseSalaryCents: CENTS } })
-          : await tx.payrollEmployeeProfile.create({ data: { userId: u.id, baseSalaryCents: CENTS, createdById: 'dono' } });
-        await svc.audit(tx, { entity: 'PayrollEmployeeProfile', entityId: row.id, action: before ? 'UPDATE' : 'CREATE', subjectUserId: u.id,
-          before: before ? { baseSalaryCents: before.baseSalaryCents } : null, after: { baseSalaryCents: CENTS }, reason: 'Dono 18/11/2026: salário igual para todos, R$ 1.790,00' });
-      });
-      out.push(u.name);
-    }
-    res.json({ ok: true, gravados: out.length, nomes: out });
-  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
-});
-
 app.use('/api/auth', authRoutes);
 app.use('/api/webauthn', webauthnRoutes);
 app.use('/api/face', faceRoutes);
