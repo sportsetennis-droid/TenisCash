@@ -2,7 +2,7 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const barcodePolicy = window.ScannerBarcodePolicy || {
-    isScanCode: value => /^(?:\d{8}|\d{12,14}|\d{16})$/.test(String(value || '').trim()) && !/^0+$/.test(String(value || '').trim()),
+    isScanCode: value => (/^(?:\d{8}|\d{12,14}|\d{16})$/.test(String(value || '').trim()) && !/^0+$/.test(String(value || '').trim())) || /^(?=(?:[^A-Z]*[A-Z]){3})(?=(?:\D*\d){6})[A-Z0-9]{8,24}$/.test(String(value || '').trim()),
   };
   const settingsKey = 'tc_bipar_actions_settings_v1', pendingKey = 'tc_bipar_actions_pending_v1';
   const read = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key) || 'null') || fallback; } catch (_) { return fallback; } };
@@ -845,7 +845,7 @@
     if (storageFailed) { if (currentDraft?.scans?.length) persist(currentDraft); else storageFailed = false; }
     if (storageFailed) { message('Não foi possível guardar o lote neste aparelho (' + (storageReason || 'motivo desconhecido') + ').', true); return null; }
     if (isInventory() || !validContext() || busy || read(pendingKey, null)) { message('Escolha a ação, entre na sua conta e confira as lojas antes de bipar.', true); return null; }
-    barcode = String(barcode || '').trim(); if (!barcodePolicy.isScanCode(barcode)) { message('Leia o código de barras numérico da etiqueta. A referência do modelo não substitui o código.', true); return null; }
+    barcode = String(barcode || '').trim(); if (!barcodePolicy.isScanCode(barcode)) { message('Leia o código de barras da etiqueta. A referência do modelo não substitui o código.', true); return null; }
     const draft = currentDraft;
     if (draft.scans.length >= 500) { message('Este lote chegou a 500 leituras, incluindo as retiradas. Confira e conclua ou comece outro lote; o histórico será preservado.', true); return null; }
     // Every intentional scan is one physical piece. The camera engine still

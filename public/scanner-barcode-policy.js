@@ -6,19 +6,22 @@
 })(typeof window !== 'undefined' ? window : globalThis, function () {
   'use strict';
   function codeOf(value) { return String(value || '').trim(); }
+  // Código alfanumérico do fornecedor impresso em Code 128 (ex.: Atama KIM10U0001011, NF-e "SEM GTIN").
+  // Estrito para referência de modelo não passar: só maiúsculas e números, 8–24, ≥3 letras e ≥6 números.
+  function isSupplierCode(value) { return /^(?=(?:[^A-Z]*[A-Z]){3})(?=(?:\D*\d){6})[A-Z0-9]{8,24}$/.test(codeOf(value)); }
   function isInternalCode(value) { const code = codeOf(value); return /^\d{16}$/.test(code) && !/^0+$/.test(code); }
   function isScanCode(value) {
     const code = codeOf(value);
-    return (/^(?:\d{8}|\d{12,14})$/.test(code) && !/^0+$/.test(code)) || isInternalCode(code);
+    return (/^(?:\d{8}|\d{12,14})$/.test(code) && !/^0+$/.test(code)) || isInternalCode(code) || isSupplierCode(code);
   }
   function identity(value) {
     const code = codeOf(value);
-    return isInternalCode(code) ? code : code.replace(/^0+/, '');
+    return isInternalCode(code) || isSupplierCode(code) ? code : code.replace(/^0+/, '');
   }
   function variants(value) {
     const code = codeOf(value);
     if (!isScanCode(code)) return code ? [code] : [];
-    if (isInternalCode(code)) return [code];
+    if (isInternalCode(code) || isSupplierCode(code)) return [code];
     const normalized = identity(code);
     const aliases = [code, normalized, code.padStart(13, '0'), code.padStart(14, '0')];
     // UPC-A can itself start with zero. An equivalent EAN-13/GTIN-14 read
@@ -29,5 +32,5 @@
     }
     return [...new Set(aliases)];
   }
-  return Object.freeze({ codeOf, isInternalCode, isScanCode, identity, variants });
+  return Object.freeze({ codeOf, isInternalCode, isSupplierCode, isScanCode, identity, variants });
 });
