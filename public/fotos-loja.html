@@ -48,7 +48,7 @@
   .lado > * { flex:1; }
   .grade { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:10px; }
   .mini { position:relative; aspect-ratio:1; border-radius:10px; background:#eee center/cover no-repeat; }
-  .mini button { position:absolute; top:4px; right:4px; width:30px; height:30px; border-radius:15px; border:none; background:rgba(0,0,0,.6); color:#fff; font-size:16px; }
+  .mini button { position:absolute; top:2px; right:2px; width:44px; height:44px; border-radius:22px; border:none; background:rgba(0,0,0,.6); color:#fff; font-size:16px; }
   .ok-tag { color:var(--ok); font-weight:700; font-size:13px; margin-top:6px; }
   .err-tag { color:var(--err); font-weight:700; font-size:13px; margin-top:6px; }
   .modo label { display:flex; gap:10px; align-items:flex-start; padding:10px; border:1px solid var(--line); border-radius:12px; margin-bottom:8px; font-size:14px; min-height:44px; }
@@ -177,14 +177,15 @@
     $('resumo').textContent = itens.length ? itens.length + ' produto(s) faltando foto nesta loja' : '';
     if (!vis.length) { $('lista').innerHTML = '<div class="vazio">' + (itens.length ? 'Nada com esse filtro.' : 'Tudo com 5 fotos nesta loja. 🎉') + '</div>'; return; }
     $('lista').innerHTML = vis.map((i) => '<button class="item" data-id="' + esc(i.id) + '">' +
-      '<div class="thumb"' + (i.capa ? ' style="background-image:url(\'' + esc(i.capa).replace(/'/g, '%27') + '\')"' : '') + '>' + (i.capa ? '' : (i.fotos ? i.fotos + ' foto' + (i.fotos > 1 ? 's' : '') : 'sem foto')) + '</div>' +
+      '<div class="thumb">' + (i.capa ? '' : (i.fotos ? i.fotos + ' foto' + (i.fotos > 1 ? 's' : '') : 'sem foto')) + '</div>' +
       '<div class="info"><div class="nome">' + esc(i.nome) + '</div><div class="sub">' + esc([i.marca, i.cor].filter(Boolean).join(' · ')) + '</div></div>' +
       '<div class="falta">faltam ' + i.faltam + '</div></button>').join('');
+    // miniatura pelo DOM (nunca a URL dentro do atributo style: sem CSS injetável — auditoria 19/11)
+    $('lista').querySelectorAll('.item').forEach((b) => { const i = itens.find((x) => x.id === b.dataset.id); if (i && i.capa && /^https:\/\//i.test(i.capa)) b.querySelector('.thumb').style.backgroundImage = 'url(' + JSON.stringify(i.capa) + ')'; });
   }
   $('lista').addEventListener('click', (e) => { const b = e.target.closest('.item'); if (b) abrir(itens.find((i) => i.id === b.dataset.id)); });
 
   // ---------- folha do produto ----------
-  const soDig = (s) => String(s || '').replace(/\D/g, '').replace(/^0+/, '');
   function abrir(item) {
     atual = item; fotos = []; codigoOk = null;
     $('f-nome').textContent = item.nome;
@@ -200,16 +201,24 @@
   function fechar() { pararCamera(); $('folha').classList.remove('aberta'); setTimeout(() => { $('veu').style.display = 'none'; }, 220); atual = null; }
   $('f-fechar').addEventListener('click', fechar); $('veu').addEventListener('click', fechar);
 
-  function conferirCodigo() {
-    const v = $('f-codigo').value.trim();
-    if (!v || !atual) { codigoOk = null; $('f-cod-res').innerHTML = ''; return atualizarEnviar(); }
-    const t = (atual.tamanhos || []).find((x) => x.codigo && soDig(x.codigo) === soDig(v));
-    codigoOk = t ? v : null;
-    $('f-cod-res').innerHTML = t ? '<div class="ok-tag">✓ Código deste produto (tam. ' + esc(t.tamanho) + ')</div>' : '<div class="err-tag">Este código não é deste produto. Confira a peça.</div>';
+  // a conferência é no servidor, com a mesma regra da gravação (a lista não traz os códigos)
+  let conferindo = 0, espera = null;
+  async function conferirCodigo() {
+    const v = $('f-codigo').value.trim(); codigoOk = null; atualizarEnviar();
+    if (!v || !atual) { $('f-cod-res').innerHTML = ''; return; }
+    const meu = ++conferindo, item = atual;
+    try {
+      const r = await api('/' + encodeURIComponent(item.id) + '/conferir', { method: 'POST', body: JSON.stringify({ storeId: $('loja').value, codigo: v }) });
+      if (meu !== conferindo || atual !== item) return;
+      codigoOk = r.ok ? v : null;
+      $('f-cod-res').innerHTML = r.ok ? '<div class="ok-tag">✓ Código deste produto (tam. ' + esc(r.tamanho) + ')</div>' : '<div class="err-tag">' + esc(r.motivo) + '</div>';
+    } catch (e) { if (meu === conferindo) $('f-cod-res').innerHTML = '<div class="err-tag">' + esc(e.message) + '</div>'; }
     atualizarEnviar();
   }
-  $('f-codigo').addEventListener('input', conferirCodigo);
-  $('f-codigo').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); conferirCodigo(); } });
+  $('f-codigo').addEventListener('input', () => { clearTimeout(espera); espera = setTimeout(conferirCodigo, 350); });
+  $('f-codigo').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); clearTimeout(espera); conferirCodigo(); } });
+  // iPhone (e navegador sem leitor de código pela câmera): esconde o botão e avisa
+  if (!('BarcodeDetector' in window)) { $('f-cam-cod').hidden = true; $('f-codigo').placeholder = 'Código de barras (leitor ou digitado)'; }
 
   // leitura do código pela câmera (onde o navegador tem BarcodeDetector; senão, digitar ou leitor)
   async function pararCamera() { lendo = false; if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; } $('f-video').hidden = true; }

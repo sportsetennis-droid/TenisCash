@@ -26,6 +26,7 @@ router.get('/contexto', handle(async (req) => {
   return { usuario: { id: req.ator.id, nome: req.ator.name, papel: req.ator.role }, lojas: lojas.filter((l) => canSend(req.ator, l.id)) };
 }));
 router.get('/pendentes', handle((req) => fotos.pendentes(prisma, req.ator, String(req.query.storeId || '')).then((itens) => ({ itens }))));
+router.post('/:productId/conferir', handle((req) => fotos.conferir(prisma, req.ator, req.params.productId, req.body || {})));
 router.post('/:productId', handle((req) => fotos.salvar(prisma, req.ator, req.params.productId, req.body || {})));
 
 module.exports = router;

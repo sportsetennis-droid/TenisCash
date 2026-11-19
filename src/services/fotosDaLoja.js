@@ -39,7 +39,8 @@ async function pendentes(db, actor, storeId, { limite = 300 } = {}) {
   if (!canSend(actor, storeId)) falha('Esta loja não está vinculada à sua conta.', 403);
   const linhas = await db.$queryRawUnsafe(
     'SELECT p.id, p.name, p.brand, p."imageUrl", p."imageUrls", p."aiContext", ' +
-    'json_agg(json_build_object(\'tamanho\', s.size, \'codigo\', s.barcode, \'estoque\', ss.stock) ORDER BY s.size) AS tamanhos ' +
+    // sem o código de barras: o vendedor tem de bipar a peça; a conferência é no servidor (auditoria 19/11)
+    'json_agg(json_build_object(\'tamanho\', s.size, \'estoque\', ss.stock) ORDER BY s.size) AS tamanhos ' +
     'FROM "Product" p JOIN "ProductSize" s ON s."productId" = p.id JOIN "StoreStock" ss ON ss."productSizeId" = s.id ' +
     'WHERE p.active AND ss."storeId" = $1 AND ss.stock > 0 GROUP BY p.id', storeId);
   const min = minPhotos();
@@ -64,7 +65,7 @@ async function reduzir(dataUrl, sharpLib) {
   const sharp = sharpLib || require('sharp');
   let out;
   try {
-    const img = sharp(buf, { failOn: 'error' }).rotate();
+    const img = sharp(buf, { failOn: 'error', limitInputPixels: 40e6 }).rotate();
     const meta = await img.metadata();
     if (!meta.width || !meta.height || meta.width < 300 || meta.height < 300) falha('Foto pequena demais: chegue mais perto da peça (mínimo 300 px).');
     out = await img.resize(1200, 1200, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 82, mozjpeg: true }).toBuffer();
@@ -100,22 +101,57 @@ async function salvar(db, actor, productId, { storeId, codigo, imagens, modo = '
   const finais = [...new Set(modo === 'trocar' ? novas : [...anteriores, ...novas])].slice(0, MAX_FOTOS);
 
   const ctx = contexto(produto);
+  // fotos que saem do card (trocar, ou o que passou de 5): links ficam no registro; base64 vai para o
+  // arquivo de fotos (auditoria 19/11: "trocar todas" não pode apagar sem volta foto curada em base64)
+  const saem = anteriores.filter((u) => !finais.includes(u));
   const registro = {
     em: agora.toISOString(), por: actor.name || null, userId: actor.id, storeId, codigo: tamanho.barcode, modo,
     enviadas: novas.length, total: finais.length,
-    // guarda as anteriores só quando são links (base64 já fica no histórico do banco e pesaria o card)
-    anteriores: [produto.imageUrl, ...galeria(produto)].filter((u) => typeof u === 'string' && /^https?:\/\//i.test(u)),
-    trocouBase64: modo === 'trocar' ? anteriores.filter((u) => u.startsWith('data:')).length : 0,
+    anteriores: anteriores.filter((u) => /^https?:\/\//i.test(u)),
+    arquivadas: saem.filter((u) => u.startsWith('data:')).length,
   };
   const historico = Array.isArray(ctx.fotosDaLojaHistorico) ? ctx.fotosDaLojaHistorico.slice(-9) : [];
-  // atômico: só grava se as fotos do card continuam as que foram lidas (não atropela edição do meio)
-  const n = await db.$executeRawUnsafe(
-    'UPDATE "Product" SET "imageUrl" = $2, "imageUrls" = $3::jsonb, "aiContext" = (COALESCE("aiContext", \'{}\'::jsonb) - \'fotoOficialTentativa\') || jsonb_build_object(\'fotosDaLoja\', $4::jsonb, \'fotosDaLojaHistorico\', $5::jsonb), "updatedAt" = now() ' +
-    'WHERE id = $1 AND (jsonb_typeof("aiContext") = \'object\' OR "aiContext" IS NULL) AND COALESCE("imageUrl", \'\') = $6::text AND COALESCE("imageUrls", \'[]\'::jsonb) = $7::jsonb',
-    produto.id, finais[0], JSON.stringify(finais.slice(1)), JSON.stringify(registro), JSON.stringify([...historico, registro]),
-    String(produto.imageUrl || ''), JSON.stringify(galeria(produto)));
-  if (n !== 1) falha('As fotos deste produto mudaram enquanto você enviava. Abra de novo e envie.', 409);
+  await garantirArquivo(db);
+  const run = typeof db.$transaction === 'function' ? (fn) => db.$transaction(fn) : (fn) => fn(db);
+  await run(async (tx) => {
+    for (const u of saem.filter((x) => x.startsWith('data:'))) {
+      await tx.$executeRawUnsafe('INSERT INTO "ProductPhotoArchive" (id, "productId", image, motivo, "userId", "createdAt") VALUES ($1, $2, $3, $4, $5, $6)',
+        require('crypto').randomUUID(), produto.id, u, 'fotos da loja: ' + modo, actor.id || null, agora);
+    }
+    // atômico: só grava se as fotos do card continuam as que foram lidas (não atropela edição do meio).
+    // "imageUrls" pode estar como JSON null ou não-lista: normaliza para lista vazia (auditoria 19/11).
+    const n = await tx.$executeRawUnsafe(
+      'UPDATE "Product" SET "imageUrl" = $2, "imageUrls" = $3::jsonb, "aiContext" = (COALESCE("aiContext", \'{}\'::jsonb) - \'fotoOficialTentativa\') || jsonb_build_object(\'fotosDaLoja\', $4::jsonb, \'fotosDaLojaHistorico\', $5::jsonb), "updatedAt" = now() ' +
+      'WHERE id = $1 AND (jsonb_typeof("aiContext") = \'object\' OR "aiContext" IS NULL) AND COALESCE("imageUrl", \'\') = $6::text ' +
+      'AND (CASE WHEN jsonb_typeof("imageUrls") = \'array\' THEN "imageUrls" ELSE \'[]\'::jsonb END) = $7::jsonb',
+      produto.id, finais[0], JSON.stringify(finais.slice(1)), JSON.stringify(registro), JSON.stringify([...historico, registro]),
+      String(produto.imageUrl || ''), JSON.stringify(galeria(produto)));
+    if (n !== 1) falha('As fotos deste produto mudaram enquanto você enviava. Abra de novo e envie.', 409);
+  });
   return { ok: true, productId: produto.id, fotos: finais.length, faltam: Math.max(0, minPhotos() - finais.length), codigo: tamanho.barcode };
 }
 
-module.exports = { pendentes, salvar, reduzir, fotosValidas, MAX_FOTOS };
+// Arquivo de fotos removidas (base64 curada não se perde). Aditivo e idempotente: o deploy não roda migração.
+let arquivoPronto = null;
+function garantirArquivo(db) {
+  if (!arquivoPronto) {
+    arquivoPronto = (async () => {
+      await db.$executeRawUnsafe('CREATE TABLE IF NOT EXISTS "ProductPhotoArchive" (id TEXT PRIMARY KEY, "productId" TEXT NOT NULL, image TEXT NOT NULL, motivo TEXT, "userId" TEXT, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT now())');
+      await db.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "ProductPhotoArchive_productId_idx" ON "ProductPhotoArchive" ("productId")');
+    })().catch((e) => { arquivoPronto = null; throw e; });
+  }
+  return arquivoPronto;
+}
+
+// Confere no servidor se o código bipado é deste card (a lista não manda os códigos ao navegador).
+async function conferir(db, actor, productId, { storeId, codigo } = {}) {
+  if (!storeId || !canSend(actor, storeId)) falha('Esta loja não está vinculada à sua conta.', 403);
+  const lido = String(codigo || '').trim();
+  if (!lido || lido.length > 60) return { ok: false, motivo: 'Bipe o código da peça.' };
+  const sizes = await db.productSize.findMany({ where: { productId }, select: { size: true, barcode: true } });
+  const variantes = new Set(barcodePolicy.variants(lido));
+  const t = sizes.find((s) => s.barcode && variantes.has(s.barcode));
+  return t ? { ok: true, tamanho: t.size } : { ok: false, motivo: 'Este código não é deste produto. Confira a peça.' };
+}
+
+module.exports = { pendentes, salvar, conferir, reduzir, fotosValidas, garantirArquivo, MAX_FOTOS };

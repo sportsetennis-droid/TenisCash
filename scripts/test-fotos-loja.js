@@ -86,6 +86,30 @@ const erro = async (p, status, rx) => { try { await p; } catch (e) { assert.stri
     const r2 = await fotos.salvar(prisma, vendedor, B.id, { storeId: lojaA.id, codigo: '7890000000028', imagens: [await jpg(702, 700, '#777')] });
     assert.strictEqual(r2.fotos, 5, 'completar com card cheio não passa de 5');
   });
+  await t('AUDITORIA 19/11: card com galeria em JSON null (sem foto nenhuma) recebe as fotos (não dá 409 eterno)', async () => {
+    const N = await mk(sufixo + '5', '7890000000059');
+    await prisma.$executeRawUnsafe('UPDATE "Product" SET "imageUrls" = \'null\'::jsonb WHERE id = $1', N.id);
+    const r = await fotos.salvar(prisma, vendedor, N.id, { storeId: lojaA.id, codigo: '7890000000059', imagens: [img1] });
+    assert.strictEqual(r.fotos, 1);
+  });
+  await t('AUDITORIA 19/11: "trocar" guarda no arquivo as fotos base64 que saem (nada se perde)', async () => {
+    const antes = (await prisma.product.findUnique({ where: { id: B.id } }));
+    const base64 = [antes.imageUrl, ...antes.imageUrls].filter((u) => u.startsWith('data:'));
+    await fotos.salvar(prisma, vendedor, B.id, { storeId: lojaA.id, codigo: '7890000000028', imagens: [img2], modo: 'trocar' });
+    const arq = await prisma.$queryRawUnsafe('SELECT image FROM "ProductPhotoArchive" WHERE "productId" = $1', B.id);
+    for (const u of base64.filter((x) => x !== (fotos.fotosValidas({ imageUrl: null, imageUrls: [] })[0]))) assert.ok(arq.some((a) => a.image === u) || u === (await prisma.product.findUnique({ where: { id: B.id } })).imageUrl, 'base64 arquivada');
+    assert.ok(arq.length >= base64.length - 1, 'arquivou ' + arq.length + ' de ' + base64.length);
+    const reg = (await prisma.product.findUnique({ where: { id: B.id } })).aiContext.fotosDaLoja;
+    assert.ok(reg.arquivadas >= 1 && !JSON.stringify(reg).includes('data:image'), 'registro sem base64 dentro do card');
+  });
+  await t('AUDITORIA 19/11: lista não entrega os códigos; conferência do código é no servidor com a mesma regra', async () => {
+    const l = await fotos.pendentes(prisma, gestor, lojaA.id);
+    assert.ok(l.length && l.every((x) => (x.tamanhos || []).every((t) => !('codigo' in t))), 'sem código na lista');
+    assert.deepStrictEqual(await fotos.conferir(prisma, vendedor, A.id, { storeId: lojaA.id, codigo: '07890000000011' }), { ok: true, tamanho: 'M' });
+    assert.strictEqual((await fotos.conferir(prisma, vendedor, A.id, { storeId: lojaA.id, codigo: '7890000000028' })).ok, false);
+    assert.strictEqual((await fotos.conferir(prisma, vendedor, A.id, { storeId: lojaA.id, codigo: '11' })).ok, false, 'pedaço do código não vale');
+    await erro(fotos.conferir(prisma, vendedor, A.id, { storeId: lojaB.id, codigo: '7890000000011' }), 403);
+  });
   await limpar();
   console.log(out.join('\n'));
   console.log((process.exitCode ? 'FALHOU' : 'OK') + ' — ' + pass + ' testes passaram');
@@ -95,6 +119,7 @@ const erro = async (p, status, rx) => { try { await p; } catch (e) { assert.stri
   async function limpar() {
     const prods = await prisma.product.findMany({ where: { sku: { startsWith: sufixo } }, select: { id: true } });
     const ids = prods.map((p) => p.id);
+    await prisma.$executeRawUnsafe('DELETE FROM "ProductPhotoArchive" WHERE "productId" = ANY($1::text[])', ids).catch(() => {});
     await prisma.storeStock.deleteMany({ where: { storeId: { in: [lojaA.id, lojaB.id] } } });
     await prisma.productSize.deleteMany({ where: { productId: { in: ids } } });
     await prisma.product.deleteMany({ where: { id: { in: ids } } });
