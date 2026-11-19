@@ -100,7 +100,8 @@ async function collectEvents({ sport } = {}) {
       status: 'FINISHED',
       homeEntryId: { not: null },
       awayEntryId: { not: null },
-      ...(sport ? { tournament: { sport } } : {}),
+      // Liga F6: torneio suspenso pela moderação não entra no rating (nem no ranking de times)
+      tournament: { suspendedAt: null, ...(sport ? { sport } : {}) },
     },
     select: {
       id: true, stage: true, scheduledAt: true, updatedAt: true,

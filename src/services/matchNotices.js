@@ -56,7 +56,7 @@ async function loadMatch(matchId) {
       homeEntry: { select: { id: true, name: true } },
       awayEntry: { select: { id: true, name: true } },
       category: { select: { name: true, gameRules: true } },
-      tournament: { select: { id: true, slug: true, name: true, sport: true, archivedAt: true } },
+      tournament: { select: { id: true, slug: true, name: true, sport: true, archivedAt: true, suspendedAt: true } },
     },
   });
 }
@@ -133,6 +133,7 @@ async function run(matchId, opts = {}) {
   if (!m) return { skipped: 'jogo não existe' };
   if (!DONE.includes(m.status)) return { skipped: 'jogo não encerrado' };
   if (!m.tournament || m.tournament.archivedAt) return { skipped: 'torneio arquivado' };
+  if (m.tournament.suspendedAt) return { skipped: 'torneio suspenso' }; // F6
   if (require('./clubIdentity').isExcludedSlug(m.tournament.slug)) return { skipped: 'lista de exclusão (torneio real em andamento)' };
   if (m.stage === 'PICKUP') return { skipped: 'racha' };
 
@@ -211,7 +212,7 @@ async function unclaimed(matchId, { create = false, actorUserId = null, inviteEn
   const line = closed ? matchLine(m, names) : `${names.home} × ${names.away}`;
   const entryIds = [m.homeEntryId, m.awayEntryId].filter(Boolean);
   const roster = entryIds.length
-    ? await prisma.rosterPlayer.findMany({ where: { entryId: { in: entryIds }, userId: null }, select: { id: true, name: true, number: true, role: true, entryId: true }, orderBy: [{ entryId: 'asc' }, { number: 'asc' }, { name: 'asc' }] })
+    ? await prisma.rosterPlayer.findMany({ where: { entryId: { in: entryIds }, userId: null, minorProfileId: null }, select: { id: true, name: true, number: true, role: true, entryId: true }, orderBy: [{ entryId: 'asc' }, { number: 'asc' }, { name: 'asc' }] })
     : [];
   const ri = require('./rosterInvite');
   const players = [];

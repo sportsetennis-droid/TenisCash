@@ -8,6 +8,9 @@ const jwt = require('jsonwebtoken');
 const { prisma, authMiddleware, JWT_SECRET } = require('../middleware');
 const clubs = require('../services/clubs');
 const { limits, onlyWhen } = require('../services/ligaRateLimit');
+const contentFilter = require('../services/contentFilter');
+// Liga F6: nome/descrição do clube passam pelo filtro de texto ofensivo (400 em PT, sem repetir a palavra)
+const cleanClub = (b) => contentFilter.assertClean([{ field: 'club', value: (b || {}).name }, { field: 'text', value: (b || {}).description }]);
 const hasCrest = (req) => !!(req.body && Object.prototype.hasOwnProperty.call(req.body, 'crestUrl'));
 
 const router = express.Router();
@@ -34,7 +37,7 @@ async function viewerOf(req) {
   } catch (_) { return {}; }
 }
 
-router.post('/', authMiddleware, limits.club, onlyWhen(hasCrest, limits.upload), wrap((req) => clubs.createClub(ctx(req), req.body || {}), 201));
+router.post('/', authMiddleware, limits.club, onlyWhen(hasCrest, limits.upload), wrap((req) => { cleanClub(req.body); return clubs.createClub(ctx(req), req.body || {}); }, 201));
 router.get('/mine', authMiddleware, wrap(async (req) => ({ clubs: await clubs.myClubs(req.userId) })));
 router.post('/join', authMiddleware, wrap((req) => clubs.joinByCode(ctx(req), (req.body || {}).code)));
 
@@ -44,7 +47,7 @@ router.get('/:idOrSlug', async (req, res) => {
     res.json(await clubs.publicView(req.params.idOrSlug, await viewerOf(req)));
   } catch (e) { send(res, e); }
 });
-router.patch('/:idOrSlug', authMiddleware, onlyWhen(hasCrest, limits.upload), wrap((req) => clubs.updateClub(ctx(req), req.params.idOrSlug, req.body || {})));
+router.patch('/:idOrSlug', authMiddleware, onlyWhen(hasCrest, limits.upload), wrap((req) => { cleanClub(req.body); return clubs.updateClub(ctx(req), req.params.idOrSlug, req.body || {}); }));
 
 router.get('/:idOrSlug/invite', authMiddleware, wrap((req) => clubs.inviteInfo(ctx(req), req.params.idOrSlug)));
 router.post('/:idOrSlug/invite-code', authMiddleware, wrap((req) => clubs.inviteInfo(ctx(req), req.params.idOrSlug, { regenerate: true })));

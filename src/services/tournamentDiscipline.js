@@ -166,7 +166,7 @@ async function seriesChampions(slug) {
   // Liga F1: histórico público da série = só torneios PÚBLICOS e não arquivados
   // (não listado/privado/arquivado ficam fora da página da série).
   const tournaments = await prisma.tournament.findMany({
-    where: { seriesSlug: key, visibility: 'public', archivedAt: null },
+    where: { seriesSlug: key, visibility: 'public', archivedAt: null, suspendedAt: null }, // F6: suspenso fora
     include: { categories: true },
   });
   if (!tournaments.length) return { series: { slug: key, name: null }, editions: [], titles: [] };

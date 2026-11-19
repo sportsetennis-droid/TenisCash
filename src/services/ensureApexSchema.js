@@ -66,6 +66,88 @@ const STATEMENTS = [
   `DO $$ BEGIN IF to_regclass('"TournamentStanding"') IS NOT NULL THEN CREATE INDEX IF NOT EXISTS "TournamentStanding_tournamentId_idx" ON "TournamentStanding"("tournamentId"); END IF; END $$`,
   `DO $$ BEGIN IF to_regclass('"TournamentPost"') IS NOT NULL THEN CREATE INDEX IF NOT EXISTS "TournamentPost_tournamentId_pinned_createdAt_idx" ON "TournamentPost"("tournamentId", "pinned", "createdAt"); END IF; END $$`,
   `DO $$ BEGIN IF to_regclass('"PickupAttendance"') IS NOT NULL THEN CREATE INDEX IF NOT EXISTS "PickupAttendance_playerId_idx" ON "PickupAttendance"("playerId"); END IF; END $$`,
+  // Liga Aberta F6 — moderação, privacidade e menores. NO INÍCIO da lista, logo depois dos
+  // blocos F4/F5 (que os testes deles exigem nas primeiras posições) e ANTES de tudo o que é
+  // mais antigo: as rotas e o tournamentAccess leem essas colunas. Coluna em tabela que pode
+  // não existir num banco novo vai com to_regclass (repetida no FIM). Aditivo, nunca apaga.
+  `DO $$ BEGIN IF to_regclass('"Tournament"') IS NOT NULL THEN ALTER TABLE "Tournament" ADD COLUMN IF NOT EXISTS "suspendedAt" TIMESTAMP(3); ALTER TABLE "Tournament" ADD COLUMN IF NOT EXISTS "suspendedReason" TEXT; ALTER TABLE "Tournament" ADD COLUMN IF NOT EXISTS "suspendedBy" TEXT; END IF; END $$`,
+  `DO $$ BEGIN IF to_regclass('"TournamentPost"') IS NOT NULL THEN ALTER TABLE "TournamentPost" ADD COLUMN IF NOT EXISTS "hiddenAt" TIMESTAMP(3); ALTER TABLE "TournamentPost" ADD COLUMN IF NOT EXISTS "hiddenBy" TEXT; END IF; END $$`,
+  `DO $$ BEGIN IF to_regclass('"RosterPlayer"') IS NOT NULL THEN ALTER TABLE "RosterPlayer" ADD COLUMN IF NOT EXISTS "minorProfileId" TEXT; END IF; END $$`,
+  `DO $$ BEGIN IF to_regclass('"MediaObject"') IS NOT NULL THEN ALTER TABLE "MediaObject" ADD COLUMN IF NOT EXISTS "blockedAt" TIMESTAMP(3); ALTER TABLE "MediaObject" ADD COLUMN IF NOT EXISTS "blockedReason" TEXT; END IF; END $$`,
+  `CREATE TABLE IF NOT EXISTS "ContentReport" (
+     "id" TEXT NOT NULL,
+     "reporterId" TEXT NOT NULL,
+     "targetType" TEXT NOT NULL,
+     "targetId" TEXT NOT NULL,
+     "tournamentId" TEXT,
+     "context" JSONB,
+     "reason" TEXT NOT NULL,
+     "text" TEXT,
+     "status" TEXT NOT NULL DEFAULT 'OPEN',
+     "resolution" TEXT,
+     "reviewedBy" TEXT,
+     "reviewedAt" TIMESTAMP(3),
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "ContentReport_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE INDEX IF NOT EXISTS "ContentReport_status_createdAt_idx" ON "ContentReport"("status", "createdAt")`,
+  `CREATE INDEX IF NOT EXISTS "ContentReport_targetType_targetId_status_idx" ON "ContentReport"("targetType", "targetId", "status")`,
+  `CREATE INDEX IF NOT EXISTS "ContentReport_reporterId_createdAt_idx" ON "ContentReport"("reporterId", "createdAt")`,
+  // a mesma pessoa não tem 2 denúncias EM ABERTO do mesmo alvo (trava contra corrida; o Prisma não descreve índice parcial)
+  `CREATE UNIQUE INDEX IF NOT EXISTS "ContentReport_open_reporter_target_key" ON "ContentReport"("reporterId", "targetType", "targetId") WHERE "status" = 'OPEN'`,
+  `CREATE TABLE IF NOT EXISTS "ModerationLog" (
+     "id" TEXT NOT NULL,
+     "actorId" TEXT NOT NULL,
+     "action" TEXT NOT NULL,
+     "targetType" TEXT NOT NULL,
+     "targetId" TEXT NOT NULL,
+     "reportId" TEXT,
+     "tournamentId" TEXT,
+     "before" JSONB,
+     "after" JSONB,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "ModerationLog_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE INDEX IF NOT EXISTS "ModerationLog_createdAt_idx" ON "ModerationLog"("createdAt")`,
+  `CREATE INDEX IF NOT EXISTS "ModerationLog_targetType_targetId_idx" ON "ModerationLog"("targetType", "targetId")`,
+  `CREATE TABLE IF NOT EXISTS "OrganizerSuspension" (
+     "userId" TEXT NOT NULL,
+     "reason" TEXT,
+     "suspendedBy" TEXT NOT NULL,
+     "suspendedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     "liftedAt" TIMESTAMP(3),
+     "liftedBy" TEXT,
+     CONSTRAINT "OrganizerSuspension_pkey" PRIMARY KEY ("userId")
+   )`,
+  `CREATE TABLE IF NOT EXISTS "PrivacyRequest" (
+     "id" TEXT NOT NULL,
+     "userId" TEXT NOT NULL,
+     "kind" TEXT NOT NULL,
+     "status" TEXT NOT NULL DEFAULT 'DONE',
+     "summary" JSONB,
+     "note" TEXT,
+     "resolvedBy" TEXT,
+     "resolvedAt" TIMESTAMP(3),
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "PrivacyRequest_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE INDEX IF NOT EXISTS "PrivacyRequest_status_createdAt_idx" ON "PrivacyRequest"("status", "createdAt")`,
+  `CREATE INDEX IF NOT EXISTS "PrivacyRequest_userId_createdAt_idx" ON "PrivacyRequest"("userId", "createdAt")`,
+  `CREATE TABLE IF NOT EXISTS "MinorProfile" (
+     "id" TEXT NOT NULL,
+     "guardianUserId" TEXT NOT NULL,
+     "firstName" TEXT NOT NULL,
+     "birthDate" TEXT NOT NULL,
+     "ageVerification" TEXT NOT NULL DEFAULT 'NONE',
+     "consentVersion" TEXT NOT NULL,
+     "consentTextHash" TEXT NOT NULL,
+     "consentAt" TIMESTAMP(3) NOT NULL,
+     "status" TEXT NOT NULL DEFAULT 'ACTIVE',
+     "revokedAt" TIMESTAMP(3),
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "MinorProfile_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE INDEX IF NOT EXISTS "MinorProfile_guardianUserId_idx" ON "MinorProfile"("guardianUserId")`,
   // Liga Aberta F3 — criação em 2 minutos (regras por categoria, racha, link do time).
   // PRIMEIRO da lista (as rotas novas leem essas colunas/tabelas). Aditivo, nunca apaga.
   `ALTER TABLE "TournamentCategory" ADD COLUMN IF NOT EXISTS "gameRules" JSONB`,
@@ -1083,6 +1165,15 @@ const STATEMENTS = [
   `ALTER TABLE "ClubNotifyPref" ADD COLUMN IF NOT EXISTS "whatsapp" JSONB`,
   `ALTER TABLE "TeamInvite" ADD COLUMN IF NOT EXISTS "publicToken" TEXT`,
   `ALTER TABLE "RosterInvite" ADD COLUMN IF NOT EXISTS "recoverable" BOOLEAN NOT NULL DEFAULT false`,
+  // Liga Aberta F6 (repetido para banco novo: as tabelas acima já existem aqui)
+  `ALTER TABLE "Tournament" ADD COLUMN IF NOT EXISTS "suspendedAt" TIMESTAMP(3)`,
+  `ALTER TABLE "Tournament" ADD COLUMN IF NOT EXISTS "suspendedReason" TEXT`,
+  `ALTER TABLE "Tournament" ADD COLUMN IF NOT EXISTS "suspendedBy" TEXT`,
+  `ALTER TABLE "TournamentPost" ADD COLUMN IF NOT EXISTS "hiddenAt" TIMESTAMP(3)`,
+  `ALTER TABLE "TournamentPost" ADD COLUMN IF NOT EXISTS "hiddenBy" TEXT`,
+  `ALTER TABLE "RosterPlayer" ADD COLUMN IF NOT EXISTS "minorProfileId" TEXT`,
+  `ALTER TABLE "MediaObject" ADD COLUMN IF NOT EXISTS "blockedAt" TIMESTAMP(3)`,
+  `ALTER TABLE "MediaObject" ADD COLUMN IF NOT EXISTS "blockedReason" TEXT`,
 ];
 
 // Busca tolerante a erro (pg_trgm). Extensão + índices GIN de trigram em

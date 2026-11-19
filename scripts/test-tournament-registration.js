@@ -136,7 +136,8 @@ async function t(name, fn) {
       r = await call(API + '/public/' + tour.slug + '/register', { body: { ...regBody(catA, athlete('Ana Atleta', '1995-03-10'), { contactPhone: ath1.phone }), answers: {} } });
       assert.equal(r.status, 400); assert.match(r.data.error, /Camisa/);
       r = await call(API + '/public/' + tour.slug + '/register', { body: regBody(catA, athlete('Kid', '2015-05-05'), { contactPhone: ath1.phone }) });
-      assert.equal(r.status, 400); assert.match(r.data.error, /menor/);
+      // Liga F6: com LIGA_MINORS desligado (padrão) a inscrição de menor é recusada (403) sem coletar nada
+      assert.equal(r.status, require('../src/services/ligaMinors').enabled() ? 400 : 403); assert.match(r.data.error, /menor/);
     });
     await t('inscrição pública (sem login) → aguardando pagamento, termo registrado', async () => {
       const r = await call(API + '/public/' + tour.slug + '/register', { body: regBody(catA, athlete('Ana Atleta', '1995-03-10'), { contactPhone: ath1.phone }) });

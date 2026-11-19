@@ -192,4 +192,14 @@ async function emitMatch(matchId, type, extra = {}) {
   }
 }
 
-module.exports = { subscribe, publish, emitMatch, matchSnapshot, liveDataFor, attachLive, connectionCount };
+// Liga F6: torneio suspenso/escondido → derruba as conexões abertas (quem reconectar recebe 404)
+function closeAll(tournamentId) {
+  const set = clients.get(tournamentId);
+  if (!set) return 0;
+  let n = 0;
+  for (const res of [...set]) { try { res.end(); n++; } catch (_) { /* já fechou */ } }
+  clients.delete(tournamentId);
+  return n;
+}
+
+module.exports = { subscribe, publish, emitMatch, matchSnapshot, liveDataFor, attachLive, connectionCount, closeAll };

@@ -593,6 +593,7 @@ app.use('/api/club-ranking', require('./routes/clubRanking')); // F5: Glicko-2 (
 app.use('/api/club-push', require('./routes/clubPush')); // F5: Web Push do Club + preferências
 app.use('/api/clubs', require('./routes/clubs')); // F5: clube permanente (membros, convite, vínculo a torneio)
 app.use('/clube', require('./routes/clubPage')); // F5: página pública /clube/:slug
+app.use('/api/liga', require('./routes/ligaSafety')); // Liga F6: denúncia, moderação, privacidade e menores (LIGA_MINORS)
 app.use('/api/admin/rede', require('./routes/rede')); // Rede Neural de Agentes (painel/propostas/objetivos)
 app.use('/api/medals', require('./routes/medals')); // medalhas digitais (Open Badges 3.0)
 app.use('/api/search', require('./routes/search')); // busca tolerante a erro (pg_trgm) + catálogo offline do vendedor
@@ -1435,19 +1436,19 @@ app.get('/t/:slug', async (req, res) => {
     // Mural de avisos — renderizado no servidor. Liga F5: 1ª página (20) + "Ver mais"
     // por cursor (GET /api/tournaments/:id/posts?limit=&cursor=); imagem do aviso por /media.
     const pag = require('./services/pagination');
-    const postPage = await pag.findPage(prisma.tournamentPost, { where: { tournamentId: t.id } }, pag.POST_SPEC, { limit: 20, cursor: null });
+    const postPage = await pag.findPage(prisma.tournamentPost, { where: { tournamentId: t.id, hiddenAt: null } }, pag.POST_SPEC, { limit: 20, cursor: null }); // F6: oculto fora
     const posts = postPage.items;
     for (const p of posts) p.imageUrl = await mediaStore.publicUrlFor(p.imageUrl);
     const fmtDateTime = (d) =>
       new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Fortaleza' });
     const muralHtml = posts.length
       ? '<div class="sec-h">📢 Mural de avisos</div><div id="mural">' + posts.map((p) =>
-          '<div class="post">' +
+          '<div class="post" data-post-id="' + apexEsc(p.id) + '">' +
           (p.pinned ? '<span class="pin">📌 fixado</span>' : '') +
           (p.title ? '<div class="post-t">' + apexEsc(p.title) + '</div>' : '') +
           '<div class="post-b">' + apexEsc(p.body) + '</div>' +
           (p.imageUrl ? '<img class="post-img" src="' + apexEsc(p.imageUrl) + '" alt="" loading="lazy">' : '') +
-          '<div class="post-d">' + apexEsc(fmtDateTime(p.createdAt)) + '</div>' +
+          '<div class="post-d">' + apexEsc(fmtDateTime(p.createdAt)) + ' · <button type="button" class="rep-link" data-report="post" data-report-id="' + apexEsc(p.id) + '" data-testid="report-post">Denunciar</button></div>' +
           '</div>'
         ).join('') + '</div>' +
         (postPage.nextCursor ? '<button class="more-btn" type="button" id="muralMore" data-testid="mural-more" data-cursor="' + apexEsc(postPage.nextCursor) + '">Ver mais avisos</button>' : '')
@@ -1593,6 +1594,7 @@ app.get('/t/:slug', async (req, res) => {
   .post-t{font-weight:800;font-size:15px;margin-bottom:3px;color:#fff}
   .post-b{font-size:14px;white-space:pre-wrap;color:#c9d0dc}
   .post-d{font-size:11px;color:var(--mut);margin-top:7px}
+  .rep-link{background:none;border:0;color:var(--mut);font-weight:600;font-size:11px;font-family:inherit;text-decoration:underline;cursor:pointer;min-height:44px;min-width:44px;padding:0 4px;display:inline-flex;align-items:center;vertical-align:middle}
   .post-img{display:block;max-width:100%;max-height:420px;border-radius:10px;margin-top:9px;object-fit:contain}
   .more-btn{display:block;width:100%;min-height:44px;margin:4px 0 12px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:#fff;font-weight:800;font-size:14px;cursor:pointer}
   .footer{text-align:center;padding:26px 16px;color:var(--mut);font-size:11px;letter-spacing:.3px}
@@ -1670,13 +1672,16 @@ app.get('/t/:slug', async (req, res) => {
 
     <div class="cta-liga"><div><b>Organize o seu campeonato</b><span>Tabela, súmula e ao vivo no celular em 2 minutos.</span></div><a class="cta-btn" href="/criar-liga" data-testid="criar-liga">Criar minha liga</a></div>
 
-    <div class="footer"><span class="livedot" id="livedot" style="display:none" title="ao vivo conectado"></span>${PUBLIC_DOMAIN} · Club Sports &amp; Tennis</div>
+    <div class="footer"><span class="livedot" id="livedot" style="display:none" title="ao vivo conectado"></span>${PUBLIC_DOMAIN} · Club Sports &amp; Tennis · <button type="button" class="rep-link" data-report="tournament" data-testid="report-open">Denunciar</button></div>
   </div>
 <script src="/club/live-sse.js"></script>
 <script src="/club/torneio-midia.js"></script>
+<script src="/club/denunciar.js"></script>
 <script>
 (function(){
   var TID = ${JSON.stringify(t.id)};
+  // Liga F6: "Denunciar" (rodapé e cada aviso) → folha de baixo
+  if(window.ClubReport) ClubReport.bind({tournamentId:TID,tournamentName:${jsStr(t.name)},hasBanner:${bannerSrc ? 'true' : 'false'}});
   var SLUG = ${jsStr(t.slug)};
   var TNAME = ${jsStr(t.name)};
   var INIT = ${jsStr(initMatch)};
@@ -2000,8 +2005,8 @@ app.get('/t/:slug', async (req, res) => {
       btn.disabled=true;btn.textContent='Carregando…';
       fetch(cb('/api/tournaments/'+encodeURIComponent(TID)+'/posts?limit=20&cursor='+encodeURIComponent(cur)),FO).then(function(r){return r.json();}).then(function(j){
         (j.posts||[]).forEach(function(p){
-          var d=document.createElement('div');d.className='post';
-          d.innerHTML=(p.pinned?'<span class="pin">📌 fixado</span>':'')+(p.title?'<div class="post-t">'+esc(p.title)+'</div>':'')+'<div class="post-b">'+esc(p.body)+'</div>'+(p.imageUrl?'<img class="post-img" src="'+esc(p.imageUrl)+'" alt="" loading="lazy">':'')+'<div class="post-d">'+esc(fd(p.createdAt))+'</div>';
+          var d=document.createElement('div');d.className='post';d.setAttribute('data-post-id',p.id);
+          d.innerHTML=(p.pinned?'<span class="pin">📌 fixado</span>':'')+(p.title?'<div class="post-t">'+esc(p.title)+'</div>':'')+'<div class="post-b">'+esc(p.body)+'</div>'+(p.imageUrl?'<img class="post-img" src="'+esc(p.imageUrl)+'" alt="" loading="lazy">':'')+'<div class="post-d">'+esc(fd(p.createdAt))+' · <button type="button" class="rep-link" data-report="post" data-report-id="'+esc(p.id)+'" data-testid="report-post">Denunciar</button></div>';
           box.appendChild(d);
         });
         if(j.nextCursor){btn.setAttribute('data-cursor',j.nextCursor);btn.disabled=false;btn.textContent='Ver mais avisos';}
@@ -2107,7 +2112,8 @@ app.get('/atleta/:username', async (req, res) => {
   try {
     const engine = require('./services/tournamentEngine');
     const userId = await engine.resolveUserId(req.params.username);
-    if (!userId) {
+    // Liga F6: atleta que apagou os dados esportivos não tem mais página pública
+    if (!userId || (await require('./services/ligaPrivacy').isErased(userId))) {
       return res
         .status(404)
         .send('<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h1>Atleta não encontrado</h1></body></html>');
@@ -2354,6 +2360,8 @@ app.get('/atleta/:username', async (req, res) => {
 
 // Liga F2 — convite de elenco: o jogador abre o link, entra/cria conta e reivindica a vaga
 // Liga Aberta F3 — criação em 2 minutos (assistente), racha e link do time (páginas mobile-first)
+app.get('/moderacao', (req, res) => { res.set('Cache-Control', 'no-store'); res.set('X-Robots-Tag', 'noindex'); res.sendFile(path.join(__dirname, '../public/moderacao.html'), { cacheControl: false }); });
+app.get('/privacidade-club', (req, res) => { res.set('Cache-Control', 'no-store'); res.sendFile(path.join(__dirname, '../public/privacidade-club.html'), { cacheControl: false }); });
 app.get('/criar-liga', (req, res) => { res.set('Cache-Control', 'no-store'); res.sendFile(path.join(__dirname, '../public/criar-liga.html'), { cacheControl: false }); });
 app.get('/racha/:slug', (req, res) => { res.set('Cache-Control', 'no-store'); res.set('X-Robots-Tag', 'noindex'); res.sendFile(path.join(__dirname, '../public/racha.html'), { cacheControl: false }); });
 app.get('/convite-time/:token', (req, res) => { res.set('Cache-Control', 'no-store'); res.set('Referrer-Policy', 'no-referrer'); res.sendFile(path.join(__dirname, '../public/convite-time.html'), { cacheControl: false }); });

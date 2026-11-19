@@ -203,7 +203,7 @@ async function runGameSoon(now = new Date(), { minMinutes = 25, maxMinutes = 35 
   const to = new Date(now.getTime() + maxMinutes * 60000);
   const matches = await prisma.tournamentMatch.findMany({
     // Liga F1: torneio arquivado não manda push
-    where: { status: 'SCHEDULED', scheduledAt: { gte: from, lt: to }, homeEntryId: { not: null }, awayEntryId: { not: null }, tournament: { archivedAt: null } },
+    where: { status: 'SCHEDULED', scheduledAt: { gte: from, lt: to }, homeEntryId: { not: null }, awayEntryId: { not: null }, tournament: { archivedAt: null, suspendedAt: null } }, // F6: suspenso não avisa
     include: {
       tournament: { select: { name: true } },
       homeEntry: { select: { id: true, name: true, members: { select: { userId: true } } } },

@@ -530,7 +530,7 @@ class ArtError extends Error { constructor(status, msg) { super(msg); this.statu
 async function loadTournament(idOrSlug) {
   return prisma.tournament.findFirst({
     where: { OR: [{ id: idOrSlug }, { slug: idOrSlug }] },
-    select: { id: true, slug: true, name: true, sport: true, status: true, bannerUrl: true, city: true, state: true, startDate: true, endDate: true, prizeDescription: true, visibility: true, archivedAt: true },
+    select: { id: true, slug: true, name: true, sport: true, status: true, bannerUrl: true, city: true, state: true, startDate: true, endDate: true, prizeDescription: true, visibility: true, archivedAt: true, suspendedAt: true },
   });
 }
 
@@ -703,7 +703,7 @@ async function buildData(t, tipo, q) {
     const handle = q.handle || q.atleta;
     if (!handle) throw new ArtError(400, 'informe handle');
     const userId = await engine.resolveUserId(String(handle));
-    if (!userId) throw new ArtError(404, 'atleta não encontrado');
+    if (!userId || (await require('./ligaPrivacy').isErased(userId))) throw new ArtError(404, 'atleta não encontrado'); // F6
     // Liga F2: números do HISTÓRICO único (todas as ligas), só torneios PÚBLICOS —
     // a arte é imagem pública (og:image), nunca mostra torneio privado.
     const card = await engine.buildAthleteCard(userId, { viewer: null });
@@ -787,12 +787,12 @@ async function buildArt(idOrSlug, tipo, query = {}, opts = {}) {
     t = { id: null, slug: '', name: 'Club Sports & Tennis', bannerUrl: null };
   } else {
     t = await loadTournament(idOrSlug);
-    if (!t || t.archivedAt || (t.visibility === 'private' && !opts.allowPrivate)) throw new ArtError(404, 'torneio não encontrado');
+    if (!t || t.archivedAt || ((t.visibility === 'private' || t.suspendedAt) && !opts.allowPrivate)) throw new ArtError(404, 'torneio não encontrado'); // F6: suspenso = 404 (a rota confere dono/admin)
   }
   const data = t.id ? await buildData(t, tipo, query) : await buildData({ ...t, id: '__none__' }, tipo, query);
   const hash = crypto.createHash('sha1').update(tipo + '|' + formato + '|' + JSON.stringify(data)).digest('hex');
   const fmt = FORMATS[formato];
-  const priv = !!(t && t.visibility === 'private'); // arte de torneio privado não vai pra cache público
+  const priv = !!(t && (t.visibility === 'private' || t.suspendedAt)); // arte de torneio privado/suspenso não vai pra cache público
   if (PNG_CACHE.has(hash)) return { png: PNG_CACHE.get(hash), hash, width: fmt.w, height: fmt.h, cached: true, private: priv };
   if (INFLIGHT.has(hash)) return { png: await INFLIGHT.get(hash), hash, width: fmt.w, height: fmt.h, cached: true, private: priv };
   const p = renderPng(tipo, formato, data);

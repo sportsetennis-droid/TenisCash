@@ -1108,13 +1108,16 @@ async function renderHome(){
       '<div class="av">'+sportIc(t.sport)+'</div>'+
       '<div class="grow"><div class="nm wrap2">'+esc(t.name)+'</div>'+
       '<div class="sub">'+esc(FMT_LABEL[t.format]||t.format)+' · '+(t._count?t._count.entries:0)+' inscritos</div>'+
-      '<div class="pills">'+stPill(st)+(t.visibility&&t.visibility!=='public'?'<span class="pill g">'+esc(VIS_LBL[t.visibility]||t.visibility)+'</span>':'')+'</div></div>'+CHV+'</div>';});}
+      '<div class="pills">'+stPill(st)+(t.visibility&&t.visibility!=='public'?'<span class="pill g">'+esc(VIS_LBL[t.visibility]||t.visibility)+'</span>':'')+(t.suspendedAt?'<span class="pill dang" data-testid="pill-suspended">Suspenso</span>':'')+'</div></div>'+CHV+'</div>';});}
   if(isGlobalAdminMe()){ // Liga F1: admin global restaura qualquer torneio arquivado (até 30 dias)
     let arq=[];try{arq=((await api('/mine?archived=1')).tournaments||[]).filter(t=>!mineIds.has(t.id));}catch(e){}
     if(arq.length){html+='<div class="sp12"></div><div class="grp">Excluídos (admin)</div>';
       arq.forEach(t=>{const left=Math.ceil((new Date(t.archivedAt).getTime()+30*864e5-Date.now())/864e5);
         html+='<div class="listitem"><div class="av">'+sportIc(t.sport)+'</div><div class="grow"><div class="nm wrap2">'+esc(t.name)+'</div><div class="sub">'+(left>0?'restaura em até '+left+' dia(s)':'prazo encerrado')+'</div></div>'+
           (left>0?'<button class="btn sm gho" data-act="restore-t" data-id="'+t.id+'">Restaurar</button>':'')+'</div>';});}
+  }
+  if(isGlobalAdminMe()){ // Liga F6: fila de denúncias e pedidos de privacidade
+    html+='<div class="sp12"></div><a class="btn sm sec full" href="/moderacao" data-testid="moderation-link">'+I.flag+'Moderação (denúncias)</a>';
   }
   if(isGlobalAdminMe()){ // Liga F0: a importação da tabela oficial é só do admin do sistema
     html+='<div class="sp12"></div><button class="btn sm sec full" data-act="import-futsal">'+I.download+'Importar II Futsal Master Cup 2026</button>';
@@ -1143,6 +1146,7 @@ async function renderHome(){
     linkRow('data-act="nav" data-h="plano" data-testid="plan-link"',I.trophy,'Meu plano')+
     linkRow('href="/atleta/'+esc(handle)+'"',I.id,'Ver meu card de atleta')+
     linkRow('href="/club.html"',I.ext,'App do atleta')+
+    linkRow('href="/privacidade-club" data-testid="privacy-link"',I.id,'Privacidade: baixar ou apagar meus dados')+
     linkRow('data-act="logout"',I.out,'Sair','','danger')+'</div>';
   html+='</div></div></div>';
   app.innerHTML=html;
@@ -1304,7 +1308,9 @@ async function renderTournament(id){
   const isOwner=ME&&(t.ownerId===ME.id);
   let MR={caps:{},roles:[],teams:[]};
   try{MR=await api('/'+id+'/my-roles');}catch(e){}
-  const canManage=isOwner||!!(MR.caps&&MR.caps.manageTournament);
+  // Liga F6: suspenso pela moderação = só leitura (o admin global ainda gerencia)
+  const SUSP=MR.suspension||(t.suspendedAt?{suspendedAt:t.suspendedAt,reason:t.suspendedReason}:null);
+  const canManage=(SUSP&&!isGlobalAdminMe())?false:(isOwner||!!(MR.caps&&MR.caps.manageTournament));
   CURPERM={canManage:canManage,canApprove:canManage};
   CURCAPS=MR.caps||{};
   REF_MODE=MR.refereeAssignment||null;
@@ -1327,6 +1333,9 @@ async function renderTournament(id){
     '<button class="btn sm gho" data-act="m-embed" data-slug="'+esc(t.slug)+'" data-name="'+esc(t.name)+'">'+I.link+'Incorporar</button></div>';
   hero+='</div>';
   html+=hero;
+  if(SUSP)html+='<div class="card" data-testid="suspended-banner" style="border:2px solid #d70015"><div class="nm" style="color:#d70015">Torneio suspenso pela moderação</div>'+
+    '<p class="muted" style="margin:6px 0 0">Ele saiu do ar para o público (página, vitrine, artes e ao vivo). Nada pode ser alterado até a revisão.'+(SUSP.reason?' Motivo: '+esc(SUSP.reason)+'.':'')+'</p></div>';
+  if(MR.organizerSuspended)html+='<div class="card" data-testid="organizer-suspended-banner" style="border:2px solid #d70015"><div class="nm" style="color:#d70015">Sua conta de organizador está suspensa</div><p class="muted" style="margin:6px 0 0">Você não cria torneio novo nem gerencia torneios até a revisão da moderação.</p></div>';
 
   if(!canManage){
     const myRoles=MR.roles||[];

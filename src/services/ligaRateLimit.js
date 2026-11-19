@@ -92,6 +92,10 @@ const limits = {
   rosterClaim: make({ max: 20, message: 'Muitas tentativas de entrar no elenco. Tente de novo em 1 hora.' }),
   mergeStart: make({ max: 5, message: 'Muitos pedidos de junção de perfil. Tente de novo em 1 hora.' }),
   mergeConfirm: make({ max: 10, message: 'Muitas tentativas de confirmar a junção. Tente de novo em 1 hora.' }),
+  // Liga F6 — denúncia e privacidade
+  report: make({ max: 20, message: 'Muitas denúncias em pouco tempo. Tente de novo em 1 hora.' }),
+  privacyExport: make({ max: 5, message: 'Muitos pedidos de cópia dos dados. Tente de novo em 1 hora.' }),
+  privacyDelete: make({ max: 5, message: 'Muitas tentativas de apagar os dados. Tente de novo em 1 hora.' }),
 };
 
 module.exports = { limits, make, onlyWhen, userOrIp, ipKey, phoneFromBody };

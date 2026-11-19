@@ -49,6 +49,8 @@ async function visibleTournamentIds(userId, tournaments, viewer) {
   const out = new Set();
   for (const t of tournaments) {
     if (t.archivedAt) continue;
+    // Liga F6: suspenso pela moderação só conta para o dono e o admin global
+    if (t.suspendedAt && !(viewer && (require('./tournamentRoles').isGlobalAdmin(viewer.userRole) || (viewer.userId && viewer.userId === t.ownerId)))) continue;
     if (self) { out.add(t.id); continue; }
     if (!viewer || !viewer.userId) { if (access.normalizeVisibility(t.visibility) === 'public') out.add(t.id); continue; }
     if (await access.canSeeListed(viewer, t)) out.add(t.id);
@@ -76,7 +78,7 @@ async function history(userId, { viewer = null } = {}) {
   const tIds = [...new Set(entries.map((e) => e.tournamentId))];
   const tournaments = await prisma.tournament.findMany({
     where: { id: { in: tIds } },
-    select: { id: true, name: true, slug: true, sport: true, visibility: true, archivedAt: true, ownerId: true, startDate: true, status: true, seriesName: true, edition: true },
+    select: { id: true, name: true, slug: true, sport: true, visibility: true, archivedAt: true, suspendedAt: true, ownerId: true, startDate: true, status: true, seriesName: true, edition: true },
   });
   const visible = await visibleTournamentIds(uid, tournaments, viewer);
   const tById = new Map(tournaments.filter((t) => visible.has(t.id)).map((t) => [t.id, t]));

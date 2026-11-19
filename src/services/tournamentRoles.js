@@ -60,6 +60,25 @@ const ACTIONS = [
   'REFEREE', 'RESULT', 'LIVE', 'CORRECT_RESULT', 'POST', 'VIEW_AUDIT',
   'MONEY', 'DELETE_TOURNAMENT', 'RESTORE', 'TRANSFER', 'REGENERATE_FORCE', 'SELF',
 ];
+// Liga F6 — ações GLOBAIS (sem torneio): can(userId, userRole, null, ação)
+//   MODERATE          fila de denúncias, ocultar, suspender (só admin global)
+//   REPORT            denunciar (qualquer conta logada)
+//   CREATE_TOURNAMENT criar/duplicar torneio (logado e organizador NÃO suspenso; admin sempre)
+//   PRIVACY_SELF      baixar/apagar os PRÓPRIOS dados (logado; opts.targetUserId = ele mesmo)
+const GLOBAL_ACTIONS = new Set(['MODERATE', 'REPORT', 'CREATE_TOURNAMENT', 'PRIVACY_SELF']);
+// Torneio SUSPENSO pela moderação: nada se escreve (só o admin global); o dono ainda vê/lê auditoria.
+const SUSPENDED_OK = new Set(['VIEW', 'VIEW_AUDIT']);
+// Organizador SUSPENSO: perde a GESTÃO em qualquer torneio (dono/fundador/coordenador deixam
+// de valer); papel de árbitro, admin do time, treinador e o próprio perfil seguem.
+
+// Organizador suspenso pela moderação (tabela OrganizerSuspension, aditiva)?
+async function isOrganizerSuspended(userId) {
+  if (!userId) return false;
+  try {
+    const r = await prisma.organizerSuspension.findUnique({ where: { userId: String(userId) }, select: { liftedAt: true } });
+    return !!(r && !r.liftedAt);
+  } catch (_) { return false; } // tabela ainda nascendo logo após o deploy
+}
 const FOUNDER_ONLY = new Set(['ASSIGN_LEAD_ROLES', 'MONEY', 'DELETE_TOURNAMENT', 'RESTORE', 'TRANSFER', 'REGENERATE_FORCE']);
 const COORD = new Set(['MANAGE_TOURNAMENT', 'ASSIGN_ROLES', 'CORRECT_RESULT', 'POST', 'VIEW_AUDIT']);
 const MATCH_SCOPED = new Set(['REFEREE', 'RESULT', 'LIVE']);
@@ -87,23 +106,33 @@ async function isNominated(userId, matchId) {
 
 // Pode executar `action` neste torneio? opts: { entryId, matchId, targetUserId }
 async function can(userId, userRole, tournamentId, action, opts = {}) {
+  if (GLOBAL_ACTIONS.has(action)) {
+    if (action === 'MODERATE') return isGlobalAdmin(userRole);
+    if (!userId) return false;
+    if (action === 'REPORT') return true;
+    if (action === 'PRIVACY_SELF') return !!opts.targetUserId && opts.targetUserId === userId;
+    if (action === 'CREATE_TOURNAMENT') return isGlobalAdmin(userRole) || !(await module.exports.isOrganizerSuspended(userId));
+    return false;
+  }
   if (!tournamentId) return false;
-  const t = await prisma.tournament.findUnique({ where: { id: String(tournamentId) }, select: { id: true, ownerId: true, archivedAt: true, requireRefereeAssignment: true } });
+  const t = await prisma.tournament.findUnique({ where: { id: String(tournamentId) }, select: { id: true, ownerId: true, archivedAt: true, suspendedAt: true, requireRefereeAssignment: true } });
   if (!t) return false;
   if (t.archivedAt && !ARCHIVED_OK.has(action)) return false;
+  if (isGlobalAdmin(userRole)) return action === 'VIEW' || ACTIONS.includes(action);
+  if (t.suspendedAt && !SUSPENDED_OK.has(action)) return false;
   if (action === 'VIEW') return true;
-  if (isGlobalAdmin(userRole)) return ACTIONS.includes(action);
   if (!userId) return false;
   if (action === 'SELF') return !!opts.targetUserId && opts.targetUserId === userId;
+  const orgSuspended = await module.exports.isOrganizerSuspended(userId); // via exports: teste de sabotagem
   const rows = await prisma.tournamentRole.findMany({ where: { tournamentId: t.id, userId }, select: { role: true, entryId: true } });
-  const isFounder = t.ownerId === userId || rows.some((r) => r.role === 'FOUNDER');
-  const isCoord = isFounder || rows.some((r) => r.role === 'COORDINATOR');
+  const isFounder = !orgSuspended && (t.ownerId === userId || rows.some((r) => r.role === 'FOUNDER'));
+  const isCoord = isFounder || (!orgSuspended && rows.some((r) => r.role === 'COORDINATOR'));
   const teamAdminOf = (eid) => !!eid && rows.some((r) => r.role === 'TEAM_ADMIN' && r.entryId === eid);
   const coachOf = (eid) => !!eid && rows.some((r) => r.role === 'COACH' && r.entryId === eid);
   const isReferee = rows.some((r) => r.role === 'REFEREE');
 
   // Transferir: só o DONO atual (ownerId) — fundador nomeado não transfere o torneio.
-  if (action === 'TRANSFER') return t.ownerId === userId;
+  if (action === 'TRANSFER') return !orgSuspended && t.ownerId === userId;
   if (FOUNDER_ONLY.has(action)) return isFounder;
   if (COORD.has(action)) return isCoord;
   switch (action) {
@@ -345,11 +374,18 @@ async function myRoles(userId, userRole, tournamentId) {
   };
   const teams = roles.filter((r) => TEAM_SCOPED.includes(r.role) && r.entryId);
   const refereeAssignment = (await tournamentRequiresAssignment(tournamentId)) ? 'required' : 'open';
-  return { roles: roles.map((r) => ({ role: r.role, roleLabel: ROLE_LABEL[r.role] || r.role, entryId: r.entryId })), caps, teams, isGlobalAdmin: admin, refereeAssignment };
+  // Liga F6: aviso de suspensão (o dono/admin ainda vê o torneio suspenso)
+  let suspension = null;
+  try {
+    const st = await prisma.tournament.findUnique({ where: { id: String(tournamentId) }, select: { suspendedAt: true, suspendedReason: true } });
+    if (st && st.suspendedAt) suspension = { suspendedAt: st.suspendedAt, reason: st.suspendedReason || null };
+  } catch (_) { /* coluna nascendo */ }
+  const organizerSuspended = admin ? false : await isOrganizerSuspended(userId);
+  return { roles: roles.map((r) => ({ role: r.role, roleLabel: ROLE_LABEL[r.role] || r.role, entryId: r.entryId })), caps, teams, isGlobalAdmin: admin, refereeAssignment, suspension, organizerSuspended };
 }
 
 module.exports = {
-  ROLES, ROLE_LABEL, TEAM_SCOPED, OFFICIAL_ROLES, ACTIONS, isGlobalAdmin,
+  ROLES, ROLE_LABEL, TEAM_SCOPED, OFFICIAL_ROLES, ACTIONS, GLOBAL_ACTIONS, isGlobalAdmin, isOrganizerSuspended,
   rolesFor, can, isNominated, matchHasRefereeAssigned, tournamentRequiresAssignment, REF_OFFICIAL_ROLES, resolveUser, assignRole, removeRole, listRoles, myRoles,
   entryContext, matchContext, playerContext, eventContext, myMatches, myTeam,
 };

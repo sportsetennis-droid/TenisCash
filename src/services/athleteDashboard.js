@@ -23,7 +23,7 @@ async function dashboard(userId) {
   const owned = await prisma.tournament.findMany({ where: { ownerId: uid }, select: { id: true } });
 
   const ids = [...new Set(mems.map((m) => m.tournamentId).concat(roleRows.map((r) => r.tournamentId), owned.map((o) => o.id)))];
-  const ts = ids.length ? await prisma.tournament.findMany({ where: { id: { in: ids }, archivedAt: null }, select: { id: true, name: true, slug: true, sport: true, status: true, ownerId: true } }) : [];
+  const ts = ids.length ? await prisma.tournament.findMany({ where: { id: { in: ids }, archivedAt: null, OR: [{ suspendedAt: null }, { ownerId: uid }] }, select: { id: true, name: true, slug: true, sport: true, status: true, ownerId: true } }) : [];
   const tById = Object.fromEntries(ts.map((t) => [t.id, t]));
 
   // Times ativos (clube = nome, único por torneio)
@@ -186,7 +186,7 @@ async function myGames(userId, { scope = 'all', limit = 50 } = {}) {
   if (!ids.length) return { games: [] };
   const statuses = scope === 'past' ? ['FINISHED', 'WALKOVER'] : scope === 'upcoming' ? ['SCHEDULED', 'LIVE'] : ['SCHEDULED', 'LIVE', 'FINISHED', 'WALKOVER'];
   const ms = await prisma.tournamentMatch.findMany({
-    where: { status: { in: statuses }, OR: [{ homeEntryId: { in: ids } }, { awayEntryId: { in: ids } }] },
+    where: { status: { in: statuses }, OR: [{ homeEntryId: { in: ids } }, { awayEntryId: { in: ids } }], tournament: { archivedAt: null, OR: [{ suspendedAt: null }, { ownerId: uid }] } }, // F6: suspenso só para o dono
     include: {
       homeEntry: { select: { id: true, name: true, logoUrl: true } },
       awayEntry: { select: { id: true, name: true, logoUrl: true } },
@@ -225,7 +225,7 @@ async function myGames(userId, { scope = 'all', limit = 50 } = {}) {
 async function sportScorers(sport, { limit = 50, all = false } = {}) {
   // Liga F5: all=true devolve a lista inteira (a rota pagina por cursor); sem all, máx. 201 (200 + "tem mais")
   const lim = all ? Infinity : Math.max(1, Math.min(Number(limit) || 50, 201));
-  const ts = await prisma.tournament.findMany({ where: { sport: String(sport), visibility: 'public', archivedAt: null }, select: { id: true } });
+  const ts = await prisma.tournament.findMany({ where: { sport: String(sport), visibility: 'public', archivedAt: null, suspendedAt: null }, select: { id: true } }); // F6: suspenso fora
   const tids = ts.map((t) => t.id);
   if (!tids.length) return { sport, scorers: [] };
   const matches = await prisma.tournamentMatch.findMany({ where: { tournamentId: { in: tids }, status: { in: ['FINISHED', 'WALKOVER'] } }, select: { id: true, homeEntryId: true, awayEntryId: true } });
@@ -235,8 +235,8 @@ async function sportScorers(sport, { limit = 50, all = false } = {}) {
   const evs = await prisma.matchEvent.findMany({ where: { matchId: { in: matches.map((m) => m.id) }, type: { in: ['ASSIST', 'YELLOW', 'RED', ...PLAYER_POINT_TYPES] }, playerId: { not: null } }, select: { type: true, playerId: true } });
   const pids = [...new Set(evs.map((e) => e.playerId))];
   if (!pids.length) return { sport, scorers: [] };
-  const players = await prisma.rosterPlayer.findMany({ where: { id: { in: pids } }, select: { id: true, name: true, entryId: true, userId: true } });
-  const pById = Object.fromEntries(players.map((p) => [p.id, p]));
+  const players = await prisma.rosterPlayer.findMany({ where: { id: { in: pids } }, select: { id: true, name: true, entryId: true, userId: true, minorProfileId: true } });
+  const pById = Object.fromEntries(players.filter((p) => !p.minorProfileId).map((p) => [p.id, p])); // F6: menor fora do ranking
   const entries = await prisma.tournamentEntry.findMany({ where: { id: { in: [...new Set(players.map((p) => p.entryId))] } }, select: { id: true, name: true } });
   const eName = Object.fromEntries(entries.map((e) => [e.id, e.name]));
   const agg = {};
