@@ -210,8 +210,9 @@ function assessProductForNuvemshop(product, options = {}) {
   const cost = Number(product?.costPrice || 0);
   if (!(price > 0)) reasons.push('preco de venda zerado');
   if (cost > 0 && price <= cost) reasons.push('preco de venda nao supera o custo');
-  // promoção também nunca vai ao site abaixo do custo, zerada ou maior que o preço (regra do markup)
-  if (product?.promoPrice != null && product.promoPrice !== '') {
+  // promoção só é conferida quando vai ao site (NS_PROMOCAO_NO_SITE=1). Hoje o site recebe SEM promoção
+  // (dono 19/11: "ele entra sem promoção no site"); quando ligar, nunca abaixo do custo, zerada ou maior que o preço.
+  if (promocaoNoSite() && product?.promoPrice != null && product.promoPrice !== '') {
     const promo = Number(product.promoPrice);
     if (!(promo > 0)) reasons.push('promocao zerada');
     else if (price > 0 && promo >= price) reasons.push('promocao nao e menor que o preco');
@@ -309,7 +310,23 @@ function hasRemoteUsableImage(product) {
   return images.some((image) => /^https?:\/\//i.test(clean(image?.src)));
 }
 
+// Dono 19/11/2026: "ele entra sem promoção no site pq vamos fazer uma lá quando vc terminar, aliás vamos fazer
+// a mesma promoção". Desligado (padrão) = o site recebe só o preço de venda e a promoção da loja online fica vazia.
+// Ligar (NS_PROMOCAO_NO_SITE=1, sem deploy) = o site recebe o promoPrice do card, a mesma promoção das lojas.
+function promocaoNoSite() {
+  return /^(1|true|sim|on)$/i.test(String(process.env.NS_PROMOCAO_NO_SITE || '').trim());
+}
+
+// promoção que vai à loja online (string com 2 casas) ou null quando o site está sem promoção
+function promocaoParaSite(product) {
+  if (!promocaoNoSite() || product?.promoPrice == null || product.promoPrice === '') return null;
+  const promo = Number(product.promoPrice);
+  return promo > 0 ? String(promo.toFixed(2)) : null;
+}
+
 module.exports = {
+  promocaoNoSite,
+  promocaoParaSite,
   assessProductForNuvemshop,
   assessRemoteProductForNuvemshop,
   contextOf,
