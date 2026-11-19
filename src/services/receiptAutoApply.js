@@ -135,20 +135,25 @@ async function podeEntrarAnterior(tx, read, lot, round, cache) {
     const n = await tx.$queryRawUnsafe('SELECT 1 FROM "XmlFiscalItem" i JOIN "XmlFiscalDocument" d ON d.id = i."fiscalDocumentId" WHERE i.ean = $1 AND d."docType" = \'entrada\' LIMIT 1', String(read.barcode || ''));
     cache.set(kNf, n.length > 0);
   }
-  if (!cache.get(kNf)) return false;
+  if (!cache.get(kNf)) { conta(cache, 'semNfe'); return false; }
   // teto = comprado (NF-e): recebido em todas as lojas acima do comprado vai para conferência
   // (pega peça bipada no recebimento de duas lojas — transferência física sem registro)
-  const kCap = 'cap:' + ps;
+  // teto = o que a NF-e de entrada diz que foi comprado DESTE código (ou o comprado do card, o maior).
+  // Se o total recebido em TODAS as lojas passa do teto, não entra em nenhuma (escolher a loja seria
+  // chute de localização): vai para conferência na loja (auditoria 18/11).
+  const kCap = 'cap:' + read.barcode;
   if (!cache.has(kCap)) {
     const [c] = await tx.$queryRawUnsafe(
-      'SELECT (SELECT stock FROM "ProductSize" WHERE id = $1)::int AS comprado, (SELECT count(*) FROM (SELECT metadata->>\'clientScanId\' FROM "StoreStockMovement" WHERE source IN ' + SRC_SQL + ' AND "productSizeId" = $1 GROUP BY 1 HAVING SUM(quantity) > 0) x)::int AS ativos', ps);
-    cache.set(kCap, { comprado: c ? c.comprado || 0 : 0, ativos: c ? c.ativos || 0 : 0 });
+      'SELECT GREATEST(COALESCE((SELECT SUM(i.quantity) FROM "XmlFiscalItem" i JOIN "XmlFiscalDocument" d ON d.id = i."fiscalDocumentId" WHERE i.ean = $1 AND d."docType" = \'entrada\'), 0), ' +
+      'COALESCE((SELECT stock FROM "ProductSize" WHERE id = $2), 0))::int AS teto, ' +
+      '(SELECT count(*) FROM "ScanActionRead" r JOIN "ScanActionLot" l ON l."sessionId" = r."lotId" WHERE l.mode = \'receipt\' AND l.status IN (\'open\', \'confirmed\') AND r.removed = false AND r.recognized AND r.barcode = $1)::int AS demanda',
+      String(read.barcode || ''), ps);
+    cache.set(kCap, !!c && c.demanda <= c.teto);
   }
-  const cap = cache.get(kCap);
-  if (cap.ativos >= cap.comprado) return false;
-  cap.ativos++; // reserva a vaga desta leitura
+  if (!cache.get(kCap)) { conta(cache, 'acimaDaNfe'); return false; }
   return true;
 }
+function conta(cache, k) { const st = cache.get('#barrados') || {}; st[k] = (st[k] || 0) + 1; cache.set('#barrados', st); }
 
 // Baixa das vendas apagadas pelo arquivamento: só para tamanho com recebimento ANTERIOR ativo
 // nesta contagem; alvo = soma das vendas (e estornos) entre o 1º recebimento anterior e o início
@@ -249,7 +254,8 @@ async function aplicarLote(tx, lotId) {
       if (modo) planos.push({ tipo: 'entra', read, anterior: modo === 'anterior' });
     }
   }
-  if (!planos.length) return { aplicadas: 0, desfeitas: 0 };
+  const barrados = cache.get('#barrados') || {};
+  if (!planos.length) return { aplicadas: 0, desfeitas: 0, barrados };
   await lockSizes(tx, lot.toStoreId, planos.map((x) => (x.tipo === 'sai' ? x.ja.productSizeId : x.read.productSizeId)));
   let aplicadas = 0, desfeitas = 0;
   const tocados = new Set();
@@ -267,7 +273,7 @@ async function aplicarLote(tx, lotId) {
   }
   if (round) for (const ps of [...tocados].sort()) await baixarVendasArquivadas(tx, lot.toStoreId, ps, round);
   if (round && round.open) for (const ps of [...tocados].sort()) await parear(tx, lot.toStoreId, ps, round);
-  return { aplicadas, desfeitas };
+  return { aplicadas, desfeitas, barrados };
 }
 
 // Leituras de recebimento ativas (net>0) da loja/tamanho, desde o início da rodada, em ordem de horário.
@@ -376,16 +382,18 @@ async function aplicarTodos(db, { limite = 500 } = {}) {
   const lots = await db.scanActionLot.findMany({ where: { mode: 'receipt', OR: [{ status: 'open' }, { status: 'archived', updatedAt: { gte: new Date(Date.now() - 3 * 86400e3) } }] },
     select: { sessionId: true }, orderBy: { updatedAt: 'desc' }, take: limite });
   let aplicadas = 0, desfeitas = 0, erros = 0;
+  const barrados = { semNfe: 0, acimaDaNfe: 0 }; // recebimento anterior que ficou para conferência na loja
   for (const l of lots) {
     try {
       const r = await db.$transaction(async (tx) => {
         await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${'scan-action-lot:' + l.sessionId}))::text`;
         return aplicarLote(tx, l.sessionId);
-      }, { timeout: 60000 });
+      }, { timeout: 180000, maxWait: 30000 }); // lote grande (2.500 leituras) na 1ª varredura do recebimento anterior
       aplicadas += r.aplicadas; desfeitas += r.desfeitas;
+      for (const [k, v] of Object.entries(r.barrados || {})) barrados[k] = (barrados[k] || 0) + v;
     } catch (e) { erros++; console.warn('[recebimento automático] lote', l.sessionId, e.message); }
   }
-  return { lotes: lots.length, aplicadas, desfeitas, erros };
+  return { lotes: lots.length, aplicadas, desfeitas, erros, anterioresParaConferencia: barrados };
 }
 
 const state = { lastRunAt: null, lastResult: null, lastError: null };

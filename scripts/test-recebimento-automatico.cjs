@@ -290,10 +290,10 @@ async function main() {
     const lb = await lote(); await leitura(lb, errado, new Date(T0.getTime() - 50 * 60e3), { barcode: certo.barcode });
     await aplicar(lb);
     assert.equal(await estoque(certo), 1, 'entra no tamanho que é dono do código lido'); assert.equal(await estoque(errado), 0);
-    // (c) teto = comprado: recebeu 3 com comprado 2 → só 2 entram
+    // (c) teto = NF-e: recebeu 3 com NF-e 2 → nenhuma entra (conferência)
     const c = await novoCard('C1', P + 'C1', 2); await nf(c.barcode, 2);
     const lc = await lote(); for (const k of [40, 39, 38]) await leitura(lc, c, new Date(T0.getTime() - k * 60e3));
-    await aplicar(lc); assert.equal(await estoque(c), 2, 'acima do comprado vai para conferência');
+    const rc = await aplicar(lc); assert.equal(await estoque(c), 0, 'recebido acima da NF-e: nenhuma loja recebe (não chuta a localização), vai para conferência'); assert.ok(rc.barrados && rc.barrados.acimaDaNfe >= 1, 'barrado aparece contado');
     // (d) sem NF-e de entrada do código: não entra
     const d = await novoCard('D1', P + 'D1');
     const ld = await lote(); await leitura(ld, d, new Date(T0.getTime() - 30 * 60e3));
