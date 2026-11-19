@@ -2,7 +2,7 @@
 (function (root) {
   'use strict';
   const barcodePolicy=root.ScannerBarcodePolicy||{
-    isScanCode:value=>(/^(?:\d{8}|\d{12,14}|\d{16})$/.test(String(value||'').trim())&&!/^0+$/.test(String(value||'').trim()))||/^(?=(?:[^A-Z]*[A-Z]){3})(?=(?:\D*\d){6})[A-Z0-9]{8,24}$/.test(String(value||'').trim()),
+    isScanCode:value=>(/^(?:\d{8}|\d{12,14}|\d{16})$/.test(String(value||'').trim())&&!/^0+$/.test(String(value||'').trim()))||/^(?=(?:[^A-Z]*[A-Z]){3})(?=(?:\D*\d){2})[A-Z0-9]{10,24}$/.test(String(value||'').trim()),
     identity:value=>{const code=String(value||'').trim();return /^\d{16}$/.test(code)?code:code.replace(/^0+/, '');},
   };
   const barcodeIdentity=value=>barcodePolicy.identity(value);

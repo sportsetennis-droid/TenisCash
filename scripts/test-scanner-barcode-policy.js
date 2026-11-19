@@ -18,6 +18,7 @@ assert.equal(policy.isScanCode('KIM10U0001011'), true, 'código Code 128 da Atam
 assert.equal(policy.isSupplierCode('KIM10U0001011'), true);
 assert.deepEqual(policy.variants('KIM10U0001011'), ['KIM10U0001011']);
 assert.equal(policy.identity('KIM10U0001011'), 'KIM10U0001011');
-for (const ref of ['IG9319', '1011B958', 'DV1234-100', 'JH7925', 'K100.05.37', 'SEM GTIN', 'kim10u0001011', 'KIM10U', 'ABC12345', '687979 018PEQ'])
+for (const atama of ['UKMJJACLAAZ02', 'IKMJJAULSBC03']) assert.equal(policy.isScanCode(atama), true, 'código Atama (Classic/Ultra) aceito: ' + atama);
+for (const ref of ['IG9319', '1011B958', 'DV1234-100', 'JH7925', 'K100.05.37', 'SEM GTIN', 'kim10u0001011', 'KIM10U', 'ABC12345', '687979 018PEQ', 'F11L01791', 'ABCDEFGHIJ1', '0164-UKMJJACLAAZ02'])
   assert.equal(policy.isScanCode(ref), false, 'referência/sujeira não vira código: ' + ref);
 console.log('PASS: código alfanumérico do fornecedor aceito; referência de modelo continua recusada');
