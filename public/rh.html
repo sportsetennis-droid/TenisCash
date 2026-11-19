@@ -218,10 +218,12 @@ function interviewCard(c, wa) {
 
 async function candidate(id) {
   const c = await api('/candidates/' + id);
-  const ans = Object.entries(c.answers || {}).map(([q, a]) => '<div style="margin-top:8px"><b>' + esc(q) + '</b><div>' + esc(a || '—') + '</div></div>').join('');
+  // jsonb não guarda a ordem das chaves: mostra na ordem das perguntas da vaga (e depois o que sobrar).
+  const inOrder = (obj, order) => { const o = obj || {}; const ks = [...(order || []).filter((q) => q in o), ...Object.keys(o).filter((q) => !(order || []).includes(q))]; return ks.map((q) => [q, o[q]]); };
+  const ans = inOrder(c.answers, c.jobQuestions).map(([q, a]) => '<div style="margin-top:8px"><b>' + esc(q) + '</b><div>' + esc(a || '—') + '</div></div>').join('');
   const wa = 'https://wa.me/55' + String(c.phone).replace(/^55/, '');
   const lojas = (c.storeChoices || []).length ? '<div>🏬 Quer trabalhar em: <b>' + esc(c.storeChoices.join(' · ')) + '</b></div>' : '';
-  const iv = Object.entries(c.interview || {}).filter(([, a]) => a);
+  const iv = inOrder(c.interview, c.jobInterviewQuestions).filter(([, a]) => a);
   const ivLink = c.interviewToken ? location.origin + '/vagas?e=' + c.interviewToken : '';
   const ivCard = c.interviewToken ? '<div class="card"><b>Entrevista por escrito</b> ' + (c.interviewDoneAt ? '<span class="pill p-ok">respondida em ' + br(c.interviewDoneAt) + '</span>' : '<span class="pill p-mute">' + (iv.length ? 'começou, não enviou' : 'ainda não respondeu') + '</span>') +
     iv.map(([q, a], i) => '<div style="margin-top:10px"><b>' + (i + 1) + '. ' + esc(q) + '</b><div style="white-space:pre-wrap">' + esc(a) + '</div></div>').join('') +

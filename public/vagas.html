@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#E5571E">
-<link rel="icon" href="/icon-192.svg" type="image/svg+xml">
+<link rel="icon" href="/brand/sports-tennis-icon.svg" type="image/svg+xml">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="description" content="Trabalhe na Sports & Tennis: vagas abertas nas nossas lojas em João Pessoa e Campina Grande.">
+<meta name="description" content="Trabalhe na Sports & Tennis: veja as vagas abertas nas nossas lojas e candidate-se pelo celular.">
 <title>Trabalhe conosco · Sports & Tennis</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&family=Barlow+Condensed:ital,wght@1,800;1,900&display=swap" rel="stylesheet">
@@ -17,11 +17,12 @@
 body{font-family:'Barlow',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--ink);font-size:16px;line-height:1.45;padding-top:var(--safe-t)}
 button,input,textarea,select{font:inherit;color:inherit}
 #app{max-width:520px;margin:0 auto;padding:0 16px calc(40px + var(--safe-b))}
-.hero{background:#111;color:#fff;margin:0 -16px;padding:28px 20px 24px;position:relative;overflow:hidden}
-.hero:after{content:"";position:absolute;right:-40px;top:-30px;width:180px;height:180px;border-radius:50%;background:var(--brand);opacity:.9}
-.hero .brand{font-family:'Barlow Condensed',sans-serif;font-style:italic;font-weight:900;letter-spacing:.5px;text-transform:uppercase;font-size:15px;color:var(--brand);position:relative;z-index:1}
-.hero h1{font-family:'Barlow Condensed',sans-serif;font-style:italic;font-weight:900;text-transform:uppercase;font-size:40px;line-height:.95;margin-top:8px;position:relative;z-index:1}
-.hero p{color:#d1d1d6;margin-top:10px;font-size:15px;position:relative;z-index:1;max-width:330px}
+.hero{background:var(--brand);color:#fff;margin:0 -16px;padding:26px 20px 28px}
+.hero img{display:block;width:210px;max-width:62%;height:auto}
+.hero h1{font-family:'Barlow Condensed',sans-serif;font-style:italic;font-weight:900;text-transform:uppercase;font-size:42px;line-height:.95;margin-top:26px}
+.hero p{margin-top:10px;font-size:16px;font-weight:500;max-width:340px}
+.bar{background:var(--brand);margin:0 -16px;padding:14px 20px}
+.bar img{display:block;width:150px;height:auto}
 .job{display:block;width:100%;text-align:left;background:var(--fill);border:0;border-radius:16px;padding:16px;margin-top:12px;cursor:pointer}
 .job h3{font-size:18px;font-weight:800}
 .job .meta{color:var(--muted);font-size:14px;margin-top:4px}
@@ -68,7 +69,12 @@ textarea{min-height:90px;resize:vertical}
 <script>
 const $app = document.getElementById('app');
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const hero = '<div class="hero"><div class="brand">Sports &amp; Tennis</div><h1>Venha jogar<br>no nosso time</h1><p>Vagas abertas nas nossas lojas de João Pessoa e Campina Grande.</p></div>';
+const LOGO = '<img src="/brand/sports-tennis-logo.svg" alt="Sports &amp; Tennis" width="1007" height="237">';
+const heroWith = (sub) => '<div class="hero">' + LOGO + '<h1>Venha jogar<br>no nosso time</h1><p>' + sub + '</p></div>';
+const hero = heroWith('Trabalhe com a gente.');
+const bar = '<div class="bar">' + LOGO + '</div>';
+// "[Tema] pergunta" → tema vira o título da etapa; sem colchetes, fica só a pergunta.
+const splitQ = (q) => { const m = /^\[([^\]]{1,40})\]\s*(.+)$/s.exec(q); return m ? { tema: m[1], texto: m[2] } : { tema: '', texto: q }; };
 
 async function listView() {
   $app.innerHTML = hero + '<div class="empty">Carregando vagas…</div>';
@@ -79,7 +85,7 @@ async function listView() {
     resumeBanner();
     return;
   }
-  $app.innerHTML = hero + jobs.map((j) => '<button class="job" data-slug="' + esc(j.slug) + '"><h3>' + esc(j.title) + '</h3><div class="meta">' +
+  $app.innerHTML = heroWith(jobs.length === 1 ? 'Temos 1 vaga aberta. Candidate-se pelo celular.' : 'Temos ' + jobs.length + ' vagas abertas. Candidate-se pelo celular.') + jobs.map((j) => '<button class="job" data-slug="' + esc(j.slug) + '"><h3>' + esc(j.title) + '</h3><div class="meta">' +
     esc([j.storeName, j.salaryText].filter(Boolean).join(' · ')) + '</div><div class="go">Ver vaga e me candidatar →</div></button>').join('') +
     '<div class="foot">Sports &amp; Tennis · Trabalhe conosco</div>';
   resumeBanner();
@@ -95,7 +101,7 @@ async function jobView(slug) {
   const lojas = (j.storeOptions || []).length ? '<div style="margin-top:14px;font-size:13px;font-weight:700;color:#3a3a3c">Em qual loja você quer trabalhar? (pode marcar mais de uma)</div>' +
     j.storeOptions.map((o, i) => '<label class="opt"><input type="checkbox" name="loja" value="' + i + '"><span>' + esc(o) + '</span></label>').join('') : '';
   const qs = (j.questions || []).map((q, i) => '<label>' + esc(q) + '<textarea name="q' + i + '" maxlength="1000"></textarea></label>').join('');
-  $app.innerHTML = '<button class="back" id="bk">← Todas as vagas</button>' +
+  $app.innerHTML = bar + '<button class="back" id="bk">← Todas as vagas</button>' +
     '<h2>' + esc(j.title) + '</h2>' + [j.storeName, j.salaryText, j.schedule].filter(Boolean).map((t) => '<span class="tag">' + esc(t) + '</span>').join('') +
     (j.description ? '<div class="sec"><h4>Sobre a vaga</h4><p>' + esc(j.description) + '</p></div>' : '') +
     (j.requirements ? '<div class="sec"><h4>O que procuramos</h4><p>' + esc(j.requirements) + '</p></div>' : '') +
@@ -138,7 +144,7 @@ async function jobView(slug) {
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || 'Não foi possível enviar. Tente de novo.');
       if (d.interviewToken) { keep(d.interviewToken); history.replaceState({}, '', location.pathname); interviewIntro(d.interviewToken, name.split(' ')[0], d.interviewCount); return; }
-      $app.innerHTML = '<div class="done"><div class="big">🧡</div><h2>Candidatura enviada!</h2><p>Obrigado, ' + esc(name.split(' ')[0]) + '. Se o seu perfil combinar com a vaga, a gente chama você no WhatsApp.</p><button class="btn" id="mais">Ver outras vagas</button></div>';
+      $app.innerHTML = bar + '<div class="done"><div class="big">🧡</div><h2>Candidatura enviada!</h2><p>Obrigado, ' + esc(name.split(' ')[0]) + '. Se o seu perfil combinar com a vaga, a gente chama você no WhatsApp.</p><button class="btn" id="mais">Ver outras vagas</button></div>';
       document.getElementById('mais').onclick = goList;
     } catch (err) { m.className = 'msg bad'; m.textContent = err.message; btn.disabled = false; btn.textContent = j.interviewCount ? 'Enviar e ir para a entrevista' : 'Enviar candidatura'; }
   };
@@ -162,8 +168,8 @@ async function resumeBanner() {
 }
 function interviewIntro(token, firstName, count) {
   window.scrollTo(0, 0);
-  $app.innerHTML = '<div class="done"><div class="big">🧡</div><h2>Candidatura enviada, ' + esc(firstName) + '!</h2>' +
-    '<p>Agora falta a entrevista: são ' + count + ' perguntas para a gente conhecer você. Responda com calma, do seu jeito, com exemplos reais.</p>' +
+  $app.innerHTML = bar + '<div class="done"><div class="big">🧡</div><h2>Candidatura enviada, ' + esc(firstName) + '!</h2>' +
+    '<p>Agora falta a entrevista: são ' + count + ' perguntas para a gente conhecer você, o seu jeito de trabalhar e de atender. Responda com calma, do seu jeito, com exemplos reais.</p>' +
     '<button class="btn" id="go">Iniciar entrevista</button>' +
     '<p class="hint">Suas respostas ficam salvas a cada pergunta. Se precisar parar, é só abrir esta página de novo neste celular e tocar em "Continuar a minha entrevista".</p></div>';
   document.getElementById('go').onclick = () => interviewView(token);
@@ -176,7 +182,7 @@ async function interviewView(token, fromLink) {
   if (!d) { $app.innerHTML = hero + '<div class="empty">Não deu para abrir a entrevista agora.<br>Confira a internet e tente de novo.</div><button class="btn" id="rt">Tentar de novo</button>'; document.getElementById('rt').onclick = () => interviewView(token, fromLink); return; }
   keep(token);
   const optional = (q) => /\(opcional\)\s*$/i.test(q);
-  const doneView = () => { window.scrollTo(0, 0); $app.innerHTML = '<div class="done"><div class="big">🧡</div><h2>Entrevista enviada!</h2><p>Obrigado, ' + esc(d.firstName) + '. A gente lê tudo com atenção e, se o seu perfil combinar com a vaga, chama você no WhatsApp.</p></div><div class="foot">Sports &amp; Tennis</div>'; };
+  const doneView = () => { window.scrollTo(0, 0); $app.innerHTML = bar + '<div class="done"><div class="big">🧡</div><h2>Entrevista enviada!</h2><p>Obrigado, ' + esc(d.firstName) + '. A gente lê tudo com atenção e, se o seu perfil combinar com a vaga, chama você no WhatsApp.</p></div><div class="foot">Sports &amp; Tennis</div>'; };
   if (d.done || !d.questions.length) { forget(); return doneView(); }
   if (fromLink && !d.answers.some(Boolean)) return interviewIntro(token, d.firstName, d.questions.length);
   const answers = d.answers.slice();
@@ -190,8 +196,9 @@ async function interviewView(token, fromLink) {
   const show = () => {
     window.scrollTo(0, 0);
     const last = i === d.questions.length - 1;
-    $app.innerHTML = '<div class="prog"><i style="width:' + Math.round(((i + 1) / d.questions.length) * 100) + '%"></i></div>' +
-      '<div class="qn">Entrevista · pergunta ' + (i + 1) + ' de ' + d.questions.length + '</div><div class="qt">' + esc(d.questions[i]) + '</div>' +
+    const q = splitQ(d.questions[i]);
+    $app.innerHTML = bar + '<div class="prog"><i style="width:' + Math.round(((i + 1) / d.questions.length) * 100) + '%"></i></div>' +
+      '<div class="qn">' + esc(q.tema || 'Entrevista') + ' · pergunta ' + (i + 1) + ' de ' + d.questions.length + '</div><div class="qt">' + esc(q.texto) + '</div>' +
       '<textarea class="ia" id="ia" maxlength="2000" placeholder="Escreva aqui a sua resposta">' + esc(answers[i] || '') + '</textarea>' +
       '<div class="msg" id="im"></div><div class="nav">' + (i > 0 ? '<button class="btn g" id="pv">Voltar</button>' : '') +
       '<button class="btn" id="nx">' + (last ? 'Enviar entrevista' : 'Próxima') + '</button></div>' +

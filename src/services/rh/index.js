@@ -267,7 +267,8 @@ async function listCandidates(prisma, { jobId = null, stage = null, q = null } =
 
 async function getCandidate(prisma, cid) {
   await ensureSchema(prisma);
-  const [c] = await prisma.$queryRaw`SELECT c.*, j."title" AS "jobTitleText", j."storeId", j."jobTitle" AS "jobRole" FROM "HrCandidate" c JOIN "HrJob" j ON j."id"=c."jobId" WHERE c."id"=${cid}`;
+  const [c] = await prisma.$queryRaw`SELECT c.*, j."title" AS "jobTitleText", j."storeId", j."jobTitle" AS "jobRole", j."questions" AS "jobQuestions", j."interviewQuestions" AS "jobInterviewQuestions"
+    FROM "HrCandidate" c JOIN "HrJob" j ON j."id"=c."jobId" WHERE c."id"=${cid}`;
   if (!c) return null;
   c.events = await prisma.$queryRaw`SELECT * FROM "HrCandidateEvent" WHERE "candidateId"=${cid} ORDER BY "createdAt" DESC`;
   return c;
