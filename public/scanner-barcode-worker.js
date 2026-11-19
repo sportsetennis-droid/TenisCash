@@ -1,5 +1,5 @@
 /* Pixel-buffer decoding does not require OffscreenCanvas or ImageData. */
-importScripts('/scanner-barcode-policy.js?v=20261119-codigo-fornecedor-1','/vendor/barcode/zxing-reader-3.1.4.js','/scanner-regions.js?v=20260914-worker-1','/scanner-auto.js?v=20261119-codigo-fornecedor-1');
+importScripts('/scanner-barcode-policy.js?v=20261119-codigo-fornecedor-2','/vendor/barcode/zxing-reader-3.1.4.js','/scanner-regions.js?v=20260914-worker-1','/scanner-auto.js?v=20261119-codigo-fornecedor-2');
 self.onmessage=async({data})=>{
   try{
     const code=await self.ScannerAuto.decodePixels({width:data.width,height:data.height,data:new Uint8ClampedArray(data.buffer)});
