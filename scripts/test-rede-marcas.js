@@ -352,7 +352,11 @@ async function partB() {
     assert.deepStrictEqual(pl('CAMISETA BOTAFOGO MASCULINA 10/12', 'A CLASSIFICAR', null, { tamanhos: ['10', '12'] }), { category: 'Vestuário' });
     assert.deepStrictEqual(pl('TENIS NIKE MASCULINO', 'Tênis', null, { tamanhos: ['T-7891234567890'] }), {}, 'grade só com placeholder não prova adulto');
     assert.deepStrictEqual(pl('TENIS NIKE PEGASUS 41 MASCULINO', 'Tênis', null, { tamanhos: ['39', '40'] }), { subcategory: 'Homem' }, 'número de modelo no nome não é grade');
-    assert.deepStrictEqual(pl('CAMISETA INFANTIL 8A MASCULINA', 'Vestuário', null, { tamanhos: ['8A'] }), { subcategory: 'Menino' });
+    assert.deepStrictEqual(pl('CAMISETA INFANTIL 8A MASCULINA', 'Vestuário', null, { tamanhos: ['8A'] }), { subcategory: 'Menino' });
+    assert.deepStrictEqual(pl('TENIS CROCS MASCULINO', 'Tênis', null, { tamanhos: ['27/28', '29/30'] }), {}, 'faixa infantil na grade não prova adulto');
+    assert.deepStrictEqual(pl('MEIA LUPO CANO CURTO MASCULINA', 'Acessórios', null, { tamanhos: ['19/22', '23/26'] }), {}, 'meia usa a numeração do pé');
+    assert.deepStrictEqual(pl('MEIA LUPO MASCULINA 23/26', 'Acessórios', null, { tamanhos: ['U'] }), {});
+    assert.deepStrictEqual(pl('MEIA LUPO MASCULINA', 'Acessórios', null, { tamanhos: ['39/43'] }), { subcategory: 'Homem' }, 'meia adulta 39/43 preenche');
     // o que preenche não é acusado pela régua do lugar certo (regra 30)
     const { conferirLocal } = require('../src/ai/rede/regras/local-certo');
     for (const [n, c] of [['CHUTEIRA FUTSAL JOMA SALA MAX JR', 'Chuteiras'], ['TENIS FILA COMET FEMININO', 'Tênis'], ['CAMISETA DRY FIT MASCULINA', 'A CLASSIFICAR']]) {

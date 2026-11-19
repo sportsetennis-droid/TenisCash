@@ -37,16 +37,22 @@ const MODALIDADE = { FUTSAL: 'Futsal', SOCIETY: 'Society', CAMPO: 'Campo' };
 // numeração infantil escrita no nome ("28/33") ou na grade do card (calçado < 34): nunca vira adulto
 // Numeração infantil: calçado 15–33; roupa/acessório 1–16 ou idade ("10A"). Vale no nome e na grade.
 function temNumeracaoInfantil(p, cat = norm(p.category)) {
-  const calcado = cat === 'TENIS' || cat === 'CHUTEIRAS';
-  const infantilNum = (n) => (calcado ? n >= 15 && n <= 33 : n >= 1 && n <= 16);
   const nome = norm(p.name);
+  // meia/meião usa a numeração do PÉ (19/22, 23/26…): mesma régua do calçado
+  const calcado = cat === 'TENIS' || cat === 'CHUTEIRAS' || /\b(MEIAS?|MEIAO|MEIOES)\b/.test(nome);
+  const infantilNum = (n) => (calcado ? n >= 15 && n <= 33 : n >= 1 && n <= 16);
   if (/(?<![A-Z0-9])\d{1,2}\s?A(?![A-Z0-9])/.test(nome)) return true; // "10A", "7A/14A"
   const nums = [...nome.matchAll(/(?<![\d.,])(\d{1,2})(?:\s*[/-]\s*(\d{1,2}))?(?![\d.,])/g)].flatMap((m) => [m[1], m[2]]).filter(Boolean).map(Number);
   // no nome, só faixa "a/b" conta como grade (número solto pode ser modelo: "PEGASUS 41", "GEL 27")
   const faixas = [...nome.matchAll(/(?<![\d.,])(\d{1,2})\s*[/-]\s*(\d{1,2})(?![\d.,])/g)].flatMap((m) => [Number(m[1]), Number(m[2])]);
   if (faixas.some(infantilNum)) return true;
   if (calcado && nums.some((n) => n >= 15 && n <= 33)) return true;
-  return (p.tamanhos || []).some((t) => { const s = String(t).trim().toUpperCase(); if (/^\d{1,2}A$/.test(s)) return true; const n = Number(s.replace(',', '.')); return Number.isFinite(n) && infantilNum(n); });
+  // grade: cada número de uma faixa ("27/28", "19-22") é conferido
+  return (p.tamanhos || []).some((t) => {
+    const s = String(t).trim().toUpperCase();
+    if (/^\d{1,2}\s?A$/.test(s)) return true;
+    return s.split(/\s*[/-]\s*/).some((x) => { const n = Number(x.replace(',', '.')); return x !== '' && Number.isFinite(n) && infantilNum(n); });
+  });
 }
 // Prova de ADULTO pela grade: pelo menos um tamanho real legível (não placeholder T-/Único-) e nenhum infantil.
 function gradeProvaAdulto(p, cat = norm(p.category)) {
