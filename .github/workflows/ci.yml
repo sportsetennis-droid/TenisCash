@@ -11,6 +11,28 @@ on:
   pull_request:
 
 jobs:
+  scanner-runtime-synthetic:
+    name: experimento sintético Linux — memória do scanner
+    if: startsWith(github.head_ref, 'test/scanner-linux-runtime-bench-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx prisma generate
+      - run: node scripts/fixtures/test-tesseract-clear-worker.cjs
+      - name: Workers frios A–B–B–A; somente pixels sintéticos
+        run: node scripts/bench-scanner-runtime-synthetic.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scanner-runtime-synthetic-linux
+          path: artifacts/scanner-runtime-synthetic/
+          retention-days: 7
   stock-replacement:
     name: substituição — estoque, arquivo e autorização
     runs-on: ubuntu-latest
