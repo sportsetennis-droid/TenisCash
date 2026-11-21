@@ -104,8 +104,9 @@ router.post('/shifts', async (req, res) => {
     }
     const wd = Number(weekday);
     if (!(wd >= 0 && wd <= 6)) return res.status(400).json({ error: 'weekday deve ser 0..6' });
+    const defaultStart = startTime || (await require('../services/storeHours').clampStartByStoreId(prisma, storeId, '00:00').then((t) => (t && t !== '00:00' ? t : '09:00')));
     const shift = await prisma.sellerSchedule.create({
-      data: { sellerId, storeId, weekday: wd, startTime: startTime || '09:00', endTime: endTime || '18:00', note: note || null },
+      data: { sellerId, storeId, weekday: wd, startTime: defaultStart, endTime: endTime || '18:00', note: note || null },
       include: { seller: { select: { id: true, name: true, employeeCode: true } }, store: { select: { id: true, code: true, name: true } } },
     });
     res.json({ shift });

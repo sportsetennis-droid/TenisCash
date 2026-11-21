@@ -332,7 +332,7 @@ async function ensureScheduledProductionDays(date = new Date()) {
         workDate: start,
         policyVersion: production.POLICY_VERSION,
         incentivePct: production.INCENTIVE_PCT,
-        scheduleStart: schedule.startTime,
+        scheduleStart: await require('./storeHours').clampStartByStoreId(prisma, schedule.storeId, schedule.startTime),
         scheduleEnd: schedule.endTime,
         items: {
           create: production.RULES.map((rule) => ({
