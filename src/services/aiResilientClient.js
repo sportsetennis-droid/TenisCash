@@ -9,7 +9,8 @@ const Anthropic = require('@anthropic-ai/sdk');
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const DOWN_MS = 10 * 60 * 1000;
-const state = { anthropicDownUntil: 0, lastAnthropicError: null, openaiCalls: 0, anthropicCalls: 0 };
+const CREDIT_DOWN_MS = 30 * 60 * 1000;
+const state = { anthropicDownUntil: 0, lastAnthropicError: null, lastOpenAIError: null, lastOpenAIErrorAt: null, openaiCalls: 0, anthropicCalls: 0 };
 
 function openaiModel() { return process.env.OPENAI_FALLBACK_MODEL || 'gpt-4o-mini'; }
 
@@ -76,6 +77,9 @@ async function openaiCreate(params) {
 }
 
 function isAuthError(e) { const s = Number(e && (e.status || e.statusCode)); return s === 401 || s === 403; }
+// Sem crédito (400 "credit balance is too low") não se resolve sozinho em segundos:
+// marca a Anthropic como fora por 30 min e vai direto na reserva, sem esperar a recusa a cada mensagem.
+function isCreditError(e) { return /credit balance|billing|insufficient.?quota/i.test(String((e && e.message) || '')); }
 
 function resilientClient() {
   const akey = process.env.ANTHROPIC_API_KEY;
@@ -94,17 +98,25 @@ function resilientClient() {
             state.lastAnthropicError = `${e.status || ''} ${String(e.message || '').slice(0, 120)}`.trim();
             if (!okey) throw e;
             if (isAuthError(e)) state.anthropicDownUntil = Date.now() + DOWN_MS;
+            else if (isCreditError(e)) state.anthropicDownUntil = Date.now() + CREDIT_DOWN_MS;
             console.warn('[ia] Anthropic falhou, usando a reserva OpenAI:', state.lastAnthropicError);
           }
         }
-        return openaiCreate(params);
+        try {
+          return await openaiCreate(params);
+        } catch (e) {
+          // Guarda o motivo para o /api/health mostrar por que a reserva também falhou.
+          state.lastOpenAIError = String((e && e.message) || e).slice(0, 200);
+          state.lastOpenAIErrorAt = new Date().toISOString();
+          throw e;
+        }
       },
     },
   };
 }
 
 function getAiState() {
-  return { anthropic: !!process.env.ANTHROPIC_API_KEY, openaiReserva: !!process.env.OPENAI_API_KEY, anthropicForaAte: state.anthropicDownUntil > Date.now() ? new Date(state.anthropicDownUntil).toISOString() : null, ultimoErroAnthropic: state.lastAnthropicError, chamadasAnthropic: state.anthropicCalls, chamadasOpenAI: state.openaiCalls };
+  return { anthropic: !!process.env.ANTHROPIC_API_KEY, openaiReserva: !!process.env.OPENAI_API_KEY, anthropicForaAte: state.anthropicDownUntil > Date.now() ? new Date(state.anthropicDownUntil).toISOString() : null, ultimoErroAnthropic: state.lastAnthropicError, ultimoErroOpenAI: state.lastOpenAIError, ultimoErroOpenAIEm: state.lastOpenAIErrorAt, chamadasAnthropic: state.anthropicCalls, chamadasOpenAI: state.openaiCalls };
 }
 
 module.exports = { resilientClient, getAiState, toOpenAIMessages };

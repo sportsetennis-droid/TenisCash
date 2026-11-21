@@ -1495,6 +1495,14 @@ function formatProductSizeSummary(product, requestedSize = '') {
 }
 
 function formatStockReply(stockResult) {
+  const body = formatStockReplyBody(stockResult);
+  const missing = (stockResult?.unmatchedWords || []).filter(Boolean);
+  if (!missing.length) return body;
+  return `Atencao: nao achei "${missing.join(' ')}" no nome do cadastro. Pode ser outro modelo; confira antes de prometer ao cliente.
+${body}`;
+}
+
+function formatStockReplyBody(stockResult) {
   if (!stockResult?.products?.length) {
     if (stockResult?.alternatives?.length) {
       const lines = [];
@@ -1636,6 +1644,34 @@ function mapProductStock(product, stores, filters = {}) {
   };
 }
 
+const STOCK_PRODUCT_SELECT = {
+  id: true,
+  sku: true,
+  name: true,
+  brand: true,
+  category: true,
+  subcategory: true,
+  price: true,
+  promoPrice: true,
+  imageUrl: true,
+  sizes: {
+    orderBy: { size: 'asc' },
+    select: {
+      id: true,
+      size: true,
+      stock: true,
+      barcode: true,
+      storeStocks: {
+        select: {
+          storeId: true,
+          stock: true,
+          store: { select: { id: true, code: true, name: true, city: true } },
+        },
+      },
+    },
+  },
+};
+
 async function searchStoreStockForAgent(input, snapshot) {
   const query = safeText(input?.query, 120);
   const size = safeText(input?.size, 20);
@@ -1655,38 +1691,38 @@ async function searchStoreStockForAgent(input, snapshot) {
       where: productSearchWhere(query),
       orderBy: [{ featured: 'desc' }, { name: 'asc' }],
       take: 25,
-      select: {
-        id: true,
-        sku: true,
-        name: true,
-        brand: true,
-        category: true,
-        subcategory: true,
-        price: true,
-        promoPrice: true,
-        imageUrl: true,
-        sizes: {
-          orderBy: { size: 'asc' },
-          select: {
-            id: true,
-            size: true,
-            stock: true,
-            barcode: true,
-            storeStocks: {
-              select: {
-                storeId: true,
-                stock: true,
-                store: { select: { id: true, code: true, name: true, city: true } },
-              },
-            },
-          },
-        },
-      },
+      select: STOCK_PRODUCT_SELECT,
     }),
   ]);
 
-  const matchedProducts = products.filter((p) => stockQueryMatchesProduct(p, query));
-  const productPool = matchedProducts.length ? matchedProducts : products;
+  let matchedProducts = products.filter((p) => stockQueryMatchesProduct(p, query));
+  let productPool = matchedProducts.length ? matchedProducts : products;
+  // Busca tolerante: o vendedor escreve "adios pro 4" e o cadastro diz "ADIZERO ADIOS 4".
+  // Sem resultado, tenta tirando UMA palavra por vez; a resposta avisa qual palavra não bateu,
+  // porque pode ser outro modelo (Adios Pro 4 ≠ Adios 4) e não se promete o que não foi pedido.
+  let relaxedQuery = null;
+  if (!productPool.length) {
+    const terms = query.split(/\s+/).filter(Boolean);
+    for (let i = 0; i < terms.length && terms.length > 1 && !productPool.length; i += 1) {
+      const q2 = terms.filter((_, j) => j !== i).join(' ');
+      if (q2.replace(/\s+/g, '').length < 3) continue;
+      const retry = await prisma.product.findMany({
+        where: productSearchWhere(q2),
+        orderBy: [{ featured: 'desc' }, { name: 'asc' }],
+        take: 25,
+        select: STOCK_PRODUCT_SELECT,
+      });
+      const retryMatched = retry.filter((p) => stockQueryMatchesProduct(p, q2));
+      if (retryMatched.length) { productPool = retryMatched; matchedProducts = retryMatched; relaxedQuery = q2; }
+    }
+  }
+  const missingWords = (pool) => {
+    const words = normalizeStoreNeedle(query).split(/\s+/).filter((w) => w.length >= 2 && !/^\d+$/.test(w));
+    const first = pool[0];
+    if (!first) return [];
+    const nameWords = new Set(normalizeStoreNeedle(`${first.name || ''} ${first.brand || ''}`).split(/[^a-z0-9]+/));
+    return words.filter((w) => !nameWords.has(w) && !Array.from(nameWords).some((nw) => nw.startsWith(w) && w.length >= 4));
+  };
 
   const mapped = productPool
     .map((p) => mapProductStock(p, stores, { size, store }))
@@ -1713,6 +1749,8 @@ async function searchStoreStockForAgent(input, snapshot) {
     size: size || null,
     store: store || null,
     currentStore,
+    relaxedQuery,
+    unmatchedWords: missingWords(productPool),
     products: mapped,
     alternatives,
     catalogMatches,
@@ -2208,6 +2246,67 @@ function compactSnapshotForPrompt(snapshot) {
       })),
     },
   };
+}
+
+// Resposta sem a IA de conversa (provedor sem crédito/fora do ar). Antes repetia sempre o
+// "plano do turno" — o vendedor perguntava estoque, "por que?", "o que você faz?" e recebia
+// a mesma frase (Jonas, 20/11/2026). Agora consulta o estoque de verdade, explica o plano e
+// lista o que dá pra pedir, avisando que a IA de conversa está fora.
+const FALLBACK_NOTICE = '(A IA de conversa esta fora do ar agora; respondi direto pelo sistema.)';
+
+function stripChannelPrefix(text) {
+  return String(text || '').replace(/^\s*\[(audio do vendedor|áudio do vendedor|foto enviada pelo vendedor)\]\s*/i, '').trim();
+}
+
+function isCapabilitiesQuestion(text) {
+  const msg = normalizeStoreNeedle(text);
+  return /\b(ajuda|ajudar|ajude|o que (voce|vc) (faz|pode|sabe)|pode fazer|consegue fazer|funcoes|funcionalidades|comandos|menu|como funciona|como usar)\b/.test(msg);
+}
+
+function isWhyQuestion(text) {
+  const msg = normalizeStoreNeedle(text).replace(/[?!.]/g, '').trim();
+  return /^(por que|porque|pq|por qual motivo|qual o motivo|motivo)\b/.test(msg) && msg.split(/\s+/).length <= 6;
+}
+
+function capabilitiesReply() {
+  return [
+    'Posso te ajudar com:',
+    '1. Estoque por loja e tamanho. Ex.: "Adios 4 tamanho 42" ou "Nimbus 27 41 em Tambia".',
+    '2. Clientes para chamar hoje e o motivo. Ex.: "Quem eu chamo primeiro?".',
+    '3. Indicar produto pelo perfil do cliente. Ex.: "Indique tenis de corrida ate 600 tamanho 40".',
+    '4. Guardar o que os clientes pedem. Ex.: "Guarde: clientes pedindo tenis preto para caminhada".',
+    '5. Mandar mensagem interna. Ex.: "Mande mensagem para Bruno dizendo ...".',
+  ].join('\n');
+}
+
+function whyPlanReply(snapshot) {
+  const first = snapshot.priorityCustomers && snapshot.priorityCustomers[0];
+  const focus = snapshot.focusProducts && snapshot.focusProducts[0];
+  const lines = [];
+  if (first) {
+    const status = { INACTIVE: 'cliente parado ha um tempo', REBUY_OPPORTUNITY: 'momento de recompra', ACTIVE: 'cliente ativo', LEAD: 'contato novo' }[first.relationshipStatus] || first.relationshipStatus || 'sem status';
+    lines.push(`${first.customerName} esta em primeiro na sua carteira: ${status}, prioridade ${({ HIGH: 'alta', URGENT: 'urgente', MEDIUM: 'media', LOW: 'baixa' })[first.priority] || first.priority || 'media'}.${first.nextActionDate ? ` Proximo contato marcado para ${new Date(first.nextActionDate).toLocaleDateString('pt-BR', { timeZone: 'America/Fortaleza' })}.` : ''}${first.notes ? ` Anotacao: ${String(first.notes).slice(0, 160)}` : ''}`);
+  } else {
+    lines.push('Voce ainda nao tem cliente priorizado na carteira.');
+  }
+  if (focus) lines.push(`Produto foco: ${[focus.brand, focus.name].filter(Boolean).join(' ')}, um dos mais vendidos da loja nos ultimos 30 dias${focus.quantity ? ` (${focus.quantity} un.)` : ''}.`);
+  return lines.join('\n');
+}
+
+async function localFallbackReply(rawText, snapshot) {
+  const text = stripChannelPrefix(rawText);
+  try {
+    if (isStockIntent(text)) {
+      const stockInput = await parseStockInputFromText(text);
+      if (stockInput.query) return formatStockReply(await searchStoreStockForAgent(stockInput, snapshot));
+      return stockNeedsProductReply();
+    }
+  } catch (e) {
+    console.warn('[seller-agent] estoque sem IA falhou:', e.message);
+  }
+  if (isCapabilitiesQuestion(text)) return capabilitiesReply();
+  if (isWhyQuestion(text)) return whyPlanReply(snapshot);
+  return offlineCoachReply(text, snapshot);
 }
 
 function offlineCoachReply(message, snapshot) {
@@ -2850,7 +2949,9 @@ async function runSellerAgentChat(req, text, { channel = 'app' } = {}) {
 
   const client = anthropicClient();
   if (!client) {
-    const reply = offlineCoachReply(text, snapshot);
+    const reply = `${await localFallbackReply(text, snapshot)}
+
+${FALLBACK_NOTICE}`;
     const conversationId = await persistSellerAgentTurn(req, text, reply, { intent: 'offline_reply' });
     return ({
       conversationId,
@@ -2933,10 +3034,12 @@ async function runSellerAgentChat(req, text, { channel = 'app' } = {}) {
   } catch (providerError) {
     providerFallback = true;
     console.warn('[seller-agent] provedor IA indisponivel; usando resposta local:', providerError.message);
-    finalText = offlineCoachReply(text, snapshot);
+    finalText = `${await localFallbackReply(text, snapshot)}
+
+${FALLBACK_NOTICE}`;
   }
 
-  if (!finalText) finalText = offlineCoachReply(text, snapshot);
+  if (!finalText) finalText = await localFallbackReply(text, snapshot);
 
   const fresh = await prisma.aIConversation.findUnique({
     where: { id: conv.id },
@@ -2978,7 +3081,7 @@ router.post('/chat', requireSeller, chatLimiter, async (req, res) => {
   }
 });
 
-router._test = Object.freeze({ buildNextBestActions });
+router._test = Object.freeze({ buildNextBestActions, localFallbackReply, isCapabilitiesQuestion, isWhyQuestion, stripChannelPrefix, parseStockInputFromText, isStockIntent });
 router.runSellerAgentChat = runSellerAgentChat;
 router._agentTools = { execTool };
 module.exports = router;
