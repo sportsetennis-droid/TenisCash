@@ -4,6 +4,7 @@
 // mesma; o que muda é o que você produz". Só números reais do banco; sem frase pronta de autoajuda.
 //
 // Envio pra equipe autorizado pelo dono em 17/11/2026: 1 hora antes do expediente de cada vendedor (runPreShift).
+const storeHours = require('./storeHours');
 
 const TZ_OFFSET_MS = 3 * 3600 * 1000; // America/Fortaleza (UTC-3, sem horário de verão)
 const TIER_CENTS = Number(process.env.PULSE_TIER_CENTS || 2000000); // R$ 20 mil: comissão 1% → 2% (dono 16/11)
@@ -192,23 +193,23 @@ async function shiftsBetween(prisma, sellerId, fromYmd, toYmd) {
   const months = [...new Set(days.map((d) => d.slice(0, 7)))];
   const [published, monthly, recurring, offs] = await Promise.all([
     prisma.sellerMonthlySchedule.findMany({ where: { month: { in: months }, status: 'PUBLISHED' }, select: { month: true } }),
-    prisma.sellerMonthlyShift.findMany({ where: { sellerId, workDate: { gte: from, lte: to }, schedule: { status: 'PUBLISHED' } }, include: { store: { select: { name: true } } } }),
-    prisma.sellerSchedule.findMany({ where: { sellerId, active: true }, include: { store: { select: { name: true } } } }),
+    prisma.sellerMonthlyShift.findMany({ where: { sellerId, workDate: { gte: from, lte: to }, schedule: { status: 'PUBLISHED' } }, include: { store: { select: { code: true, name: true } } } }),
+    prisma.sellerSchedule.findMany({ where: { sellerId, active: true }, include: { store: { select: { code: true, name: true } } } }),
     prisma.agendaActivity.findMany({ where: { sellerId, type: { in: ['folga', 'ferias'] }, date: { lte: to }, OR: [{ endDate: { gte: from } }, { endDate: null, date: { gte: from } }] }, select: { date: true, endDate: true, type: true } }),
   ]);
   const pub = new Set(published.map((p) => p.month));
   const self = ((await require('./selfSchedule').shiftsMap(prisma, fromYmd, toYmd, sellerId).catch(() => ({})))[sellerId]) || {};
-  const storeName = Object.keys(self).length ? ((await prisma.user.findUnique({ where: { id: sellerId }, select: { store: { select: { name: true } } } }).catch(() => null)) || {}).store : null;
+  const storeName = Object.keys(self).length ? ((await prisma.user.findUnique({ where: { id: sellerId }, select: { store: { select: { code: true, name: true } } } }).catch(() => null)) || {}).store : null;
   const ymdOf = (d) => new Date(d).toISOString().slice(0, 10);
   return days.map((ymd) => {
     const off = offs.find((o) => ymd >= ymdOf(o.date) && ymd <= ymdOf(o.endDate || o.date));
     if (off) return { ymd, off: off.type };
     if (!pub.has(ymd.slice(0, 7)) && self[ymd]) {
       const x = self[ymd];
-      return { ymd, store: storeName ? storeName.name : null, start: x.start, end: x.end, breakStart: x.breakStart, breakEnd: x.breakEnd, informed: true };
+      return { ymd, store: storeName ? storeName.name : null, start: storeHours.clampStart(storeName, x.start), end: x.end, breakStart: x.breakStart, breakEnd: x.breakEnd, informed: true };
     }
     const s = pub.has(ymd.slice(0, 7)) ? monthly.find((m) => ymdOf(m.workDate) === ymd) : recurring.find((r) => r.weekday === dow(ymd));
-    return s ? { ymd, store: s.store ? s.store.name : null, start: s.startTime, end: s.endTime } : { ymd };
+    return s ? { ymd, store: s.store ? s.store.name : null, start: storeHours.clampStart(s.store, s.startTime), end: s.endTime } : { ymd };
   });
 }
 
@@ -333,7 +334,10 @@ async function typicalStart(prisma, sellerId, ymd, nowMs = Date.now()) {
   const med = mins[Math.floor(mins.length / 2)];
   const rounded = Math.round(med / 15) * 15; // "por volta das" — arredonda em 15 min
   const hh = String(Math.floor(rounded / 60)).padStart(2, '0') + ':' + String(rounded % 60).padStart(2, '0');
-  return { min: med, start: hh, store: days[days.length - 1].store, approx: true };
+  const store = days[days.length - 1].store;
+  const shown = storeHours.clampStart(store, hh);
+  if (shown !== hh) return { min: minutes(shown), start: shown, store, approx: false };
+  return { min: med, start: hh, store, approx: true };
 }
 function validPhone(raw) {
   const t = String(raw || '');

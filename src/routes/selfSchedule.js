@@ -36,7 +36,12 @@ router.get('/', async (req, res) => {
     // Sugestão de horário: o último que ele usou; senão 09:00–18:00 com intervalo 12:00–13:00.
     let last = days[days.length - 1];
     if (!last) { const prev = await selfSchedule.shiftsMap(prisma, '2000-01-01', today, u.id); const all = Object.values(prev[u.id] || {}).sort((a, b) => a.date.localeCompare(b.date)); last = all[all.length - 1]; }
-    const defaults = last ? { start: last.start, end: last.end, breakStart: last.breakStart || '', breakEnd: last.breakEnd || '' } : { start: '09:00', end: '18:00', breakStart: '12:00', breakEnd: '13:00' };
+    // Dono 21/11/2026: a sugestão nunca começa antes da loja abrir (só Manaíra e Tambiá abrem 9h).
+    const storeHours = require('../services/storeHours');
+    const opening = storeHours.openingFor(u.store) || '09:00';
+    const defaults = last
+      ? { start: storeHours.clampStart(u.store, last.start), end: last.end, breakStart: last.breakStart || '', breakEnd: last.breakEnd || '' }
+      : { start: opening, end: '18:00', breakStart: '12:00', breakEnd: '13:00' };
     res.json({ seller: { name: u.name, store: u.store ? u.store.name : null }, month, today, days, defaults });
   } catch (err) { console.error('[minha-escala:get]', err); res.status(500).json({ error: 'Não foi possível carregar sua escala.' }); }
 });

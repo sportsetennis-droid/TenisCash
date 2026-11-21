@@ -254,7 +254,7 @@ async function ensureDay({ sellerId, ymd, storeId }) {
       workDate,
       policyVersion: production.POLICY_VERSION,
       incentivePct: production.INCENTIVE_PCT,
-      scheduleStart: schedule?.startTime || null,
+      scheduleStart: (await require('../services/storeHours').clampStartByStoreId(prisma, resolved.storeId, schedule?.startTime || null)) || null,
       scheduleEnd: schedule?.endTime || null,
       items: {
         create: production.RULES.map((rule) => ({

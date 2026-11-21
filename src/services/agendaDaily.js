@@ -217,7 +217,7 @@ async function buildDay(prisma, ymd = todayYmd()) {
     if (absentSellerIds.has(s.sellerId)) continue;
     const key = s.storeId;
     if (!byStore.has(key)) byStore.set(key, { code: s.store ? s.store.code : '?', name: s.store ? s.store.name : 'Loja', people: [] });
-    byStore.get(key).people.push({ name: shortName(s.seller && s.seller.name), start: s.startTime, end: s.endTime });
+    byStore.get(key).people.push({ name: shortName(s.seller && s.seller.name), start: require('./storeHours').clampStart(s.store, s.startTime), end: s.endTime });
   }
   const stores = [...byStore.values()].sort((a, b) => String(a.code).localeCompare(String(b.code)));
   stores.forEach((st) => st.people.sort((a, b) => String(a.start).localeCompare(String(b.start)) || a.name.localeCompare(b.name)));
