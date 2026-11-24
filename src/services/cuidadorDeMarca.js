@@ -270,11 +270,13 @@ function iniciarCuidadorDeMarca(db) {
     if (rodando) { state.lastSkippedAt = new Date().toISOString(); return Promise.resolve(); }
     rodando = true;
     return cuidar(db).then(async (r) => {
+      // links mortos saem antes: o card volta para a fila de fotos na mesma rodada
+      const m = await require('./fotosMortas').retirarFotosMortas(db).catch((e) => ({ erro: e.message, retiradas: 0, links: 0 }));
       const f = await cuidarFotos(db).catch((e) => ({ erro: e.message, fotos: 0, consultas: 0 }));
       state.lastRunAt = new Date().toISOString();
-      state.lastResult = { cards: r.cards, preenchidos: r.preenchidos, campos: r.campos, cores: r.cores, fotosOficiais: f.fotos, fotosConsultas: f.consultas, ...(f.erro ? { fotosErro: f.erro } : {}) };
+      state.lastResult = { cards: r.cards, preenchidos: r.preenchidos, campos: r.campos, cores: r.cores, fotosOficiais: f.fotos, fotosConsultas: f.consultas, ...(f.erro ? { fotosErro: f.erro } : {}), linksConferidos: m.links, fotosMortasRetiradas: m.retiradas, ...(m.erro ? { fotosMortasErro: m.erro } : {}) };
       state.lastError = null;
-      if (r.preenchidos || r.cores || f.fotos) console.log('[cuidador de marca]', JSON.stringify(state.lastResult));
+      if (r.preenchidos || r.cores || f.fotos || m.retiradas) console.log('[cuidador de marca]', JSON.stringify(state.lastResult));
     })
       .catch((e) => { state.lastError = e.message; console.warn('[cuidador de marca] falhou:', e.message); })
       .finally(() => { rodando = false; });
