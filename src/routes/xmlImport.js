@@ -147,7 +147,7 @@ router.post('/nfe/:documentId/apply', async (req, res) => {
   try {
     const document = await prisma.xmlFiscalDocument.findUnique({
       where: { id: req.params.documentId },
-      include: { items: true, supplier: true },
+      include: { items: true },
     });
     if (!document) return res.status(404).json({ error: 'Documento não encontrado' });
 
