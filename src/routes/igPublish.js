@@ -13,6 +13,9 @@
 //   POST /api/ig/publish          [admin] { account, type: carousel|photo|story|reel,
 //                                           imageUrls[], caption, collaborators[] } → { jobId }
 //   GET  /api/ig/jobs/:id         [admin] status do job (publicação demora ~1 min)
+//   GET  /api/ig/insights?account=&limit=  [admin] SÓ LEITURA: posts/Reels recentes
+//                                  com alcance, views, curtidas, comentários, salvos,
+//                                  compartilhamentos + stories no ar (24h)
 //
 // Não publica sozinho: só publica quando um admin logado chama /publish.
 // Nunca devolve token.
@@ -203,6 +206,52 @@ router.get('/jobs/:id', (req, res) => {
   const j = jobs.get(req.params.id);
   if (!j) return res.status(404).json({ error: 'job não encontrado' });
   res.json(j);
+});
+
+// ---------- SÓ LEITURA: métricas pra saber o que deu bom e o que deu ruim ----------
+async function mediaInsights(m) {
+  const isStory = m.media_product_type === 'STORY';
+  const tries = isStory
+    ? ['reach,views,replies,shares,total_interactions,navigation', 'reach,views,replies', 'reach']
+    : ['reach,views,likes,comments,saved,shares,total_interactions', 'reach,likes,comments,saved,shares', 'reach'];
+  for (const metric of tries) {
+    try {
+      const j = await graphGet(`${m.id}/insights`, { metric });
+      const out = {};
+      for (const x of j.data || []) out[x.name] = x.values?.[0]?.value ?? x.total_value?.value ?? 0;
+      return out;
+    } catch (e) { /* métrica não suportada nesse tipo: tenta a lista menor */ }
+  }
+  return {};
+}
+
+router.get('/insights', async (req, res) => {
+  try {
+    const acc = await resolveAccount(req.query.account || 'sportsetennis');
+    const limit = Math.min(Number(req.query.limit) || 30, 60);
+    const fields = 'id,caption,media_type,media_product_type,timestamp,permalink,like_count,comments_count';
+    const feed = await graphGet(`${acc.id}/media`, { fields, limit: String(limit) });
+    let stories = [];
+    try { stories = (await graphGet(`${acc.id}/stories`, { fields: 'id,media_type,media_product_type,timestamp,permalink' })).data || []; } catch { /* sem story no ar */ }
+    const all = [...(feed.data || []), ...stories];
+    const out = [];
+    for (let i = 0; i < all.length; i += 6) {
+      const part = await Promise.all(all.slice(i, i + 6).map(async (m) => ({
+        id: m.id,
+        tipo: m.media_product_type === 'STORY' ? 'STORY' : m.media_product_type === 'REELS' ? 'REEL' : m.media_type === 'CAROUSEL_ALBUM' ? 'CARROSSEL' : m.media_type,
+        quando: m.timestamp,
+        link: m.permalink,
+        legenda: String(m.caption || '').replace(/\s+/g, ' ').slice(0, 140),
+        curtidas: m.like_count,
+        comentarios: m.comments_count,
+        ...(await mediaInsights(m)),
+      })));
+      out.push(...part);
+    }
+    res.json({ account: acc.username || acc.id, total: out.length, itens: out });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 module.exports = router;
