@@ -3670,11 +3670,32 @@ function renderStoreInventoryPhotos(product) {
   }
   return `
     <div class="product-img" data-store-photo-gallery data-current-photo="0" style="position:relative;box-sizing:border-box;padding:0;overflow:hidden;">
-      ${photos.map((url, index) => `<img src="${escPreco(url)}" alt="Foto ${index + 1} de ${photos.length}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:4px;background:var(--bg);display:${index === 0 ? 'block' : 'none'};" onerror="this.style.display='none'">`).join('')}
+      ${photos.map((url, index) => `<img src="${escPreco(url)}" alt="Foto ${index + 1} de ${photos.length}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:4px;background:var(--bg);display:${index === 0 ? 'block' : 'none'};" onerror="storeInventoryPhotoBroken(this)">`).join('')}
       <button type="button" aria-label="Foto anterior" onclick="storeInventoryPhotoNav(event,this,-1)" style="position:absolute;left:7px;top:50%;transform:translateY(-50%);width:32px;height:32px;border:1px solid #ddd;border-radius:50%;background:rgba(255,255,255,.95);font-size:20px;line-height:1;cursor:pointer;z-index:2;">‹</button>
       <button type="button" aria-label="Próxima foto" onclick="storeInventoryPhotoNav(event,this,1)" style="position:absolute;right:7px;top:50%;transform:translateY(-50%);width:32px;height:32px;border:1px solid #ddd;border-radius:50%;background:rgba(255,255,255,.95);font-size:20px;line-height:1;cursor:pointer;z-index:2;">›</button>
       <span data-store-photo-counter style="position:absolute;bottom:7px;left:50%;transform:translateX(-50%);padding:2px 8px;border-radius:10px;background:rgba(0,0,0,.65);color:white;font-size:11px;font-weight:700;z-index:2;">1 / ${photos.length}</span>
     </div>`;
+}
+
+// Foto que não carrega (link morto do site de origem) sai da galeria: nunca mostra o ícone quebrado.
+function storeInventoryPhotoBroken(img) {
+  const gallery = img.closest('[data-store-photo-gallery]');
+  img.remove();
+  if (!gallery) return;
+  const photos = Array.from(gallery.querySelectorAll('img'));
+  if (!photos.length) {
+    gallery.innerHTML = '';
+    gallery.style.display = 'flex'; gallery.style.alignItems = 'center'; gallery.style.justifyContent = 'center'; gallery.style.color = '#8e8e93';
+    gallery.textContent = '📦';
+    return;
+  }
+  const current = Math.min(Number(gallery.dataset.currentPhoto) || 0, photos.length - 1);
+  gallery.dataset.currentPhoto = String(current);
+  photos.forEach((photo, index) => { photo.style.display = index === current ? 'block' : 'none'; });
+  const single = photos.length < 2;
+  gallery.querySelectorAll('button').forEach((b) => { b.style.display = single ? 'none' : ''; });
+  const counter = gallery.querySelector('[data-store-photo-counter]');
+  if (counter) { counter.style.display = single ? 'none' : ''; counter.textContent = `${current + 1} / ${photos.length}`; }
 }
 
 function storeInventoryPhotoNav(event, button, direction) {
