@@ -94,7 +94,7 @@ router.get('/nfes/:id', async (req, res) => {
   try {
     const doc = await prisma.xmlFiscalDocument.findUnique({
       where: { id: req.params.id },
-      include: { items: { take: 200 }, supplier: { select: { id: true, companyName: true, suppliedBrands: true } } },
+      include: { items: { take: 200 } },
     });
     if (!doc) return res.status(404).json({ error: 'NFe não encontrada' });
     res.json({ nfe: doc });
