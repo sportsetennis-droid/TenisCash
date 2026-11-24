@@ -484,7 +484,7 @@ export async function sendCorrectionLetter({ issuer, pfxPath, pfxSenha, accessKe
  * @param {number} [args.nNF]
  * @param {string} [args.natOp] — natureza da operação (default: 'VENDA DE MERCADORIA')
  */
-export async function emitNFe55({ issuer, pfxPath, pfxSenha, items, payment, customer, nNF, natOp }) {
+export async function emitNFe55({ issuer, pfxPath, pfxSenha, items, payment, customer, nNF, natOp, finNFe, tpNF, refNFe }) {
   const tpAmb = issuer.environment === 'production' ? 1 : 2;
   nNF = nNF || issuer.nfeNextNumber || 1;
   const serie = issuer.nfeSerie || 1;
@@ -492,6 +492,8 @@ export async function emitNFe55({ issuer, pfxPath, pfxSenha, items, payment, cus
   if (!items?.length) throw new Error('Sem itens');
   if (!payment) throw new Error('Sem pagamento');
   if (!customer || !customer.cpfCnpj) throw new Error('NFe 55 exige destinatário com CPF/CNPJ');
+  const refNFeClean = refNFe == null ? null : String(refNFe).replace(/\D/g, '');
+  if (refNFeClean && refNFeClean.length !== 44) throw new Error('refNFe deve conter 44 dígitos');
 
   const tools = new Tools({
     mod: 55, tpAmb, UF: 'PB', versao: '4.00',
@@ -514,18 +516,19 @@ export async function emitNFe55({ issuer, pfxPath, pfxSenha, items, payment, cus
   nfe.tagIde({
     cUF: 25, cNF, natOp: natOp || 'VENDA DE MERCADORIA',
     mod: 55, serie, nNF, dhEmi,
-    tpNF: 1,
+    tpNF: tpNF != null ? tpNF : 1,
     idDest: isInterstate ? 2 : 1, // 1=mesma UF, 2=interestadual
     cMunFG: parseInt(issuer.cityCode || '2507507', 10),
     tpImp: 1, // 1=retrato A4
     tpEmis: 1, cDV: null, tpAmb,
     // indFinal 0 = normal (transferência entre estabelecimentos NÃO é consumidor final);
     // 1 = consumidor final (venda). Default 1 mantém o comportamento legado de venda.
-    finNFe: 1, indFinal: customer.indFinal != null ? customer.indFinal : 1,
+    finNFe: finNFe || 1, indFinal: customer.indFinal != null ? customer.indFinal : 1,
     indPres: customer.indPres || 2, // 2=operação não-presencial pela internet (Nuvemshop)
     indIntermed: 0, // 0 = operação sem intermediador/marketplace (obrigatório NFe 4.00)
     procEmi: 0, verProc: 'TenisCash/1.0',
   });
+  if (refNFeClean) nfe.tagRefNFe(refNFeClean);
   nfe.tagEmit({
     CNPJ: issuer.cnpj, xNome: issuer.companyName,
     xFant: issuer.fantasyName || issuer.companyName,

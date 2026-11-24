@@ -776,10 +776,14 @@ router.post('/emit-nfe55', async (req, res) => {
       return res.status(403).json({ error: 'Acesso negado' });
     }
     const b = req.body || {};
-    const { issuerId, items, customer, payment, natOp, saleId, nuvemshopOrderId } = b;
+    const { issuerId, items, customer, payment, natOp, saleId, nuvemshopOrderId, finNFe, tpNF, refNFe } = b;
     if (!items?.length) return res.status(400).json({ error: 'items obrigatório' });
     if (!customer?.cpfCnpj) return res.status(400).json({ error: 'customer.cpfCnpj obrigatório pra modelo 55' });
     if (!payment) return res.status(400).json({ error: 'payment obrigatório' });
+    const refNFeClean = refNFe == null ? null : String(refNFe).replace(/\D/g, '');
+    if (refNFeClean && refNFeClean.length !== 44) {
+      return res.status(400).json({ error: 'refNFe deve conter a chave de acesso com 44 dígitos' });
+    }
 
     let issuer;
     if (issuerId) {
@@ -850,7 +854,10 @@ router.post('/emit-nfe55', async (req, res) => {
         paymentAcquirer: payment.acquirerKey || null,
         paymentAuthCode: payment.cAut || null,
         paymentTpIntegra: payment.tpIntegra || null,
-        payload: nuvemshopOrderId ? { nuvemshopOrderId: String(nuvemshopOrderId) } : null,
+        payload: (nuvemshopOrderId || refNFeClean) ? {
+          ...(nuvemshopOrderId ? { nuvemshopOrderId: String(nuvemshopOrderId) } : {}),
+          ...(refNFeClean ? { refNFe: refNFeClean } : {}),
+        } : null,
       },
     });
 
@@ -861,7 +868,7 @@ router.post('/emit-nfe55', async (req, res) => {
       result = await agentClient.emitNFe55(store, {
         issuer, items,
         payment: { ...payment, nuvemshopOrderId },
-        customer, natOp,
+        customer, natOp, finNFe, tpNF, refNFe: refNFeClean,
         nNF,
       });
     } else {
@@ -869,7 +876,7 @@ router.post('/emit-nfe55', async (req, res) => {
       result = await emitNFe55({
         issuer, pfxPath, pfxSenha, items,
         payment: { ...payment, nuvemshopOrderId },
-        customer, natOp,
+        customer, natOp, finNFe, tpNF, refNFe: refNFeClean,
         nNF,
       });
     }
