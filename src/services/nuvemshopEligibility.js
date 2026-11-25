@@ -128,6 +128,8 @@ function isPublicSizeLabel(value) {
 
   if (/^\d{1,2}(?:[.,]5)?(?:[-/]\d{1,2}(?:[.,]5)?)?$/.test(label)) return true;
   if (/^(?:UNICO|ÚNICO|UN|U|TU|PP|P|M|G|GG|XG|XGG|EG|EGG|XS|S|L|XL|XXL|XXXL|[1-4]XL)$/.test(label)) return true;
+  // faixa de letras escrita pelo fabricante: P/M, G/GG, P-M, G-GG (manguito, luva, faixa)
+  if (/^(?:PP|P|M|G|GG|XG|XGG|EG|EGG|S|L|XL)[-/](?:P|M|G|GG|XG|XGG|EG|EGG|L|XL|XXL)$/.test(label)) return true;
   return false;
 }
 

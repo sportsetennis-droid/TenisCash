@@ -131,10 +131,10 @@ assert.match(reasonOf(validProduct({ sizes: [{ size: '40', barcode: '111', stock
 assert.equal(assessProductForNuvemshop(validProduct({ sizes: [{ size: '40', barcode: '111', stock: 5,
   storeStocks: [{ storeId: '9bcd3735-f5ed-41d7-a851-5896a83a6084', stock: 2 }, { storeId: '5fb0bab8-57c3-4252-ae44-eb434ee14474', stock: 9 }] }] })).eligible, true);
 
-for (const label of ['34', '39/40', '09-11', 'P', 'GG', 'ÚNICO', 'XL']) {
+for (const label of ['34', '39/40', '09-11', 'P', 'GG', 'ÚNICO', 'XL', 'P/M', 'G/GG', 'P-M', 'G-GG']) {
   assert.equal(isPublicSizeLabel(label), true, label);
 }
-for (const label of ['T-6100', '7891234567890', '', 'SEM TAMANHO']) {
+for (const label of ['T-6100', '7891234567890', '', 'SEM TAMANHO', 'P/40', 'COR/GG']) {
   assert.equal(isPublicSizeLabel(label), false, label);
 }
 
