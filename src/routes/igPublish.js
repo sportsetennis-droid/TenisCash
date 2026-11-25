@@ -277,7 +277,7 @@ router.post('/collab-invites', async (req, res) => {
     const qs = new URLSearchParams({ media_id: String(mediaId), accept: accept ? 'true' : 'false', access_token: token });
     const r = await fetch(`${GRAPH}/${acc.id}/collaboration_invites?${qs}`, { method: 'POST' });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok || j.error) return res.status(502).json({ error: (j.error && j.error.message) || `Meta ${r.status}`, meta: j.error || null });
+    if (!r.ok || j.error) return res.status(422).json({ error: (j.error && j.error.message) || `Meta ${r.status}`, meta: j.error || null }); // 422: o Cloudflare esconde 502
     console.log(`[ig/collab] @${acc.username || acc.id} ${accept ? 'aceitou' : 'recusou'} ${mediaId} por user ${req.userId}`);
     res.json({ ok: true, account: acc.username || acc.id, mediaId, accept: !!accept, meta: j });
   } catch (e) {
