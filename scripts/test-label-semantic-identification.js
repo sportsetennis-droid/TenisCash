@@ -179,9 +179,24 @@ for (const testCase of cases) {
   assert.doesNotMatch(style, /\bcal[cç]ados?\s+esportiv[oa]s?\b/i);
 }
 
+// Cor da etiqueta = cor do card (dono 25/11/2026). "Azul Marinho" é uma cor só.
 assert.equal(
   labels.labelProductColor({ name: 'CAMISETA TESTE' }, { color: 'Azul Marinho' }),
-  'AZUL/MARINHO',
+  'Azul Marinho',
+);
+// Produto real (com id) fora do livro de revisão: vale a cor do card, por extenso.
+assert.equal(
+  labels.labelProductColor({ id: 'card-novo-sem-revisao', name: 'VISEIRA ESPORTIVA', brand: 'Vistho' }, { color: 'Preto/Chumbo' }),
+  'Preto/Chumbo',
+);
+assert.equal(
+  labels.labelProductColor({ id: 'card-sigla', name: 'BOLA', brand: 'Uhlsport' }, { color: 'BCO/PTO/AML' }),
+  'BRANCO/PRETO/AMARELO',
+);
+// Card com cor marcada para conferência não manda: sai DÚVIDA, nunca chute.
+assert.equal(
+  labels.labelProductColor({ id: 'card-em-conferencia', name: 'MEIA', brand: 'Poker' }, { color: 'LAC/PT', colorReview: { raw: 'LAC/PT' } }),
+  '',
 );
 assert.equal(
   labels.labelProductColor({ name: 'CAMISETA COR GELO TAM M' }, {}),

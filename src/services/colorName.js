@@ -35,6 +35,11 @@ const PORTUGUESE = [
   'Goma', 'Carmesim', 'Platina', 'Antracite', 'Baunilha', 'Ocre', 'Noturno', 'Chantilly', 'Ardósia', 'Ferrugem',
   // nomes oficiais de cor FILA/Umbro (páginas do cProd, 18/11/2026)
   'Roxeado', 'Rosê', 'Azaleia', 'Canário', 'Abeto', 'Granito', 'Papaya', 'Vibrante', 'Cinzento', 'Avermelhado', 'Borgonha', 'Elétrico',
+  // palavras de cor em português escritas por extenso nos cards (varredura 25/11/2026; só palavra inteira, nenhuma sigla)
+  'Luminoso', 'Estanho', 'Pistache', 'Alfazema', 'Cromo', 'Páprica', 'Tinto', 'Quartzo', 'Noite', 'Bicolor', 'Mel', 'Céu',
+  'Água', 'Nata', 'Lago', 'Neblina', 'Anil', 'Chocolate', 'Queimado', 'Carmim', 'Conhaque', 'Manteiga', 'Terra', 'Cristal',
+  'Metalizado', 'Fosco', 'Cimento', 'Ônix', 'Palha', 'Morango', 'Natural', 'Jade', 'Terracota', 'Gema', 'Cenoura', 'Rubro',
+  'Negro', 'Pastel', 'Suave', 'Colorido', 'Galáxia', 'Piscina',
 ];
 
 // Palavras de ligação que podem aparecer dentro de uma cor ("Verde e Preto").
@@ -78,6 +83,7 @@ const GLOBAL_ALIASES = {
   cobalt: 'Cobalto', indigo: 'Índigo', denim: 'Jeans', mauve: 'Malva', grape: 'Uva', smoke: 'Fumê',
   trans: 'Transparente', trsp: 'Transparente', clear: 'Transparente',
   sort: 'Sortida', sortidas: 'Sortida', sortidos: 'Sortido',
+  roxa: 'Roxo', multicores: 'Multicolorido',
   mcmt: 'Multicolorido', multi: 'Multicolorido', multicolor: 'Multicolorido', multicolour: 'Multicolorido', multicor: 'Multicolorido',
   // modificadores
   light: 'Claro', lt: 'Claro', clara: 'Claro', dark: 'Escuro', dk: 'Escuro', escura: 'Escuro',

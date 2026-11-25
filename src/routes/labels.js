@@ -341,7 +341,25 @@ function fullPortugueseLabelColor(color, brand) {
   return full || color;
 }
 
+// Dono 25/11/2026: "Isso não é a regra... Eu quero para todos os produtos."
+// A cor da etiqueta é a COR DO CARD (aiContext.color), por extenso e em
+// português. Vale para todo produto e todo modelo de etiqueta. O card só não
+// manda quando a cor dele está marcada para conferência (colorReview) ou tem
+// sigla sem tradução certa; aí segue a revisão antiga, que imprime DÚVIDA.
+function cardLabelColor(product, context = {}) {
+  const raw = typeof context?.color === 'string' ? context.color.trim() : '';
+  if (!raw || context?.colorReview) return '';
+  // Outro campo de cor do card dizendo outra coisa = dúvida real, não escolhe.
+  if (distinctStructuredLabelColors(product, context).length > 1) return '';
+  const full = labelColorName(raw, { brand: product?.brand });
+  if (!full) return '';
+  if (isObviousNonColorLabelValue(full) || labelColorValueSpecificDoubt(full)) return '';
+  return full;
+}
+
 function reviewedLabelProductColorDecision(product, context = {}) {
+  const cardColor = cardLabelColor(product, context);
+  if (cardColor) return { color: cardColor, issue: null, review: { status: 'card', color: cardColor } };
   // Objetos sem id existem apenas nos testes unitários e em chamadas internas.
   // Produtos reais sempre precisam passar pela revisão individual registrada.
   if (!product?.id) {
