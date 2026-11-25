@@ -254,4 +254,35 @@ router.get('/insights', async (req, res) => {
   }
 });
 
+// Convites de colaboração (collab) de cada conta de loja — API oficial "IG User Collaboration Invites".
+//   GET  /api/ig/collab-invites?account=sportsetennistambia     → convites pendentes da conta
+//   POST /api/ig/collab-invites { account, mediaId, accept=true } → aceita (ou recusa) o convite daquela mídia
+// Dono 25/11/2026: "Você tem que colaborar com todas as lojas e ainda tem que aceitar todas."
+router.get('/collab-invites', async (req, res) => {
+  try {
+    const acc = await resolveAccount(req.query.account);
+    const j = await graphGet(`${acc.id}/collaboration_invites`, { fields: 'media_id,media_owner_username,caption,media_url' });
+    res.json({ account: acc.username || acc.id, convites: j.data || [] });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post('/collab-invites', async (req, res) => {
+  try {
+    const { account, mediaId, accept = true } = req.body || {};
+    if (!mediaId) return res.status(400).json({ error: 'mediaId obrigatório' });
+    const acc = await resolveAccount(account);
+    const token = systemToken();
+    const qs = new URLSearchParams({ media_id: String(mediaId), accept: accept ? 'true' : 'false', access_token: token });
+    const r = await fetch(`${GRAPH}/${acc.id}/collaboration_invites?${qs}`, { method: 'POST' });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.error) return res.status(502).json({ error: (j.error && j.error.message) || `Meta ${r.status}`, meta: j.error || null });
+    console.log(`[ig/collab] @${acc.username || acc.id} ${accept ? 'aceitou' : 'recusou'} ${mediaId} por user ${req.userId}`);
+    res.json({ ok: true, account: acc.username || acc.id, mediaId, accept: !!accept, meta: j });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;
