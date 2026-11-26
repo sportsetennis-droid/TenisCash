@@ -48,6 +48,7 @@ function ensureSchema(prisma) {
         "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT NOW(), "answeredAt" TIMESTAMP(3))`,
       `CREATE INDEX IF NOT EXISTS "ShoeClosetOffer_owner_idx" ON "ShoeClosetOffer" ("ownerId", "status")`,
       `CREATE INDEX IF NOT EXISTS "ShoeClosetOffer_buyer_idx" ON "ShoeClosetOffer" ("buyerId", "status")`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS "ShoeClosetOffer_open_uq" ON "ShoeClosetOffer" ("itemId", "buyerId") WHERE "status"='PENDING'`,
     ];
     ready = (async () => { for (const s of stmts) await prisma.$executeRawUnsafe(s); })().catch((e) => { ready = null; throw e; });
   }
@@ -73,13 +74,35 @@ async function resolveHandle(prisma, handle) {
   return ap ? ap.userId : null;
 }
 
-// Quem ainda não tem @ escolhe um (só uma vez, sem trocar o de quem já tem).
+// Dono 26/11: "O @ já gera automático e fica com a opção de a pessoa querer alterar."
+// Gera do nome (primeiro.último, sem acento); se já existir, põe número no fim.
+function handleBase(name) {
+  const p = String(name || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  let b = p.length > 1 ? p[0] + '.' + p[p.length - 1] : (p[0] || 'atleta');
+  b = b.slice(0, 26).replace(/[._]+$/, '');
+  return b.length >= 3 ? b : b + '.club';
+}
+async function autoHandle(prisma, userId, name) {
+  const base = handleBase(name);
+  for (let i = 1; i <= 60; i++) {
+    const h = i === 1 ? base : base + (i < 50 ? i : crypto.randomInt(1000, 9999));
+    if (!HANDLE_RX.test(h) || (await resolveHandle(prisma, h))) continue;
+    try {
+      const r = await prisma.user.updateMany({ where: { id: userId, username: null }, data: { username: h } });
+      if (r.count) return h;
+      return ((await userBasics(prisma, userId)) || {}).handle || null; // outro pedido já gravou
+    } catch (e) { if (e && e.code === 'P2002') continue; throw e; }
+  }
+  return null;
+}
+
+// Trocar o @ (o gerado automaticamente ou um escolhido antes).
 async function setHandle(prisma, userId, raw) {
   const h = String(raw || '').replace(/^@/, '').trim().toLowerCase();
   if (!HANDLE_RX.test(h)) throw httpErr(400, 'Use de 3 a 30 letras minúsculas, números, ponto ou _ (sem espaço).');
   const me = await userBasics(prisma, userId);
   if (!me) throw httpErr(404, 'Conta não encontrada.');
-  if (me.handle) throw httpErr(409, 'Você já tem o @' + me.handle + '.');
+  if (me.handle === h) return { handle: h };
   const taken = await resolveHandle(prisma, h);
   if (taken && taken !== userId) throw httpErr(409, 'Esse @ já é de outra pessoa. Escolha outro.');
   try {
@@ -129,8 +152,10 @@ async function itemsOf(prisma, userId, { viewerId = null, includeHidden = false 
 }
 
 async function me(prisma, userId) {
+  await ensureSchema(prisma); // tabela de ofertas é lida abaixo
   const u = await userBasics(prisma, userId);
   if (!u) throw httpErr(404, 'Conta não encontrada.');
+  if (!u.handle) u.handle = await autoHandle(prisma, userId, u.name).catch(() => null);
   const [{ n }] = await prisma.$queryRaw`SELECT count(*)::int AS n FROM "ShoeClosetOffer" WHERE "ownerId"=${userId} AND "status"='PENDING'`;
   return { user: { name: u.name, handle: u.handle, avatar: u.avatar }, profile: await profileOf(prisma, userId), items: await itemsOf(prisma, userId, { viewerId: userId, includeHidden: true }), offersPending: n };
 }
@@ -315,7 +340,8 @@ async function addItem(prisma, userId, body, deps = {}) {
     if (web.length) {
       source = 'busca';
       const copy = deps.copyWebPhoto || copyWebPhoto;
-      for (const w of web) { const u = await copy(w, { ownerUserId: userId }).catch(() => null); if (u && !photos.includes(u)) photos.push(u); }
+      const got = await Promise.all(web.map((w) => copy(w, { ownerUserId: userId }).catch(() => null)));
+      for (const u of got) if (u && !photos.includes(u)) photos.push(u);
       if (!photos.length) throw httpErr(502, 'Não deu para baixar as fotos. Tente outro resultado.');
     }
   }
@@ -395,8 +421,11 @@ async function toggleLike(prisma, userId, itemId) {
 // ───────── ofertas ─────────
 // Valor em reais: aceita "350", "350,00", "1.234,56", "1234.56".
 function parseValor(v) {
-  if (typeof v === 'number') return Math.round(v * 100) / 100;
-  let t = String(v == null ? '' : v).replace(/[^0-9.,]/g, '');
+  if (typeof v === 'number') return Number.isFinite(v) && v > 0 ? Math.round(v * 100) / 100 : NaN;
+  const raw = String(v == null ? '' : v).replace(/r\$/i, '').replace(/\s+/g, '');
+  if (!/^[0-9.,]+$/.test(raw)) return NaN;
+  if (/\.\d*,|,\d{3}\./.test(raw) && raw.indexOf(',') < raw.lastIndexOf('.')) return NaN; // 1,234.56 (formato americano)
+  let t = raw;
   if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
   else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
   const n = Number(t);
@@ -424,34 +453,43 @@ async function makeOffer(prisma, buyerId, itemId, body, deps = {}) {
   if (!String(buyer.phone || '').replace(/\D/g, '')) throw httpErr(400, 'Sua conta não tem WhatsApp cadastrado. Cadastre no seu perfil do Club.');
   const message = clean(body.message, 300);
   const [aberta] = await prisma.$queryRaw`SELECT "id" FROM "ShoeClosetOffer" WHERE "itemId"=${it.id} AND "buyerId"=${buyerId} AND "status"='PENDING'`;
-  let offerId;
+  let offerId = null;
   if (aberta) {
-    offerId = aberta.id;
-    await prisma.$executeRaw`UPDATE "ShoeClosetOffer" SET "amount"=${amount}, "message"=${message}, "updatedAt"=NOW() WHERE "id"=${offerId}`;
-  } else {
+    const upd = await prisma.$executeRaw`UPDATE "ShoeClosetOffer" SET "amount"=${amount}, "message"=${message}, "updatedAt"=NOW() WHERE "id"=${aberta.id} AND "status"='PENDING'`;
+    if (upd) offerId = aberta.id;
+  }
+  if (!offerId) {
     const [{ n }] = await prisma.$queryRaw`SELECT count(*)::int AS n FROM "ShoeClosetOffer" WHERE "buyerId"=${buyerId} AND "status"='PENDING'`;
     if (n >= 30) throw httpErr(429, 'Você tem muitas ofertas em aberto. Espere as respostas.');
     offerId = id();
-    await prisma.$executeRaw`INSERT INTO "ShoeClosetOffer" ("id","itemId","ownerId","buyerId","amount","message") VALUES (${offerId}, ${it.id}, ${it.userId}, ${buyerId}, ${amount}, ${message})`;
+    try {
+      await prisma.$executeRaw`INSERT INTO "ShoeClosetOffer" ("id","itemId","ownerId","buyerId","amount","message") VALUES (${offerId}, ${it.id}, ${it.userId}, ${buyerId}, ${amount}, ${message})`;
+    } catch (e) {
+      if (/ShoeClosetOffer_open_uq|unique/i.test(String(e && e.message))) throw httpErr(409, 'Você já tem uma oferta aberta neste tênis. Tente de novo.');
+      throw e;
+    }
   }
   await notifyUser(deps, it.userId, { title: 'Oferta no seu tênis', body: firstAndLast(buyer.name) + ' ofereceu ' + brl(amount) + ' pelo ' + it.model + '.', link: '/meustenis?ofertas=1' });
-  return { id: offerId, amount, status: 'PENDING', updated: !!aberta };
+  return { id: offerId, amount, status: 'PENDING', updated: !!(aberta && offerId === aberta.id) };
 }
 
 async function myOffers(prisma, userId) {
   await ensureSchema(prisma);
-  const rec = await prisma.$queryRaw`SELECT o.*, i."model", i."brand", i."photo", u."name" AS "buyerName", u."phone" AS "buyerPhone", u."username" AS "buyerHandle"
+  const rec = await prisma.$queryRaw`SELECT o.*, i."model", i."brand", i."photo", u."name" AS "buyerName", u."phone" AS "buyerPhone", u."username" AS "buyerHandle", u."active" AS "buyerActive"
     FROM "ShoeClosetOffer" o JOIN "ShoeClosetItem" i ON i."id"=o."itemId" JOIN "User" u ON u."id"=o."buyerId"
     WHERE o."ownerId"=${userId} AND o."status" IN ('PENDING','ACCEPTED','DECLINED') ORDER BY (o."status"='PENDING') DESC, o."updatedAt" DESC LIMIT 100`;
   const sent = await prisma.$queryRaw`SELECT o.*, i."model", i."brand", i."photo", u."name" AS "ownerName", u."username" AS "ownerHandle"
     FROM "ShoeClosetOffer" o JOIN "ShoeClosetItem" i ON i."id"=o."itemId" JOIN "User" u ON u."id"=o."ownerId"
     WHERE o."buyerId"=${userId} ORDER BY o."updatedAt" DESC LIMIT 100`;
   const base = (o) => ({ id: o.id, itemId: o.itemId, model: o.model, brand: o.brand, photo: o.photo, amount: Number(o.amount), message: o.message, status: o.status, createdAt: o.createdAt, answeredAt: o.answeredAt });
+  const isErased = require('./ligaPrivacy').isErased;
+  const apagado = new Set();
+  for (const o of rec) if (o.status === 'ACCEPTED' && (o.buyerActive === false || (await isErased(o.buyerId).catch(() => false)))) apagado.add(o.id);
   return {
     received: rec.map((o) => Object.assign(base(o), {
       buyer: { name: firstAndLast(o.buyerName), handle: o.buyerHandle || null },
       // WhatsApp de quem ofereceu: só depois que o dono aceita (a pessoa autorizou ao enviar)
-      whatsapp: o.status === 'ACCEPTED' ? String(o.buyerPhone || '').replace(/\D/g, '') || null : null,
+      whatsapp: o.status === 'ACCEPTED' && !apagado.has(o.id) ? String(o.buyerPhone || '').replace(/\D/g, '') || null : null,
     })),
     sent: sent.map((o) => Object.assign(base(o), { owner: { name: firstAndLast(o.ownerName), handle: o.ownerHandle || null } })),
   };
@@ -466,7 +504,8 @@ async function answerOffer(prisma, userId, offerId, action, deps = {}) {
   const act = String(action || '');
   if (act === 'cancel') {
     if (o.buyerId !== userId) throw httpErr(403, 'Só quem fez a oferta pode cancelar.');
-    await prisma.$executeRaw`UPDATE "ShoeClosetOffer" SET "status"='WITHDRAWN', "updatedAt"=NOW() WHERE "id"=${o.id} AND "status"='PENDING'`;
+    const c = await prisma.$executeRaw`UPDATE "ShoeClosetOffer" SET "status"='WITHDRAWN', "updatedAt"=NOW() WHERE "id"=${o.id} AND "status"='PENDING'`;
+    if (!c) throw httpErr(409, 'O dono já respondeu essa oferta.');
     return { status: 'WITHDRAWN' };
   }
   if (o.ownerId !== userId) throw httpErr(403, 'Só o dono do tênis responde a oferta.');
@@ -481,4 +520,4 @@ async function answerOffer(prisma, userId, offerId, action, deps = {}) {
 }
 
 module.exports = { ensureSchema, setHandle, resolveHandle, me, saveProfile, publicCloset, explore, searchCatalog, searchWeb, copyWebPhoto,
-  addItem, updateItem, removeItem, reorder, toggleLike, makeOffer, myOffers, answerOffer, parseValor, firstAndLast, HANDLE_RX, LIMITE_ITENS, MAX_FOTOS };
+  addItem, updateItem, removeItem, reorder, toggleLike, makeOffer, myOffers, answerOffer, parseValor, handleBase, firstAndLast, HANDLE_RX, LIMITE_ITENS, MAX_FOTOS };

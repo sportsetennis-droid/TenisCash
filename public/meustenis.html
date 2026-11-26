@@ -413,7 +413,7 @@ textarea{min-height:70px;resize:vertical}
       var head = '<div class="top">' + LOGO + '<button class="btn btn-s g" id="out">Sair</button></div>' +
         '<div class="prof">' + avatar(d.user) + '<div><div class="kicker">Meus Tênis</div><h1>' + esc(d.user.name.split(' ')[0]) + '</h1><div class="stats"><span><b>' + d.items.length + '</b> tênis</span><span><b>' + d.items.reduce(function (s, i) { return s + (i.likes || 0); }, 0) + '</b> curtidas</span><span><b>' + (d.profile.views || 0) + '</b> visitas</span></div></div></div>';
       var link = h ? '<div class="share"><code>' + esc(publicUrl(h).replace(/^https?:\/\//, '')) + '</code><button class="btn btn-s" id="cp">Copiar</button><button class="btn btn-s g" id="sh">Enviar</button></div>' +
-        '<p class="dim small" style="margin-top:6px">Cole esse link na bio do seu Instagram.</p>' :
+        '<p class="dim small" style="margin-top:6px">Seu @ é <b>@' + esc(h) + '</b> · <a href="#" id="chh" style="color:var(--o2);font-weight:800">trocar</a> · Cole esse link na bio do seu Instagram.</p>' :
         '<div class="hero" style="margin-top:12px"><b>Escolha o seu @ para ter o link público</b><label>Seu @<input id="hd" maxlength="30" placeholder="ex.: joao.corre" autocapitalize="none" autocorrect="off"></label><button class="btn w" id="hgo" style="margin-top:10px">Criar meu link</button><div class="msg" id="hm"></div></div>';
       $app.innerHTML = head + link +
         '<div class="row"><button class="btn" id="add">+ Incluir tênis</button>' + (h ? '<a class="btn g" href="/meustenis/' + encodeURIComponent(h) + '">Ver como fica</a>' : '') + '</div>' +
@@ -428,6 +428,17 @@ textarea{min-height:70px;resize:vertical}
       if (OPEN_OFFERS) { OPEN_OFFERS = false; offersSheet(); }
       var cp = document.getElementById('cp'); if (cp) cp.onclick = function () { copy(publicUrl(h)); };
       var sh = document.getElementById('sh'); if (sh) sh.onclick = function () { share(h, d.user.name); };
+      var chh = document.getElementById('chh'); if (chh) chh.onclick = function (e) {
+        e.preventDefault();
+        openSheet('<div class="kicker">Trocar o @</div><label>Novo @<input id="nh" maxlength="30" value="' + esc(h) + '" autocapitalize="none" autocorrect="off" spellcheck="false"></label>' +
+          '<p class="dim small" style="margin-top:6px">Letras minúsculas, números, ponto ou _. O link antigo para de funcionar: atualize a bio do Instagram depois.</p>' +
+          '<button class="btn w" id="nhg" style="margin-top:14px">Salvar novo @</button><div class="msg" id="nhm"></div>');
+        document.getElementById('nhg').onclick = function () {
+          var b = this, m = document.getElementById('nhm'); b.disabled = true;
+          api('/me/handle', { method: 'POST', body: { handle: document.getElementById('nh').value } }).then(function () { closeSheet(); toast('@ atualizado'); mine(); })
+            .catch(function (er) { m.className = 'msg bad'; m.textContent = er.message; b.disabled = false; });
+        };
+      };
       var hgo = document.getElementById('hgo'); if (hgo) hgo.onclick = function () {
         var m = document.getElementById('hm'); hgo.disabled = true;
         api('/me/handle', { method: 'POST', body: { handle: document.getElementById('hd').value } }).then(function () { mine(); }).catch(function (e) { m.className = 'msg bad'; m.textContent = e.message; hgo.disabled = false; });
