@@ -145,6 +145,7 @@ if (CANONICAL_HOST) {
 }
 // fotos da loja (até 5 fotos em base64): parser próprio com limite maior, antes do global (que pula corpo já lido)
 app.use('/api/fotos-loja', express.json({ limit: '8mb' }));
+app.use('/api/meustenis', express.json({ limit: '4mb' })); // Meus Tênis: foto do celular já vem reduzida no navegador
 app.use(express.json({
   // 1.5mb pra acomodar foto/audio em base64 do /api/messages-v2
   limit: '1.5mb',
@@ -616,6 +617,7 @@ app.use('/api/instagram', require('./routes/instagramWebhook')); // DM do Instag
 app.use('/api/ig', require('./routes/igPublish')); // publicação multi-conta (lojas, Meta, Baratão) via usuário do sistema
 app.use('/api/stocktake', stocktakeRoutes);
 app.use('/api/scan-transfers', require('./routes/scanTransfers'));
+app.use('/api/meustenis', require('./routes/meusTenis')); // Meus Tênis: guarda-tênis digital público do Club (dono 25/11)
 app.use('/api/fotos-loja', require('./routes/fotosLoja')); // vendedor fotografa a peça do card sem foto (dono 19/11)
 app.use('/api/classification', classificationRoutes);
 app.use('/api/messages-v2', messagesV2Routes);
@@ -857,6 +859,7 @@ siteBrand.mount(app);
 
 // Medalhas digitais: verificação (/verificar, /v/:serial), estante (/estante/:handle), contexto JSON-LD.
 require('./services/medalPages').mount(app);
+require('./services/meusTenisPage').mount(app); // /meustenis e /meustenis/:handle (link para a bio do Instagram)
 require('./ai/rede/mcp/oauth').mount(app); // OAuth do MCP: o Claude conecta só com a URL (dono autoriza com o login do admin)
 require('./ai/rede/mcp/servidor').mount(app); // MCP da rede (/mcp) — só admin/dono via Bearer JWT
 
