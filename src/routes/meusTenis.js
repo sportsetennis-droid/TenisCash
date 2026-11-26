@@ -27,6 +27,7 @@ auth.use(noStore, authMiddleware);
 auth.get('/me', (req, res) => send(res, mt.me(prisma, req.userId)));
 auth.put('/me', writeLimiter, (req, res) => send(res, mt.saveProfile(prisma, req.userId, req.body || {})));
 auth.post('/me/handle', writeLimiter, (req, res) => send(res, mt.setHandle(prisma, req.userId, (req.body || {}).handle)));
+auth.get('/me/purchases', (req, res) => send(res, mt.purchases(prisma, req.userId)));
 auth.get('/search', (req, res) => send(res, mt.searchCatalog(prisma, req.query.q)));
 auth.get('/search/web', webLimiter, (req, res) => send(res, mt.searchWeb(req.query.q)));
 const barcodeLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, message: { error: 'Muitos códigos seguidos. Espere um minuto.' } });

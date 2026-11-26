@@ -276,6 +276,30 @@ textarea{min-height:70px;resize:vertical}
   }
 
 
+  // ───────── tênis comprados na Sports & Tennis (o caminho principal) ─────────
+  function buyBody(el) {
+    el.innerHTML = '<div class="spin">Procurando suas compras…</div>';
+    api('/me/purchases').then(function (list) {
+      if (!list.length) {
+        el.innerHTML = '<div class="empty">Ainda não achamos tênis comprados com o seu cadastro.<br><br>Na próxima compra numa Sports &amp; Tennis, informe seu WhatsApp no caixa e o tênis aparece aqui.</div>' +
+          '<button class="btn w" id="tocat2" style="margin-top:12px">Procurar meu tênis pelo nome</button>';
+        document.getElementById('tocat2').onclick = function () { document.querySelector('.tabs button[data-t=cat]').click(); };
+        return;
+      }
+      var novos = list.filter(function (x) { return !x.added; });
+      el.innerHTML = '<p class="dim small" style="margin-top:10px">Tênis que você comprou na Sports &amp; Tennis:</p>' + list.map(function (r, i) {
+        return '<div class="offer">' + (r.photo ? '<img src="' + esc(r.photo) + '" alt="">' : '') + '<div style="flex:1;min-width:0"><div style="color:var(--o);font-weight:800;font-size:12px;text-transform:uppercase">' + esc(r.brand || '') + '</div>' +
+          '<div style="font-weight:800;line-height:1.2">' + esc(r.model) + '</div><div class="dim small">' + esc([r.color, r.size ? 'Tam. ' + r.size : '', r.boughtAt ? 'comprado em ' + new Date(r.boughtAt).toLocaleDateString('pt-BR') : ''].filter(Boolean).join(' · ')) + '</div>' +
+          (r.added ? '<div class="st ACCEPTED" style="margin-top:6px">Já está no seu guarda-tênis</div>' : '<button class="btn btn-s" style="margin-top:8px" data-buy="' + i + '">Incluir</button>') + '</div></div>';
+      }).join('') + (novos.length > 1 ? '<button class="btn w" id="buyall" style="margin-top:12px">Incluir todos (' + novos.length + ')</button>' : '') +
+        '<p class="dim small" style="margin-top:12px;text-align:center">Não está aqui? <a href="#" id="tocat3" style="color:var(--o2);font-weight:800">Procure pelo nome</a></p>';
+      var add = function (r) { return api('/items', { method: 'POST', body: { productId: r.productId, size: r.size || '', color: r.color || '' } }); };
+      el.querySelectorAll('[data-buy]').forEach(function (b) { b.onclick = function () { var r = list[+b.dataset.buy]; b.disabled = true; b.textContent = 'Incluindo…'; add(r).then(function () { r.added = true; toast('Tênis incluído'); mine(); buyBody(el); }).catch(function (e) { toast(e.message); b.disabled = false; b.textContent = 'Incluir'; }); }; });
+      var ba = document.getElementById('buyall'); if (ba) ba.onclick = function () { ba.disabled = true; ba.textContent = 'Incluindo…'; novos.reduce(function (pr, r) { return pr.then(function () { return add(r); }); }, Promise.resolve()).then(function () { closeSheet(); toast('Tênis incluídos'); mine(); }).catch(function (e) { toast(e.message); mine(); buyBody(el); }); };
+      document.getElementById('tocat3').onclick = function (e) { e.preventDefault(); document.querySelector('.tabs button[data-t=cat]').click(); };
+    }).catch(function (e) { el.innerHTML = '<div class="msg bad">' + esc(e.message) + '</div>'; });
+  }
+
   // ───────── bipar a caixa (câmera do celular, leitor grátis no próprio aparelho) ─────────
   var SCAN = { stream: null, timer: null, busy: false, ready: null, gen: 0 };
   function loadReader() {
@@ -401,9 +425,9 @@ textarea{min-height:70px;resize:vertical}
   // ───────── incluir tênis ─────────
   var ADD = { tab: 'cat', results: [], pick: null };
   function addSheet() {
-    ADD = { tab: 'scan', results: [], pick: null, q: '' };
+    ADD = { tab: 'buy', results: [], pick: null, q: '' };
     openSheet('<div class="kicker">Incluir tênis</div><h2 style="margin-top:4px">Qual tênis você tem?</h2>' +
-      '<div class="tabs"><button data-t="scan" class="on">Bipar</button><button data-t="cat">Catálogo</button><button data-t="web">Internet</button><button data-t="up">Fotos</button></div><div id="addBody"></div>');
+      '<div class="tabs"><button data-t="buy" class="on">Comprei na loja</button><button data-t="cat">Buscar</button><button data-t="up">Minhas fotos</button><button data-t="web" style="display:none">Internet</button><button data-t="scan" style="display:none">Caixa</button></div><div id="addBody"></div>');
     document.querySelectorAll('.tabs button').forEach(function (b) { b.onclick = function () { ADD.tab = b.dataset.t; ADD.results = []; ADD.pick = null; document.querySelectorAll('.tabs button').forEach(function (x) { x.classList.toggle('on', x === b); }); addBody(); }; });
     addBody();
   }
@@ -411,6 +435,7 @@ textarea{min-height:70px;resize:vertical}
     var el = document.getElementById('addBody');
     stopScan();
     if (ADD.tab === 'scan') return scanBody(el);
+    if (ADD.tab === 'buy') return buyBody(el);
     if (ADD.tab === 'up') {
       el.innerHTML = '<label>Fotos do tênis (até ' + MAXF + ')<input type="file" id="uf" accept="image/*" multiple></label><p class="dim small" id="ufn" style="margin-top:4px"></p><label>Marca<input id="ub" maxlength="60" placeholder="Ex.: Mizuno"></label>' +
         '<label>Modelo<input id="um" maxlength="140" placeholder="Ex.: Wave Rider 28"></label><div class="row" style="margin-top:0"><label>Cor<input id="uc" maxlength="60"></label><label>Tamanho<input id="us" maxlength="12" inputmode="decimal"></label></div>' +
@@ -428,7 +453,9 @@ textarea{min-height:70px;resize:vertical}
       return;
     }
     el.innerHTML = '<label>' + (ADD.tab === 'cat' ? 'Procure no catálogo da Sports &amp; Tennis' : 'Procure nos sites das marcas') + '<input id="q" type="search" placeholder="Ex.: Mizuno Wave Rider" value="' + esc(ADD.q || '') + '" enterkeyhint="search"></label>' +
-      '<button class="btn w g" id="qgo" style="margin-top:10px">Buscar</button><div id="qres"></div>';
+      '<button class="btn w g" id="qgo" style="margin-top:10px">Buscar</button><div id="qres"></div>' +
+      (ADD.tab === 'cat' ? '<p class="dim small" style="margin-top:12px;text-align:center">Ainda tem a caixa? <a href="#" id="toScan" style="color:var(--o2);font-weight:800">Bipe o código de barras</a></p>' : '');
+    var ts = document.getElementById('toScan'); if (ts) ts.onclick = function (e) { e.preventDefault(); document.querySelector('.tabs button[data-t=scan]').click(); };
     var q = document.getElementById('q'); var qgo = document.getElementById('qgo');
     var run = function () {
       ADD.q = q.value.trim(); if (ADD.q.length < 2) return;

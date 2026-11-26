@@ -191,6 +191,34 @@ async function setTracking(prisma, userId, itemId, on) {
 }
 const numIn = (v, min, max) => { const n = Number(String(v == null ? '' : v).replace(',', '.')); return Number.isFinite(n) && n >= min && n <= max ? n : null; };
 
+// Dono 26/11: "são as pessoas que vão acessar e não eu como loja" → o jeito principal de incluir é
+// a lista dos tênis que a pessoa COMPROU numa Sports & Tennis (venda com o cadastro dela), um toque para incluir.
+async function purchases(prisma, userId) {
+  await ensureSchema(prisma);
+  const rows = await prisma.$queryRaw`SELECT si."productId", max(s."createdAt") AS "boughtAt", max(ps."size") AS "size", max(ps."barcode") AS "barcode",
+      bool_or(ps."sizeConfirmedAt" IS NOT NULL) AS "confirmed"
+    FROM "Sale" s JOIN "SaleItem" si ON si."saleId"=s.id LEFT JOIN "ProductSize" ps ON ps.id=si."productSizeId"
+    WHERE s."customerUserId"=${userId} AND s."status"='completed' AND si."productId" IS NOT NULL
+    GROUP BY si."productId" ORDER BY max(s."createdAt") DESC LIMIT 60`;
+  if (!rows.length) return [];
+  const ja = new Set((await prisma.$queryRaw`SELECT "productId" FROM "ShoeClosetItem" WHERE "userId"=${userId} AND "productId" IS NOT NULL`).map((x) => x.productId));
+  const prods = await prisma.product.findMany({ where: { id: { in: rows.map((r) => r.productId) } }, select: { id: true, name: true, brand: true, category: true, imageUrl: true, imageUrls: true, aiContext: true } });
+  const byId = new Map(prods.map((p) => [p.id, p]));
+  const ms = require('./mediaStore');
+  const out = [];
+  for (const r of rows) {
+    const p = byId.get(r.productId);
+    if (!p || !FOOTWEAR.test((p.category || '') + ' ' + p.name)) continue; // só calçado
+    let img = p.imageUrl || (Array.isArray(p.imageUrls) ? p.imageUrls.find((x) => typeof x === 'string' && x) : null);
+    img = await ms.publicUrlFor(img).catch(() => null);
+    if (img && /^data:/i.test(img)) img = await ms.put(img, { source: 'legacy' }).then((x) => x.url).catch(() => null);
+    const adidas = /adidas/i.test(String(p.brand || ''));
+    const size = (!adidas || r.confirmed) && /^(?:[1-5]\d(?:[.,]5)?|PP|P|M|G|GG|XG|XGG|\d{1,2}A)$/i.test(String(r.size || '').trim()) ? String(r.size).trim() : null;
+    out.push({ productId: p.id, brand: p.brand, model: p.name, color: (p.aiContext && p.aiContext.color) || null, size, photo: img, boughtAt: r.boughtAt, added: ja.has(p.id) });
+  }
+  return out;
+}
+
 // Bipar a caixa: o código de barras acha o tênis certo no catálogo (modelo, cor e tamanho).
 // Tamanho só se o card tiver o número confirmado (placeholder T-<EAN> não vira tamanho).
 async function lookupBarcode(prisma, raw) {
@@ -583,5 +611,5 @@ async function answerOffer(prisma, userId, offerId, action, deps = {}) {
   return (await myOffers(prisma, userId)).received.find((x) => x.id === o.id) || { status };
 }
 
-module.exports = { ensureSchema, setHandle, resolveHandle, me, saveProfile, publicCloset, explore, searchCatalog, searchWeb, copyWebPhoto, lookupBarcode, setTracking, liveKm,
+module.exports = { ensureSchema, setHandle, resolveHandle, me, saveProfile, publicCloset, explore, searchCatalog, searchWeb, copyWebPhoto, lookupBarcode, purchases, setTracking, liveKm,
   addItem, updateItem, removeItem, reorder, toggleLike, makeOffer, myOffers, answerOffer, parseValor, handleBase, firstAndLast, HANDLE_RX, LIMITE_ITENS, MAX_FOTOS };
