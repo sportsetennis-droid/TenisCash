@@ -67,7 +67,12 @@ async function setHandle(prisma, userId, raw) {
   if (me.handle) throw httpErr(409, 'Você já tem o @' + me.handle + '.');
   const taken = await resolveHandle(prisma, h);
   if (taken && taken !== userId) throw httpErr(409, 'Esse @ já é de outra pessoa. Escolha outro.');
-  await prisma.user.update({ where: { id: userId }, data: { username: h } });
+  try {
+    await prisma.user.update({ where: { id: userId }, data: { username: h } });
+  } catch (e) {
+    if (e && e.code === 'P2002') throw httpErr(409, 'Esse @ já é de outra pessoa. Escolha outro.'); // dois pedidos ao mesmo tempo
+    throw e;
+  }
   return { handle: h };
 }
 
@@ -120,7 +125,7 @@ async function publicCloset(prisma, handle, { viewerId = null, countView = false
   if (!p.isPublic && !own) throw httpErr(404, 'Este guarda-tênis é privado.');
   if (countView && !own) await prisma.$executeRaw`INSERT INTO "ShoeClosetProfile" ("userId","views") VALUES (${userId}, 1) ON CONFLICT ("userId") DO UPDATE SET "views"="ShoeClosetProfile"."views"+1`.catch(() => {});
   const items = await itemsOf(prisma, userId, { viewerId });
-  return { user: { name: firstAndLast(u.name), handle: u.handle || userId, avatar: u.avatar }, bio: p.bio, own, views: p.views, likes: items.reduce((s, i) => s + i.likes, 0), items };
+  return { user: { name: firstAndLast(u.name), handle: u.handle || null, avatar: u.avatar }, bio: p.bio, own, views: p.views, likes: items.reduce((s, i) => s + i.likes, 0), items };
 }
 // Nome público: primeiro e último nome (sem expor nome completo).
 function firstAndLast(name) { const p = String(name || '').trim().split(/\s+/).filter(Boolean); return p.length > 1 ? p[0] + ' ' + p[p.length - 1] : (p[0] || 'Atleta'); }
@@ -142,9 +147,9 @@ async function explore(prisma, { limit = 24 } = {}) {
   const out = [];
   for (const r of rows) {
     const u = await userBasics(prisma, r.userId);
-    if (!u) continue;
+    if (!u || !u.handle) continue; // sem @ não tem página pública
     const thumbs = await prisma.$queryRaw`SELECT "photo", "model" FROM "ShoeClosetItem" WHERE "userId"=${r.userId} AND NOT "hidden" AND "photo" IS NOT NULL ORDER BY "position" ASC, "createdAt" DESC LIMIT 4`;
-    out.push({ name: firstAndLast(u.name), handle: u.handle || r.userId, avatar: u.avatar, count: r.n, likes: r.likes || 0, thumbs: thumbs.map((t) => ({ photo: t.photo, model: t.model })) });
+    out.push({ name: firstAndLast(u.name), handle: u.handle, avatar: u.avatar, count: r.n, likes: r.likes || 0, thumbs: thumbs.map((t) => ({ photo: t.photo, model: t.model })) });
   }
   return out;
 }
@@ -225,10 +230,24 @@ async function copyWebPhoto(url, { fetchFn = fetch, ownerUserId = null } = {}) {
   const host = u.hostname.toLowerCase();
   const ok = u.protocol === 'https:' && webHosts().some((h) => host === h || host.endsWith('.' + h.replace(/^www\./, '')) || /(^|\.)vteximg\.com\.br$|(^|\.)vtexassets\.com$/.test(host));
   if (!ok) throw httpErr(400, 'Essa foto não veio da busca do Club.');
-  const r = await fetchFn(u.href, { signal: AbortSignal.timeout(12000) });
+  // sem seguir redirecionamento (a trava de site vale só para o endereço conferido) e com teto de tamanho na leitura
+  const r = await fetchFn(u.href, { signal: AbortSignal.timeout(12000), redirect: 'manual' });
   if (!r.ok) throw httpErr(502, 'Não deu para baixar a foto. Tente outra.');
-  const buf = Buffer.from(await r.arrayBuffer());
-  if (buf.length > 8 * 1024 * 1024) throw httpErr(413, 'Foto grande demais.');
+  const MAX = 8 * 1024 * 1024;
+  if (Number(r.headers && r.headers.get && r.headers.get('content-length')) > MAX) throw httpErr(413, 'Foto grande demais.');
+  const chunks = []; let total = 0;
+  if (r.body && typeof r.body.getReader === 'function') {
+    const rd = r.body.getReader();
+    for (;;) {
+      const { done, value } = await rd.read();
+      if (done) break;
+      total += value.length;
+      if (total > MAX) { rd.cancel().catch(() => {}); throw httpErr(413, 'Foto grande demais.'); }
+      chunks.push(Buffer.from(value));
+    }
+  } else chunks.push(Buffer.from(await r.arrayBuffer()));
+  const buf = Buffer.concat(chunks);
+  if (buf.length > MAX) throw httpErr(413, 'Foto grande demais.');
   const saved = await require('./mediaStore').put(buf, { ownerUserId, source: 'upload' });
   return saved.url;
 }

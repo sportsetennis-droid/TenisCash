@@ -26,6 +26,7 @@ function render(req, res, { title, desc, image, status = 200 }) {
 }
 
 function mount(app) {
+  app.get('/meustenis.html', (req, res) => res.redirect(301, '/meustenis')); // nunca servir o modelo cru
   app.get(['/meustenis', '/meustenis/'], (req, res) =>
     render(req, res, { title: 'Meus Tênis — Club Sports & Tennis', desc: 'Seu guarda-tênis digital: mostre os tênis que você tem num link só seu e veja os da galera do Club.' }));
 
@@ -42,7 +43,7 @@ function mount(app) {
       });
     } catch (e) {
       if (!e.status) console.error('[meustenis page]', e.message);
-      return render(req, res, { title: 'Meus Tênis — Club Sports & Tennis', desc: 'Guarda-tênis digital do Club Sports & Tennis.', status: e.status === 404 ? 404 : 200 });
+      return render(req, res, { title: 'Meus Tênis — Club Sports & Tennis', desc: 'Guarda-tênis digital do Club Sports & Tennis.', status: e.status === 404 && /não encontrado/i.test(e.message) ? 404 : 200 });
     }
   });
 }

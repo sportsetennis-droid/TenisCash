@@ -109,7 +109,7 @@ textarea{min-height:70px;resize:vertical}
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
   var token = function () { try { return localStorage.getItem('tc_token') || ''; } catch (_) { return ''; } };
   var LOGO = '<a href="/meustenis"><img src="/brand/club-sports-tennis.svg?v=4" alt="Club Sports &amp; Tennis"></a>';
-  var handle = decodeURIComponent((/^\/meustenis\/([^/?#]+)/.exec(location.pathname) || [])[1] || '');
+  var handle = ''; try { handle = decodeURIComponent((/^\/meustenis\/([^/?#]+)/.exec(location.pathname) || [])[1] || ''); } catch (_) { handle = '-'; }
   var ME = null;
 
   function api(path, opts) {
