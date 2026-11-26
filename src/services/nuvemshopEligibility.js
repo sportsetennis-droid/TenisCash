@@ -87,12 +87,17 @@ function metaFotos() {
   return Number.isFinite(n) && n > 0 ? Math.max(n, minPhotos()) : 5;
 }
 
-// Lojas cujo estoque FÍSICO vale pra loja online (dono 2026-11-12: "tenho produtos
-// corretamente no estoque das lojas 04, 06 e 07. eles podem subir pra Nuvemshop").
+// Lojas cujo estoque FÍSICO vale pra loja online.
+// Dono 2026-11-12: só 04, 06 e 07. Dono 2026-11-26: "Todos os tênis que tiverem bipagem
+// de novo estoque tem que subir. Todas as lojas." -> todas as lojas Sports & Tennis.
+// Baratão (LOJA01) fica fora: é outra empresa.
 // Só essas entram no estoque publicado e só delas sai a baixa de pedido da Nuvemshop.
 // Override sem deploy: env NS_STOCK_STORE_IDS (ids separados por vírgula).
 const DEFAULT_NS_STOCK_STORE_IDS = [
+  'f669b4ff-a786-43a1-8762-31fd718005c1', // LOJA02 Bessa
+  '32271382-d5e4-429b-9abb-eaa3cdce54c2', // LOJA03 Campina
   '01b5a498-4dce-49b9-b359-5b031936aae9', // LOJA04 Fábrica
+  '5335ae55-d28b-486f-a459-7f352e3bf0c3', // LOJA05 Pirâmide
   '54ddff2f-deb9-42fa-a1ae-105eb6d59560', // LOJA06 Tambiá
   '9bcd3735-f5ed-41d7-a851-5896a83a6084', // LOJA07 Manaíra
 ];
