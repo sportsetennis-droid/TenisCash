@@ -1,6 +1,9 @@
 const assert = require('node:assert/strict');
 const { applyOrderStock, preservedPayload, remoteStockDiffers } = require('../src/services/nuvemshopStockSafety');
 const ALLOWED = [
+  'f669b4ff-a786-43a1-8762-31fd718005c1', // LOJA02
+  '32271382-d5e4-429b-9abb-eaa3cdce54c2', // LOJA03
+  '5335ae55-d28b-486f-a459-7f352e3bf0c3', // LOJA05
   '01b5a498-4dce-49b9-b359-5b031936aae9', // LOJA04
   '54ddff2f-deb9-42fa-a1ae-105eb6d59560', // LOJA06
   '9bcd3735-f5ed-41d7-a851-5896a83a6084', // LOJA07
@@ -27,8 +30,8 @@ function database(initialStock = 5, mapping = null) {
           productSize: { findMany: async ({ where }) => where.barcode === 'EAN' ? [{ id: 'size' }] : [] },
           storeStock: {
             findMany: async ({ where }) => {
-              // A baixa de pedido Nuvemshop só pode procurar estoque nas lojas 04/06/07.
-              assert.deepEqual([...(where.storeId?.in || [])].sort(), [...ALLOWED].sort(), 'baixa restrita às lojas 04/06/07');
+              // A baixa de pedido Nuvemshop só pode procurar estoque nas lojas Sports & Tennis (sem o Baratão).
+              assert.deepEqual([...(where.storeId?.in || [])].sort(), [...ALLOWED].sort(), 'baixa restrita às lojas Sports & Tennis (sem o Baratão)');
               return [{ id: 'stock', storeId: 'store', productSizeId: 'size', stock: draft.stock }];
             },
             updateMany: async ({ where, data: change }) => {
