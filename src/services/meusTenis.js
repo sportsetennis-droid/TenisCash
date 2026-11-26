@@ -145,11 +145,12 @@ const itemOut = (r, likedSet, myOffers) => ({ id: r.id, productId: r.productId, 
 
 // Km das atividades a pé do app (corrida, caminhada, trilha) desde que o tênis virou o "tênis das corridas".
 const FOOT_RX = '(run|walk|hike|trail|corr|camin)';
-async function liveKm(prisma, userId, since) {
+async function liveKm(prisma, userId, since, { publico = false } = {}) {
   if (!since) return 0;
   try {
-    const [r] = await prisma.$queryRaw`SELECT coalesce(sum("distanceM"), 0)::float AS m FROM "Activity" WHERE "userId"=${userId} AND "startedAt" >= ${since}
-      AND "sportType" ~* ${FOOT_RX} AND "processingState" NOT IN ('recording','failed')`;
+    const ate = publico ? new Date(Date.now() - 24 * 3600 * 1000) : new Date(Date.now() + 365 * 24 * 3600 * 1000);
+    const [r] = await prisma.$queryRaw`SELECT coalesce(sum("distanceM"), 0)::float AS m FROM "Activity" WHERE "userId"=${userId} AND "startedAt" >= ${since} AND "startedAt" < ${ate}
+      AND "sportType" ~* ${FOOT_RX} AND "processingState" NOT IN ('recording','failed') AND (${!publico} OR "visibility" <> 'private')`;
     return (Number(r && r.m) || 0) / 1000;
   } catch (_) { return 0; } // banco sem a tabela do app de atividade
 }
@@ -168,8 +169,13 @@ async function itemsOf(prisma, userId, { viewerId = null, includeHidden = false 
       mine = new Map(os.map((o) => [o.itemId, Number(o.amount)]));
     }
   }
-  for (const r of rows) if (r.trackRuns) r.kmLive = await liveKm(prisma, userId, r.trackSince);
-  return rows.map((r) => itemOut(r, liked, mine));
+  const dono = viewerId === userId;
+  for (const r of rows) if (r.trackRuns) r.kmLive = await liveKm(prisma, userId, r.trackSince, { publico: !dono });
+  return rows.map((r) => {
+    const o = itemOut(r, liked, mine);
+    if (!dono) { o.km = Math.round(o.km); delete o.kmStart; delete o.trackRuns; delete o.kmLimit; } // visitante vê só o total rodado
+    return o;
+  });
 }
 
 // Liga/desliga o "tênis das corridas". Só um por pessoa: o que sai guarda os km que já rodou.
@@ -178,9 +184,10 @@ async function setTracking(prisma, userId, itemId, on) {
   for (const a of ativos) {
     if (on && a.id === itemId) continue; // já é o das corridas
     const km = await liveKm(prisma, userId, a.trackSince);
-    await prisma.$executeRaw`UPDATE "ShoeClosetItem" SET "kmStart"="kmStart"+${km}, "trackRuns"=false, "trackSince"=NULL, "updatedAt"=NOW() WHERE "id"=${a.id}`;
+    await prisma.$executeRaw`UPDATE "ShoeClosetItem" SET "kmStart"=LEAST("kmStart"+${km}, 100000), "trackRuns"=false, "trackSince"=NULL, "updatedAt"=NOW() WHERE "id"=${a.id} AND "trackRuns"`;
   }
-  if (on && !ativos.some((a) => a.id === itemId)) await prisma.$executeRaw`UPDATE "ShoeClosetItem" SET "trackRuns"=true, "trackSince"=NOW(), "updatedAt"=NOW() WHERE "id"=${itemId} AND "userId"=${userId}`;
+  if (on && !ativos.some((a) => a.id === itemId)) await prisma.$executeRaw`UPDATE "ShoeClosetItem" SET "trackRuns"=true, "trackSince"=NOW(), "updatedAt"=NOW() WHERE "id"=${itemId} AND "userId"=${userId}
+    AND NOT EXISTS (SELECT 1 FROM "ShoeClosetItem" o WHERE o."userId"=${userId} AND o."trackRuns" AND o."id"<>${itemId})`;
 }
 const numIn = (v, min, max) => { const n = Number(String(v == null ? '' : v).replace(',', '.')); return Number.isFinite(n) && n >= min && n <= max ? n : null; };
 
@@ -190,11 +197,13 @@ async function lookupBarcode(prisma, raw) {
   const code = String(raw || '').replace(/\D/g, '');
   if (code.length < 8 || code.length > 14) throw httpErr(400, 'Código inválido. Bipe o código de barras da caixa.');
   const alts = [...new Set([code, code.replace(/^0+/, ''), '0' + code])];
-  const ps = await prisma.productSize.findFirst({ where: { barcode: { in: alts } }, select: { size: true, product: { select: { id: true, name: true, brand: true, category: true, imageUrl: true, imageUrls: true, aiContext: true } } } });
+  const ps = await prisma.productSize.findFirst({ where: { barcode: { in: alts }, product: { active: true } }, orderBy: [{ sizeConfirmedAt: { sort: 'desc', nulls: 'last' } }, { id: 'asc' }],
+    select: { size: true, sizeConfirmedAt: true, product: { select: { id: true, name: true, brand: true, category: true, imageUrl: true, imageUrls: true, aiContext: true } } } });
   if (!ps || !ps.product) throw httpErr(404, 'Não achei esse código no catálogo. Procure pelo nome ou envie suas fotos.');
   const p = ps.product;
   const photos = await catalogPhotos(p);
-  const size = /^(?:[1-5]\d(?:[.,]5)?|PP|P|M|G|GG|XG|XGG|\d{1,2}A)$/i.test(String(ps.size || '').trim()) ? String(ps.size).trim() : null;
+  const adidas = /adidas/i.test(String(p.brand || ''));
+  const size = (!adidas || ps.sizeConfirmedAt) && /^(?:[1-5]\d(?:[.,]5)?|PP|P|M|G|GG|XG|XGG|\d{1,2}A)$/i.test(String(ps.size || '').trim()) ? String(ps.size).trim() : null;
   return { productId: p.id, brand: p.brand, model: p.name, color: (p.aiContext && p.aiContext.color) || null, size, photo: photos[0] || null, photoCount: photos.length, barcode: code };
 }
 
@@ -402,7 +411,7 @@ async function addItem(prisma, userId, body, deps = {}) {
   if (!photos.length) throw httpErr(400, 'Escolha uma foto do catálogo, da busca ou envie a sua.');
   const size = clean(body.size, 12), note = clean(body.note, 200);
   const barcode = body.barcode ? String(body.barcode).replace(/\D/g, '').slice(0, 14) || null : null;
-  const kmStart = numIn(body.kmStart, 0, 10000) || 0;
+  const kmStart = numIn(body.kmStart, 0, 100000) || 0;
   const acceptOffers = body.acceptOffers === true || body.acceptOffers === 'true';
   const newId = id();
   await prisma.$executeRaw`UPDATE "ShoeClosetItem" SET "position"="position"+1 WHERE "userId"=${userId}`;
@@ -436,9 +445,9 @@ async function updateItem(prisma, userId, itemId, body, deps = {}) {
   if (!model) throw httpErr(400, 'Informe o modelo do tênis.');
   const bool = (k) => (body[k] === undefined ? it[k] : !!(body[k] === true || body[k] === 'true'));
   const hidden = bool('hidden'), acceptOffers = bool('acceptOffers');
-  const kmStart = body.kmStart === undefined ? it.kmStart : numIn(body.kmStart, 0, 10000);
+  const kmStart = body.kmStart === undefined ? it.kmStart : numIn(body.kmStart, 0, 100000);
   const kmLimit = body.kmLimit === undefined ? it.kmLimit : numIn(body.kmLimit, 100, 5000);
-  if (kmStart === null) throw httpErr(400, 'Km inválido (0 a 10.000).');
+  if (kmStart === null) throw httpErr(400, 'Km inválido (0 a 100.000).');
   if (kmLimit === null) throw httpErr(400, 'Limite de km inválido (100 a 5.000).');
   await prisma.$executeRaw`UPDATE "ShoeClosetItem" SET "brand"=${pick('brand', 60)}, "model"=${model}, "color"=${pick('color', 60)}, "size"=${pick('size', 12)},
     "note"=${pick('note', 200)}, "photo"=${photos[0]}, "photos"=${JSON.stringify(photos)}::jsonb, "hidden"=${hidden}, "acceptOffers"=${acceptOffers}, "kmStart"=${kmStart}, "kmLimit"=${Math.round(kmLimit)}, "updatedAt"=NOW() WHERE "id"=${it.id}`;

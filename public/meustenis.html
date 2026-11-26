@@ -277,7 +277,7 @@ textarea{min-height:70px;resize:vertical}
 
 
   // ───────── bipar a caixa (câmera do celular, leitor grátis no próprio aparelho) ─────────
-  var SCAN = { stream: null, timer: null, busy: false, ready: null };
+  var SCAN = { stream: null, timer: null, busy: false, ready: null, gen: 0 };
   function loadReader() {
     if (SCAN.ready) return SCAN.ready;
     SCAN.ready = new Promise(function (res, rej) {
@@ -288,6 +288,7 @@ textarea{min-height:70px;resize:vertical}
     return SCAN.ready;
   }
   function stopScan() {
+    SCAN.gen++;
     if (SCAN.timer) { clearInterval(SCAN.timer); SCAN.timer = null; }
     if (SCAN.stream) { SCAN.stream.getTracks().forEach(function (t) { t.stop(); }); SCAN.stream = null; }
   }
@@ -298,9 +299,10 @@ textarea{min-height:70px;resize:vertical}
     document.getElementById('bcgo').onclick = function () { var c = document.getElementById('bc').value.replace(/\D/g, ''); if (validEan(c)) found(c); else toast('Digite o código de barras (8 a 14 números).'); };
     var vid = document.getElementById('vid'), hint = document.getElementById('shint');
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { hint.textContent = 'Câmera indisponível. Digite o código abaixo.'; return; }
+    var myGen = SCAN.gen;
     Promise.all([navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }), loadReader()])
       .then(function (r) {
-        if (ADD.tab !== 'scan' || !document.getElementById('vid')) { r[0].getTracks().forEach(function (t) { t.stop(); }); return; }
+        if (myGen !== SCAN.gen || ADD.tab !== 'scan' || !document.getElementById('vid') || !document.getElementById('sheet').classList.contains('on')) { r[0].getTracks().forEach(function (t) { t.stop(); }); return; }
         SCAN.stream = r[0]; vid.srcObject = r[0]; vid.play().catch(function () {});
         var cv = document.createElement('canvas'), cx = cv.getContext('2d', { willReadFrequently: true });
         SCAN.timer = setInterval(function () {
@@ -315,6 +317,7 @@ textarea{min-height:70px;resize:vertical}
       }).catch(function () { hint.textContent = 'Sem acesso à câmera. Digite o código abaixo.'; });
   }
   function found(code) {
+    stopScan();
     var box = document.getElementById('scres'); if (!box) return;
     box.innerHTML = '<div class="spin">Procurando ' + esc(code) + '…</div>';
     api('/barcode/' + code).then(function (r) {
@@ -369,6 +372,7 @@ textarea{min-height:70px;resize:vertical}
         c.fillStyle = '#fff'; c.font = '700 40px Barlow'; c.fillText('clubsportsetennis.com.br/meustenis' + (user.handle ? '/' + user.handle : ''), 80, 1775);
         if (logo) { var lh = 70, lw = logo.width ? logo.width * (lh / logo.height) : 200; c.drawImage(logo, 80, 1810, lw, lh); }
         cv.toBlob(function (blob) {
+          if (!blob) { document.getElementById('stb').innerHTML = '<div class="msg bad">Não deu para montar o card agora.</div>'; return; }
           var url = URL.createObjectURL(blob), file = new File([blob], 'meus-tenis.png', { type: 'image/png' });
           document.getElementById('stb').innerHTML = '<img src="' + url + '" alt="" style="width:100%;border-radius:16px;margin-top:8px;border:1px solid var(--line)"><div class="row"><button class="btn" id="stsh">Compartilhar</button><a class="btn g" id="stdl" href="' + url + '" download="meus-tenis.png">Baixar</a></div><p class="dim small" style="margin-top:8px">No Instagram: novo Story → escolha a imagem → cole o link com a figurinha de link.</p>';
           document.getElementById('stsh').onclick = function () {
