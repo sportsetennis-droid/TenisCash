@@ -84,6 +84,28 @@ textarea{min-height:70px;resize:vertical}
 .res{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
 .pick{background:var(--card);border:2px solid var(--line);border-radius:14px;overflow:hidden;cursor:pointer;padding:0;text-align:left}
 .pick.on{border-color:var(--o)}
+.tag.of{left:auto;right:8px;background:#16a34a}
+.cnt{position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,.65);color:#fff;font-size:11px;font-weight:800;border-radius:999px;padding:3px 8px}
+.car{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:8px;border-radius:16px;scrollbar-width:none}
+.car::-webkit-scrollbar{display:none}
+.car img{flex:0 0 100%;scroll-snap-align:center;width:100%;aspect-ratio:1/1;object-fit:contain;background:#fff;border-radius:16px}
+.dots{display:flex;justify-content:center;gap:6px;margin-top:8px}
+.dots i{width:7px;height:7px;border-radius:9px;background:#3f3f46}
+.dots i.on{background:var(--o);width:18px}
+.ph-edit{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px}
+.ph-edit div{position:relative;border-radius:10px;overflow:hidden;border:2px solid var(--line);background:#fff;aspect-ratio:1/1;cursor:pointer}
+.ph-edit div.cap{border-color:var(--o)}
+.ph-edit img{width:100%;height:100%;object-fit:contain;display:block}
+.ph-edit button{position:absolute;top:3px;right:3px;width:28px;height:28px;border-radius:50%;border:0;background:rgba(0,0,0,.7);color:#fff;font-weight:900;cursor:pointer}
+.ph-edit span{position:absolute;left:0;right:0;bottom:0;background:var(--o);color:#fff;font-size:10px;font-weight:800;text-align:center}
+.offer{display:flex;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px;margin-top:8px;align-items:flex-start}
+.offer img{width:60px;height:60px;border-radius:10px;object-fit:contain;background:#fff;flex:0 0 auto}
+.offer .v{font-size:20px;font-weight:900;color:var(--o2)}
+.offer .st{font-size:12px;font-weight:800;text-transform:uppercase;margin-top:2px}
+.st.PENDING{color:#facc15}.st.ACCEPTED{color:var(--ok)}.st.DECLINED,.st.WITHDRAWN{color:var(--dim)}
+.badge{display:inline-flex;min-width:20px;height:20px;border-radius:999px;background:var(--o);color:#fff;font-size:12px;font-weight:900;align-items:center;justify-content:center;padding:0 6px;margin-left:6px}
+.check{display:flex;gap:10px;align-items:flex-start;margin-top:12px;font-size:14px;color:#d4d4d8;font-weight:500}
+.check input{width:22px;min-height:22px;height:22px;accent-color:var(--o);margin:0;flex:0 0 auto}
 .pick img{width:100%;aspect-ratio:1/1;object-fit:contain;background:#fff;display:block}
 .pick div{padding:6px 8px;font-size:12px;line-height:1.2}
 .pick b{display:block;font-size:10px;color:var(--o);text-transform:uppercase}
@@ -111,6 +133,8 @@ textarea{min-height:70px;resize:vertical}
   var LOGO = '<a href="/meustenis"><img src="/brand/club-sports-tennis.svg?v=4" alt="Club Sports &amp; Tennis"></a>';
   var handle = ''; try { handle = decodeURIComponent((/^\/meustenis\/([^/?#]+)/.exec(location.pathname) || [])[1] || ''); } catch (_) { handle = '-'; }
   var ME = null;
+  var MAXF = 8;
+  var OPEN_OFFERS = /[?&]ofertas=1/.test(location.search);
 
   function api(path, opts) {
     opts = opts || {};
@@ -124,7 +148,8 @@ textarea{min-height:70px;resize:vertical}
   function shoeCard(it, opts) {
     var meta = [it.color, it.size ? 'Tam. ' + it.size : ''].filter(Boolean).join(' · ');
     return '<button class="shoe" data-id="' + esc(it.id) + '"><div class="ph">' + (it.photo ? '<img loading="lazy" src="' + esc(it.photo) + '" alt="' + esc(it.model) + '">' : '') +
-      (opts && opts.own && it.hidden ? '<span class="tag h">oculto</span>' : (it.naLoja ? '<span class="tag">na loja</span>' : '')) + '</div><div class="tx">' +
+      (opts && opts.own && it.hidden ? '<span class="tag h">oculto</span>' : (it.naLoja ? '<span class="tag">na loja</span>' : '')) +
+      (it.acceptOffers ? '<span class="tag of">aceita oferta</span>' : '') + ((it.photos || []).length > 1 ? '<span class="cnt">' + it.photos.length + ' fotos</span>' : '') + '</div><div class="tx">' +
       (it.brand ? '<div class="br">' + esc(it.brand) + '</div>' : '') + '<div class="md">' + esc(it.model) + '</div><div class="mt"><span>' + esc(meta) + '</span><span>🧡 ' + (it.likes || 0) + '</span></div></div></button>';
   }
   function publicUrl(h) { return location.origin + '/meustenis/' + encodeURIComponent(h); }
@@ -141,14 +166,31 @@ textarea{min-height:70px;resize:vertical}
   function closeSheet() { document.getElementById('sheet').classList.remove('on'); document.getElementById('sbg').style.display = 'none'; }
   document.getElementById('sbg').onclick = closeSheet;
 
+  function photosOf(it) { return (it.photos && it.photos.length) ? it.photos : (it.photo ? [it.photo] : []); }
+  function carousel(list) {
+    if (!list.length) return '';
+    return '<div class="car" id="car">' + list.map(function (p) { return '<img src="' + esc(p) + '" alt="" loading="lazy">'; }).join('') + '</div>' +
+      (list.length > 1 ? '<div class="dots" id="dots">' + list.map(function (_, i) { return '<i' + (i ? '' : ' class="on"') + '></i>'; }).join('') + '</div>' : '');
+  }
+  function wireCarousel() {
+    var car = document.getElementById('car'), dots = document.getElementById('dots');
+    if (!car || !dots) return;
+    car.onscroll = function () { var i = Math.round(car.scrollLeft / car.clientWidth); dots.querySelectorAll('i').forEach(function (d, k) { d.classList.toggle('on', k === i); }); };
+  }
+  function brl(n) { return 'R$ ' + Number(n).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
   function detail(it, opts) {
-    var chips = [it.color, it.size ? 'Tamanho ' + it.size : '', it.naLoja ? 'Tem na Sports & Tennis' : ''].filter(Boolean).map(function (c) { return '<span>' + esc(c) + '</span>'; }).join('');
-    var html = '<div class="det">' + (it.photo ? '<img src="' + esc(it.photo) + '" alt="">' : '') + (it.brand ? '<div class="kicker" style="margin-top:10px">' + esc(it.brand) + '</div>' : '') +
+    var chips = [it.color, it.size ? 'Tamanho ' + it.size : '', it.naLoja ? 'Tem na Sports & Tennis' : '', it.acceptOffers ? 'Aceita ofertas' : ''].filter(Boolean).map(function (c) { return '<span>' + esc(c) + '</span>'; }).join('');
+    var html = '<div class="det">' + carousel(photosOf(it)) + (it.brand ? '<div class="kicker" style="margin-top:10px">' + esc(it.brand) + '</div>' : '') +
       '<h3>' + esc(it.model) + '</h3><div class="chips">' + chips + '</div>' + (it.note ? '<p class="mut" style="margin-top:10px">' + esc(it.note) + '</p>' : '') + '<div class="row">';
     if (opts.own) html += '<button class="btn g" id="ed">Editar</button><button class="btn g" id="rm" style="color:var(--bad)">Tirar</button>';
     else html += '<button class="btn g like' + (it.liked ? ' on' : '') + '" id="lk">🧡 ' + (it.liked ? 'Curtido' : 'Curtir') + ' · ' + (it.likes || 0) + '</button>';
-    html += '</div>' + (it.naLoja ? '<a class="btn w" style="margin-top:10px" href="https://sportstennis2.lojavirtualnuvem.com.br/" target="_blank" rel="noopener">Ver na loja</a>' : '') + '</div>';
+    html += '</div>';
+    if (!opts.own && it.acceptOffers) html += '<button class="btn w" id="of" style="margin-top:10px">' + (it.myOffer ? 'Mudar minha oferta (' + brl(it.myOffer) + ')' : 'Fazer oferta') + '</button>';
+    html += (it.naLoja ? '<a class="btn w g" style="margin-top:10px" href="https://sportstennis2.lojavirtualnuvem.com.br/" target="_blank" rel="noopener">Ver na loja</a>' : '') + '</div>';
     openSheet(html);
+    wireCarousel();
+    var of = document.getElementById('of');
+    if (of) of.onclick = function () { if (!token()) { closeSheet(); return loginSheet('Entre para fazer uma oferta.'); } offerSheet(it, opts); };
     var lk = document.getElementById('lk');
     if (lk) lk.onclick = function () {
       if (!token()) { closeSheet(); return loginSheet('Entre para curtir.'); }
@@ -160,6 +202,52 @@ textarea{min-height:70px;resize:vertical}
     if (rm) rm.onclick = function () { if (!confirm('Tirar este tênis do seu guarda-tênis?')) return; api('/items/' + it.id, { method: 'DELETE' }).then(function () { closeSheet(); mine(); }).catch(function (e) { toast(e.message); }); };
     var ed = document.getElementById('ed');
     if (ed) ed.onclick = function () { editSheet(it); };
+  }
+
+  // ───────── ofertas ─────────
+  function offerSheet(it, opts) {
+    openSheet('<div class="kicker">Fazer oferta</div><h2 style="margin-top:4px">' + esc(it.model) + '</h2>' +
+      '<label>Quanto você oferece (R$)<input id="ov" inputmode="decimal" placeholder="Ex.: 350,00" value="' + (it.myOffer ? esc(String(it.myOffer).replace('.', ',')) : '') + '"></label>' +
+      '<label>Mensagem (opcional)<textarea id="om" maxlength="300" placeholder="Ex.: Tenho interesse, posso buscar em João Pessoa"></textarea></label>' +
+      '<label class="check"><input type="checkbox" id="oc"><span>Se o dono aceitar, ele pode ver o meu WhatsApp para combinar a venda.</span></label>' +
+      '<p class="dim small" style="margin-top:10px">O Club só põe vocês em contato. Pagamento e entrega vocês combinam direto, com cuidado.</p>' +
+      '<button class="btn w" id="ogo" style="margin-top:14px">Enviar oferta</button><div class="msg" id="omm"></div>');
+    document.getElementById('ogo').onclick = function () {
+      var go = document.getElementById('ogo'), m = document.getElementById('omm');
+      if (!document.getElementById('ov').value.trim()) { m.className = 'msg bad'; m.textContent = 'Informe o valor.'; return; }
+      if (!document.getElementById('oc').checked) { m.className = 'msg bad'; m.textContent = 'Marque a autorização do WhatsApp para o dono poder chamar você.'; return; }
+      go.disabled = true;
+      api('/items/' + it.id + '/offers', { method: 'POST', body: { amount: document.getElementById('ov').value, message: document.getElementById('om').value, consent: true } })
+        .then(function (r) { it.myOffer = r.amount; closeSheet(); toast(r.updated ? 'Oferta atualizada' : 'Oferta enviada'); })
+        .catch(function (e) { m.className = 'msg bad'; m.textContent = e.message; go.disabled = false; });
+    };
+  }
+  var ST = { PENDING: 'Aguardando', ACCEPTED: 'Aceita', DECLINED: 'Recusada', WITHDRAWN: 'Cancelada' };
+  function offersSheet() {
+    openSheet('<div class="kicker">Ofertas</div><div id="ofb"><div class="spin">Carregando…</div></div>');
+    api('/me/offers').then(function (d) {
+      var rec = d.received.map(function (o) {
+        var acts = o.status === 'PENDING' ? '<div class="row" style="margin-top:8px"><button class="btn btn-s" data-a="accept" data-id="' + esc(o.id) + '">Aceitar</button><button class="btn btn-s g" data-a="decline" data-id="' + esc(o.id) + '">Recusar</button></div>' : '';
+        var wa = o.whatsapp ? '<a class="btn btn-s w" style="margin-top:8px;background:#16a34a" target="_blank" rel="noopener" href="https://wa.me/' + (o.whatsapp.length <= 11 ? '55' : '') + esc(o.whatsapp) + '?text=' + encodeURIComponent('Oi! Vi sua oferta de ' + brl(o.amount) + ' no meu ' + o.model + ' pelo Club Sports & Tennis.') + '">Chamar no WhatsApp</a>' : '';
+        return '<div class="offer">' + (o.photo ? '<img src="' + esc(o.photo) + '" alt="">' : '') + '<div style="flex:1;min-width:0"><div class="v">' + brl(o.amount) + '</div><div class="small">' + esc(o.model) + '</div>' +
+          '<div class="dim small">de ' + esc(o.buyer.name) + (o.buyer.handle ? ' (@' + esc(o.buyer.handle) + ')' : '') + '</div>' + (o.message ? '<p class="small" style="margin-top:4px">“' + esc(o.message) + '”</p>' : '') +
+          '<div class="st ' + o.status + '">' + ST[o.status] + '</div>' + acts + wa + '</div></div>';
+      }).join('');
+      var sent = d.sent.map(function (o) {
+        return '<div class="offer">' + (o.photo ? '<img src="' + esc(o.photo) + '" alt="">' : '') + '<div style="flex:1;min-width:0"><div class="v">' + brl(o.amount) + '</div><div class="small">' + esc(o.model) + '</div>' +
+          '<div class="dim small">para ' + esc(o.owner.name) + (o.owner.handle ? ' (@' + esc(o.owner.handle) + ')' : '') + '</div><div class="st ' + o.status + '">' + ST[o.status] + (o.status === 'ACCEPTED' ? ' — o dono vai chamar você no WhatsApp' : '') + '</div>' +
+          (o.status === 'PENDING' ? '<button class="btn btn-s g" style="margin-top:8px" data-a="cancel" data-id="' + esc(o.id) + '">Cancelar oferta</button>' : '') + '</div></div>';
+      }).join('');
+      document.getElementById('ofb').innerHTML = '<h2 style="margin-top:4px">Recebidas</h2>' + (rec || '<div class="empty">Nenhuma oferta ainda. Marque “Aceito ofertas” nos tênis que você venderia.</div>') +
+        '<h2>Que eu fiz</h2>' + (sent || '<div class="empty">Você ainda não fez ofertas.</div>') + '<p class="dim small" style="margin-top:14px">O Club só põe vocês em contato. Pagamento e entrega são combinados direto entre vocês.</p>';
+      document.querySelectorAll('#ofb [data-a]').forEach(function (b) { b.onclick = function () {
+        var a = b.dataset.a;
+        if (a === 'accept' && !confirm('Aceitar esta oferta? Você vai ver o WhatsApp da pessoa para combinar a venda.')) return;
+        b.disabled = true;
+        api('/offers/' + b.dataset.id, { method: 'POST', body: { action: a } }).then(function () { toast(a === 'accept' ? 'Oferta aceita' : a === 'decline' ? 'Oferta recusada' : 'Oferta cancelada'); offersSheet(); var ob = document.getElementById('obn'); if (ob && a !== 'cancel') mine(); })
+          .catch(function (e) { toast(e.message); b.disabled = false; });
+      }; });
+    }).catch(function (e) { document.getElementById('ofb').innerHTML = '<div class="msg bad">' + esc(e.message) + '</div>'; });
   }
 
   // ───────── foto do celular → JPEG leve ─────────
@@ -189,16 +277,17 @@ textarea{min-height:70px;resize:vertical}
   function addBody() {
     var el = document.getElementById('addBody');
     if (ADD.tab === 'up') {
-      el.innerHTML = '<label>Foto do tênis<input type="file" id="uf" accept="image/*"></label><label>Marca<input id="ub" maxlength="60" placeholder="Ex.: Mizuno"></label>' +
+      el.innerHTML = '<label>Fotos do tênis (até ' + MAXF + ')<input type="file" id="uf" accept="image/*" multiple></label><p class="dim small" id="ufn" style="margin-top:4px"></p><label>Marca<input id="ub" maxlength="60" placeholder="Ex.: Mizuno"></label>' +
         '<label>Modelo<input id="um" maxlength="140" placeholder="Ex.: Wave Rider 28"></label><div class="row" style="margin-top:0"><label>Cor<input id="uc" maxlength="60"></label><label>Tamanho<input id="us" maxlength="12" inputmode="decimal"></label></div>' +
-        '<button class="btn w" id="ugo" style="margin-top:14px">Incluir no meu guarda-tênis</button><div class="msg" id="um2"></div>';
+        offerCheck('uo', false) + '<button class="btn w" id="ugo" style="margin-top:14px">Incluir no meu guarda-tênis</button><div class="msg" id="um2"></div>';
+      document.getElementById('uf').onchange = function () { var n = this.files.length; document.getElementById('ufn').textContent = n ? (Math.min(n, MAXF) + (n === 1 ? ' foto escolhida' : ' fotos escolhidas') + (n > MAXF ? ' (máximo ' + MAXF + ')' : '')) : ''; };
       document.getElementById('ugo').onclick = function () {
-        var f = document.getElementById('uf').files[0], m = document.getElementById('um2'), go = document.getElementById('ugo');
-        if (!f) { m.className = 'msg bad'; m.textContent = 'Escolha a foto.'; return; }
+        var fs = Array.prototype.slice.call(document.getElementById('uf').files, 0, MAXF), m = document.getElementById('um2'), go = document.getElementById('ugo');
+        if (!fs.length) { m.className = 'msg bad'; m.textContent = 'Escolha pelo menos uma foto.'; return; }
         if (!document.getElementById('um').value.trim()) { m.className = 'msg bad'; m.textContent = 'Informe o modelo.'; return; }
         go.disabled = true; go.textContent = 'Enviando…';
-        shrink(f).then(function (photo) {
-          return api('/items', { method: 'POST', body: { photo: photo, brand: document.getElementById('ub').value, model: document.getElementById('um').value, color: document.getElementById('uc').value, size: document.getElementById('us').value } });
+        Promise.all(fs.map(shrink)).then(function (photos) {
+          return api('/items', { method: 'POST', body: { photos: photos, brand: document.getElementById('ub').value, model: document.getElementById('um').value, color: document.getElementById('uc').value, size: document.getElementById('us').value, acceptOffers: document.getElementById('uo').checked } });
         }).then(function () { closeSheet(); toast('Tênis incluído'); mine(); }).catch(function (e) { m.className = 'msg bad'; m.textContent = e.message; go.disabled = false; go.textContent = 'Incluir no meu guarda-tênis'; });
       };
       return;
@@ -226,37 +315,52 @@ textarea{min-height:70px;resize:vertical}
       return;
     }
     box.innerHTML = '<p class="dim small" style="margin-top:10px">Toque no seu tênis:</p><div class="res">' + ADD.results.map(function (r, i) {
-      return '<button class="pick" data-i="' + i + '"><img loading="lazy" src="' + esc(r.photo) + '" alt=""><div><b>' + esc(r.brand || '') + '</b>' + esc(r.model) + (r.color ? ' · ' + esc(r.color) : '') + '</div></button>';
+      var nf = r.photos ? r.photos.length : (r.photoCount || 1);
+      return '<button class="pick" data-i="' + i + '"><img loading="lazy" src="' + esc(r.photo) + '" alt=""><div><b>' + esc(r.brand || '') + '</b>' + esc(r.model) + (r.color ? ' · ' + esc(r.color) : '') + (nf > 1 ? '<br><span class="dim">' + nf + ' fotos</span>' : '') + '</div></button>';
     }).join('') + '</div>' + (ADD.tab === 'cat' ? '<button class="btn btn-s g w" id="toWeb2" style="margin-top:10px">Não está aqui? Buscar nos sites das marcas</button>' : '') + '<div id="pickForm"></div>';
     var tw2 = document.getElementById('toWeb2'); if (tw2) tw2.onclick = function () { var qq = ADD.q; document.querySelector('.tabs button[data-t=web]').click(); document.getElementById('q').value = qq; document.getElementById('qgo').click(); };
     box.querySelectorAll('.pick').forEach(function (b) { b.onclick = function () {
       box.querySelectorAll('.pick').forEach(function (x) { x.classList.remove('on'); }); b.classList.add('on'); ADD.pick = ADD.results[+b.dataset.i];
       var r = ADD.pick;
       document.getElementById('pickForm').innerHTML = '<div class="row"><label>Cor<input id="pc" maxlength="60" value="' + esc(r.color || '') + '"></label><label>Tamanho<input id="ps" maxlength="12" inputmode="decimal"></label></div>' +
-        '<button class="btn w" id="pgo" style="margin-top:14px">Incluir no meu guarda-tênis</button><div class="msg" id="pm"></div>';
+        offerCheck('po', false) + '<button class="btn w" id="pgo" style="margin-top:14px">Incluir no meu guarda-tênis</button><div class="msg" id="pm"></div>';
       document.getElementById('pickForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
       document.getElementById('pgo').onclick = function () {
         var go = document.getElementById('pgo'), m = document.getElementById('pm'); go.disabled = true; go.textContent = 'Incluindo…';
-        var body = { color: document.getElementById('pc').value, size: document.getElementById('ps').value };
-        if (r.productId) body.productId = r.productId; else { body.webPhoto = r.photo; body.brand = r.brand; body.model = r.model; }
+        var body = { color: document.getElementById('pc').value, size: document.getElementById('ps').value, acceptOffers: document.getElementById('po').checked };
+        if (r.productId) body.productId = r.productId; else { body.webPhotos = (r.photos && r.photos.length ? r.photos : [r.photo]).slice(0, MAXF); body.brand = r.brand; body.model = r.model; }
         api('/items', { method: 'POST', body: body }).then(function () { closeSheet(); toast('Tênis incluído'); mine(); })
           .catch(function (e) { m.className = 'msg bad'; m.textContent = e.message; go.disabled = false; go.textContent = 'Incluir no meu guarda-tênis'; });
       };
     }; });
   }
+  function offerCheck(idc, on) {
+    return '<div class="switch"><span>Aceito ofertas por este tênis<br><span class="dim small">Quem vê pode oferecer um preço. Você decide se vende.</span></span><input type="checkbox" id="' + idc + '"' + (on ? ' checked' : '') + '></div>';
+  }
   function editSheet(it) {
-    openSheet('<div class="kicker">Editar tênis</div><label>Marca<input id="eb" maxlength="60" value="' + esc(it.brand || '') + '"></label><label>Modelo<input id="em" maxlength="140" value="' + esc(it.model) + '"></label>' +
+    var keep = photosOf(it).slice();
+    openSheet('<div class="kicker">Editar tênis</div><label>Fotos <span class="dim small">(toque numa foto para virar a capa)</span></label><div class="ph-edit" id="phe"></div>' +
+      '<label>Incluir mais fotos<input type="file" id="ef" accept="image/*" multiple></label>' +
+      '<label>Marca<input id="eb" maxlength="60" value="' + esc(it.brand || '') + '"></label><label>Modelo<input id="em" maxlength="140" value="' + esc(it.model) + '"></label>' +
       '<div class="row" style="margin-top:0"><label>Cor<input id="ec" maxlength="60" value="' + esc(it.color || '') + '"></label><label>Tamanho<input id="es" maxlength="12" value="' + esc(it.size || '') + '"></label></div>' +
       '<label>Comentário (opcional)<textarea id="en" maxlength="200" placeholder="Ex.: meu tênis de maratona">' + esc(it.note || '') + '</textarea></label>' +
-      '<label>Trocar a foto (opcional)<input type="file" id="ef" accept="image/*"></label>' +
+      offerCheck('eo', it.acceptOffers) +
       '<div class="switch"><span>Esconder da minha página pública</span><input type="checkbox" id="eh"' + (it.hidden ? ' checked' : '') + '></div>' +
       '<button class="btn w" id="ego" style="margin-top:14px">Salvar</button><div class="msg" id="emm"></div>');
+    function drawPh() {
+      var box = document.getElementById('phe');
+      box.innerHTML = keep.map(function (p, i) { return '<div' + (i ? '' : ' class="cap"') + ' data-i="' + i + '"><img src="' + esc(p) + '" alt="">' + (keep.length > 1 ? '<button data-x="' + i + '" aria-label="Tirar foto">✕</button>' : '') + (i ? '' : '<span>CAPA</span>') + '</div>'; }).join('');
+      box.querySelectorAll('[data-x]').forEach(function (b) { b.onclick = function (e) { e.stopPropagation(); keep.splice(+b.dataset.x, 1); drawPh(); }; });
+      box.querySelectorAll('div[data-i]').forEach(function (d) { d.onclick = function () { var i = +d.dataset.i; if (!i) return; keep.unshift(keep.splice(i, 1)[0]); drawPh(); }; });
+    }
+    drawPh();
     document.getElementById('ego').onclick = function () {
-      var go = document.getElementById('ego'), m = document.getElementById('emm'), f = document.getElementById('ef').files[0];
+      var go = document.getElementById('ego'), m = document.getElementById('emm'), fs = Array.prototype.slice.call(document.getElementById('ef').files);
+      if (keep.length + fs.length > MAXF) { m.className = 'msg bad'; m.textContent = 'No máximo ' + MAXF + ' fotos por tênis.'; return; }
       go.disabled = true; go.textContent = 'Salvando…';
-      (f ? shrink(f) : Promise.resolve(null)).then(function (photo) {
-        var body = { brand: document.getElementById('eb').value, model: document.getElementById('em').value, color: document.getElementById('ec').value, size: document.getElementById('es').value, note: document.getElementById('en').value, hidden: document.getElementById('eh').checked };
-        if (photo) body.photo = photo;
+      Promise.all(fs.map(shrink)).then(function (photos) {
+        var body = { brand: document.getElementById('eb').value, model: document.getElementById('em').value, color: document.getElementById('ec').value, size: document.getElementById('es').value, note: document.getElementById('en').value, hidden: document.getElementById('eh').checked, acceptOffers: document.getElementById('eo').checked, keepPhotos: keep };
+        if (photos.length) body.photos = photos;
         return api('/items/' + it.id, { method: 'PATCH', body: body });
       }).then(function () { closeSheet(); toast('Salvo'); mine(); }).catch(function (e) { m.className = 'msg bad'; m.textContent = e.message; go.disabled = false; go.textContent = 'Salvar'; });
     };
@@ -309,18 +413,32 @@ textarea{min-height:70px;resize:vertical}
       var head = '<div class="top">' + LOGO + '<button class="btn btn-s g" id="out">Sair</button></div>' +
         '<div class="prof">' + avatar(d.user) + '<div><div class="kicker">Meus Tênis</div><h1>' + esc(d.user.name.split(' ')[0]) + '</h1><div class="stats"><span><b>' + d.items.length + '</b> tênis</span><span><b>' + d.items.reduce(function (s, i) { return s + (i.likes || 0); }, 0) + '</b> curtidas</span><span><b>' + (d.profile.views || 0) + '</b> visitas</span></div></div></div>';
       var link = h ? '<div class="share"><code>' + esc(publicUrl(h).replace(/^https?:\/\//, '')) + '</code><button class="btn btn-s" id="cp">Copiar</button><button class="btn btn-s g" id="sh">Enviar</button></div>' +
-        '<p class="dim small" style="margin-top:6px">Cole esse link na bio do seu Instagram.</p>' :
+        '<p class="dim small" style="margin-top:6px">Seu @ é <b>@' + esc(h) + '</b> · <a href="#" id="chh" style="color:var(--o2);font-weight:800">trocar</a> · Cole esse link na bio do seu Instagram.</p>' :
         '<div class="hero" style="margin-top:12px"><b>Escolha o seu @ para ter o link público</b><label>Seu @<input id="hd" maxlength="30" placeholder="ex.: joao.corre" autocapitalize="none" autocorrect="off"></label><button class="btn w" id="hgo" style="margin-top:10px">Criar meu link</button><div class="msg" id="hm"></div></div>';
       $app.innerHTML = head + link +
         '<div class="row"><button class="btn" id="add">+ Incluir tênis</button>' + (h ? '<a class="btn g" href="/meustenis/' + encodeURIComponent(h) + '">Ver como fica</a>' : '') + '</div>' +
+        '<button class="btn w g" id="obn" style="margin-top:10px">Ofertas' + (d.offersPending ? '<span class="badge">' + d.offersPending + '</span>' : '') + '</button>' +
         '<div class="switch"><span>Página pública (qualquer pessoa com o link vê)</span><input type="checkbox" id="pub"' + (d.profile.isPublic ? ' checked' : '') + '></div>' +
         '<label>Frase do seu perfil (opcional)<textarea id="bio" maxlength="160" placeholder="Ex.: Corredor de rua, 3 maratonas">' + esc(d.profile.bio || '') + '</textarea></label><button class="btn btn-s g" id="bgo" style="margin-top:8px">Salvar frase</button>' +
         '<h2>Meu guarda-tênis</h2>' + (d.items.length ? '<div class="grid">' + d.items.map(function (i) { return shoeCard(i, { own: true }); }).join('') + '</div>' : '<div class="empty">Você ainda não incluiu nenhum tênis.<br>Toque em <b>+ Incluir tênis</b>.</div>') +
         '<h2>Guarda-tênis da galera</h2><div id="exp"><div class="spin">Carregando…</div></div><div class="foot">Club Sports &amp; Tennis</div>';
       document.getElementById('out').onclick = function () { try { localStorage.removeItem('tc_token'); localStorage.removeItem('tc_user'); } catch (_) {} route(); };
       document.getElementById('add').onclick = addSheet;
+      document.getElementById('obn').onclick = offersSheet;
+      if (OPEN_OFFERS) { OPEN_OFFERS = false; offersSheet(); }
       var cp = document.getElementById('cp'); if (cp) cp.onclick = function () { copy(publicUrl(h)); };
       var sh = document.getElementById('sh'); if (sh) sh.onclick = function () { share(h, d.user.name); };
+      var chh = document.getElementById('chh'); if (chh) chh.onclick = function (e) {
+        e.preventDefault();
+        openSheet('<div class="kicker">Trocar o @</div><label>Novo @<input id="nh" maxlength="30" value="' + esc(h) + '" autocapitalize="none" autocorrect="off" spellcheck="false"></label>' +
+          '<p class="dim small" style="margin-top:6px">Letras minúsculas, números, ponto ou _. O link antigo para de funcionar: atualize a bio do Instagram depois.</p>' +
+          '<button class="btn w" id="nhg" style="margin-top:14px">Salvar novo @</button><div class="msg" id="nhm"></div>');
+        document.getElementById('nhg').onclick = function () {
+          var b = this, m = document.getElementById('nhm'); b.disabled = true;
+          api('/me/handle', { method: 'POST', body: { handle: document.getElementById('nh').value } }).then(function () { closeSheet(); toast('@ atualizado'); mine(); })
+            .catch(function (er) { m.className = 'msg bad'; m.textContent = er.message; b.disabled = false; });
+        };
+      };
       var hgo = document.getElementById('hgo'); if (hgo) hgo.onclick = function () {
         var m = document.getElementById('hm'); hgo.disabled = true;
         api('/me/handle', { method: 'POST', body: { handle: document.getElementById('hd').value } }).then(function () { mine(); }).catch(function (e) { m.className = 'msg bad'; m.textContent = e.message; hgo.disabled = false; });

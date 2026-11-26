@@ -34,6 +34,11 @@ auth.post('/items/order', writeLimiter, (req, res) => send(res, mt.reorder(prism
 auth.patch('/items/:id', writeLimiter, (req, res) => send(res, mt.updateItem(prisma, req.userId, req.params.id, req.body || {})));
 auth.delete('/items/:id', writeLimiter, (req, res) => send(res, mt.removeItem(prisma, req.userId, req.params.id)));
 auth.post('/items/:id/like', writeLimiter, (req, res) => send(res, mt.toggleLike(prisma, req.userId, req.params.id)));
+// Ofertas de compra entre pessoas (o Club só conecta; não intermedia pagamento)
+const offerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, message: { error: 'Muitas ofertas seguidas. Tente mais tarde.' } });
+auth.post('/items/:id/offers', offerLimiter, (req, res) => send(res, mt.makeOffer(prisma, req.userId, req.params.id, req.body || {})));
+auth.get('/me/offers', (req, res) => send(res, mt.myOffers(prisma, req.userId)));
+auth.post('/offers/:id', writeLimiter, (req, res) => send(res, mt.answerOffer(prisma, req.userId, req.params.id, (req.body || {}).action)));
 router.use(auth);
 
 module.exports = router;

@@ -145,7 +145,7 @@ if (CANONICAL_HOST) {
 }
 // fotos da loja (até 5 fotos em base64): parser próprio com limite maior, antes do global (que pula corpo já lido)
 app.use('/api/fotos-loja', express.json({ limit: '8mb' }));
-app.use('/api/meustenis', express.json({ limit: '4mb' })); // Meus Tênis: foto do celular já vem reduzida no navegador
+app.use('/api/meustenis', express.json({ limit: '12mb' })); // Meus Tênis: foto do celular já vem reduzida no navegador
 app.use(express.json({
   // 1.5mb pra acomodar foto/audio em base64 do /api/messages-v2
   limit: '1.5mb',
