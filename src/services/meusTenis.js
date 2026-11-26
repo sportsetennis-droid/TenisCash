@@ -191,6 +191,39 @@ async function setTracking(prisma, userId, itemId, on) {
 }
 const numIn = (v, min, max) => { const n = Number(String(v == null ? '' : v).replace(',', '.')); return Number.isFinite(n) && n >= min && n <= max ? n : null; };
 
+// Dono 26/11: "são as pessoas que vão acessar e não eu como loja" → o jeito principal de incluir é
+// a lista dos tênis que a pessoa COMPROU numa Sports & Tennis (venda com o cadastro dela), um toque para incluir.
+async function purchases(prisma, userId) {
+  await ensureSchema(prisma);
+  // Uma linha por tamanho comprado (tamanho e confirmação vêm da MESMA linha). Fora: venda não concluída,
+  // peça devolvida numa troca (movimento exchange_return) e o que não é calçado (filtro no SQL, antes do limite).
+  const rows = await prisma.$queryRaw`SELECT si."productId", si."productSizeId", max(s."createdAt") AS "boughtAt", max(ps."size") AS "size",
+      bool_or(ps."sizeConfirmedAt" IS NOT NULL) AS "confirmed"
+    FROM "Sale" s JOIN "SaleItem" si ON si."saleId"=s.id JOIN "Product" p ON p.id=si."productId" LEFT JOIN "ProductSize" ps ON ps.id=si."productSizeId"
+    WHERE s."customerUserId"=${userId} AND s."status"='completed'
+      AND (CASE WHEN coalesce(p."category", '') <> '' THEN p."category" ELSE p."name" END) ~* ${FOOTWEAR_SQL}
+      AND NOT EXISTS (SELECT 1 FROM "StoreStockMovement" m WHERE m."type"='exchange_return' AND (m."saleItemId"=si.id OR m."metadata"->>'saleItemId'=si.id))
+    GROUP BY si."productId", si."productSizeId" ORDER BY max(s."createdAt") DESC LIMIT 60`;
+  if (!rows.length) return [];
+  const ja = new Set((await prisma.$queryRaw`SELECT "productId" FROM "ShoeClosetItem" WHERE "userId"=${userId} AND "productId" IS NOT NULL`).map((x) => x.productId));
+  const prods = await prisma.product.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.productId))] } }, select: { id: true, name: true, brand: true, imageUrl: true, imageUrls: true, aiContext: true } });
+  const byId = new Map(prods.map((p) => [p.id, p]));
+  const ms = require('./mediaStore');
+  const fotos = new Map(await Promise.all(prods.map(async (p) => {
+    const img = p.imageUrl || (Array.isArray(p.imageUrls) ? p.imageUrls.find((x) => typeof x === 'string' && x) : null);
+    return [p.id, await ms.publicUrlFor(img).catch(() => null)];
+  })));
+  const out = [];
+  for (const r of rows) {
+    const p = byId.get(r.productId);
+    if (!p) continue;
+    const adidas = /adidas/i.test(String(p.brand || ''));
+    const size = (!adidas || r.confirmed) && /^(?:[1-5]\d(?:[.,]5)?|PP|P|M|G|GG|XG|XGG|\d{1,2}A)$/i.test(String(r.size || '').trim()) ? String(r.size).trim() : null;
+    out.push({ productId: p.id, brand: p.brand, model: p.name, color: (p.aiContext && p.aiContext.color) || null, size, photo: fotos.get(p.id) || null, boughtAt: r.boughtAt, added: ja.has(p.id) });
+  }
+  return out;
+}
+
 // Bipar a caixa: o código de barras acha o tênis certo no catálogo (modelo, cor e tamanho).
 // Tamanho só se o card tiver o número confirmado (placeholder T-<EAN> não vira tamanho).
 async function lookupBarcode(prisma, raw) {
@@ -258,7 +291,8 @@ async function explore(prisma, { limit = 24 } = {}) {
 }
 
 // ───────── busca ─────────
-const FOOTWEAR = /t[eê]nis|chuteira|sand[aá]lia|chinelo|cal[cç]ado|bota|slide|papete/i;
+const FOOTWEAR = /t[eê]nis|chuteira|sand[aá]lia|chinelo|cal[cç]ado|\bbotas?\b|slide|papete/i;
+const FOOTWEAR_SQL = '(t[eê]nis|chuteira|sand[aá]lia|chinelo|cal[cç]ado|\\mbotas?\\M|slide|papete)';
 const tokens = (q) => String(q || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length >= 2).slice(0, 6);
 
 // Catálogo da loja: produtos de calçado com foto. Um resultado por modelo+cor.
@@ -583,5 +617,5 @@ async function answerOffer(prisma, userId, offerId, action, deps = {}) {
   return (await myOffers(prisma, userId)).received.find((x) => x.id === o.id) || { status };
 }
 
-module.exports = { ensureSchema, setHandle, resolveHandle, me, saveProfile, publicCloset, explore, searchCatalog, searchWeb, copyWebPhoto, lookupBarcode, setTracking, liveKm,
+module.exports = { ensureSchema, setHandle, resolveHandle, me, saveProfile, publicCloset, explore, searchCatalog, searchWeb, copyWebPhoto, lookupBarcode, purchases, setTracking, liveKm,
   addItem, updateItem, removeItem, reorder, toggleLike, makeOffer, myOffers, answerOffer, parseValor, handleBase, firstAndLast, HANDLE_RX, LIMITE_ITENS, MAX_FOTOS };
