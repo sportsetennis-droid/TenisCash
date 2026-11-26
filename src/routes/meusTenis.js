@@ -29,6 +29,7 @@ auth.put('/me', writeLimiter, (req, res) => send(res, mt.saveProfile(prisma, req
 auth.post('/me/handle', writeLimiter, (req, res) => send(res, mt.setHandle(prisma, req.userId, (req.body || {}).handle)));
 auth.get('/search', (req, res) => send(res, mt.searchCatalog(prisma, req.query.q)));
 auth.get('/search/web', webLimiter, (req, res) => send(res, mt.searchWeb(req.query.q)));
+auth.get('/barcode/:code', (req, res) => send(res, mt.ensureSchema(prisma).then(() => mt.lookupBarcode(prisma, req.params.code))));
 auth.post('/items', writeLimiter, (req, res) => send(res, mt.addItem(prisma, req.userId, req.body || {})));
 auth.post('/items/order', writeLimiter, (req, res) => send(res, mt.reorder(prisma, req.userId, (req.body || {}).ids)));
 auth.patch('/items/:id', writeLimiter, (req, res) => send(res, mt.updateItem(prisma, req.userId, req.params.id, req.body || {})));

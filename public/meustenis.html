@@ -105,6 +105,15 @@ textarea{min-height:70px;resize:vertical}
 .st.PENDING{color:#facc15}.st.ACCEPTED{color:var(--ok)}.st.DECLINED,.st.WITHDRAWN{color:var(--dim)}
 .badge{display:inline-flex;min-width:20px;height:20px;border-radius:999px;background:var(--o);color:#fff;font-size:12px;font-weight:900;align-items:center;justify-content:center;padding:0 6px;margin-left:6px}
 .check{display:flex;gap:10px;align-items:flex-start;margin-top:12px;font-size:14px;color:#d4d4d8;font-weight:500}
+.scan{position:relative;border-radius:16px;overflow:hidden;background:#000;aspect-ratio:4/3;margin-top:10px}
+.scan video{width:100%;height:100%;object-fit:cover;display:block}
+.scan .aim{position:absolute;left:10%;right:10%;top:38%;height:24%;border:3px solid var(--o);border-radius:12px;box-shadow:0 0 0 999px rgba(0,0,0,.35)}
+.scan .hint{position:absolute;left:0;right:0;bottom:10px;text-align:center;font-size:13px;font-weight:800;color:#fff;text-shadow:0 1px 3px #000}
+.km{margin-top:6px}.km .bar{height:6px;border-radius:9px;background:#27272a;overflow:hidden}.km .bar i{display:block;height:100%;background:var(--ok)}
+.km.warn .bar i{background:#facc15}.km.over .bar i{background:var(--bad)}
+.kmbox{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:12px}
+.kmbox .big{font-family:'Barlow Condensed',sans-serif;font-style:italic;font-weight:900;font-size:34px;line-height:1}
+.tag.run{background:#2563eb}
 .check input{width:22px;min-height:22px;height:22px;accent-color:var(--o);margin:0;flex:0 0 auto}
 .pick img{width:100%;aspect-ratio:1/1;object-fit:contain;background:#fff;display:block}
 .pick div{padding:6px 8px;font-size:12px;line-height:1.2}
@@ -145,12 +154,19 @@ textarea{min-height:70px;resize:vertical}
   }
   function initials(n) { return String(n || '?').split(' ').filter(Boolean).slice(0, 2).map(function (w) { return w[0]; }).join('').toUpperCase(); }
   function avatar(u) { return u.avatar ? '<img class="av" src="' + esc(u.avatar) + '" alt="">' : '<div class="av">' + esc(initials(u.name)) + '</div>'; }
+  function kmState(it) { var p = it.kmLimit ? it.km / it.kmLimit : 0; return p >= 1 ? 'over' : p >= 0.8 ? 'warn' : ''; }
+  function kmTxt(n) { return (Math.round(n * 10) / 10).toLocaleString('pt-BR') + ' km'; }
+  function kmBar(it, onlyBar) {
+    if (!(it.km > 0) && !it.trackRuns && !onlyBar) return '';
+    var pct = Math.min(100, Math.round((it.km / (it.kmLimit || 700)) * 100));
+    return '<div class="km ' + kmState(it) + '">' + (onlyBar ? '' : '<div class="mt" style="margin-top:0"><span>' + (it.trackRuns ? '🏃 ' : '') + kmTxt(it.km) + '</span><span>' + pct + '%</span></div>') + '<div class="bar"><i style="width:' + pct + '%"></i></div></div>';
+  }
   function shoeCard(it, opts) {
     var meta = [it.color, it.size ? 'Tam. ' + it.size : ''].filter(Boolean).join(' · ');
     return '<button class="shoe" data-id="' + esc(it.id) + '"><div class="ph">' + (it.photo ? '<img loading="lazy" src="' + esc(it.photo) + '" alt="' + esc(it.model) + '">' : '') +
       (opts && opts.own && it.hidden ? '<span class="tag h">oculto</span>' : (it.naLoja ? '<span class="tag">na loja</span>' : '')) +
       (it.acceptOffers ? '<span class="tag of">aceita oferta</span>' : '') + ((it.photos || []).length > 1 ? '<span class="cnt">' + it.photos.length + ' fotos</span>' : '') + '</div><div class="tx">' +
-      (it.brand ? '<div class="br">' + esc(it.brand) + '</div>' : '') + '<div class="md">' + esc(it.model) + '</div><div class="mt"><span>' + esc(meta) + '</span><span>🧡 ' + (it.likes || 0) + '</span></div></div></button>';
+      (it.brand ? '<div class="br">' + esc(it.brand) + '</div>' : '') + '<div class="md">' + esc(it.model) + '</div><div class="mt"><span>' + esc(meta) + '</span><span>🧡 ' + (it.likes || 0) + '</span></div>' + kmBar(it) + '</div></button>';
   }
   function publicUrl(h) { return location.origin + '/meustenis/' + encodeURIComponent(h); }
   function share(h, name) {
@@ -163,7 +179,7 @@ textarea{min-height:70px;resize:vertical}
 
   // ───────── sheet ─────────
   function openSheet(html) { document.getElementById('sin').innerHTML = html; document.getElementById('sbg').style.display = 'block'; requestAnimationFrame(function () { document.getElementById('sheet').classList.add('on'); }); }
-  function closeSheet() { document.getElementById('sheet').classList.remove('on'); document.getElementById('sbg').style.display = 'none'; }
+  function closeSheet() { stopScan(); document.getElementById('sheet').classList.remove('on'); document.getElementById('sbg').style.display = 'none'; }
   document.getElementById('sbg').onclick = closeSheet;
 
   function photosOf(it) { return (it.photos && it.photos.length) ? it.photos : (it.photo ? [it.photo] : []); }
@@ -182,13 +198,22 @@ textarea{min-height:70px;resize:vertical}
     var chips = [it.color, it.size ? 'Tamanho ' + it.size : '', it.naLoja ? 'Tem na Sports & Tennis' : '', it.acceptOffers ? 'Aceita ofertas' : ''].filter(Boolean).map(function (c) { return '<span>' + esc(c) + '</span>'; }).join('');
     var html = '<div class="det">' + carousel(photosOf(it)) + (it.brand ? '<div class="kicker" style="margin-top:10px">' + esc(it.brand) + '</div>' : '') +
       '<h3>' + esc(it.model) + '</h3><div class="chips">' + chips + '</div>' + (it.note ? '<p class="mut" style="margin-top:10px">' + esc(it.note) + '</p>' : '') + '<div class="row">';
-    if (opts.own) html += '<button class="btn g" id="ed">Editar</button><button class="btn g" id="rm" style="color:var(--bad)">Tirar</button>';
+    if (opts.own) {
+      var st = kmState(it), lim = it.kmLimit || 700;
+      html += '</div><div class="kmbox"><div class="kicker" style="font-size:13px">Quilometragem</div><div class="big">' + kmTxt(it.km || 0) + ' <span class="dim" style="font-size:18px">de ' + lim + ' km</span></div>' + kmBar(it, true) +
+        '<p class="small ' + (st ? '' : 'mut') + '" style="margin-top:8px' + (st === 'over' ? ';color:var(--bad)' : st === 'warn' ? ';color:#facc15' : '') + '">' + (st === 'over' ? 'Passou do limite: o amortecimento já não protege como antes. Hora de trocar.' : st === 'warn' ? 'Perto da hora de trocar.' : it.trackRuns ? 'Contando os km das suas corridas e caminhadas no app.' : 'Ligue para contar os km das suas corridas e caminhadas no app.') + '</p>' +
+        '<button class="btn w ' + (it.trackRuns ? 'g' : '') + '" id="trk" style="margin-top:10px">' + (it.trackRuns ? 'Parar de contar neste tênis' : 'Usar nas minhas corridas') + '</button>' +
+        (st ? '<a class="btn w" style="margin-top:8px" href="https://sportstennis2.lojavirtualnuvem.com.br/search/?q=' + encodeURIComponent(it.brand || 'tenis') + '" target="_blank" rel="noopener">Ver tênis novos na loja</a>' : '') + '</div><div class="row">';
+      html += '<button class="btn g" id="ed">Editar</button><button class="btn g" id="rm" style="color:var(--bad)">Tirar</button>';
+    }
     else html += '<button class="btn g like' + (it.liked ? ' on' : '') + '" id="lk">🧡 ' + (it.liked ? 'Curtido' : 'Curtir') + ' · ' + (it.likes || 0) + '</button>';
     html += '</div>';
     if (!opts.own && it.acceptOffers) html += '<button class="btn w" id="of" style="margin-top:10px">' + (it.myOffer ? 'Mudar minha oferta (' + brl(it.myOffer) + ')' : 'Fazer oferta') + '</button>';
     html += (it.naLoja ? '<a class="btn w g" style="margin-top:10px" href="https://sportstennis2.lojavirtualnuvem.com.br/" target="_blank" rel="noopener">Ver na loja</a>' : '') + '</div>';
     openSheet(html);
     wireCarousel();
+    var trk = document.getElementById('trk');
+    if (trk) trk.onclick = function () { trk.disabled = true; api('/items/' + it.id, { method: 'PATCH', body: { trackRuns: !it.trackRuns } }).then(function (n) { toast(n.trackRuns ? 'Contando km neste tênis' : 'Parou de contar'); mine(); detail(n, opts); }).catch(function (e) { toast(e.message); trk.disabled = false; }); };
     var of = document.getElementById('of');
     if (of) of.onclick = function () { if (!token()) { closeSheet(); return loginSheet('Entre para fazer uma oferta.'); } offerSheet(it, opts); };
     var lk = document.getElementById('lk');
@@ -250,6 +275,110 @@ textarea{min-height:70px;resize:vertical}
     }).catch(function (e) { document.getElementById('ofb').innerHTML = '<div class="msg bad">' + esc(e.message) + '</div>'; });
   }
 
+
+  // ───────── bipar a caixa (câmera do celular, leitor grátis no próprio aparelho) ─────────
+  var SCAN = { stream: null, timer: null, busy: false, ready: null };
+  function loadReader() {
+    if (SCAN.ready) return SCAN.ready;
+    SCAN.ready = new Promise(function (res, rej) {
+      if (window.ZXingWASM) return res();
+      var sc = document.createElement('script'); sc.src = '/vendor/barcode/zxing-reader-3.1.4.js'; sc.onload = res; sc.onerror = function () { rej(new Error('Não deu para abrir o leitor.')); }; document.head.appendChild(sc);
+    }).then(function () { return window.ZXingWASM.prepareZXingModule({ overrides: { locateFile: function () { return '/vendor/barcode/zxing_reader.wasm'; } }, fireImmediately: true }); })
+      .catch(function (e) { SCAN.ready = null; throw e; });
+    return SCAN.ready;
+  }
+  function stopScan() {
+    if (SCAN.timer) { clearInterval(SCAN.timer); SCAN.timer = null; }
+    if (SCAN.stream) { SCAN.stream.getTracks().forEach(function (t) { t.stop(); }); SCAN.stream = null; }
+  }
+  function validEan(c) { return /^\d{8,14}$/.test(c); }
+  function scanBody(el) {
+    el.innerHTML = '<div class="scan" id="scn"><video id="vid" playsinline muted></video><div class="aim"></div><div class="hint" id="shint">Aponte para o código de barras da caixa</div></div>' +
+      '<label>Ou digite o código<input id="bc" inputmode="numeric" maxlength="14" placeholder="Ex.: 7891234567890"></label><button class="btn w g" id="bcgo" style="margin-top:10px">Procurar código</button><div id="scres"></div>';
+    document.getElementById('bcgo').onclick = function () { var c = document.getElementById('bc').value.replace(/\D/g, ''); if (validEan(c)) found(c); else toast('Digite o código de barras (8 a 14 números).'); };
+    var vid = document.getElementById('vid'), hint = document.getElementById('shint');
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { hint.textContent = 'Câmera indisponível. Digite o código abaixo.'; return; }
+    Promise.all([navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }), loadReader()])
+      .then(function (r) {
+        if (ADD.tab !== 'scan' || !document.getElementById('vid')) { r[0].getTracks().forEach(function (t) { t.stop(); }); return; }
+        SCAN.stream = r[0]; vid.srcObject = r[0]; vid.play().catch(function () {});
+        var cv = document.createElement('canvas'), cx = cv.getContext('2d', { willReadFrequently: true });
+        SCAN.timer = setInterval(function () {
+          if (SCAN.busy || !vid.videoWidth) return;
+          SCAN.busy = true;
+          var w = vid.videoWidth, h = vid.videoHeight, cw = Math.round(w * 0.9), ch = Math.round(h * 0.5);
+          cv.width = cw; cv.height = ch; cx.drawImage(vid, (w - cw) / 2, (h - ch) / 2, cw, ch, 0, 0, cw, ch);
+          window.ZXingWASM.readBarcodes(cx.getImageData(0, 0, cw, ch), { tryHarder: true, tryRotate: true, formats: ['EAN13', 'UPCA', 'EAN8', 'ITF', 'Code128'], maxNumberOfSymbols: 1 })
+            .then(function (res) { var c = res && res[0] && res[0].isValid !== false ? String(res[0].text || '').replace(/\D/g, '') : ''; if (validEan(c)) { if (navigator.vibrate) navigator.vibrate(80); stopScan(); found(c); } })
+            .catch(function () {}).then(function () { SCAN.busy = false; });
+        }, 250);
+      }).catch(function () { hint.textContent = 'Sem acesso à câmera. Digite o código abaixo.'; });
+  }
+  function found(code) {
+    var box = document.getElementById('scres'); if (!box) return;
+    box.innerHTML = '<div class="spin">Procurando ' + esc(code) + '…</div>';
+    api('/barcode/' + code).then(function (r) {
+      var scn = document.getElementById('scn'); if (scn) scn.style.display = 'none';
+      box.innerHTML = '<div class="offer" style="margin-top:12px">' + (r.photo ? '<img src="' + esc(r.photo) + '" alt="">' : '') + '<div style="flex:1;min-width:0"><div class="br" style="color:var(--o);font-weight:800;font-size:12px;text-transform:uppercase">' + esc(r.brand || '') + '</div><div style="font-weight:800">' + esc(r.model) + '</div>' +
+        '<div class="dim small">' + esc([r.color, r.photoCount > 1 ? r.photoCount + ' fotos' : ''].filter(Boolean).join(' · ')) + '</div></div></div>' +
+        '<div class="row"><label>Cor<input id="sc" maxlength="60" value="' + esc(r.color || '') + '"></label><label>Tamanho<input id="ss" maxlength="12" inputmode="decimal" value="' + esc(r.size || '') + '"></label></div>' +
+        '<label>Km que ele já rodou (se souber)<input id="sk" inputmode="decimal" placeholder="0"></label>' +
+        '<div class="switch"><span>É o tênis que uso nas corridas agora<br><span class="dim small">Conta os km das corridas e caminhadas no app.</span></span><input type="checkbox" id="st"></div>' +
+        offerCheck('so', false) + '<button class="btn w" id="sgo" style="margin-top:14px">Incluir no meu guarda-tênis</button><button class="btn w g" id="sagain" style="margin-top:8px">Bipar outro</button><div class="msg" id="sm"></div>';
+      document.getElementById('sagain').onclick = function () { addBody(); };
+      document.getElementById('sgo').onclick = function () {
+        var go = this, m = document.getElementById('sm'); go.disabled = true; go.textContent = 'Incluindo…';
+        api('/items', { method: 'POST', body: { productId: r.productId, barcode: r.barcode, color: document.getElementById('sc').value, size: document.getElementById('ss').value, kmStart: document.getElementById('sk').value || 0, trackRuns: document.getElementById('st').checked, acceptOffers: document.getElementById('so').checked } })
+          .then(function () { closeSheet(); toast('Tênis incluído'); mine(); })
+          .catch(function (e) { m.className = 'msg bad'; m.textContent = e.message; go.disabled = false; go.textContent = 'Incluir no meu guarda-tênis'; });
+      };
+    }).catch(function (e) {
+      box.innerHTML = '<div class="msg bad">' + esc(e.message) + '</div><div class="row"><button class="btn btn-s g" id="sagain">Bipar de novo</button><button class="btn btn-s" id="tocat">Procurar pelo nome</button></div>';
+      document.getElementById('sagain').onclick = function () { addBody(); };
+      document.getElementById('tocat').onclick = function () { document.querySelector('.tabs button[data-t=cat]').click(); };
+    });
+  }
+
+  // ───────── card para o Story (1080x1920, feito no próprio celular) ─────────
+  function loadImg(src) { return new Promise(function (res) { if (!src) return res(null); var i = new Image(); i.crossOrigin = 'anonymous'; i.onload = function () { res(i); }; i.onerror = function () { res(null); }; i.src = src; }); }
+  function rrect(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+  function storyCard(user, items) {
+    var list = items.filter(function (i) { return !i.hidden && i.photo; }).slice(0, 6);
+    openSheet('<div class="kicker">Card para o Story</div><div id="stb"><div class="spin">Montando o card…</div></div>');
+    Promise.all([document.fonts.load('italic 900 120px "Barlow Condensed"'), document.fonts.load('800 40px Barlow'), document.fonts.load('600 44px Barlow'), document.fonts.load('700 40px Barlow'), loadImg('/brand/club-sports-tennis.svg?v=4')].concat(list.map(function (i) { return loadImg(i.photo); })))
+      .then(function (r) {
+        var logo = r[4], photos = r.slice(5);
+        var cv = document.createElement('canvas'); cv.width = 1080; cv.height = 1920; var c = cv.getContext('2d');
+        c.fillStyle = '#0b0b0d'; c.fillRect(0, 0, 1080, 1920);
+        var g = c.createRadialGradient(980, 120, 40, 980, 120, 900); g.addColorStop(0, 'rgba(229,87,30,.55)'); g.addColorStop(1, 'rgba(229,87,30,0)'); c.fillStyle = g; c.fillRect(0, 0, 1080, 1920);
+        c.fillStyle = '#E5571E'; c.font = 'italic 900 54px "Barlow Condensed"'; c.fillText('MEUS TÊNIS', 80, 300);
+        var nm = String(user.name || '').toUpperCase(), fs = 130; c.font = 'italic 900 ' + fs + 'px "Barlow Condensed"';
+        while (c.measureText(nm).width > 920 && fs > 60) { fs -= 4; c.font = 'italic 900 ' + fs + 'px "Barlow Condensed"'; }
+        c.fillStyle = '#fff'; c.fillText(nm, 80, 300 + fs);
+        c.fillStyle = '#a1a1aa'; c.font = '600 44px Barlow'; if (user.handle) c.fillText('@' + user.handle, 80, 370 + fs);
+        var top = 440 + fs, n = photos.length, cols = n <= 1 ? 1 : 2, rows = Math.max(1, Math.ceil(n / cols)), gap = 24;
+        var tw = cols === 1 ? 920 : (920 - gap) / 2, th = Math.min(tw, (1580 - top - (rows - 1) * gap) / rows);
+        photos.forEach(function (im, k) {
+          var x = 80 + (k % cols) * (tw + gap), y = top + Math.floor(k / cols) * (th + gap);
+          c.fillStyle = '#fff'; rrect(c, x, y, tw, th, 36); c.fill();
+          if (im) { var p = 28, s = Math.min((tw - 2 * p) / im.width, (th - 2 * p) / im.height), w = im.width * s, h = im.height * s; c.drawImage(im, x + (tw - w) / 2, y + (th - h) / 2, w, h); }
+        });
+        var km = items.reduce(function (a, i) { return a + (i.hidden ? 0 : (i.km || 0)); }, 0), vis = items.filter(function (i) { return !i.hidden; }).length;
+        c.fillStyle = '#E5571E'; c.font = 'italic 900 64px "Barlow Condensed"';
+        c.fillText(vis + (vis === 1 ? ' TÊNIS' : ' TÊNIS') + (km >= 1 ? '  ·  ' + Math.round(km).toLocaleString('pt-BR') + ' KM RODADOS' : ''), 80, 1700);
+        c.fillStyle = '#fff'; c.font = '700 40px Barlow'; c.fillText('clubsportsetennis.com.br/meustenis' + (user.handle ? '/' + user.handle : ''), 80, 1775);
+        if (logo) { var lh = 70, lw = logo.width ? logo.width * (lh / logo.height) : 200; c.drawImage(logo, 80, 1810, lw, lh); }
+        cv.toBlob(function (blob) {
+          var url = URL.createObjectURL(blob), file = new File([blob], 'meus-tenis.png', { type: 'image/png' });
+          document.getElementById('stb').innerHTML = '<img src="' + url + '" alt="" style="width:100%;border-radius:16px;margin-top:8px;border:1px solid var(--line)"><div class="row"><button class="btn" id="stsh">Compartilhar</button><a class="btn g" id="stdl" href="' + url + '" download="meus-tenis.png">Baixar</a></div><p class="dim small" style="margin-top:8px">No Instagram: novo Story → escolha a imagem → cole o link com a figurinha de link.</p>';
+          document.getElementById('stsh').onclick = function () {
+            if (navigator.canShare && navigator.canShare({ files: [file] })) navigator.share({ files: [file], title: 'Meus tênis' }).catch(function () {});
+            else document.getElementById('stdl').click();
+          };
+        }, 'image/png');
+      }).catch(function () { document.getElementById('stb').innerHTML = '<div class="msg bad">Não deu para montar o card agora.</div>'; });
+  }
+
   // ───────── foto do celular → JPEG leve ─────────
   function shrink(file) {
     return new Promise(function (resolve, reject) {
@@ -268,14 +397,16 @@ textarea{min-height:70px;resize:vertical}
   // ───────── incluir tênis ─────────
   var ADD = { tab: 'cat', results: [], pick: null };
   function addSheet() {
-    ADD = { tab: 'cat', results: [], pick: null, q: '' };
+    ADD = { tab: 'scan', results: [], pick: null, q: '' };
     openSheet('<div class="kicker">Incluir tênis</div><h2 style="margin-top:4px">Qual tênis você tem?</h2>' +
-      '<div class="tabs"><button data-t="cat" class="on">Catálogo</button><button data-t="web">Internet</button><button data-t="up">Minha foto</button></div><div id="addBody"></div>');
+      '<div class="tabs"><button data-t="scan" class="on">Bipar</button><button data-t="cat">Catálogo</button><button data-t="web">Internet</button><button data-t="up">Fotos</button></div><div id="addBody"></div>');
     document.querySelectorAll('.tabs button').forEach(function (b) { b.onclick = function () { ADD.tab = b.dataset.t; ADD.results = []; ADD.pick = null; document.querySelectorAll('.tabs button').forEach(function (x) { x.classList.toggle('on', x === b); }); addBody(); }; });
     addBody();
   }
   function addBody() {
     var el = document.getElementById('addBody');
+    stopScan();
+    if (ADD.tab === 'scan') return scanBody(el);
     if (ADD.tab === 'up') {
       el.innerHTML = '<label>Fotos do tênis (até ' + MAXF + ')<input type="file" id="uf" accept="image/*" multiple></label><p class="dim small" id="ufn" style="margin-top:4px"></p><label>Marca<input id="ub" maxlength="60" placeholder="Ex.: Mizuno"></label>' +
         '<label>Modelo<input id="um" maxlength="140" placeholder="Ex.: Wave Rider 28"></label><div class="row" style="margin-top:0"><label>Cor<input id="uc" maxlength="60"></label><label>Tamanho<input id="us" maxlength="12" inputmode="decimal"></label></div>' +
@@ -344,6 +475,7 @@ textarea{min-height:70px;resize:vertical}
       '<label>Marca<input id="eb" maxlength="60" value="' + esc(it.brand || '') + '"></label><label>Modelo<input id="em" maxlength="140" value="' + esc(it.model) + '"></label>' +
       '<div class="row" style="margin-top:0"><label>Cor<input id="ec" maxlength="60" value="' + esc(it.color || '') + '"></label><label>Tamanho<input id="es" maxlength="12" value="' + esc(it.size || '') + '"></label></div>' +
       '<label>Comentário (opcional)<textarea id="en" maxlength="200" placeholder="Ex.: meu tênis de maratona">' + esc(it.note || '') + '</textarea></label>' +
+      '<div class="row" style="margin-top:0"><label>Km que ele já tinha<input id="ekm" inputmode="decimal" value="' + esc(String(it.kmStart || 0)) + '"></label><label>Trocar com (km)<input id="elim" inputmode="numeric" value="' + (it.kmLimit || 700) + '"></label></div>' +
       offerCheck('eo', it.acceptOffers) +
       '<div class="switch"><span>Esconder da minha página pública</span><input type="checkbox" id="eh"' + (it.hidden ? ' checked' : '') + '></div>' +
       '<button class="btn w" id="ego" style="margin-top:14px">Salvar</button><div class="msg" id="emm"></div>');
@@ -359,7 +491,7 @@ textarea{min-height:70px;resize:vertical}
       if (keep.length + fs.length > MAXF) { m.className = 'msg bad'; m.textContent = 'No máximo ' + MAXF + ' fotos por tênis.'; return; }
       go.disabled = true; go.textContent = 'Salvando…';
       Promise.all(fs.map(shrink)).then(function (photos) {
-        var body = { brand: document.getElementById('eb').value, model: document.getElementById('em').value, color: document.getElementById('ec').value, size: document.getElementById('es').value, note: document.getElementById('en').value, hidden: document.getElementById('eh').checked, acceptOffers: document.getElementById('eo').checked, keepPhotos: keep };
+        var body = { brand: document.getElementById('eb').value, model: document.getElementById('em').value, color: document.getElementById('ec').value, size: document.getElementById('es').value, note: document.getElementById('en').value, hidden: document.getElementById('eh').checked, acceptOffers: document.getElementById('eo').checked, keepPhotos: keep, kmStart: document.getElementById('ekm').value || 0, kmLimit: document.getElementById('elim').value || 700 };
         if (photos.length) body.photos = photos;
         return api('/items/' + it.id, { method: 'PATCH', body: body });
       }).then(function () { closeSheet(); toast('Salvo'); mine(); }).catch(function (e) { m.className = 'msg bad'; m.textContent = e.message; go.disabled = false; go.textContent = 'Salvar'; });
@@ -417,6 +549,7 @@ textarea{min-height:70px;resize:vertical}
         '<div class="hero" style="margin-top:12px"><b>Escolha o seu @ para ter o link público</b><label>Seu @<input id="hd" maxlength="30" placeholder="ex.: joao.corre" autocapitalize="none" autocorrect="off"></label><button class="btn w" id="hgo" style="margin-top:10px">Criar meu link</button><div class="msg" id="hm"></div></div>';
       $app.innerHTML = head + link +
         '<div class="row"><button class="btn" id="add">+ Incluir tênis</button>' + (h ? '<a class="btn g" href="/meustenis/' + encodeURIComponent(h) + '">Ver como fica</a>' : '') + '</div>' +
+        '<button class="btn w g" id="stc" style="margin-top:10px">Card para o Story</button>' +
         '<button class="btn w g" id="obn" style="margin-top:10px">Ofertas' + (d.offersPending ? '<span class="badge">' + d.offersPending + '</span>' : '') + '</button>' +
         '<div class="switch"><span>Página pública (qualquer pessoa com o link vê)</span><input type="checkbox" id="pub"' + (d.profile.isPublic ? ' checked' : '') + '></div>' +
         '<label>Frase do seu perfil (opcional)<textarea id="bio" maxlength="160" placeholder="Ex.: Corredor de rua, 3 maratonas">' + esc(d.profile.bio || '') + '</textarea></label><button class="btn btn-s g" id="bgo" style="margin-top:8px">Salvar frase</button>' +
@@ -425,6 +558,7 @@ textarea{min-height:70px;resize:vertical}
       document.getElementById('out').onclick = function () { try { localStorage.removeItem('tc_token'); localStorage.removeItem('tc_user'); } catch (_) {} route(); };
       document.getElementById('add').onclick = addSheet;
       document.getElementById('obn').onclick = offersSheet;
+      document.getElementById('stc').onclick = function () { if (!d.items.length) return toast('Inclua um tênis primeiro.'); var pn = d.user.name.trim().split(/\s+/); storyCard({ name: pn.length > 1 ? pn[0] + ' ' + pn[pn.length - 1] : pn[0], handle: h }, d.items); };
       if (OPEN_OFFERS) { OPEN_OFFERS = false; offersSheet(); }
       var cp = document.getElementById('cp'); if (cp) cp.onclick = function () { copy(publicUrl(h)); };
       var sh = document.getElementById('sh'); if (sh) sh.onclick = function () { share(h, d.user.name); };

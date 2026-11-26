@@ -13,6 +13,9 @@
 // dependendo do site de fora e passa pela trava de imagem.
 // Tabelas por SQL aditivo (o deploy não roda db push).
 //
+// Dono 26/11 (depois de pesquisar os apps de coleção): bipar a caixa para incluir o tênis certo,
+//   km de cada tênis pelas corridas do app com aviso de troca, e card pronto para o Story.
+//
 // Dono 26/11: "Não pode só salvar uma foto, tem que ser várias; se já tiver elas, já sobe todas."
 //   → cada tênis guarda até 8 fotos (catálogo e site da marca trazem todas de uma vez).
 // Dono 26/11: "a opção de deixar se eu quero receber oferta nesse tênis… alguém pode oferecer
@@ -43,6 +46,11 @@ function ensureSchema(prisma) {
         "createdAt" TIMESTAMP(3) NOT NULL DEFAULT NOW(), "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT NOW())`,
       `ALTER TABLE "ShoeClosetItem" ADD COLUMN IF NOT EXISTS "photos" JSONB NOT NULL DEFAULT '[]'::jsonb`,
       `ALTER TABLE "ShoeClosetItem" ADD COLUMN IF NOT EXISTS "acceptOffers" BOOLEAN NOT NULL DEFAULT false`,
+      `ALTER TABLE "ShoeClosetItem" ADD COLUMN IF NOT EXISTS "barcode" TEXT`,
+      `ALTER TABLE "ShoeClosetItem" ADD COLUMN IF NOT EXISTS "kmStart" DOUBLE PRECISION NOT NULL DEFAULT 0`,
+      `ALTER TABLE "ShoeClosetItem" ADD COLUMN IF NOT EXISTS "kmLimit" INT NOT NULL DEFAULT 700`,
+      `ALTER TABLE "ShoeClosetItem" ADD COLUMN IF NOT EXISTS "trackRuns" BOOLEAN NOT NULL DEFAULT false`,
+      `ALTER TABLE "ShoeClosetItem" ADD COLUMN IF NOT EXISTS "trackSince" TIMESTAMP(3)`,
       `CREATE TABLE IF NOT EXISTS "ShoeClosetOffer" ("id" TEXT PRIMARY KEY, "itemId" TEXT NOT NULL, "ownerId" TEXT NOT NULL, "buyerId" TEXT NOT NULL,
         "amount" NUMERIC(10,2) NOT NULL, "message" TEXT, "status" TEXT NOT NULL DEFAULT 'PENDING', "createdAt" TIMESTAMP(3) NOT NULL DEFAULT NOW(),
         "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT NOW(), "answeredAt" TIMESTAMP(3))`,
@@ -132,7 +140,19 @@ async function saveProfile(prisma, userId, body) {
 const photosOf = (r) => { const p = Array.isArray(r.photos) ? r.photos.filter((x) => typeof x === 'string' && x) : []; return p.length ? p : (r.photo ? [r.photo] : []); };
 const itemOut = (r, likedSet, myOffers) => ({ id: r.id, productId: r.productId, brand: r.brand, model: r.model, color: r.color, size: r.size, note: r.note,
   photo: r.photo, photos: photosOf(r), source: r.source, likes: r.likes, liked: likedSet ? likedSet.has(r.id) : undefined, naLoja: r.naLoja === undefined ? undefined : !!r.naLoja,
-  acceptOffers: !!r.acceptOffers, myOffer: myOffers && myOffers.has(r.id) ? myOffers.get(r.id) : undefined, createdAt: r.createdAt });
+  acceptOffers: !!r.acceptOffers, myOffer: myOffers && myOffers.has(r.id) ? myOffers.get(r.id) : undefined,
+  km: Math.round((Number(r.kmStart || 0) + Number(r.kmLive || 0)) * 10) / 10, kmStart: Math.round(Number(r.kmStart || 0) * 10) / 10, kmLimit: r.kmLimit || 700, trackRuns: !!r.trackRuns, createdAt: r.createdAt });
+
+// Km das atividades a pé do app (corrida, caminhada, trilha) desde que o tênis virou o "tênis das corridas".
+const FOOT_RX = '(run|walk|hike|trail|corr|camin)';
+async function liveKm(prisma, userId, since) {
+  if (!since) return 0;
+  try {
+    const [r] = await prisma.$queryRaw`SELECT coalesce(sum("distanceM"), 0)::float AS m FROM "Activity" WHERE "userId"=${userId} AND "startedAt" >= ${since}
+      AND "sportType" ~* ${FOOT_RX} AND "processingState" NOT IN ('recording','failed')`;
+    return (Number(r && r.m) || 0) / 1000;
+  } catch (_) { return 0; } // banco sem a tabela do app de atividade
+}
 
 async function itemsOf(prisma, userId, { viewerId = null, includeHidden = false } = {}) {
   await ensureSchema(prisma);
@@ -148,7 +168,34 @@ async function itemsOf(prisma, userId, { viewerId = null, includeHidden = false 
       mine = new Map(os.map((o) => [o.itemId, Number(o.amount)]));
     }
   }
+  for (const r of rows) if (r.trackRuns) r.kmLive = await liveKm(prisma, userId, r.trackSince);
   return rows.map((r) => itemOut(r, liked, mine));
+}
+
+// Liga/desliga o "tênis das corridas". Só um por pessoa: o que sai guarda os km que já rodou.
+async function setTracking(prisma, userId, itemId, on) {
+  const ativos = await prisma.$queryRaw`SELECT "id", "trackSince" FROM "ShoeClosetItem" WHERE "userId"=${userId} AND "trackRuns"`;
+  for (const a of ativos) {
+    if (on && a.id === itemId) continue; // já é o das corridas
+    const km = await liveKm(prisma, userId, a.trackSince);
+    await prisma.$executeRaw`UPDATE "ShoeClosetItem" SET "kmStart"="kmStart"+${km}, "trackRuns"=false, "trackSince"=NULL, "updatedAt"=NOW() WHERE "id"=${a.id}`;
+  }
+  if (on && !ativos.some((a) => a.id === itemId)) await prisma.$executeRaw`UPDATE "ShoeClosetItem" SET "trackRuns"=true, "trackSince"=NOW(), "updatedAt"=NOW() WHERE "id"=${itemId} AND "userId"=${userId}`;
+}
+const numIn = (v, min, max) => { const n = Number(String(v == null ? '' : v).replace(',', '.')); return Number.isFinite(n) && n >= min && n <= max ? n : null; };
+
+// Bipar a caixa: o código de barras acha o tênis certo no catálogo (modelo, cor e tamanho).
+// Tamanho só se o card tiver o número confirmado (placeholder T-<EAN> não vira tamanho).
+async function lookupBarcode(prisma, raw) {
+  const code = String(raw || '').replace(/\D/g, '');
+  if (code.length < 8 || code.length > 14) throw httpErr(400, 'Código inválido. Bipe o código de barras da caixa.');
+  const alts = [...new Set([code, code.replace(/^0+/, ''), '0' + code])];
+  const ps = await prisma.productSize.findFirst({ where: { barcode: { in: alts } }, select: { size: true, product: { select: { id: true, name: true, brand: true, category: true, imageUrl: true, imageUrls: true, aiContext: true } } } });
+  if (!ps || !ps.product) throw httpErr(404, 'Não achei esse código no catálogo. Procure pelo nome ou envie suas fotos.');
+  const p = ps.product;
+  const photos = await catalogPhotos(p);
+  const size = /^(?:[1-5]\d(?:[.,]5)?|PP|P|M|G|GG|XG|XGG|\d{1,2}A)$/i.test(String(ps.size || '').trim()) ? String(ps.size).trim() : null;
+  return { productId: p.id, brand: p.brand, model: p.name, color: (p.aiContext && p.aiContext.color) || null, size, photo: photos[0] || null, photoCount: photos.length, barcode: code };
 }
 
 async function me(prisma, userId) {
@@ -354,11 +401,14 @@ async function addItem(prisma, userId, body, deps = {}) {
   if (!model) throw httpErr(400, 'Informe o modelo do tênis.');
   if (!photos.length) throw httpErr(400, 'Escolha uma foto do catálogo, da busca ou envie a sua.');
   const size = clean(body.size, 12), note = clean(body.note, 200);
+  const barcode = body.barcode ? String(body.barcode).replace(/\D/g, '').slice(0, 14) || null : null;
+  const kmStart = numIn(body.kmStart, 0, 10000) || 0;
   const acceptOffers = body.acceptOffers === true || body.acceptOffers === 'true';
   const newId = id();
   await prisma.$executeRaw`UPDATE "ShoeClosetItem" SET "position"="position"+1 WHERE "userId"=${userId}`;
-  await prisma.$executeRaw`INSERT INTO "ShoeClosetItem" ("id","userId","productId","brand","model","color","size","note","photo","photos","source","position","acceptOffers")
-    VALUES (${newId}, ${userId}, ${productId}, ${brand}, ${model}, ${color}, ${size}, ${note}, ${photos[0]}, ${JSON.stringify(photos)}::jsonb, ${source}, 0, ${acceptOffers})`;
+  await prisma.$executeRaw`INSERT INTO "ShoeClosetItem" ("id","userId","productId","brand","model","color","size","note","photo","photos","source","position","acceptOffers","barcode","kmStart")
+    VALUES (${newId}, ${userId}, ${productId}, ${brand}, ${model}, ${color}, ${size}, ${note}, ${photos[0]}, ${JSON.stringify(photos)}::jsonb, ${body.barcode && productId ? 'bipe' : source}, 0, ${acceptOffers}, ${barcode}, ${kmStart})`;
+  if (body.trackRuns === true || body.trackRuns === 'true') await setTracking(prisma, userId, newId, true);
   await prisma.$executeRaw`INSERT INTO "ShoeClosetProfile" ("userId") VALUES (${userId}) ON CONFLICT DO NOTHING`;
   return (await itemsOf(prisma, userId, { includeHidden: true })).find((i) => i.id === newId);
 }
@@ -386,8 +436,13 @@ async function updateItem(prisma, userId, itemId, body, deps = {}) {
   if (!model) throw httpErr(400, 'Informe o modelo do tênis.');
   const bool = (k) => (body[k] === undefined ? it[k] : !!(body[k] === true || body[k] === 'true'));
   const hidden = bool('hidden'), acceptOffers = bool('acceptOffers');
+  const kmStart = body.kmStart === undefined ? it.kmStart : numIn(body.kmStart, 0, 10000);
+  const kmLimit = body.kmLimit === undefined ? it.kmLimit : numIn(body.kmLimit, 100, 5000);
+  if (kmStart === null) throw httpErr(400, 'Km inválido (0 a 10.000).');
+  if (kmLimit === null) throw httpErr(400, 'Limite de km inválido (100 a 5.000).');
   await prisma.$executeRaw`UPDATE "ShoeClosetItem" SET "brand"=${pick('brand', 60)}, "model"=${model}, "color"=${pick('color', 60)}, "size"=${pick('size', 12)},
-    "note"=${pick('note', 200)}, "photo"=${photos[0]}, "photos"=${JSON.stringify(photos)}::jsonb, "hidden"=${hidden}, "acceptOffers"=${acceptOffers}, "updatedAt"=NOW() WHERE "id"=${it.id}`;
+    "note"=${pick('note', 200)}, "photo"=${photos[0]}, "photos"=${JSON.stringify(photos)}::jsonb, "hidden"=${hidden}, "acceptOffers"=${acceptOffers}, "kmStart"=${kmStart}, "kmLimit"=${Math.round(kmLimit)}, "updatedAt"=NOW() WHERE "id"=${it.id}`;
+  if (body.trackRuns !== undefined) await setTracking(prisma, userId, it.id, body.trackRuns === true || body.trackRuns === 'true');
   return (await itemsOf(prisma, userId, { includeHidden: true })).find((i) => i.id === it.id);
 }
 async function removeItem(prisma, userId, itemId) {
@@ -519,5 +574,5 @@ async function answerOffer(prisma, userId, offerId, action, deps = {}) {
   return (await myOffers(prisma, userId)).received.find((x) => x.id === o.id) || { status };
 }
 
-module.exports = { ensureSchema, setHandle, resolveHandle, me, saveProfile, publicCloset, explore, searchCatalog, searchWeb, copyWebPhoto,
+module.exports = { ensureSchema, setHandle, resolveHandle, me, saveProfile, publicCloset, explore, searchCatalog, searchWeb, copyWebPhoto, lookupBarcode, setTracking, liveKm,
   addItem, updateItem, removeItem, reorder, toggleLike, makeOffer, myOffers, answerOffer, parseValor, handleBase, firstAndLast, HANDLE_RX, LIMITE_ITENS, MAX_FOTOS };
