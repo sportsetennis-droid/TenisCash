@@ -12,10 +12,18 @@
 // A foto escolhida é copiada para o nosso armazenamento (mediaStore): não fica
 // dependendo do site de fora e passa pela trava de imagem.
 // Tabelas por SQL aditivo (o deploy não roda db push).
+//
+// Dono 26/11: "Não pode só salvar uma foto, tem que ser várias; se já tiver elas, já sobe todas."
+//   → cada tênis guarda até 8 fotos (catálogo e site da marca trazem todas de uma vez).
+// Dono 26/11: "a opção de deixar se eu quero receber oferta nesse tênis… alguém pode oferecer
+//   preço e eu querer vender" → "Aceito ofertas" por tênis. Quem oferece concorda em mostrar o
+//   WhatsApp; o dono só vê o número DEPOIS de aceitar. O Club não intermedia pagamento.
 // =====================================================================
 const crypto = require('crypto');
 
 const LIMITE_ITENS = 300;
+const MAX_FOTOS = 8;
+const OFERTA_MIN = 1, OFERTA_MAX = 100000;
 const HANDLE_RX = /^[a-z0-9](?:[a-z0-9._]{1,28}[a-z0-9])$/;
 const httpErr = (status, message) => Object.assign(new Error(message), { status });
 const clean = (v, n) => { const s = String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, n); return s || null; };
@@ -33,6 +41,13 @@ function ensureSchema(prisma) {
       `CREATE TABLE IF NOT EXISTS "ShoeClosetLike" ("itemId" TEXT NOT NULL, "userId" TEXT NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT NOW(), PRIMARY KEY ("itemId", "userId"))`,
       `CREATE TABLE IF NOT EXISTS "ShoeClosetProfile" ("userId" TEXT PRIMARY KEY, "isPublic" BOOLEAN NOT NULL DEFAULT true, "bio" TEXT, "views" INT NOT NULL DEFAULT 0,
         "createdAt" TIMESTAMP(3) NOT NULL DEFAULT NOW(), "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT NOW())`,
+      `ALTER TABLE "ShoeClosetItem" ADD COLUMN IF NOT EXISTS "photos" JSONB NOT NULL DEFAULT '[]'::jsonb`,
+      `ALTER TABLE "ShoeClosetItem" ADD COLUMN IF NOT EXISTS "acceptOffers" BOOLEAN NOT NULL DEFAULT false`,
+      `CREATE TABLE IF NOT EXISTS "ShoeClosetOffer" ("id" TEXT PRIMARY KEY, "itemId" TEXT NOT NULL, "ownerId" TEXT NOT NULL, "buyerId" TEXT NOT NULL,
+        "amount" NUMERIC(10,2) NOT NULL, "message" TEXT, "status" TEXT NOT NULL DEFAULT 'PENDING', "createdAt" TIMESTAMP(3) NOT NULL DEFAULT NOW(),
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT NOW(), "answeredAt" TIMESTAMP(3))`,
+      `CREATE INDEX IF NOT EXISTS "ShoeClosetOffer_owner_idx" ON "ShoeClosetOffer" ("ownerId", "status")`,
+      `CREATE INDEX IF NOT EXISTS "ShoeClosetOffer_buyer_idx" ON "ShoeClosetOffer" ("buyerId", "status")`,
     ];
     ready = (async () => { for (const s of stmts) await prisma.$executeRawUnsafe(s); })().catch((e) => { ready = null; throw e; });
   }
@@ -91,26 +106,33 @@ async function saveProfile(prisma, userId, body) {
   return profileOf(prisma, userId);
 }
 
-const itemOut = (r, likedSet) => ({ id: r.id, productId: r.productId, brand: r.brand, model: r.model, color: r.color, size: r.size, note: r.note,
-  photo: r.photo, source: r.source, likes: r.likes, liked: likedSet ? likedSet.has(r.id) : undefined, naLoja: r.naLoja === undefined ? undefined : !!r.naLoja, createdAt: r.createdAt });
+const photosOf = (r) => { const p = Array.isArray(r.photos) ? r.photos.filter((x) => typeof x === 'string' && x) : []; return p.length ? p : (r.photo ? [r.photo] : []); };
+const itemOut = (r, likedSet, myOffers) => ({ id: r.id, productId: r.productId, brand: r.brand, model: r.model, color: r.color, size: r.size, note: r.note,
+  photo: r.photo, photos: photosOf(r), source: r.source, likes: r.likes, liked: likedSet ? likedSet.has(r.id) : undefined, naLoja: r.naLoja === undefined ? undefined : !!r.naLoja,
+  acceptOffers: !!r.acceptOffers, myOffer: myOffers && myOffers.has(r.id) ? myOffers.get(r.id) : undefined, createdAt: r.createdAt });
 
 async function itemsOf(prisma, userId, { viewerId = null, includeHidden = false } = {}) {
   await ensureSchema(prisma);
   const rows = await prisma.$queryRaw`SELECT i.*, (i."productId" IS NOT NULL AND EXISTS (SELECT 1 FROM "ProductSize" ps JOIN "StoreStock" ss ON ss."productSizeId"=ps.id
       WHERE ps."productId"=i."productId" AND ss.stock > 0)) AS "naLoja"
     FROM "ShoeClosetItem" i WHERE i."userId"=${userId} AND (${includeHidden} OR NOT i."hidden") ORDER BY i."position" ASC, i."createdAt" DESC`;
-  let liked = null;
+  let liked = null, mine = null;
   if (viewerId && rows.length) {
     const ls = await prisma.$queryRaw`SELECT "itemId" FROM "ShoeClosetLike" WHERE "userId"=${viewerId}`;
     liked = new Set(ls.map((x) => x.itemId));
+    if (viewerId !== userId) {
+      const os = await prisma.$queryRaw`SELECT "itemId", "amount" FROM "ShoeClosetOffer" WHERE "buyerId"=${viewerId} AND "ownerId"=${userId} AND "status"='PENDING'`;
+      mine = new Map(os.map((o) => [o.itemId, Number(o.amount)]));
+    }
   }
-  return rows.map((r) => itemOut(r, liked));
+  return rows.map((r) => itemOut(r, liked, mine));
 }
 
 async function me(prisma, userId) {
   const u = await userBasics(prisma, userId);
   if (!u) throw httpErr(404, 'Conta não encontrada.');
-  return { user: { name: u.name, handle: u.handle, avatar: u.avatar }, profile: await profileOf(prisma, userId), items: await itemsOf(prisma, userId, { viewerId: userId, includeHidden: true }) };
+  const [{ n }] = await prisma.$queryRaw`SELECT count(*)::int AS n FROM "ShoeClosetOffer" WHERE "ownerId"=${userId} AND "status"='PENDING'`;
+  return { user: { name: u.name, handle: u.handle, avatar: u.avatar }, profile: await profileOf(prisma, userId), items: await itemsOf(prisma, userId, { viewerId: userId, includeHidden: true }), offersPending: n };
 }
 
 // Página pública de uma pessoa. Conta apagada (LGPD), inativa ou fechada → não existe.
@@ -180,7 +202,8 @@ async function searchCatalog(prisma, q, { limit = 24 } = {}) {
     img = await ms.publicUrlFor(img).catch(() => null);
     if (!img) continue;
     seen.add(key);
-    out.push({ productId: p.id, brand: p.brand, model: p.name, color, photo: img });
+    const n = new Set([p.imageUrl, ...(Array.isArray(p.imageUrls) ? p.imageUrls : [])].filter((x) => typeof x === 'string' && x)).size;
+    out.push({ productId: p.id, brand: p.brand, model: p.name, color, photo: img, photoCount: Math.min(n, MAX_FOTOS) });
     if (out.length >= limit) break;
   }
   return out;
@@ -208,7 +231,7 @@ async function searchWeb(q, { fetchFn = fetch, timeoutMs = 8000, hosts = null } 
       const arr = await r.json();
       return (Array.isArray(arr) ? arr : []).map((p) => {
         const item = (p.items || [])[0];
-        const fotos = require('./corOficialMarca').imagensDoItem(item).slice(0, 3);
+        const fotos = require('./corOficialMarca').imagensDoItem(item).slice(0, MAX_FOTOS);
         const nome = String(p.productName || '').trim();
         if (!fotos.length || !nome || !FOOTWEAR.test(nome + ' ' + (p.categories || []).join(' '))) return null;
         return { brand: clean(p.brand, 60), model: clean(nome, 140), photo: fotos[0], photos: fotos, host };
@@ -259,33 +282,57 @@ async function storeUpload(dataUri, ownerUserId) {
 }
 
 // ───────── itens ─────────
+// Fotos do card do catálogo: todas (capa primeiro), base64 antigo vira arquivo em /media.
+async function catalogPhotos(p) {
+  const ms = require('./mediaStore');
+  const list = [...new Set([p.imageUrl, ...(Array.isArray(p.imageUrls) ? p.imageUrls : [])].filter((x) => typeof x === 'string' && x))];
+  const out = [];
+  for (const img of list) {
+    if (out.length >= MAX_FOTOS) break;
+    let u = await ms.publicUrlFor(img).catch(() => null);
+    if (u && /^data:/i.test(u)) u = await ms.put(u, { source: 'legacy' }).then((r) => r.url).catch(() => null);
+    if (u && !out.includes(u)) out.push(u);
+  }
+  return out;
+}
+const asList = (many, one) => (Array.isArray(many) ? many : one ? [one] : []).filter((x) => typeof x === 'string' && x).slice(0, MAX_FOTOS);
+
 async function addItem(prisma, userId, body, deps = {}) {
   await ensureSchema(prisma);
   const [{ n }] = await prisma.$queryRaw`SELECT count(*)::int AS n FROM "ShoeClosetItem" WHERE "userId"=${userId}`;
   if (n >= LIMITE_ITENS) throw httpErr(400, 'Limite de ' + LIMITE_ITENS + ' tênis atingido.');
-  let brand = clean(body.brand, 60), model = clean(body.model, 140), color = clean(body.color, 60), photo = null, productId = null, source = 'upload';
+  let brand = clean(body.brand, 60), model = clean(body.model, 140), color = clean(body.color, 60), productId = null, source = 'upload';
   if (!body.productId && !model) throw httpErr(400, 'Informe o modelo do tênis.'); // antes de gravar qualquer foto
+  let photos = [];
   if (body.productId) {
     const p = await prisma.product.findUnique({ where: { id: String(body.productId) }, select: { id: true, name: true, brand: true, imageUrl: true, imageUrls: true, aiContext: true } });
     if (!p) throw httpErr(404, 'Produto não encontrado no catálogo.');
     productId = p.id; brand = p.brand; model = p.name; source = 'catalogo';
     color = color || ((p.aiContext && p.aiContext.color) || null);
-    const img = p.imageUrl || (Array.isArray(p.imageUrls) ? p.imageUrls.find((x) => typeof x === 'string' && x) : null);
-    photo = await require('./mediaStore').publicUrlFor(img).catch(() => null);
-    // foto antiga gravada em base64 no card: vira arquivo em /media (nunca guardar base64 no item)
-    if (photo && /^data:/i.test(photo)) photo = await require('./mediaStore').put(photo, { source: 'legacy' }).then((r) => r.url).catch(() => null);
-  } else if (body.webPhoto) {
-    photo = await (deps.copyWebPhoto || copyWebPhoto)(body.webPhoto, { ownerUserId: userId });
-    source = 'busca';
+    photos = await (deps.catalogPhotos || catalogPhotos)(p);
+  } else {
+    const web = asList(body.webPhotos, body.webPhoto);
+    if (web.length) {
+      source = 'busca';
+      const copy = deps.copyWebPhoto || copyWebPhoto;
+      for (const w of web) { const u = await copy(w, { ownerUserId: userId }).catch(() => null); if (u && !photos.includes(u)) photos.push(u); }
+      if (!photos.length) throw httpErr(502, 'Não deu para baixar as fotos. Tente outro resultado.');
+    }
   }
-  if (body.photo) { photo = await (deps.storeUpload || storeUpload)(body.photo, userId); if (!productId) source = body.webPhoto ? 'busca' : 'upload'; }
+  // fotos do celular: sozinhas ou junto das que vieram do catálogo/site
+  for (const up of asList(body.photos, body.photo)) {
+    if (photos.length >= MAX_FOTOS) break;
+    const u = await (deps.storeUpload || storeUpload)(up, userId);
+    if (!photos.includes(u)) photos.push(u);
+  }
   if (!model) throw httpErr(400, 'Informe o modelo do tênis.');
-  if (!photo) throw httpErr(400, 'Escolha uma foto do catálogo, da busca ou envie a sua.');
+  if (!photos.length) throw httpErr(400, 'Escolha uma foto do catálogo, da busca ou envie a sua.');
   const size = clean(body.size, 12), note = clean(body.note, 200);
+  const acceptOffers = body.acceptOffers === true || body.acceptOffers === 'true';
   const newId = id();
   await prisma.$executeRaw`UPDATE "ShoeClosetItem" SET "position"="position"+1 WHERE "userId"=${userId}`;
-  await prisma.$executeRaw`INSERT INTO "ShoeClosetItem" ("id","userId","productId","brand","model","color","size","note","photo","source","position")
-    VALUES (${newId}, ${userId}, ${productId}, ${brand}, ${model}, ${color}, ${size}, ${note}, ${photo}, ${source}, 0)`;
+  await prisma.$executeRaw`INSERT INTO "ShoeClosetItem" ("id","userId","productId","brand","model","color","size","note","photo","photos","source","position","acceptOffers")
+    VALUES (${newId}, ${userId}, ${productId}, ${brand}, ${model}, ${color}, ${size}, ${note}, ${photos[0]}, ${JSON.stringify(photos)}::jsonb, ${source}, 0, ${acceptOffers})`;
   await prisma.$executeRaw`INSERT INTO "ShoeClosetProfile" ("userId") VALUES (${userId}) ON CONFLICT DO NOTHING`;
   return (await itemsOf(prisma, userId, { includeHidden: true })).find((i) => i.id === newId);
 }
@@ -296,21 +343,31 @@ async function ownItem(prisma, userId, itemId) {
   if (!it || it.userId !== userId) throw httpErr(404, 'Tênis não encontrado.');
   return it;
 }
+// body.keepPhotos = fotos atuais que ficam, na ordem (a 1ª é a capa); body.photos = fotos novas do celular.
 async function updateItem(prisma, userId, itemId, body, deps = {}) {
   const it = await ownItem(prisma, userId, itemId);
   const pick = (k, n) => (body[k] === undefined ? it[k] : clean(body[k], n));
-  let photo = it.photo;
-  if (body.photo) photo = await (deps.storeUpload || storeUpload)(body.photo, userId);
+  const atuais = photosOf(it);
+  let photos = Array.isArray(body.keepPhotos) ? body.keepPhotos.filter((u) => atuais.includes(u)) : atuais.slice();
+  photos = [...new Set(photos)];
+  for (const up of asList(body.photos, body.photo)) {
+    if (photos.length >= MAX_FOTOS) throw httpErr(400, 'No máximo ' + MAX_FOTOS + ' fotos por tênis.');
+    const u = await (deps.storeUpload || storeUpload)(up, userId);
+    if (!photos.includes(u)) photos.push(u);
+  }
+  if (!photos.length) throw httpErr(400, 'Deixe pelo menos uma foto.');
   const model = pick('model', 140);
   if (!model) throw httpErr(400, 'Informe o modelo do tênis.');
-  const hidden = body.hidden === undefined ? it.hidden : !!(body.hidden === true || body.hidden === 'true');
+  const bool = (k) => (body[k] === undefined ? it[k] : !!(body[k] === true || body[k] === 'true'));
+  const hidden = bool('hidden'), acceptOffers = bool('acceptOffers');
   await prisma.$executeRaw`UPDATE "ShoeClosetItem" SET "brand"=${pick('brand', 60)}, "model"=${model}, "color"=${pick('color', 60)}, "size"=${pick('size', 12)},
-    "note"=${pick('note', 200)}, "photo"=${photo}, "hidden"=${hidden}, "updatedAt"=NOW() WHERE "id"=${it.id}`;
+    "note"=${pick('note', 200)}, "photo"=${photos[0]}, "photos"=${JSON.stringify(photos)}::jsonb, "hidden"=${hidden}, "acceptOffers"=${acceptOffers}, "updatedAt"=NOW() WHERE "id"=${it.id}`;
   return (await itemsOf(prisma, userId, { includeHidden: true })).find((i) => i.id === it.id);
 }
 async function removeItem(prisma, userId, itemId) {
   const it = await ownItem(prisma, userId, itemId);
   await prisma.$executeRaw`DELETE FROM "ShoeClosetLike" WHERE "itemId"=${it.id}`;
+  await prisma.$executeRaw`UPDATE "ShoeClosetOffer" SET "status"='WITHDRAWN', "updatedAt"=NOW() WHERE "itemId"=${it.id} AND "status"='PENDING'`;
   await prisma.$executeRaw`DELETE FROM "ShoeClosetItem" WHERE "id"=${it.id}`;
   return { ok: true };
 }
@@ -335,5 +392,93 @@ async function toggleLike(prisma, userId, itemId) {
   return { liked: !del, likes: n };
 }
 
+// ───────── ofertas ─────────
+// Valor em reais: aceita "350", "350,00", "1.234,56", "1234.56".
+function parseValor(v) {
+  if (typeof v === 'number') return Math.round(v * 100) / 100;
+  let t = String(v == null ? '' : v).replace(/[^0-9.,]/g, '');
+  if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+  else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
+  const n = Number(t);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : NaN;
+}
+const brl = (n) => 'R$ ' + Number(n).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+const notifyUser = (deps, userId, payload) => {
+  try { return (deps.notify || require('./notify').notify)(userId, Object.assign({ type: 'info' }, payload), { whatsapp: false }); } catch (_) { return null; }
+};
+
+async function makeOffer(prisma, buyerId, itemId, body, deps = {}) {
+  await ensureSchema(prisma);
+  const [it] = await prisma.$queryRaw`SELECT i."id", i."userId", i."model", i."hidden", i."acceptOffers", coalesce(p."isPublic", true) AS "pub"
+    FROM "ShoeClosetItem" i LEFT JOIN "ShoeClosetProfile" p ON p."userId"=i."userId" WHERE i."id"=${String(itemId)}`;
+  if (!it || it.hidden || !it.pub) throw httpErr(404, 'Tênis não encontrado.');
+  if (it.userId === buyerId) throw httpErr(400, 'Esse tênis é seu.');
+  if (!it.acceptOffers) throw httpErr(400, 'O dono não está recebendo ofertas por este tênis.');
+  const owner = await userBasics(prisma, it.userId);
+  if (!owner || owner.active === false) throw httpErr(404, 'Tênis não encontrado.');
+  const amount = parseValor(body.amount);
+  if (!(amount >= OFERTA_MIN && amount <= OFERTA_MAX)) throw httpErr(400, 'Informe um valor entre R$ 1 e R$ 100.000.');
+  if (!(body.consent === true || body.consent === 'true')) throw httpErr(400, 'Para enviar a oferta, autorize o dono a ver o seu WhatsApp se ele aceitar.');
+  const buyer = await prisma.user.findUnique({ where: { id: buyerId }, select: { name: true, phone: true, active: true } });
+  if (!buyer || buyer.active === false) throw httpErr(404, 'Conta não encontrada.');
+  if (!String(buyer.phone || '').replace(/\D/g, '')) throw httpErr(400, 'Sua conta não tem WhatsApp cadastrado. Cadastre no seu perfil do Club.');
+  const message = clean(body.message, 300);
+  const [aberta] = await prisma.$queryRaw`SELECT "id" FROM "ShoeClosetOffer" WHERE "itemId"=${it.id} AND "buyerId"=${buyerId} AND "status"='PENDING'`;
+  let offerId;
+  if (aberta) {
+    offerId = aberta.id;
+    await prisma.$executeRaw`UPDATE "ShoeClosetOffer" SET "amount"=${amount}, "message"=${message}, "updatedAt"=NOW() WHERE "id"=${offerId}`;
+  } else {
+    const [{ n }] = await prisma.$queryRaw`SELECT count(*)::int AS n FROM "ShoeClosetOffer" WHERE "buyerId"=${buyerId} AND "status"='PENDING'`;
+    if (n >= 30) throw httpErr(429, 'Você tem muitas ofertas em aberto. Espere as respostas.');
+    offerId = id();
+    await prisma.$executeRaw`INSERT INTO "ShoeClosetOffer" ("id","itemId","ownerId","buyerId","amount","message") VALUES (${offerId}, ${it.id}, ${it.userId}, ${buyerId}, ${amount}, ${message})`;
+  }
+  await notifyUser(deps, it.userId, { title: 'Oferta no seu tênis', body: firstAndLast(buyer.name) + ' ofereceu ' + brl(amount) + ' pelo ' + it.model + '.', link: '/meustenis?ofertas=1' });
+  return { id: offerId, amount, status: 'PENDING', updated: !!aberta };
+}
+
+async function myOffers(prisma, userId) {
+  await ensureSchema(prisma);
+  const rec = await prisma.$queryRaw`SELECT o.*, i."model", i."brand", i."photo", u."name" AS "buyerName", u."phone" AS "buyerPhone", u."username" AS "buyerHandle"
+    FROM "ShoeClosetOffer" o JOIN "ShoeClosetItem" i ON i."id"=o."itemId" JOIN "User" u ON u."id"=o."buyerId"
+    WHERE o."ownerId"=${userId} AND o."status" IN ('PENDING','ACCEPTED','DECLINED') ORDER BY (o."status"='PENDING') DESC, o."updatedAt" DESC LIMIT 100`;
+  const sent = await prisma.$queryRaw`SELECT o.*, i."model", i."brand", i."photo", u."name" AS "ownerName", u."username" AS "ownerHandle"
+    FROM "ShoeClosetOffer" o JOIN "ShoeClosetItem" i ON i."id"=o."itemId" JOIN "User" u ON u."id"=o."ownerId"
+    WHERE o."buyerId"=${userId} ORDER BY o."updatedAt" DESC LIMIT 100`;
+  const base = (o) => ({ id: o.id, itemId: o.itemId, model: o.model, brand: o.brand, photo: o.photo, amount: Number(o.amount), message: o.message, status: o.status, createdAt: o.createdAt, answeredAt: o.answeredAt });
+  return {
+    received: rec.map((o) => Object.assign(base(o), {
+      buyer: { name: firstAndLast(o.buyerName), handle: o.buyerHandle || null },
+      // WhatsApp de quem ofereceu: só depois que o dono aceita (a pessoa autorizou ao enviar)
+      whatsapp: o.status === 'ACCEPTED' ? String(o.buyerPhone || '').replace(/\D/g, '') || null : null,
+    })),
+    sent: sent.map((o) => Object.assign(base(o), { owner: { name: firstAndLast(o.ownerName), handle: o.ownerHandle || null } })),
+  };
+}
+
+// Dono: accept | decline. Quem ofereceu: cancel.
+async function answerOffer(prisma, userId, offerId, action, deps = {}) {
+  await ensureSchema(prisma);
+  const [o] = await prisma.$queryRaw`SELECT o.*, i."model" FROM "ShoeClosetOffer" o JOIN "ShoeClosetItem" i ON i."id"=o."itemId" WHERE o."id"=${String(offerId)}`;
+  if (!o || (o.ownerId !== userId && o.buyerId !== userId)) throw httpErr(404, 'Oferta não encontrada.');
+  if (o.status !== 'PENDING') throw httpErr(409, 'Essa oferta já foi respondida.');
+  const act = String(action || '');
+  if (act === 'cancel') {
+    if (o.buyerId !== userId) throw httpErr(403, 'Só quem fez a oferta pode cancelar.');
+    await prisma.$executeRaw`UPDATE "ShoeClosetOffer" SET "status"='WITHDRAWN', "updatedAt"=NOW() WHERE "id"=${o.id} AND "status"='PENDING'`;
+    return { status: 'WITHDRAWN' };
+  }
+  if (o.ownerId !== userId) throw httpErr(403, 'Só o dono do tênis responde a oferta.');
+  if (act !== 'accept' && act !== 'decline') throw httpErr(400, 'Resposta inválida.');
+  const status = act === 'accept' ? 'ACCEPTED' : 'DECLINED';
+  const upd = await prisma.$executeRaw`UPDATE "ShoeClosetOffer" SET "status"=${status}, "answeredAt"=NOW(), "updatedAt"=NOW() WHERE "id"=${o.id} AND "status"='PENDING'`;
+  if (!upd) throw httpErr(409, 'Essa oferta já foi respondida.');
+  await notifyUser(deps, o.buyerId, status === 'ACCEPTED'
+    ? { title: 'Oferta aceita', body: 'O dono aceitou sua oferta de ' + brl(o.amount) + ' pelo ' + o.model + '. Ele vai chamar você no WhatsApp.', link: '/meustenis?ofertas=1' }
+    : { title: 'Oferta recusada', body: 'O dono não aceitou sua oferta de ' + brl(o.amount) + ' pelo ' + o.model + '.', link: '/meustenis?ofertas=1' });
+  return (await myOffers(prisma, userId)).received.find((x) => x.id === o.id) || { status };
+}
+
 module.exports = { ensureSchema, setHandle, resolveHandle, me, saveProfile, publicCloset, explore, searchCatalog, searchWeb, copyWebPhoto,
-  addItem, updateItem, removeItem, reorder, toggleLike, firstAndLast, HANDLE_RX, LIMITE_ITENS };
+  addItem, updateItem, removeItem, reorder, toggleLike, makeOffer, myOffers, answerOffer, parseValor, firstAndLast, HANDLE_RX, LIMITE_ITENS, MAX_FOTOS };
