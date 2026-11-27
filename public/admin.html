@@ -4313,7 +4313,7 @@ function escapeHtmlMk(s) {
     <label class="muted" style="display:block;margin-top:14px;font-size:11px;letter-spacing:2px">TIPO</label>
     <select class="form-input" id="prt-type" style="margin-top:6px">
       <option value="atleta">Atleta</option>
-      <option value="influencer">Influencer</option>
+      <option value="creation">Creation</option>
       <option value="saude">Profissional de saúde</option>
       <option value="personal">Personal trainer</option>
       <option value="outro">Outro</option>
@@ -6944,7 +6944,7 @@ async function openPartnerModal(id) {
   document.getElementById('prt-coupon').value = p.couponCode;
   document.getElementById('prt-discount').value = p.discountPct;
   document.getElementById('prt-commission').value = p.commissionPct;
-  document.getElementById('prt-type').value = p.type;
+  document.getElementById('prt-type').value = p.type === 'influencer' ? 'creation' : p.type; // Influencer antigo = Creation
   document.getElementById('prt-status').value = p.status;
   document.getElementById('prt-niche').value = p.niche || '';
   document.getElementById('prt-followers').value = p.followers != null ? p.followers : '';

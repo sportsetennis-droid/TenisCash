@@ -5,7 +5,8 @@ const ns = require('../services/nuvemshop');
 
 const router = express.Router();
 
-const PARTNER_TYPES = ['atleta', 'influencer', 'saude', 'personal', 'outro'];
+// Dono 27/11: 'Atleta é atleta, Creation é creation' — os dois podem ter cupom, cada um com o seu nome.
+const PARTNER_TYPES = ['atleta', 'creation', 'influencer', 'saude', 'personal', 'outro'];
 const PARTNER_STATUS = ['active', 'paused', 'banned'];
 
 // Governança: teto de desconto do cupom de um Creation (regra ≤15%; dono fixou 10%).
@@ -203,7 +204,7 @@ router.get('/club/creation', authMiddleware, async (req, res) => {
     const sales = await prisma.partnerSale.findMany({ where: { partnerId: p.id }, orderBy: { createdAt: 'desc' }, take: 50,
       select: { id: true, createdAt: true, channel: true, saleAmount: true, commissionT: true, status: true } });
     res.json({
-      isCreation: true, couponCode: p.couponCode, status: p.status, discountPct: p.discountPct, commissionPct: p.commissionPct,
+      isCreation: true, tipo: p.type === 'atleta' ? 'atleta' : 'creation', couponCode: p.couponCode, status: p.status, discountPct: p.discountPct, commissionPct: p.commissionPct,
       noSite: !!p.nsCouponId, tier: p.tier, totalSales: p.totalSales, totalRevenue: p.totalRevenue, totalCommission: p.totalCommission,
       saldo: (p.user && p.user.partnerBalance) || 0, sales,
     });

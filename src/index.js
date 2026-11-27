@@ -2122,8 +2122,8 @@ app.get('/t/:slug', async (req, res) => {
 });
 
 // Card público do atleta (estilo FIFA) — compartilhável
-// /atleta sem @ = área do atleta logado no Club (perfil, com o cupom de Creation). Dono 27/11.
-app.get(['/atleta', '/atleta/'], (req, res) => res.redirect(302, (require('./services/siteBrand').isSportsTennisHost(req) ? '' : 'https://clubsportsetennis.com.br') + '/#/perfil'));
+// /atleta e /creation = área de quem está logado no Club (perfil, com o cupom de atleta ou de Creation). Dono 27/11.
+app.get(['/atleta', '/atleta/', '/creation', '/creation/'], (req, res) => res.redirect(302, (require('./services/siteBrand').isSportsTennisHost(req) ? '' : 'https://clubsportsetennis.com.br') + '/#/perfil'));
 app.get('/atleta/:username', async (req, res) => {
   try {
     const engine = require('./services/tournamentEngine');
