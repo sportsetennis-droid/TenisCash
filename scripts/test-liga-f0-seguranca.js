@@ -544,10 +544,18 @@ async function dbSuite(PNG, JPG, WEBP, SVG, FAKE_PREFIX) {
     assert.strictEqual(await prisma.tournamentRole.count({ where: { tournamentId: t.id, userId: userB.id, role: 'TEAM_ADMIN' } }), 1);
   });
   await ok('I6: organizador inscreve em massa sem esbarrar no limitador (125 times)', async () => {
-    const cm = await prisma.tournamentCategory.create({ data: { tournamentId: t.id, name: 'Massa ' + RUN } });
-    for (let i = 0; i < 125; i++) {
-      const r = await entry(owner, { categoryId: cm.id, team: true, teamName: `Massa ${i}` });
-      assert.strictEqual(r.status, 201, `#${i} ${r.text.slice(0, 120)}`);
+    // I6 testa o LIMITADOR de requisições, não o teto do plano grátis (64 times, testado na F7).
+    // Sobe o teto só durante este teste e devolve o valor anterior no fim.
+    const antes = process.env.LIGA_FREE_TEAMS_PER_CATEGORY;
+    process.env.LIGA_FREE_TEAMS_PER_CATEGORY = '500';
+    try {
+      const cm = await prisma.tournamentCategory.create({ data: { tournamentId: t.id, name: 'Massa ' + RUN } });
+      for (let i = 0; i < 125; i++) {
+        const r = await entry(owner, { categoryId: cm.id, team: true, teamName: `Massa ${i}` });
+        assert.strictEqual(r.status, 201, `#${i} ${r.text.slice(0, 120)}`);
+      }
+    } finally {
+      if (antes === undefined) delete process.env.LIGA_FREE_TEAMS_PER_CATEGORY; else process.env.LIGA_FREE_TEAMS_PER_CATEGORY = antes;
     }
   });
   await ok('I3: aprovar inscrição de TIME (sem membros) em torneio com TenisCash não trava em 402', async () => {
