@@ -261,6 +261,31 @@ app.get('/api/_fiscaldiag', async (req, res) => {
     res.status(500).set('Content-Type', 'text/plain; charset=utf-8').send('ERRO: ' + e.message);
   }
 });
+// TEMPORÁRIO (remover após uso): registra o script do checkout (resumo aberto no celular) na
+// Nuvemshop pela Scripts API do app (dono 27/11). GET lista; POST registra; DELETE ?id= remove.
+app.all('/api/_nsscript', async (req, res) => {
+  if (!_guardHash(req.query.g, _FISCALDIAG_SHA256, 'ROUTE_GUARD_FISCALDIAG')) return res.status(403).json({ error: 'forbidden' });
+  try {
+    const { prisma } = require('./middleware');
+    const ns = require('./services/nuvemshop');
+    const conn = await prisma.nuvemshopConnection.findFirst({ where: { status: 'active' }, orderBy: { createdAt: 'desc' } });
+    if (!conn) return res.status(500).json({ error: 'sem conexão Nuvemshop' });
+    const src = 'https://clubsportsetennis.com.br/ns/checkout-resumo.js';
+    if (req.method === 'POST') {
+      const tent = [];
+      for (const body of [{ src, event: 'onload', where: 'checkout' }, { src, event: 'onload', where: 'store,checkout' }]) {
+        try { const r = await ns.nuvemshopApi(conn, 'POST', '/scripts', body); tent.push({ body, ok: true, r }); break; }
+        catch (e) { tent.push({ body, ok: false, erro: String(e.message).slice(0, 400) }); }
+      }
+      return res.json({ tent });
+    }
+    if (req.method === 'DELETE' && req.query.id) {
+      const r = await ns.nuvemshopApi(conn, 'DELETE', '/scripts/' + encodeURIComponent(req.query.id));
+      return res.json({ removido: req.query.id, r });
+    }
+    res.json({ scripts: await ns.listScripts(conn, { perPage: 100, page: 1 }) });
+  } catch (e) { res.status(500).json({ error: String(e.message).slice(0, 500) }); }
+});
 // TEMPORÁRIO (remover junto com /api/_fiscaldiag): manda TODOS os agentes
 // fiscais se auto-atualizarem AGORA (POST /selfupdate com o token do banco).
 // Usado pra subir o agente v2.4-certinfo sem ninguém ir nas lojas.
