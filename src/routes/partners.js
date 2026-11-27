@@ -24,16 +24,18 @@ async function getNsConnection() {
 }
 
 // Cria (ou recria) o cupom na NS e devolve o nsCouponId, ou null se falhar.
+// Dono 27/11 ("1"): cupom de atleta/Creation JUNTA com a promoção do site (ex.: 15% OFF + 10% do cupom).
+const CUPOM_JUNTA_PROMOCAO = true;
 async function nsCreateOrUpdateCoupon(partner, { valid } = {}) {
   const conn = await getNsConnection();
   if (!conn) { console.warn('[creation] sem conexão NS — cupom não espelhado:', partner.couponCode); return null; }
   const isValid = valid != null ? valid : (partner.status === 'active');
   try {
     if (partner.nsCouponId) {
-      await ns.updateCoupon(conn, partner.nsCouponId, { code: partner.couponCode, discountPct: partner.discountPct, valid: isValid });
+      await ns.updateCoupon(conn, partner.nsCouponId, { code: partner.couponCode, discountPct: partner.discountPct, valid: isValid, combines: CUPOM_JUNTA_PROMOCAO });
       return partner.nsCouponId;
     }
-    const created = await ns.createCoupon(conn, { code: partner.couponCode, discountPct: partner.discountPct, valid: isValid });
+    const created = await ns.createCoupon(conn, { code: partner.couponCode, discountPct: partner.discountPct, valid: isValid, combines: CUPOM_JUNTA_PROMOCAO });
     return created && created.id != null ? String(created.id) : null;
   } catch (err) {
     // Cupom já existe na NS com esse code? tenta achar e linkar.

@@ -6,6 +6,7 @@
 //   - sumiu  → procura pelo código; se não achar, recria (mesmo código e mesmo %);
 //   - existe mas desligado → religa;
 //   - cupom PAUSADO no sistema não é mexido.
+//   - dono 27/11 ("1"): cupom de atleta/Creation JUNTA com a promoção do site (combines_with_other_discounts).
 // Nunca derruba o servidor: erro vira registro no estado (/api/health → cupomNuvemshop).
 // Desligar: CUPOM_NS_GUARDA=0.
 // =====================================================================
@@ -15,7 +16,7 @@ const state = { enabled: true, running: false, lastStartedAt: null, lastFinished
 async function verificarCupons({ prisma, ns } = {}) {
   prisma = prisma || require('../middleware').prisma;
   ns = ns || require('./nuvemshop');
-  const out = { checked: 0, ok: 0, recriados: [], religados: [], erros: [] };
+  const out = { checked: 0, ok: 0, recriados: [], religados: [], juntaPromocao: [], erros: [] };
   const conn = await prisma.nuvemshopConnection.findFirst({ where: { status: 'active' } });
   if (!conn) return { ...out, semConexao: true };
   const partners = await prisma.partner.findMany({ where: { status: 'active' }, select: { id: true, couponCode: true, discountPct: true, nsCouponId: true } });
@@ -33,12 +34,13 @@ async function verificarCupons({ prisma, ns } = {}) {
       }
       let nsId = cupom ? String(cupom.id) : null;
       if (!cupom) {
-        const criado = await ns.createCoupon(conn, { code: p.couponCode, discountPct: p.discountPct, valid: true });
+        const criado = await ns.createCoupon(conn, { code: p.couponCode, discountPct: p.discountPct, valid: true, combines: true });
         nsId = criado && criado.id != null ? String(criado.id) : null;
         out.recriados.push(p.couponCode);
-      } else if (!cupom.valid) {
-        await ns.setCouponValid(conn, cupom.id, true);
-        out.religados.push(p.couponCode);
+      } else if (!cupom.valid || cupom.combines_with_other_discounts !== true) {
+        await ns.nuvemshopApi(conn, 'PUT', '/coupons/' + cupom.id, { valid: true, combines_with_other_discounts: true });
+        if (!cupom.valid) out.religados.push(p.couponCode);
+        if (cupom.combines_with_other_discounts !== true) out.juntaPromocao.push(p.couponCode);
       } else out.ok++;
       if (nsId && nsId !== p.nsCouponId) await prisma.partner.update({ where: { id: p.id }, data: { nsCouponId: nsId } });
     } catch (e) {
