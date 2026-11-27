@@ -209,6 +209,7 @@ function buildCouponPayload({
   endDate,
   categories,
   products,
+  combines = false,
 }) {
   const payload = {
     code: String(code),
@@ -218,7 +219,7 @@ function buildCouponPayload({
     max_uses: null,
     min_price: Number(minPrice) || 0,
     includes_shipping: false,
-    combines_with_other_discounts: false,
+    combines_with_other_discounts: !!combines,
   };
   if (startDate != null) payload.start_date = couponDate(startDate);
   if (endDate != null) payload.end_date = couponDate(endDate);
@@ -240,6 +241,7 @@ async function updateCoupon(connection, couponId, opts) {
   if (opts.discountPct != null) { payload.type = 'percentage'; payload.value = String(Number(opts.discountPct).toFixed(2)); }
   if (opts.valid != null) payload.valid = !!opts.valid;
   if (opts.minPrice != null) payload.min_price = Number(opts.minPrice) || 0;
+  if (opts.combines != null) payload.combines_with_other_discounts = !!opts.combines;
   if (opts.startDate != null) payload.start_date = couponDate(opts.startDate);
   if (opts.endDate != null) payload.end_date = couponDate(opts.endDate);
   const categoryIds = normalizeIdList(opts.categories);
@@ -273,7 +275,7 @@ function buildRedemptionCouponPayload({ code, pct, maxAmount, minPrice = 0 }) {
     max_discount_amount: Number(Number(maxAmount).toFixed(2)),
     min_price: Number(minPrice) || 0,
     includes_shipping: false,
-    combines_with_other_discounts: false,
+    combines_with_other_discounts: !!combines,
   };
 }
 
