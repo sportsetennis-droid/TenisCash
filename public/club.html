@@ -2264,7 +2264,7 @@ function creSec(){
   if(S.cre===undefined){S.cre='loading';api('/club/creation').then(function(r){S.cre=r;}).catch(function(){S.cre={isCreation:false,erro:1};}).then(redraw);return '';}
   var c=S.cre;if(!c||c==='loading'||!c.isCreation)return '';
   var ativo=c.status==='active';
-  var h='<section class="sec" id="creation"><div class="sec-h"><h2>Meu cupom de Creation</h2></div><div class="card wh" style="padding:18px">'+
+  var h='<section class="sec" id="creation"><div class="sec-h"><h2>Meu cupom de '+(c.tipo==='atleta'?'atleta':'Creation')+'</h2></div><div class="card wh" style="padding:18px">'+
     '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><div><span class="pill">'+(ativo?'Ativo':'Pausado')+'</span><div class="disp" style="font-size:32px;margin-top:8px">'+esc(c.couponCode)+'</div></div>'+
     '<button class="btn pri sm" data-act="crecopy" style="width:auto">Copiar</button></div>'+
     '<p style="margin-top:10px">Quem usar o seu cupom ganha <b>'+num(c.discountPct,c.discountPct%1?1:0)+'% de desconto</b>'+(c.noSite?' nas lojas e no site':' nas lojas')+'. Você ganha <b>'+num(c.commissionPct,c.commissionPct%1?1:0)+'%</b> de cada compra, em saldo para trocar por produtos.</p>'+
