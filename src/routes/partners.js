@@ -62,11 +62,12 @@ function adminOnly(req, res, next) {
   next();
 }
 
+// Creation = quem tem cadastro de parceiro (cupom), não só o papel 'partner': conta da equipe com cupom também acessa.
 function partnerOnly(req, res, next) {
-  if (req.userRole !== 'partner') {
-    return res.status(403).json({ error: 'Acesso restrito a parceiros' });
-  }
-  next();
+  if (req.userRole === 'partner') return next();
+  prisma.partner.findUnique({ where: { userId: req.userId }, select: { id: true } })
+    .then((p) => (p ? next() : res.status(403).json({ error: 'Acesso restrito a parceiros' })))
+    .catch(() => res.status(403).json({ error: 'Acesso restrito a parceiros' }));
 }
 
 function sellerOrAdmin(req, res, next) {
@@ -191,6 +192,26 @@ router.post('/coupon/validate', optionalAuth, async (req, res) => {
 /* ========================================================================
    ENDPOINTS DO PARCEIRO (role=partner)
    ====================================================================== */
+
+// Club: o Creation acompanha o próprio cupom e as comissões no perfil (qualquer papel de conta).
+// Sem dado de cliente (nome/CPF/telefone): só data, canal, valor e comissão.
+router.get('/club/creation', authMiddleware, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const p = await prisma.partner.findUnique({ where: { userId: req.userId }, include: { user: { select: { partnerBalance: true } } } });
+    if (!p) return res.json({ isCreation: false });
+    const sales = await prisma.partnerSale.findMany({ where: { partnerId: p.id }, orderBy: { createdAt: 'desc' }, take: 50,
+      select: { id: true, createdAt: true, channel: true, saleAmount: true, commissionT: true, status: true } });
+    res.json({
+      isCreation: true, couponCode: p.couponCode, status: p.status, discountPct: p.discountPct, commissionPct: p.commissionPct,
+      noSite: !!p.nsCouponId, tier: p.tier, totalSales: p.totalSales, totalRevenue: p.totalRevenue, totalCommission: p.totalCommission,
+      saldo: (p.user && p.user.partnerBalance) || 0, sales,
+    });
+  } catch (err) {
+    console.error('club/creation', err);
+    res.status(500).json({ error: 'Não deu para carregar o seu cupom agora.' });
+  }
+});
 
 router.get('/partner/me', authMiddleware, partnerOnly, async (req, res) => {
   try {
@@ -516,7 +537,10 @@ router.post('/admin/partners', authMiddleware, adminOnly, async (req, res) => {
           notes: b.notes ? String(b.notes).slice(0, 500) : null,
         },
       });
-      await tx.user.update({ where: { id: user.id }, data: { role: 'partner' } });
+      // Só conta de cliente vira 'partner'; conta da equipe (admin, gerente, vendedor, loja, design) mantém o papel.
+      if (!user.role || user.role === 'user') {
+        await tx.user.update({ where: { id: user.id }, data: { role: 'partner' } });
+      }
       return p;
     });
 
@@ -630,7 +654,7 @@ router.delete('/admin/partners/:id', authMiddleware, adminOnly, async (req, res)
           where: { id },
           data: { status: 'banned', couponCode: archivedCoupon },
         });
-        await tx.user.update({ where: { id: partner.userId }, data: { role: 'user' } });
+        await tx.user.updateMany({ where: { id: partner.userId, role: 'partner' }, data: { role: 'user' } }); // equipe não é rebaixada
         return p;
       });
       return res.json({
@@ -645,7 +669,7 @@ router.delete('/admin/partners/:id', authMiddleware, adminOnly, async (req, res)
     await prisma.$transaction(async (tx) => {
       if (salesCount > 0) await tx.partnerSale.deleteMany({ where: { partnerId: id } });
       await tx.partner.delete({ where: { id } });
-      await tx.user.update({ where: { id: partner.userId }, data: { role: 'user' } });
+      await tx.user.updateMany({ where: { id: partner.userId, role: 'partner' }, data: { role: 'user' } }); // equipe não é rebaixada
     });
     res.json({ ok: true, message: 'Parceiro removido. Cupom "' + partner.couponCode + '" liberado.' });
   } catch (err) {

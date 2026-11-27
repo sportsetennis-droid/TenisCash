@@ -1041,7 +1041,7 @@ function setSession(tk,user){try{if(tk)localStorage.setItem('tc_token',tk);if(us
   if(tk&&user&&!MOCK){try{var back=localStorage.getItem('club_join_return');if(back&&/^\/clube\/[a-z0-9-]+(\?convite=[A-Za-z0-9]+)?$/.test(back)){localStorage.removeItem('club_join_return');setTimeout(function(){location.href=back;},60);}}catch(e){}}
   if(tk&&!MOCK)setTimeout(pushSync,1500);}
 function resetStaff(){S.staffState='';S.ref={};S.mteam={};S.ttr={};}
-function clearSession(){try{localStorage.removeItem('tc_token');localStorage.removeItem('tc_user');}catch(e){}S.me=S.dash=S.card=S.notif=S.hist=S.chal=S.pk=null;S.pront={};S.train={};S.rank={};S.scor={};S.histState='';resetStaff();}
+function clearSession(){try{localStorage.removeItem('tc_token');localStorage.removeItem('tc_user');}catch(e){}S.me=S.dash=S.card=S.notif=S.hist=S.chal=S.pk=null;S.cre=undefined;S.pront={};S.train={};S.rank={};S.scor={};S.histState='';resetStaff();}
 
 /* ===================== API ===================== */
 function api(path,o){
@@ -2243,6 +2243,7 @@ function vProfile(){
   if(si)h+='<section class="sec"><div class="sec-h"><h2>Gestão</h2></div><div class="card list">'+
     row('#/gestao',I.grid,'Gestão',esc(si.roles.map(function(r){return STAFF[r];}).join(' · ')))+'</div></section>';
   h+=pkSec();
+  h+=creSec();
   h+='<section class="sec"><div class="sec-h"><h2>Conta</h2></div><div class="card list">'+
     row('/atleta/'+encodeURIComponent(hd||S.me.id),I.id,'Card de atleta','Sua página pública para compartilhar',true)+
     row('#/competir/ranking',I.trophy,'Ranking e desafios',chalInbox()?esc(chalInbox())+' desafio'+(chalInbox()>1?'s':'')+' para responder':'Leaderboard por esporte e desafios 1x1')+
@@ -2254,6 +2255,27 @@ function vProfile(){
     '<button class="lrow danger" data-act="logout"><span class="lic">'+I.out+'</span><div class="tx"><b>Sair</b><span style="color:var(--mut)">Encerrar sessão neste aparelho</span></div></button></div></section></div></div>';
   h+='<div class="foot-brand"><img src="'+BRAND+'club-sports-tennis.svg" alt="" width="135" height="44"><p>João Pessoa · Paraíba</p></div>';
   return h+'</div>';
+}
+
+/* ===================== CREATION (cupom e comissão) ===================== */
+function brlC(n){return 'R$ '+Number(n||0).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.');}
+function creSec(){
+  if(MOCK)return '';
+  if(S.cre===undefined){S.cre='loading';api('/club/creation').then(function(r){S.cre=r;}).catch(function(){S.cre={isCreation:false,erro:1};}).then(redraw);return '';}
+  var c=S.cre;if(!c||c==='loading'||!c.isCreation)return '';
+  var ativo=c.status==='active';
+  var h='<section class="sec" id="creation"><div class="sec-h"><h2>Meu cupom de Creation</h2></div><div class="card wh" style="padding:18px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><div><span class="pill">'+(ativo?'Ativo':'Pausado')+'</span><div class="disp" style="font-size:32px;margin-top:8px">'+esc(c.couponCode)+'</div></div>'+
+    '<button class="btn pri sm" data-act="crecopy" style="width:auto">Copiar</button></div>'+
+    '<p style="margin-top:10px">Quem usar o seu cupom ganha <b>'+num(c.discountPct,c.discountPct%1?1:0)+'% de desconto</b>'+(c.noSite?' nas lojas e no site':' nas lojas')+'. Você ganha <b>'+num(c.commissionPct,c.commissionPct%1?1:0)+'%</b> de cada compra, em saldo para trocar por produtos.</p>'+
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px;text-align:center">'+
+      '<div><b class="num" style="font-size:22px">'+num(c.totalSales||0)+'</b><div style="font-size:12px">Vendas</div></div>'+
+      '<div><b class="num" style="font-size:22px">'+esc(brlC(c.totalCommission))+'</b><div style="font-size:12px">Comissão</div></div>'+
+      '<div><b class="num" style="font-size:22px">'+esc(brlC(c.saldo))+'</b><div style="font-size:12px">Saldo</div></div></div>';
+  var l=c.sales||[];
+  h+=l.length?'<div style="margin-top:14px">'+l.slice(0,10).map(function(s){return '<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px solid var(--line);font-size:14px"><span>'+esc(new Date(s.createdAt).toLocaleDateString('pt-BR'))+' · '+(s.channel==='nuvemshop'?'Site':'Loja')+(s.status==='refunded'?' · <b>estornada</b>':'')+'</span><span>'+esc(brlC(s.saleAmount))+' → <b>'+esc(brlC(s.commissionT))+'</b></span></div>';}).join('')+'</div>'
+    :'<p style="margin-top:14px;font-size:14px">Ainda sem vendas com o seu cupom. Divulgue o código: cada compra aparece aqui.</p>';
+  return h+'</div></section>';
 }
 
 /* ===================== TREINO (detalhe) ===================== */
@@ -2555,6 +2577,7 @@ document.addEventListener('click',function(e){
   else if(a==='jback'){J.t=null;joinDraw();}
   else if(a==='jreq')joinReq(d.id,d.n,el);
   else if(a==='logout')logoutSheet();
+  else if(a==='crecopy'){var cc=S.cre&&S.cre.couponCode;if(cc){(navigator.clipboard?navigator.clipboard.writeText(cc):Promise.reject()).then(function(){toast('Cupom copiado');}).catch(function(){toast(cc);});}}
   else if(a==='sheet-close')closeSheet();
   else if(a==='logout-ok'){clearSession();closeSheet();if(MOCK)go('entrar');else location.href='/';}
   else if(a==='readall'){if(S.notif){S.notif.unread=0;(S.notif.notifications||[]).forEach(function(n){n.read=true;});redraw();}api(T+'/notifications/read-all',{method:'POST'}).catch(function(){});}
