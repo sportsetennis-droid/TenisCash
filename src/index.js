@@ -261,6 +261,42 @@ app.get('/api/_fiscaldiag', async (req, res) => {
     res.status(500).set('Content-Type', 'text/plain; charset=utf-8').send('ERRO: ' + e.message);
   }
 });
+// TEMPORÁRIO (remover após uso): cupom de Creation/atleta recusado no site (dono 27/11, JOCA10).
+// GET = mostra como o cupom está na Nuvemshop; POST = reativa/recria e religa ao cadastro.
+async function _cupomNsInfo(conn, ns, partner) {
+  const pick = (c) => c && ({ id: c.id, code: c.code, type: c.type, value: c.value, valid: c.valid, used: c.used, max_uses: c.max_uses, start_date: c.start_date, end_date: c.end_date, min_price: c.min_price, first_consumer_purchase: c.first_consumer_purchase, combines_with_other_discounts: c.combines_with_other_discounts, categories: (c.categories || []).length, products: (c.products || []).length, deleted_at: c.deleted_at });
+  let byId = null, byIdErr = null;
+  if (partner.nsCouponId) { try { byId = pick(await ns.nuvemshopApi(conn, 'GET', '/coupons/' + partner.nsCouponId)); } catch (e) { byIdErr = e.message; } }
+  let byCode = [];
+  try { const l = await ns.nuvemshopApi(conn, 'GET', '/coupons?q=' + encodeURIComponent(partner.couponCode) + '&per_page=50'); byCode = (Array.isArray(l) ? l : []).filter((c) => String(c.code).toUpperCase() === partner.couponCode.toUpperCase()).map(pick); } catch (e) { byCode = [{ erro: e.message }]; }
+  return { couponCode: partner.couponCode, status: partner.status, discountPct: partner.discountPct, nsCouponId: partner.nsCouponId, byId, byIdErr, byCode };
+}
+app.all('/api/_cupomns', async (req, res) => {
+  if (!_guardHash(req.query.g, _FISCALDIAG_SHA256, 'ROUTE_GUARD_FISCALDIAG')) return res.status(403).json({ error: 'forbidden' });
+  try {
+    const { prisma } = require('./middleware');
+    const ns = require('./services/nuvemshop');
+    const code = String(req.query.code || '').trim().toUpperCase();
+    const partner = await prisma.partner.findUnique({ where: { couponCode: code } });
+    if (!partner) return res.status(404).json({ error: 'cupom não cadastrado no sistema' });
+    const conn = await prisma.nuvemshopConnection.findFirst({ where: { status: 'active' } });
+    if (!conn) return res.status(500).json({ error: 'sem conexão Nuvemshop ativa' });
+    const antes = await _cupomNsInfo(conn, ns, partner);
+    if (req.method !== 'POST') return res.json(antes);
+    if (partner.status !== 'active') return res.status(400).json({ error: 'cupom pausado no sistema', antes });
+    const ativo = (antes.byCode || []).find((c) => c && c.id && !c.deleted_at) || (antes.byId && !antes.byId.deleted_at ? antes.byId : null);
+    let nsId = ativo ? String(ativo.id) : null;
+    if (nsId) {
+      await ns.nuvemshopApi(conn, 'PUT', '/coupons/' + nsId, { code: partner.couponCode, type: 'percentage', value: String(Number(partner.discountPct).toFixed(2)), valid: true, max_uses: null, min_price: 0, start_date: null, end_date: null, first_consumer_purchase: false });
+    } else {
+      const c = await ns.createCoupon(conn, { code: partner.couponCode, discountPct: partner.discountPct, valid: true });
+      nsId = c && c.id != null ? String(c.id) : null;
+    }
+    if (nsId && nsId !== partner.nsCouponId) await prisma.partner.update({ where: { id: partner.id }, data: { nsCouponId: nsId } });
+    const depois = await _cupomNsInfo(conn, ns, { ...partner, nsCouponId: nsId });
+    res.json({ antes, depois });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 // TEMPORÁRIO (remover junto com /api/_fiscaldiag): manda TODOS os agentes
 // fiscais se auto-atualizarem AGORA (POST /selfupdate com o token do banco).
 // Usado pra subir o agente v2.4-certinfo sem ninguém ir nas lojas.
