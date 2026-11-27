@@ -261,6 +261,36 @@ app.get('/api/_fiscaldiag', async (req, res) => {
     res.status(500).set('Content-Type', 'text/plain; charset=utf-8').send('ERRO: ' + e.message);
   }
 });
+// TEMPORÁRIO (remover após uso): teste de emissão de uma loja — cupom de R$ 2 com número de
+// teste (9000xx, fora da sequência) e cancelamento imediato. Não grava FiscalDocument nem mexe
+// em nfceNextNumber. Uso: POST /api/_fiscaltest?g=…&cnpj=<cnpj do emissor>&n=<9000xx> (dono 27/11).
+app.post('/api/_fiscaltest', async (req, res) => {
+  if (!_guardHash(req.query.g, _FISCALDIAG_SHA256, 'ROUTE_GUARD_FISCALDIAG')) return res.status(403).json({ error: 'forbidden' });
+  const cnpj = String(req.query.cnpj || '').replace(/[^0-9]/g, '');
+  const nNF = parseInt(req.query.n, 10);
+  if (cnpj.length !== 14 || !(nNF >= 900000 && nNF <= 909999)) return res.status(400).json({ error: 'cnpj (14 dígitos) e n entre 900000 e 909999' });
+  try {
+    const { prisma } = require('./middleware');
+    const agentClient = require('./services/fiscalAgentClient');
+    const store = await prisma.store.findFirst({ where: { fiscalIssuer: { cnpj } }, include: { fiscalIssuer: true } });
+    if (!store) return res.status(404).json({ error: 'loja não encontrada para o CNPJ' });
+    const emit = await agentClient.emitNFCe(store, {
+      issuer: store.fiscalIssuer, nNF,
+      items: [{ sku: 'TESTE', name: 'TESTE DE EMISSAO ' + store.code, ncm: '64041100', cfop: '5102', unidade: 'UN', qty: 1, unitPrice: 2.00 }],
+      payments: [{ tPag: '01', valor: 2.00 }],
+    });
+    const out = { loja: store.code, nNF, emitido: { ok: !!emit.ok, status: emit.status, motivo: emit.motivo || emit.error || null } };
+    if (emit.ok && String(emit.status) === '100') {
+      const prot = emit.protocol || (String(emit.rawResponse || '').match(/<nProt>([0-9]+)<[/]nProt>/) || [])[1];
+      const c = await agentClient.cancel(store, { issuer: store.fiscalIssuer, accessKey: emit.accessKey, protocol: prot, reason: 'Teste de emissao da loja - cancelamento imediato' });
+      out.cancelado = { ok: !!c.ok, status: c.status, motivo: c.motivo || c.error || null };
+      console.log('[fiscaltest] ' + store.code + ' nNF=' + nNF + ' autorizado e cancelamento ' + (c.ok ? 'OK' : 'FALHOU'));
+    } else {
+      console.log('[fiscaltest] ' + store.code + ' nNF=' + nNF + ' recusado: ' + out.emitido.motivo);
+    }
+    res.json(out);
+  } catch (e) { res.status(500).json({ error: String(e.message).slice(0, 400) }); }
+});
 // TEMPORÁRIO (remover junto com /api/_fiscaldiag): manda TODOS os agentes
 // fiscais se auto-atualizarem AGORA (POST /selfupdate com o token do banco).
 // Usado pra subir o agente v2.4-certinfo sem ninguém ir nas lojas.
