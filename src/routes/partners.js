@@ -62,11 +62,12 @@ function adminOnly(req, res, next) {
   next();
 }
 
+// Creation = quem tem cadastro de parceiro (cupom), não só o papel 'partner': conta da equipe com cupom também acessa.
 function partnerOnly(req, res, next) {
-  if (req.userRole !== 'partner') {
-    return res.status(403).json({ error: 'Acesso restrito a parceiros' });
-  }
-  next();
+  if (req.userRole === 'partner') return next();
+  prisma.partner.findUnique({ where: { userId: req.userId }, select: { id: true } })
+    .then((p) => (p ? next() : res.status(403).json({ error: 'Acesso restrito a parceiros' })))
+    .catch(() => res.status(403).json({ error: 'Acesso restrito a parceiros' }));
 }
 
 function sellerOrAdmin(req, res, next) {
@@ -536,8 +537,8 @@ router.post('/admin/partners', authMiddleware, adminOnly, async (req, res) => {
           notes: b.notes ? String(b.notes).slice(0, 500) : null,
         },
       });
-      // Conta da equipe (admin/gerente/vendedor) continua com o papel dela; só cliente vira 'partner'.
-      if (!['admin', 'superadmin', 'manager', 'seller'].includes(user.role)) {
+      // Só conta de cliente vira 'partner'; conta da equipe (admin, gerente, vendedor, loja, design) mantém o papel.
+      if (!user.role || user.role === 'user') {
         await tx.user.update({ where: { id: user.id }, data: { role: 'partner' } });
       }
       return p;
@@ -653,7 +654,7 @@ router.delete('/admin/partners/:id', authMiddleware, adminOnly, async (req, res)
           where: { id },
           data: { status: 'banned', couponCode: archivedCoupon },
         });
-        await tx.user.update({ where: { id: partner.userId }, data: { role: 'user' } });
+        await tx.user.updateMany({ where: { id: partner.userId, role: 'partner' }, data: { role: 'user' } }); // equipe não é rebaixada
         return p;
       });
       return res.json({
@@ -668,7 +669,7 @@ router.delete('/admin/partners/:id', authMiddleware, adminOnly, async (req, res)
     await prisma.$transaction(async (tx) => {
       if (salesCount > 0) await tx.partnerSale.deleteMany({ where: { partnerId: id } });
       await tx.partner.delete({ where: { id } });
-      await tx.user.update({ where: { id: partner.userId }, data: { role: 'user' } });
+      await tx.user.updateMany({ where: { id: partner.userId, role: 'partner' }, data: { role: 'user' } }); // equipe não é rebaixada
     });
     res.json({ ok: true, message: 'Parceiro removido. Cupom "' + partner.couponCode + '" liberado.' });
   } catch (err) {
