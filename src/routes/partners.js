@@ -192,6 +192,26 @@ router.post('/coupon/validate', optionalAuth, async (req, res) => {
    ENDPOINTS DO PARCEIRO (role=partner)
    ====================================================================== */
 
+// Club: o Creation acompanha o próprio cupom e as comissões no perfil (qualquer papel de conta).
+// Sem dado de cliente (nome/CPF/telefone): só data, canal, valor e comissão.
+router.get('/club/creation', authMiddleware, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const p = await prisma.partner.findUnique({ where: { userId: req.userId }, include: { user: { select: { partnerBalance: true } } } });
+    if (!p) return res.json({ isCreation: false });
+    const sales = await prisma.partnerSale.findMany({ where: { partnerId: p.id }, orderBy: { createdAt: 'desc' }, take: 50,
+      select: { id: true, createdAt: true, channel: true, saleAmount: true, commissionT: true, status: true } });
+    res.json({
+      isCreation: true, couponCode: p.couponCode, status: p.status, discountPct: p.discountPct, commissionPct: p.commissionPct,
+      noSite: !!p.nsCouponId, tier: p.tier, totalSales: p.totalSales, totalRevenue: p.totalRevenue, totalCommission: p.totalCommission,
+      saldo: (p.user && p.user.partnerBalance) || 0, sales,
+    });
+  } catch (err) {
+    console.error('club/creation', err);
+    res.status(500).json({ error: 'Não deu para carregar o seu cupom agora.' });
+  }
+});
+
 router.get('/partner/me', authMiddleware, partnerOnly, async (req, res) => {
   try {
     const partner = await prisma.partner.findUnique({
@@ -516,7 +536,10 @@ router.post('/admin/partners', authMiddleware, adminOnly, async (req, res) => {
           notes: b.notes ? String(b.notes).slice(0, 500) : null,
         },
       });
-      await tx.user.update({ where: { id: user.id }, data: { role: 'partner' } });
+      // Conta da equipe (admin/gerente/vendedor) continua com o papel dela; só cliente vira 'partner'.
+      if (!['admin', 'superadmin', 'manager', 'seller'].includes(user.role)) {
+        await tx.user.update({ where: { id: user.id }, data: { role: 'partner' } });
+      }
       return p;
     });
 
