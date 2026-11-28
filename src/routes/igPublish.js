@@ -13,6 +13,7 @@
 //   POST /api/ig/publish          [admin] { account, type: carousel|photo|story|reel,
 //                                           imageUrls[], caption, collaborators[] } → { jobId }
 //   GET  /api/ig/jobs/:id         [admin] status do job (publicação demora ~1 min)
+//   DELETE /api/ig/media/:id?account=  [admin] apaga post/Reel/story da conta
 //   GET  /api/ig/insights?account=&limit=  [admin] SÓ LEITURA: posts/Reels recentes
 //                                  com alcance, views, curtidas, comentários, salvos,
 //                                  compartilhamentos + stories no ar (24h)
@@ -280,6 +281,30 @@ router.post('/collab-invites', async (req, res) => {
     if (!r.ok || j.error) return res.status(422).json({ error: (j.error && j.error.message) || `Meta ${r.status}`, meta: j.error || null }); // 422: o Cloudflare esconde 502
     console.log(`[ig/collab] @${acc.username || acc.id} ${accept ? 'aceitou' : 'recusou'} ${mediaId} por user ${req.userId}`);
     res.json({ ok: true, account: acc.username || acc.id, mediaId, accept: !!accept, meta: j });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Apagar uma mídia (post, Reel ou story) da conta — API oficial "IG Media Deleting" (dez/2025).
+//   DELETE /api/ig/media/:id?account=sportsetennistambia
+// Só admin logado e só por ordem do dono (28/11/2026: stories que saíram pretos).
+// Antes de apagar, confere que a mídia é da conta pedida (não apaga mídia de outra conta).
+router.delete('/media/:id', async (req, res) => {
+  try {
+    const mediaId = String(req.params.id || '');
+    if (!/^\d{5,30}$/.test(mediaId)) return res.status(400).json({ error: 'mediaId inválido' });
+    const acc = await resolveAccount(req.query.account);
+    const m = await graphGet(mediaId, { fields: 'id,owner,media_type,media_product_type,timestamp' });
+    if (m.owner && m.owner.id && String(m.owner.id) !== String(acc.id)) {
+      return res.status(403).json({ error: 'mídia não é dessa conta', owner: m.owner.id });
+    }
+    const token = systemToken();
+    const r = await fetch(`${GRAPH}/${mediaId}?access_token=${encodeURIComponent(token)}`, { method: 'DELETE' });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.error) return res.status(422).json({ error: (j.error && j.error.message) || `Meta ${r.status}`, meta: j.error || null });
+    console.log(`[ig/delete] @${acc.username || acc.id} apagou ${mediaId} (${m.media_product_type || m.media_type}) por user ${req.userId}`);
+    res.json({ ok: true, account: acc.username || acc.id, mediaId, tipo: m.media_product_type || m.media_type, timestamp: m.timestamp, meta: j });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
