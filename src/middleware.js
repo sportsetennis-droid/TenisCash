@@ -40,6 +40,9 @@ prisma.$use(async (params, next) => {
   return next(params);
 });
 
+// REGRA TOTAL (dono 28/11/2026): proibido markup abaixo de 100% — preço nunca abaixo de custo × 2.
+require('./services/markupMinimo').instalarTravaMarkup(prisma);
+
 // Liga Aberta F0: sem segredo padrão. Produção sem JWT_SECRET derruba o boot
 // (o Railway mantém a versão anterior); fora de produção, segredo aleatório.
 const JWT_SECRET = resolveJwtSecret();

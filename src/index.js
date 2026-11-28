@@ -736,6 +736,8 @@ app.get('/api/health', (req, res) => {
   try { nuvemshopCardMirror = require('./services/nuvemshopCardMirror').getNuvemshopCardMirrorState(); } catch (_) {}
   let cuidadorDeMarca = null;
   try { cuidadorDeMarca = require('./services/cuidadorDeMarca').estadoCuidadorDeMarca(); } catch (_) {}
+  let markupMinimo = null;
+  try { markupMinimo = require('./services/markupMinimo').estadoMarkupMinimo(); } catch (_) {}
   let recebimentoAutomatico = null;
   try { recebimentoAutomatico = require('./services/receiptAutoApply').estadoRecebimentoAutomatico(); } catch (_) {}
   let qrOffers = null;
@@ -753,6 +755,7 @@ app.get('/api/health', (req, res) => {
     nuvemshopCatalog,
     recebimentoAutomatico,
     cuidadorDeMarca,
+    markupMinimo,
     nuvemshopAutoUpload,
     nuvemshopCardMirror,
     cupomNuvemshop,
@@ -2581,6 +2584,8 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   try { require('./services/cupomNuvemshopGuarda').startCupomNuvemshopGuarda(); } catch (e) { console.error('[cupom-ns] falha ao iniciar:', e.message); } // cupom de atleta/Creation sempre válido no site (27/11)
   // Cada gerente de marca preenche sozinho o cadastro que tem prova escrita (regra 31, dono 2026-11-18)
   try { require('./services/cuidadorDeMarca').iniciarCuidadorDeMarca(require('./middleware').prisma); } catch (e) { console.error('[cuidador de marca] falha ao iniciar:', e.message); }
+  // REGRA TOTAL: proibido markup abaixo de 100% (dono 2026-11-28) — varredura de hora em hora
+  try { require('./services/markupMinimo').iniciarVarreduraMarkup(require('./middleware').prisma); } catch (e) { console.error('[markup 100%] falha ao iniciar:', e.message); }
   // NF-e de compra baixando sozinha da SEFAZ (dono 18/11/2026). NFE_DIST=0 desliga.
   try { require('./services/nfeDistribuicao').start(require('./middleware').prisma); } catch (e) { console.error('[nfe-dist] falha ao iniciar:', e.message); }
   // Recebimento bipado entra sozinho no estoque da loja (dono 2026-11-18)
