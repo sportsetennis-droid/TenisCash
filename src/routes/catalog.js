@@ -187,6 +187,24 @@ function groupFacet(rows, field, keyOf) {
 // translate() não depende da extensão unaccent. As duas listas têm 48 letras.
 const ACCENT_FROM = 'áàâãäéèêëíìîïóòôõöúùûüçñÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑ';
 const ACCENT_TO = 'aaaaaeeeeiiiiooooouuuucnaaaaaeeeeiiiiooooouuuucn';
+// Referência da marca que só existe na NF-e de compra: a Converse escreve "CO06390003" na
+// descrição do item, mas o card guarda o código do fornecedor (293788). Termo com cara de
+// código (tem dígito, 5+ caracteres, sem espaço) também acha o card pela descrição ou cProd
+// da NF-e, pelo vínculo do item ou pelo código de barras do item = SKU do tamanho (dono 28/11/2026).
+async function fiscalRefIds(term) {
+  const t = String(term || '').trim();
+  if (t.length < 5 || !/\d/.test(t) || !/^[A-Za-z0-9./-]+$/.test(t)) return [];
+  const like = '%' + t + '%';
+  try {
+    const rows = await prisma.$queryRaw`SELECT DISTINCT COALESCE(ps."productId", i."productId") AS id
+      FROM "XmlFiscalItem" i
+      LEFT JOIN "ProductSize" ps ON ps.barcode = i.ean AND i.ean IS NOT NULL AND i.ean <> 'SEM GTIN'
+      WHERE (i.description ILIKE ${like} OR i."supplierCode" ILIKE ${like})
+        AND COALESCE(ps."productId", i."productId") IS NOT NULL
+      LIMIT 500`;
+    return rows.map(r => r.id);
+  } catch (e) { console.warn('[catalog] busca pela NF-e:', e.message); return []; }
+}
 async function accentInsensitiveIds(term) {
   const folded = String(term || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[%_\\]/g, '').trim();
   if (folded.length < 2) return [];
@@ -342,7 +360,11 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
         : search.split(/\s+/).map(s => s.trim()).filter(s => s.length >= 2);
       const lista = termos.length ? termos : [search];
       // Acento não importa: "meiao" acha "Meião" e vice-versa (dono 15/11/2026).
-      await Promise.all(lista.map(async t => foldedIds.set(t, await accentInsensitiveIds(t))));
+      // Código da marca que só existe na NF-e de compra também acha o card (fiscalRefIds).
+      await Promise.all(lista.map(async t => {
+        const [porNome, porNota] = await Promise.all([accentInsensitiveIds(t), fiscalRefIds(t)]);
+        foldedIds.set(t, [...new Set([...porNome, ...porNota])]);
+      }));
       for (const t of lista) andConds.push({ OR: fields(t) });
     }
     const where = { AND: andConds };
