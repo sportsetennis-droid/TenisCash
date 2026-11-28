@@ -24,6 +24,8 @@ assert.equal(r.price, 300);
 r = { price: 300, costPrice: 100 }; ajustarDados(r, null); assert.equal(r.price, 300);
 r = { price: 50 }; ajustarDados(r, { price: 60, costPrice: null }); assert.equal(r.price, 50);
 r = { price: { set: 90 }, costPrice: { set: 50 } }; ajustarDados(r, null); assert.equal(r.price, 100);
+// preço 0 (ainda sem preço) não ganha preço sozinho
+r = { price: 0, costPrice: 50 }; ajustarDados(r, null); assert.equal(r.price, 0);
 // promoção não é tocada
 r = { price: 200, costPrice: 100, promoPrice: 120 }; ajustarDados(r, null); assert.equal(r.promoPrice, 120);
 

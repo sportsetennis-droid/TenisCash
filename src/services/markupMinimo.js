@@ -30,15 +30,21 @@ function ajustarDados(row, atual) {
   if (!toca) return null;
   const custo = 'costPrice' in row ? valor(row.costPrice) : valor(atual?.costPrice);
   const preco = 'price' in row ? valor(row.price) : valor(atual?.price);
-  if (!(custo > 0) || preco === null) return null;
+  // preço 0 = produto ainda sem preço (não está à venda): não cria preço sozinho
+  if (!(custo > 0) || preco === null || !(preco > 0)) return null;
   const min = precoMinimo(custo);
   if (preco + 0.005 >= min) return null;
   row.price = min;
   return { de: preco, para: min, custo };
 }
 
+// Só os testes automáticos (fora de produção) podem gravar card abaixo de 100% de propósito,
+// para conferir que os agentes de preço acusam o erro.
+const desligadaNoTeste = () => process.env.NODE_ENV !== 'production' && process.env.MARKUP_TRAVA_TESTE === '0';
+
 function instalarTravaMarkup(prisma) {
   prisma.$use(async (params, next) => {
+    if (desligadaNoTeste()) return next(params);
     try {
       if (params.model === 'Supplier' && ['create', 'update', 'upsert', 'updateMany', 'createMany'].includes(params.action)) {
         const rows = params.action === 'upsert' ? [params.args.create, params.args.update] : (Array.isArray(params.args.data) ? params.args.data : [params.args.data]);
@@ -78,7 +84,7 @@ const state = { lastRunAt: null, lastResult: null, lastError: null };
 async function corrigirMarkupAbaixo(db, { aplicar = true, agora = new Date() } = {}) {
   const abaixo = await db.$queryRawUnsafe(
     'SELECT id, price::float AS price, "costPrice"::float AS custo, "markupPercent"::float AS mk FROM "Product" ' +
-    'WHERE active AND (("costPrice" > 0 AND price < round(("costPrice" * $1)::numeric, 2) - 0.005) OR "markupPercent" < $2)', FATOR, MARKUP_MINIMO);
+    'WHERE active AND (("costPrice" > 0 AND price > 0 AND price < round(("costPrice" * $1)::numeric, 2) - 0.005) OR "markupPercent" < $2)', FATOR, MARKUP_MINIMO);
   const sup = await db.$queryRawUnsafe('SELECT id FROM "Supplier" WHERE "averageMarkup" < $1', MARKUP_MINIMO);
   const res = { cards: abaixo.length, precos: 0, fornecedores: sup.length };
   if (!aplicar) return res;
