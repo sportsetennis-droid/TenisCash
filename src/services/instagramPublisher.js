@@ -112,19 +112,23 @@ async function publishPhoto({ imageUrl, caption, collaborators, igUserId }) {
  * Publica STORY (imagem 9:16) no IG. Story não tem caption visível nem collaborators via API.
  * @returns {Promise<{ mediaId }>}
  */
-async function publishStory({ imageUrl, igUserId }) {
+async function publishStory({ imageUrl, videoUrl, igUserId }) {
   const { userId, token } = await getCredentials(igUserId);
+  // Story em VÍDEO tem que ir como video_url. Mandar o MP4 em image_url faz a Meta aceitar,
+  // mas o story fica todo preto no app (bug visto em 28/11/2026).
+  const url = videoUrl || imageUrl;
+  const isVideo = !!videoUrl || /\.(mp4|mov|m4v)(\?|#|$)/i.test(String(url || ''));
 
   const container = await api(`/${userId}/media`, {
     method: 'POST',
     body: {
       media_type: 'STORIES',
-      image_url: imageUrl,
+      ...(isVideo ? { video_url: url } : { image_url: url }),
       access_token: token,
     },
   });
 
-  await waitForContainerReady(container.id, token, 90);
+  await waitForContainerReady(container.id, token, isVideo ? 180 : 90);
 
   const published = await api(`/${userId}/media_publish`, {
     method: 'POST',
