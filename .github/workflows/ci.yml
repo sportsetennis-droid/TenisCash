@@ -65,6 +65,8 @@ jobs:
       RNA_TEST_DATABASE_URL: postgresql://rnatest@127.0.0.1:55330/rede_ci
       JWT_SECRET: ci-somente-teste
       RNA_RELOGIO: '0'
+      # testes dos agentes gravam card abaixo de 100% de propósito (a trava do markup roda em produção)
+      MARKUP_TRAVA_TESTE: '0'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
