@@ -321,6 +321,20 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
     const salesTerms = (search.match(/[\p{L}\p{N}]+/gu) || [])
       .filter(s => s.length >= 2 && !stopWords.has(s.toLocaleLowerCase('pt-BR')));
     const foldedIds = new Map();
+    // Código da caixa/nota (ex Converse "CO06390003"): muitos cards não trazem a referência
+    // do fabricante no nome. Termo com cara de código acha o card pelo texto da NF-e de entrada
+    // do mesmo código de barras (dono 28/11: "Pq esse produto não aparece no estoque!").
+    const nfeRefIds = new Map();
+    const refPeloTextoDaNota = async (t) => {
+      if (t.length < 5 || !/\d{4,}/.test(t)) return [];
+      const termo = '%' + t.replace(/[%_\\]/g, '') + '%';
+      const rows = await prisma.$queryRaw`
+        SELECT DISTINCT ps."productId" AS id FROM "XmlFiscalItem" i
+        JOIN "ProductSize" ps ON ps.barcode = i.ean
+        WHERE i.ean ~ '^[0-9]{8,14}$' AND (i.description ILIKE ${termo} OR i."supplierCode" ILIKE ${termo})
+        LIMIT 300`.catch(() => []);
+      return rows.map((r) => r.id);
+    };
     const fields = t => ([
       { name: { contains: t, mode: 'insensitive' } },
       { sku: { contains: t, mode: 'insensitive' } },
@@ -334,6 +348,7 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
       { aiContext: { path: ['color'], string_contains: t } },
       { sizes: { some: { barcode: { contains: t, mode: 'insensitive' } } } },
       ...(foldedIds.get(t)?.length ? [{ id: { in: foldedIds.get(t) } }] : []),
+      ...(nfeRefIds.get(t)?.length ? [{ id: { in: nfeRefIds.get(t) } }] : []),
     ]);
     // BUSCA INTELIGENTE multi-palavra: "bola reebok" acha quem tem bola E reebok (qualquer ordem/campo).
     if (search) {
@@ -343,6 +358,7 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
       const lista = termos.length ? termos : [search];
       // Acento não importa: "meiao" acha "Meião" e vice-versa (dono 15/11/2026).
       await Promise.all(lista.map(async t => foldedIds.set(t, await accentInsensitiveIds(t))));
+      await Promise.all(lista.map(async t => nfeRefIds.set(t, await refPeloTextoDaNota(t))));
       for (const t of lista) andConds.push({ OR: fields(t) });
     }
     const where = { AND: andConds };
