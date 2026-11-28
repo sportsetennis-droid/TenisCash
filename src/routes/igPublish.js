@@ -233,7 +233,7 @@ router.get('/insights', async (req, res) => {
     const fields = 'id,caption,media_type,media_product_type,timestamp,permalink,like_count,comments_count';
     const feed = await graphGet(`${acc.id}/media`, { fields, limit: String(limit) });
     let stories = [];
-    try { stories = (await graphGet(`${acc.id}/stories`, { fields: 'id,media_type,media_product_type,timestamp,permalink' })).data || []; } catch { /* sem story no ar */ }
+    try { stories = (await graphGet(`${acc.id}/stories`, { fields: 'id,media_type,media_product_type,timestamp,permalink,media_url,thumbnail_url' })).data || []; } catch { /* sem story no ar */ }
     const all = [...(feed.data || []), ...stories];
     const out = [];
     for (let i = 0; i < all.length; i += 6) {
@@ -242,6 +242,8 @@ router.get('/insights', async (req, res) => {
         tipo: m.media_product_type === 'STORY' ? 'STORY' : m.media_product_type === 'REELS' ? 'REEL' : m.media_type === 'CAROUSEL_ALBUM' ? 'CARROSSEL' : m.media_type,
         quando: m.timestamp,
         link: m.permalink,
+        formato: m.media_type,
+        arquivo: m.media_url ? String(m.media_url).split('?')[0].split('.').pop().slice(0, 8) : null,
         legenda: String(m.caption || '').replace(/\s+/g, ' ').slice(0, 140),
         curtidas: m.like_count,
         comentarios: m.comments_count,
