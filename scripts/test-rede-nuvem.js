@@ -9,6 +9,8 @@
 // =====================================================================
 if (process.env.RNA_TEST_DATABASE_URL) process.env.DATABASE_URL = process.env.RNA_TEST_DATABASE_URL;
 process.env.RNA_RELOGIO = '0';
+// O teste grava card abaixo de 100% de propósito para ver o agente acusar (trava do markup só fora de produção).
+process.env.MARKUP_TRAVA_TESTE = '0';
 const assert = require('assert');
 const registro = require('../src/ai/rede/registro');
 
